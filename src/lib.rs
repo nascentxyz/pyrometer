@@ -1,38 +1,27 @@
-use ethers_core::types::{U256, H256, Address};
+use ethers_core::types::{Address, H256, U256};
 use solang_parser::pt::Identifier;
-use std::collections::HashMap;
 use solang_parser::pt::{
-    ContractPart,
-    TypeDefinition,
+    ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
+    FunctionDefinition, SourceUnit, SourceUnitPart, Statement, StructDefinition, TypeDefinition,
     VariableDefinition,
-    FunctionDefinition,
-    ErrorDefinition,
-    StructDefinition,
-    EnumDefinition,
-    ContractDefinition,
-    SourceUnitPart,
-    SourceUnit,
-    Expression,
-    Statement,
 };
+use std::collections::HashMap;
 
 use petgraph::dot::Dot;
-use petgraph::visit::EdgeRef;
-use petgraph::{Direction, Directed, graph::*};
 use petgraph::graph::Edges;
+use petgraph::visit::EdgeRef;
+use petgraph::{graph::*, Directed, Direction};
 
 mod builtin_fns;
 
+pub mod context;
 pub mod queries;
 pub mod types;
-pub mod context;
-use types::*;
 use context::*;
+use types::*;
 
 pub type NodeIdx = NodeIndex<usize>;
 pub type EdgeIdx = EdgeIndex<usize>;
-
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Node {
@@ -65,11 +54,13 @@ impl ConcreteNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Concrete {
         match analyzer.node(*self) {
             Node::Concrete(c) => c,
-            e => panic!("Node type confusion: expected node to be Concrete but it was: {:?}", e)
+            e => panic!(
+                "Node type confusion: expected node to be Concrete but it was: {:?}",
+                e
+            ),
         }
     }
 }
-
 
 impl From<NodeIdx> for ConcreteNode {
     fn from(idx: NodeIdx) -> Self {
@@ -121,7 +112,7 @@ pub enum Edge {
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
-    pub graph: Graph::<Node, Edge, Directed, usize>,
+    pub graph: Graph<Node, Edge, Directed, usize>,
     pub builtins: HashMap<Builtin, NodeIdx>,
     pub dyn_builtins: HashMap<DynBuiltin, NodeIdx>,
     pub user_types: HashMap<String, NodeIdx>,
@@ -170,23 +161,33 @@ pub trait AnalyzerLike: GraphLike {
 }
 
 pub trait GraphLike {
-    fn graph_mut(&mut self) -> &mut Graph::<Node, Edge, Directed, usize>;
-    fn graph(&self) -> &Graph::<Node, Edge, Directed, usize>;
+    fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize>;
+    fn graph(&self) -> &Graph<Node, Edge, Directed, usize>;
 
     fn add_node(&mut self, node: impl Into<Node>) -> NodeIdx {
         self.graph_mut().add_node(node.into())
     }
 
     fn node(&self, node: impl Into<NodeIdx>) -> &Node {
-        self.graph().node_weight(node.into()).expect("Index not in graph")
+        self.graph()
+            .node_weight(node.into())
+            .expect("Index not in graph")
     }
 
     fn node_mut(&mut self, node: impl Into<NodeIdx>) -> &mut Node {
-        self.graph_mut().node_weight_mut(node.into()).expect("Index not in graph")
+        self.graph_mut()
+            .node_weight_mut(node.into())
+            .expect("Index not in graph")
     }
 
-    fn add_edge(&mut self, from_node: impl Into<NodeIdx>, to_node: impl Into<NodeIdx>, edge: impl Into<Edge>) {
-        self.graph_mut().add_edge(from_node.into(), to_node.into(), edge.into());
+    fn add_edge(
+        &mut self,
+        from_node: impl Into<NodeIdx>,
+        to_node: impl Into<NodeIdx>,
+        edge: impl Into<Edge>,
+    ) {
+        self.graph_mut()
+            .add_edge(from_node.into(), to_node.into(), edge.into());
     }
 
     fn dot_str(&self) -> String {
@@ -195,11 +196,11 @@ pub trait GraphLike {
 }
 
 impl GraphLike for Analyzer {
-    fn graph_mut(&mut self) -> &mut Graph::<Node, Edge, Directed, usize> {
+    fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
         &mut self.graph
     }
 
-    fn graph(&self) -> &Graph::<Node, Edge, Directed, usize> {
+    fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         &self.graph
     }
 }
@@ -301,7 +302,7 @@ impl AnalyzerLike for Analyzer {
                 };
                 self.add_node(Node::Concrete(Concrete::Uint(256, val)))
             }
-            _ => 0.into()
+            _ => 0.into(),
         }
     }
 }
@@ -315,18 +316,28 @@ impl Analyzer {
                 let parent = self.add_node(Node::SourceUnit(file_no));
                 self.parse_source_unit(source_unit, file_no, parent);
                 Some(parent)
-            },
+            }
             Err(e) => panic!("FAIL to parse, {:?}", e),
         }
     }
 
     pub fn parse_source_unit(&mut self, source_unit: SourceUnit, file_no: usize, parent: NodeIdx) {
-        source_unit.0.iter().enumerate().for_each(|(unit_part, source_unit_part)| {
-            self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent);
-        })
+        source_unit
+            .0
+            .iter()
+            .enumerate()
+            .for_each(|(unit_part, source_unit_part)| {
+                self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent);
+            })
     }
 
-    pub fn parse_source_unit_part(&mut self, sup: &SourceUnitPart, file_no: usize, unit_part: usize, parent: NodeIdx) -> NodeIdx {
+    pub fn parse_source_unit_part(
+        &mut self,
+        sup: &SourceUnitPart,
+        file_no: usize,
+        unit_part: usize,
+        parent: NodeIdx,
+    ) -> NodeIdx {
         use SourceUnitPart::*;
 
         let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
@@ -335,31 +346,31 @@ impl Analyzer {
             ContractDefinition(def) => {
                 let node = self.parse_contract_def(&*def);
                 self.add_edge(node, sup_node, Edge::Contract);
-            },
+            }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(&*def);
                 self.add_edge(node, sup_node, Edge::Struct);
-            },
+            }
             EnumDefinition(def) => {
                 let node = self.parse_enum_def(&*def);
                 self.add_edge(node, sup_node, Edge::Enum);
-            },
+            }
             ErrorDefinition(def) => {
                 let node = self.parse_err_def(&*def);
                 self.add_edge(node, sup_node, Edge::Error);
-            },
+            }
             VariableDefinition(def) => {
                 let node = self.parse_var_def(&*def);
                 self.add_edge(node, sup_node, Edge::Var);
-            },
+            }
             FunctionDefinition(def) => {
                 let node = self.parse_func_def(&*def);
-                self.add_edge(node, sup_node, Edge::Func);  
-            },
+                self.add_edge(node, sup_node, Edge::Func);
+            }
             TypeDefinition(def) => {
                 let node = self.parse_ty_def(&*def);
                 self.add_edge(node, sup_node, Edge::Ty);
-            },
+            }
             EventDefinition(_def) => todo!(),
             Annotation(_anno) => todo!(),
             Using(_using) => todo!(),
@@ -375,37 +386,35 @@ impl Analyzer {
 
         let con_node = ContractNode(self.add_node(Contract::from(contract_def.clone())).index());
 
-        contract_def.parts.iter().for_each(|cpart| {
-            match cpart {
-                StructDefinition(def) => {
-                    let node = self.parse_struct_def(&*def);
-                    self.add_edge(node, con_node, Edge::Struct);
-                },
-                EnumDefinition(def) => {
-                    let node = self.parse_enum_def(&*def);
-                    self.add_edge(node, con_node, Edge::Enum);
-                },
-                ErrorDefinition(def) => {
-                    let node = self.parse_err_def(&*def);
-                    self.add_edge(node, con_node, Edge::Error);
-                },
-                VariableDefinition(def) => {
-                    let node = self.parse_var_def(&*def);
-                    self.add_edge(node, con_node, Edge::Var);
-                },
-                FunctionDefinition(def) => {
-                    let node = self.parse_func_def(&*def);
-                    self.add_edge(node, con_node, Edge::Func);  
-                },
-                TypeDefinition(def) => {
-                    let node = self.parse_ty_def(&*def);
-                    self.add_edge(node, con_node, Edge::Ty);
-                },
-                EventDefinition(_def) => todo!(),
-                Annotation(_anno) => todo!(),
-                Using(_using) => todo!(),
-                StraySemicolon(_loc) => todo!(),
+        contract_def.parts.iter().for_each(|cpart| match cpart {
+            StructDefinition(def) => {
+                let node = self.parse_struct_def(&*def);
+                self.add_edge(node, con_node, Edge::Struct);
             }
+            EnumDefinition(def) => {
+                let node = self.parse_enum_def(&*def);
+                self.add_edge(node, con_node, Edge::Enum);
+            }
+            ErrorDefinition(def) => {
+                let node = self.parse_err_def(&*def);
+                self.add_edge(node, con_node, Edge::Error);
+            }
+            VariableDefinition(def) => {
+                let node = self.parse_var_def(&*def);
+                self.add_edge(node, con_node, Edge::Var);
+            }
+            FunctionDefinition(def) => {
+                let node = self.parse_func_def(&*def);
+                self.add_edge(node, con_node, Edge::Func);
+            }
+            TypeDefinition(def) => {
+                let node = self.parse_ty_def(&*def);
+                self.add_edge(node, con_node, Edge::Ty);
+            }
+            EventDefinition(_def) => todo!(),
+            Annotation(_anno) => todo!(),
+            Using(_using) => todo!(),
+            StraySemicolon(_loc) => todo!(),
         });
         con_node
     }
@@ -433,15 +442,16 @@ impl Analyzer {
         let name = strukt.name.clone().expect("Struct was not named").name;
 
         // check if we have an unresolved type by the same name
-        let strukt_node: StructNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-            let unresolved = self.node_mut(user_ty_node);
-            *unresolved = Node::Struct(strukt);
-            user_ty_node.into()
-        } else {
-            let node = self.add_node(strukt);
-            self.user_types.insert(name, node);
-            node.into()
-        };
+        let strukt_node: StructNode =
+            if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+                let unresolved = self.node_mut(user_ty_node);
+                *unresolved = Node::Struct(strukt);
+                user_ty_node.into()
+            } else {
+                let node = self.add_node(strukt);
+                self.user_types.insert(name, node);
+                node.into()
+            };
 
         struct_def.fields.iter().for_each(|field| {
             let f = Field::new(self, field.clone());
@@ -450,7 +460,6 @@ impl Analyzer {
         });
         strukt_node
     }
-
 
     pub fn parse_err_def(&mut self, err_def: &ErrorDefinition) -> ErrorNode {
         let err_node = ErrorNode(self.add_node(Error::from(err_def.clone())).index());
@@ -467,15 +476,16 @@ impl Analyzer {
         let name = func.name.clone().expect("Struct was not named").name;
         // TODO: check if we have an unresolved type by the same name
 
-        let func_node: FunctionNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-            let unresolved = self.node_mut(user_ty_node);
-            *unresolved = Node::Function(func);
-            user_ty_node.into()
-        } else {
-            let node = self.add_node(func);
-            self.user_types.insert(name, node);
-            node.into()
-        };
+        let func_node: FunctionNode =
+            if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+                let unresolved = self.node_mut(user_ty_node);
+                *unresolved = Node::Function(func);
+                user_ty_node.into()
+            } else {
+                let node = self.add_node(func);
+                self.user_types.insert(name, node);
+                node.into()
+            };
 
         func_def.params.iter().for_each(|(_loc, input)| {
             if let Some(input) = input {
@@ -509,38 +519,47 @@ impl Analyzer {
         TyNode(self.add_node(ty).index())
     }
 
-    pub fn parse_statement(&mut self, stmt: &Statement, unchecked: bool, parent_ctx: Option<impl Into<NodeIdx>>) {
+    pub fn parse_statement(
+        &mut self,
+        stmt: &Statement,
+        unchecked: bool,
+        parent_ctx: Option<impl Into<NodeIdx>>,
+    ) {
         use Statement::*;
         // println!("stmt: {:?}", stmt);
         match stmt {
-            Block{loc, unchecked, statements} => {
+            Block {
+                loc,
+                unchecked,
+                statements,
+            } => {
                 let ctx = Context::new(*loc);
                 let ctx_node = self.add_node(Node::Context(ctx));
-                
+
                 if let Some(parent) = parent_ctx {
                     self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Context));
                 }
 
-                statements.iter().for_each(|stmt| { self.parse_statement(stmt, *unchecked, Some(ctx_node)) });
-            },
-            VariableDefinition(loc, var_decl, maybe_expr) => {
-
+                statements
+                    .iter()
+                    .for_each(|stmt| self.parse_statement(stmt, *unchecked, Some(ctx_node)));
             }
+            VariableDefinition(loc, var_decl, maybe_expr) => {}
             Assembly {
                 loc,
                 dialect,
                 flags,
                 block: yul_block,
-            } => {},
-            Args(loc, args) => {},
-            If(loc, cond, true_body, maybe_false_body) => {},
-            While(loc, cond, body) => {},
-            Expression(loc, expr) => {},
-            VariableDefinition(loc, var_decl, maybe_expr) => {},
-            For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {},
-            DoWhile(loc, while_stmt, while_expr) => {},
-            Continue(loc) => {},
-            Break(loc) => {},
+            } => {}
+            Args(loc, args) => {}
+            If(loc, cond, true_body, maybe_false_body) => {}
+            While(loc, cond, body) => {}
+            Expression(loc, expr) => {}
+            VariableDefinition(loc, var_decl, maybe_expr) => {}
+            For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {}
+            DoWhile(loc, while_stmt, while_expr) => {}
+            Continue(loc) => {}
+            Break(loc) => {}
             Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     let expr_node = self.parse_expr(ret_expr);
@@ -548,16 +567,15 @@ impl Analyzer {
                         self.add_edge(expr_node, parent, Edge::Context(ContextEdge::Return));
                     }
                 }
-            },
-            Revert(loc, maybe_err_path, exprs) => {},
-            RevertNamedArgs(loc,maybe_err_path, named_args) => {},
-            Emit(loc, emit_expr) => {},
-            Try(loc, try_expr, maybe_returns, clauses) => {},
-            Error(loc) => {},
+            }
+            Revert(loc, maybe_err_path, exprs) => {}
+            RevertNamedArgs(loc, maybe_err_path, named_args) => {}
+            Emit(loc, emit_expr) => {}
+            Try(loc, try_expr, maybe_returns, clauses) => {}
+            Error(loc) => {}
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -593,7 +611,5 @@ contract Storage {
             let mins = analyzer.min_size_to_prevent_access_revert(ContextNode::from(context));
             mins[0].print_report((0, &sol), &analyzer);
         }
-        
-        
     }
 }
