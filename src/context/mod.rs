@@ -1,20 +1,8 @@
-use crate::AnalyzerLike;
-use crate::BuiltInNode;
-use crate::Builtin;
-use crate::Concrete;
-use crate::ConcreteNode;
-use crate::DynBuiltin;
-use crate::Edge;
-use crate::FieldNode;
-use crate::FunctionNode;
-use crate::FunctionParamNode;
-use crate::FunctionReturnNode;
-use crate::Node;
-use crate::NodeIdx;
-use crate::Range;
-use crate::RangeElem;
-use crate::TypeNode;
-use crate::VarType;
+use crate::{
+    AnalyzerLike, BuiltInNode, Builtin, Concrete, ConcreteNode, DynBuiltin, Edge, FieldNode,
+    FunctionNode, FunctionParamNode, FunctionReturnNode, Node, NodeIdx, Op, Range, RangeElem,
+    RangeExpr, RangeExprElem, TypeNode, VarType,
+};
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc, Statement};
 
@@ -26,6 +14,8 @@ pub mod var;
 pub use var::*;
 pub mod analyzer;
 pub use analyzer::*;
+pub mod bounds_analyzer;
+pub use bounds_analyzer::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ContextEdge {
@@ -68,6 +58,16 @@ impl ContextNode {
         }
     }
 
+    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Context {
+        match analyzer.node(*self) {
+            Node::Context(c) => c,
+            e => panic!(
+                "Node type confusion: expected node to be Context but it was: {:?}",
+                e
+            ),
+        }
+    }
+
     pub fn var_by_name(&self, analyzer: &impl AnalyzerLike, name: &str) -> Option<ContextVarNode> {
         analyzer
             .graph()
@@ -84,6 +84,27 @@ impl ContextNode {
             })
             .take(1)
             .next()
+    }
+
+    pub fn vars(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed((*self).into(), Direction::Incoming)
+            .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::Variable))
+            .map(|edge| ContextVarNode::from(edge.source()))
+            .collect()
+    }
+
+    pub fn latest_var_by_name(
+        &self,
+        analyzer: &impl AnalyzerLike,
+        name: &str,
+    ) -> Option<ContextVarNode> {
+        if let Some(var) = self.var_by_name(analyzer, name) {
+            Some(var.latest_version(analyzer))
+        } else {
+            None
+        }
     }
 
     pub fn new_tmp(&self, analyzer: &mut impl AnalyzerLike) -> usize {
@@ -250,7 +271,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                 }
             }
             Variable(ident) => {
-                if let Some(cvar) = ctx.var_by_name(self, &ident.name) {
+                if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
                     vec![cvar.into()]
                 } else {
                     if let Some(idx) = self.user_types().get(&ident.name) {
@@ -416,7 +437,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
 
                 vec![self.add_node(Node::ContextVar(out_var))]
             }
-            FunctionCall(loc, func_expr, input_exprs) => {
+            FunctionCall(_loc, func_expr, input_exprs) => {
                 let func_idx = self.parse_ctx_expr(func_expr, ctx)[0];
 
                 if let Some(func_name) = &FunctionNode::from(func_idx).underlying(self).name {
@@ -426,7 +447,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                     }
                 }
 
-                let inputs: Vec<_> = input_exprs
+                let _inputs: Vec<_> = input_exprs
                     .into_iter()
                     .map(|expr| self.parse_ctx_expr(expr, ctx))
                     .collect();
@@ -447,31 +468,143 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                 let new_upper_bound = match rhs_cvar.underlying(self).ty {
                     VarType::Concrete(c) => {
                         let val = c.underlying(self).uint_val().expect("Not uint bound");
-                        RangeElem::Concrete(val)
+                        RangeElem::Concrete(val.saturating_sub(1.into()), *loc)
                     }
-                    _ => RangeElem::Dynamic(rhs_cvar.into()),
+                    _ => {
+                        let expr = RangeExpr {
+                            lhs: RangeExprElem::Dynamic(rhs_cvar.into(), *loc),
+                            op: Op::Sub,
+                            rhs: RangeExprElem::Concrete(1.into(), Loc::Implicit),
+                        };
+                        RangeElem::Complex(expr)
+                    }
                 };
 
-                let lhs_underlying = lhs_cvar.underlying_mut(self);
-                match lhs_underlying.ty {
+                let new_lhs_underlying = self.advance_var(lhs_cvar, *loc);
+                match &mut new_lhs_underlying.ty {
                     VarType::BuiltIn(_bn, ref mut maybe_lhs_range) => {
                         if let Some(lhs_range) = maybe_lhs_range {
                             lhs_range.max = new_upper_bound;
                         } else {
                             *maybe_lhs_range = Some(Range {
-                                min: RangeElem::Concrete(U256::zero()),
+                                min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
                                 max: new_upper_bound,
                             })
                         }
                     }
                     e => {
-                        println!("wasnt builting: {:?}", e)
+                        println!("wasnt builtin: {:?}", e)
                     }
                 }
-                println!("require lhs {:?}", lhs_underlying);
+                println!("require lhs {:?}", new_lhs_underlying);
+            }
+            Some(Expression::More(loc, lhs, rhs)) => {
+                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
+                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
+                let new_lower_bound = match rhs_cvar.underlying(self).ty {
+                    VarType::Concrete(c) => {
+                        let val = c.underlying(self).uint_val().expect("Not uint bound");
+                        RangeElem::Concrete(val.saturating_add(1.into()), *loc)
+                    }
+                    _ => {
+                        let expr = RangeExpr {
+                            lhs: RangeExprElem::Dynamic(rhs_cvar.into(), *loc),
+                            op: Op::Add,
+                            rhs: RangeExprElem::Concrete(1.into(), Loc::Implicit),
+                        };
+                        RangeElem::Complex(expr)
+                    }
+                };
+
+                let new_lhs_underlying = self.advance_var(lhs_cvar, *loc);
+
+                match &mut new_lhs_underlying.ty {
+                    VarType::BuiltIn(_bn, ref mut maybe_lhs_range) => {
+                        if let Some(lhs_range) = maybe_lhs_range {
+                            lhs_range.min = new_lower_bound;
+                        } else {
+                            *maybe_lhs_range = Some(Range {
+                                min: new_lower_bound,
+                                max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
+                            })
+                        }
+                    }
+                    e => {
+                        println!("wasnt builtin: {:?}", e)
+                    }
+                }
+                println!("require lhs {:?}", new_lhs_underlying);
+            }
+            Some(Expression::MoreEqual(loc, lhs, rhs)) => {
+                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
+                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
+                let new_lower_bound = match rhs_cvar.underlying(self).ty {
+                    VarType::Concrete(c) => {
+                        let val = c.underlying(self).uint_val().expect("Not uint bound");
+                        RangeElem::Concrete(val, *loc)
+                    }
+                    _ => RangeElem::Dynamic(rhs_cvar.into(), *loc),
+                };
+
+                let new_lhs_underlying = self.advance_var(lhs_cvar, *loc);
+
+                match &mut new_lhs_underlying.ty {
+                    VarType::BuiltIn(_bn, ref mut maybe_lhs_range) => {
+                        if let Some(lhs_range) = maybe_lhs_range {
+                            lhs_range.min = new_lower_bound;
+                        } else {
+                            *maybe_lhs_range = Some(Range {
+                                min: new_lower_bound,
+                                max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
+                            })
+                        }
+                    }
+                    e => {
+                        println!("wasnt builtin: {:?}", e)
+                    }
+                }
+                println!("require lhs {:?}", new_lhs_underlying);
+            }
+            Some(Expression::LessEqual(loc, lhs, rhs)) => {
+                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
+                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
+
+                let new_upper_bound = match rhs_cvar.underlying(self).ty {
+                    VarType::Concrete(c) => {
+                        let val = c.underlying(self).uint_val().expect("Not uint bound");
+                        RangeElem::Concrete(val, *loc)
+                    }
+                    _ => RangeElem::Dynamic(rhs_cvar.into(), *loc),
+                };
+
+                let new_lhs_underlying = self.advance_var(lhs_cvar, *loc);
+                match &mut new_lhs_underlying.ty {
+                    VarType::BuiltIn(_bn, ref mut maybe_lhs_range) => {
+                        if let Some(lhs_range) = maybe_lhs_range {
+                            lhs_range.max = new_upper_bound;
+                        } else {
+                            *maybe_lhs_range = Some(Range {
+                                min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
+                                max: new_upper_bound,
+                            })
+                        }
+                    }
+                    e => {
+                        println!("wasnt builtin: {:?}", e)
+                    }
+                }
+                println!("require lhs {:?}", new_lhs_underlying);
             }
             None => panic!("Empty require"),
             _ => todo!(),
         }
+    }
+
+    fn advance_var(&mut self, cvar_node: ContextVarNode, loc: Loc) -> &mut ContextVar {
+        let mut new_cvar = cvar_node.underlying(self).clone();
+        new_cvar.loc = Some(loc);
+        let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+        self.add_edge(cvar_node.0, new_cvarnode, Edge::Context(ContextEdge::Next));
+        ContextVarNode::from(new_cvarnode).underlying_mut(self)
     }
 }

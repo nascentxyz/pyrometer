@@ -8,9 +8,7 @@ use solang_parser::pt::{
 use std::collections::HashMap;
 
 use petgraph::dot::Dot;
-use petgraph::graph::Edges;
-use petgraph::visit::EdgeRef;
-use petgraph::{graph::*, Directed, Direction};
+use petgraph::{graph::*, Directed};
 
 mod builtin_fns;
 
@@ -18,6 +16,7 @@ pub mod context;
 pub mod queries;
 pub mod types;
 use context::*;
+use queries::*;
 use types::*;
 
 pub type NodeIdx = NodeIndex<usize>;
@@ -138,6 +137,8 @@ impl Default for Analyzer {
 impl ArrayAccessAnalyzer for Analyzer {}
 impl Search for Analyzer {}
 impl ContextAnalyzer for Analyzer {}
+impl BoundAnalyzer for Analyzer {}
+impl FunctionVarsBoundAnalyzer for Analyzer {}
 
 pub trait AnalyzerLike: GraphLike {
     fn builtin_fns(&self) -> &HashMap<String, Function>;
@@ -589,27 +590,40 @@ contract Storage {
         uint256[] a;
     }
 
-    function b(A memory k) public returns (uint256) {
-        return k.a[0];
-    }
+    // function b(A memory k) public returns (uint256) {
+    //     return k.a[0];
+    // }
 
-    function b2(A memory k, uint256 s) public returns (uint256) {
-        return k.a[s];
-    }
+    // function b2(A memory k, uint256 s) public returns (uint256) {
+    //     return k.a[s];
+    // }
 
-    function b3(A memory k, uint256 s) public returns (uint256) {
-        require(s < 10);
+    // function b3(A memory k, uint256 s) public returns (uint256) {
+    //     require(s < 10);
+    //     return k.a[s];
+    // }
+
+    function b4(A memory k, uint256 s, uint256 l) public returns (uint256) {
+        require(l <= 10);
+        require(s > 5);
+        require(s < l);
         return k.a[s];
     }
 }"###;
         let mut analyzer = Analyzer::default();
+        let t = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
+        println!("parse time: {:?}", t.elapsed().as_nanos());
         println!("{}", analyzer.dot_str());
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
         println!("contexts: {:?}", contexts);
+        let t = std::time::Instant::now();
         for context in contexts.into_iter() {
-            let mins = analyzer.min_size_to_prevent_access_revert(ContextNode::from(context));
-            mins[0].print_report((0, &sol), &analyzer);
+            let analysis = analyzer.bounds_for_all(ContextNode::from(context), true);
+            analysis.print_report((0, &sol), &analyzer);
+            // let mins = analyzer.min_size_to_prevent_access_revert(ContextNode::from(context));
+            // mins[0].print_report((0, &sol), &analyzer);
         }
+        println!("array analyze time: {:?}", t.elapsed().as_nanos());
     }
 }

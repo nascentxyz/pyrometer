@@ -7,6 +7,9 @@ use crate::Edge;
 use crate::Node;
 use crate::NodeIdx;
 use crate::Range;
+use crate::RangeElem;
+use crate::RangeElemString;
+use crate::RangeString;
 use crate::VarType;
 use ariadne::{Color, ColorGenerator, Label, Report, ReportKind, Source, Span};
 use petgraph::graph::Edges;
@@ -38,14 +41,8 @@ impl ToString for Relative {
 }
 
 #[derive(Debug, Clone)]
-pub enum RelativeTarget {
-    Concrete(Concrete),
-    Dynamic(NodeIdx),
-}
-
-#[derive(Debug, Clone)]
 pub enum Analysis {
-    Relative(Relative, RelativeTarget),
+    Relative(Relative, RangeElem),
 }
 
 impl Analysis {
@@ -55,27 +52,21 @@ impl Analysis {
         }
     }
 
-    pub fn relative_target_string(&self, analyzer: &impl AnalyzerLike) -> String {
+    pub fn target_var_def(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
         match self {
-            Analysis::Relative(_, target) => match target {
-                RelativeTarget::Concrete(concrete) => match concrete {
-                    Concrete::Uint(_, val) => val.to_string(),
-                    Concrete::Int(_, val) => val.to_string(),
-                    _ => panic!("non-number bound"),
-                },
-                RelativeTarget::Dynamic(idx) => {
-                    let as_var = ContextVarNode::from(*idx);
-                    let name = as_var.name(analyzer);
-                    if let Some(range) = as_var.range(analyzer) {
-                        format!(
-                            "\"{}\"\n \"{}\" has the bounds: {:?} to {:?}",
-                            name, name, range.min, range.max
-                        )
-                    } else {
-                        format!("{}", name)
-                    }
-                }
-            },
+            Analysis::Relative(_, target) => target.def_string(analyzer),
+        }
+    }
+
+    pub fn relative_target_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+        match self {
+            Analysis::Relative(_, target) => target.to_range_string(analyzer),
+        }
+    }
+
+    pub fn relative_target_bounds_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
+        match self {
+            Analysis::Relative(_, target) => target.bounds_range_string(analyzer),
         }
     }
 }
@@ -90,6 +81,7 @@ pub enum ArrayAccess {
 pub struct ArrayAccessAnalysis {
     pub arr_def: ContextVarNode,
     pub arr_loc: LocSpan,
+    pub def_loc: LocSpan,
     pub access_loc: LocSpan,
     pub analysis: Analysis,
     pub analysis_ty: ArrayAccess,
@@ -103,6 +95,7 @@ impl Span for LocSpan {
     fn source(&self) -> &Self::SourceId {
         match self.0 {
             Loc::File(ref f, _, _) => f,
+            Loc::Implicit => &0,
             _ => todo!("handle non file loc"),
         }
     }
@@ -110,6 +103,7 @@ impl Span for LocSpan {
     fn start(&self) -> usize {
         match self.0 {
             Loc::File(_, start, _) => start,
+            Loc::Implicit => 0,
             _ => todo!("handle non file loc"),
         }
     }
@@ -117,6 +111,7 @@ impl Span for LocSpan {
     fn end(&self) -> usize {
         match self.0 {
             Loc::File(_, _, end) => end,
+            Loc::Implicit => 0,
             _ => todo!("handle non file loc"),
         }
     }
@@ -139,20 +134,71 @@ impl ReportDisplay for ArrayAccessAnalysis {
             ArrayAccess::MinSize => format!(
                 "Minimum array length: length must be {} {}",
                 self.analysis.relative_string(),
-                self.analysis.relative_target_string(analyzer)
+                self.analysis.relative_target_string(analyzer).s,
             ),
             ArrayAccess::MaxSize => "Maximum array length: length must be {}{}".to_string(),
         }
     }
-    fn labels(&self, _analyzer: &impl AnalyzerLike) -> Vec<Label<LocSpan>> {
-        vec![
+    fn labels(&self, analyzer: &impl AnalyzerLike) -> Vec<Label<LocSpan>> {
+        let primary_def = self.analysis.target_var_def(analyzer);
+        let mut labels = self
+            .analysis
+            .relative_target_bounds_string(analyzer)
+            .into_iter()
+            .flat_map(|range_string| {
+                let mut labels = vec![];
+                match (range_string.min.loc, range_string.max.loc) {
+                    (Loc::Implicit, Loc::Implicit) => labels,
+                    (Loc::Implicit, _) => {
+                        labels.push(
+                            Label::new(LocSpan(range_string.max.loc))
+                                .with_message(range_string.min.s + " to " + &range_string.max.s)
+                                .with_color(Color::Cyan),
+                        );
+                        labels
+                    }
+                    (_, Loc::Implicit) => {
+                        labels.push(
+                            Label::new(LocSpan(range_string.min.loc))
+                                .with_message(range_string.min.s + " to " + &range_string.max.s)
+                                .with_color(Color::Cyan),
+                        );
+                        labels
+                    }
+                    (_, _) => {
+                        labels.push(
+                            Label::new(LocSpan(range_string.min.loc))
+                                .with_message(range_string.min.s.clone() + " to ..")
+                                .with_color(Color::Cyan),
+                        );
+                        labels.push(
+                            Label::new(LocSpan(range_string.max.loc))
+                                .with_message(range_string.min.s + " to " + &range_string.max.s)
+                                .with_color(Color::Cyan),
+                        );
+                        labels
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        labels.extend([
             Label::new(self.arr_loc)
                 .with_message("Array accessed here")
                 .with_color(Color::Green),
-            Label::new(self.access_loc)
+            Label::new(self.def_loc)
                 .with_message("Length enforced by this")
-                .with_color(Color::Cyan),
-        ]
+                .with_color(Color::Red),
+        ]);
+
+        if primary_def.loc != Loc::Implicit {
+            labels.push(
+                Label::new(LocSpan(primary_def.loc))
+                    .with_message(primary_def.s + " <- Index access defined here"),
+            );
+        }
+
+        labels
     }
     fn report(&self, analyzer: &(impl AnalyzerLike + Search)) -> Report<LocSpan> {
         let mut report = Report::build(
@@ -275,22 +321,29 @@ pub trait ArrayAccessAnalyzer: Search + AnalyzerLike + Sized {
                                 .take(1)
                                 .next()
                                 .expect("IndexAccess without Index");
+                            let def = ContextVarNode::from(cvar_idx)
+                                .first_version(self)
+                                .underlying(self);
                             let cvar = ContextVarNode::from(cvar_idx).underlying(self);
                             match &cvar.ty {
                                 VarType::Concrete(conc_node) => {
                                     // its a concrete index, the analysis should be a Gt the concrete value
                                     match conc_node.underlying(self) {
-                                        c @ &Concrete::Uint(..) => ArrayAccessAnalysis {
+                                        Concrete::Uint(_, val) => ArrayAccessAnalysis {
                                             arr_def: ContextVarNode::from(*array),
                                             arr_loc: LocSpan(
                                                 ContextVarNode::from(*array).loc(self),
                                             ),
+                                            def_loc: LocSpan(def.loc.expect("No loc for access")),
                                             access_loc: LocSpan(
                                                 cvar.loc.expect("No loc for access"),
                                             ),
                                             analysis: Analysis::Relative(
                                                 Relative::Gt,
-                                                RelativeTarget::Concrete(c.clone()),
+                                                RangeElem::Concrete(
+                                                    *val,
+                                                    cvar.loc.unwrap_or(Loc::Implicit),
+                                                ),
                                             ),
                                             analysis_ty: ArrayAccess::MinSize,
                                         },
@@ -308,12 +361,16 @@ pub trait ArrayAccessAnalyzer: Search + AnalyzerLike + Sized {
                                             arr_loc: LocSpan(
                                                 ContextVarNode::from(*array).loc(self),
                                             ),
+                                            def_loc: LocSpan(def.loc.expect("No loc for access")),
                                             access_loc: LocSpan(
                                                 cvar.loc.expect("No loc for access"),
                                             ),
                                             analysis: Analysis::Relative(
                                                 Relative::Gt,
-                                                RelativeTarget::Dynamic(cvar_idx),
+                                                RangeElem::Dynamic(
+                                                    cvar_idx,
+                                                    cvar.loc.unwrap_or(Loc::Implicit),
+                                                ),
                                             ),
                                             analysis_ty: ArrayAccess::MinSize,
                                         }
@@ -323,12 +380,16 @@ pub trait ArrayAccessAnalyzer: Search + AnalyzerLike + Sized {
                                             arr_loc: LocSpan(
                                                 ContextVarNode::from(*array).loc(self),
                                             ),
+                                            def_loc: LocSpan(def.loc.expect("No loc for access")),
                                             access_loc: LocSpan(
                                                 cvar.loc.expect("No loc for access"),
                                             ),
                                             analysis: Analysis::Relative(
                                                 Relative::Gt,
-                                                RelativeTarget::Dynamic(*access),
+                                                RangeElem::Dynamic(
+                                                    *access,
+                                                    cvar.loc.unwrap_or(Loc::Implicit),
+                                                ),
                                             ),
                                             analysis_ty: ArrayAccess::MinSize,
                                         }

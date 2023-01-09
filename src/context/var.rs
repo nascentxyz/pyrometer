@@ -1,5 +1,7 @@
 use crate::AnalyzerLike;
 use crate::ConcreteNode;
+use crate::ContextEdge;
+use crate::Edge;
 use crate::Field;
 use crate::FunctionParam;
 use crate::FunctionReturn;
@@ -7,6 +9,8 @@ use crate::Node;
 use crate::NodeIdx;
 use crate::Range;
 use crate::VarType;
+use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 use solang_parser::pt::{Loc, StorageLocation};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -65,6 +69,44 @@ impl ContextVarNode {
 
     pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Range> {
         self.underlying(analyzer).ty.range()
+    }
+
+    pub fn latest_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Self {
+        let mut latest = *self;
+        while let Some(next) = latest.next_version(analyzer) {
+            latest = next;
+        }
+        latest
+    }
+
+    pub fn first_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Self {
+        println!("getting first version");
+        let mut earlier = *self;
+        while let Some(prev) = earlier.previous_version(analyzer) {
+            earlier = prev;
+        }
+        earlier
+    }
+
+    pub fn next_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Self> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| Edge::Context(ContextEdge::Next) == *edge.weight())
+            .map(|edge| ContextVarNode::from(edge.target()))
+            .take(1)
+            .next()
+    }
+
+    pub fn previous_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Self> {
+        // println!("getting previous version: {:?}", self.0);
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Context(ContextEdge::Next) == *edge.weight())
+            .map(|edge| ContextVarNode::from(edge.source()))
+            .take(1)
+            .next()
     }
 }
 

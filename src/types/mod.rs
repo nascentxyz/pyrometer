@@ -1,10 +1,10 @@
-use crate::Analyzer;
 use crate::AnalyzerLike;
 use crate::ConcreteNode;
-use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
+use crate::{LenRange, Range, RangeElem};
 use ethers_core::types::U256;
+use solang_parser::pt::Loc;
 use solang_parser::pt::Type;
 
 pub mod contract_ty;
@@ -22,46 +22,7 @@ pub use var_ty::*;
 pub mod ty_ty;
 pub use ty_ty::*;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct Range {
-    pub min: RangeElem,
-    pub max: RangeElem,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub enum RangeElem {
-    Concrete(U256),
-    Dynamic(NodeIdx),
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct LenRange {
-    pub min: RangeElem,
-    pub max: RangeElem,
-}
-
-impl Range {
-    pub fn try_from_builtin(builtin: &Builtin) -> Option<Self> {
-        match builtin {
-            Builtin::Uint(size) => {
-                if *size == 256 {
-                    Some(Range {
-                        min: RangeElem::Concrete(0.into()),
-                        max: RangeElem::Concrete(U256::MAX),
-                    })
-                } else {
-                    Some(Range {
-                        min: RangeElem::Concrete(0.into()),
-                        max: RangeElem::Concrete(U256::from(2).pow(U256::from(*size)) - 1),
-                    })
-                }
-            }
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum VarType {
     User(TypeNode),
     BuiltIn(BuiltInNode, Option<Range>),
@@ -80,8 +41,8 @@ impl VarType {
                 DynBuiltin::Array(_) => Some(VarType::Array(
                     node.into(),
                     Some(LenRange {
-                        min: RangeElem::Concrete(U256::zero()),
-                        max: RangeElem::Concrete(U256::MAX),
+                        min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
+                        max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
                     }),
                 )),
                 DynBuiltin::Mapping(_, _) => Some(VarType::Mapping(node.into())),
