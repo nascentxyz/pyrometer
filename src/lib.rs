@@ -150,12 +150,6 @@ impl Default for Analyzer {
     }
 }
 
-impl ArrayAccessAnalyzer for Analyzer {}
-impl Search for Analyzer {}
-impl ContextAnalyzer for Analyzer {}
-impl BoundAnalyzer for Analyzer {}
-impl FunctionVarsBoundAnalyzer for Analyzer {}
-
 pub trait AnalyzerLike: GraphLike {
     fn builtin_fns(&self) -> &HashMap<String, Function>;
     fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
@@ -209,6 +203,23 @@ pub trait GraphLike {
 
     fn dot_str(&self) -> String {
         format!("{:?}", Dot::new(self.graph()))
+    }
+
+    fn dot_str_no_tmps(&self) -> String {
+        let new_graph = self.graph().filter_map(
+            |_idx, node| match node {
+                Node::ContextVar(cvar) => {
+                    if cvar.tmp_of.is_some() {
+                        None
+                    } else {
+                        Some(node)
+                    }
+                }
+                _ => Some(node),
+            },
+            |_idx, edge| Some(edge),
+        );
+        format!("{:?}", Dot::new(&new_graph))
     }
 }
 
@@ -292,8 +303,8 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             ArraySubscript(_loc, ty_expr, Some(index_expr)) => {
-                let inner_ty = self.parse_expr(ty_expr);
-                let index_ty = self.parse_expr(index_expr);
+                let _inner_ty = self.parse_expr(ty_expr);
+                let _index_ty = self.parse_expr(index_expr);
                 // println!("here: {:?}", index_expr);
                 // if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                 //     let dyn_b = DynBuiltin::Array(var_type);
@@ -309,7 +320,7 @@ impl AnalyzerLike for Analyzer {
                 // }
                 0.into()
             }
-            NumberLiteral(loc, int, exp) => {
+            NumberLiteral(_loc, int, exp) => {
                 let int = U256::from_dec_str(int).unwrap();
                 let val = if !exp.is_empty() {
                     let exp = U256::from_dec_str(exp).unwrap();
@@ -323,8 +334,6 @@ impl AnalyzerLike for Analyzer {
         }
     }
 }
-
-impl ContextBuilder for Analyzer {}
 
 impl Analyzer {
     pub fn parse(&mut self, src: &str, file_no: usize) -> Option<NodeIdx> {
@@ -539,7 +548,7 @@ impl Analyzer {
     pub fn parse_statement(
         &mut self,
         stmt: &Statement,
-        unchecked: bool,
+        _unchecked: bool,
         parent_ctx: Option<impl Into<NodeIdx>>,
     ) {
         use Statement::*;
@@ -561,23 +570,22 @@ impl Analyzer {
                     .iter()
                     .for_each(|stmt| self.parse_statement(stmt, *unchecked, Some(ctx_node)));
             }
-            VariableDefinition(loc, var_decl, maybe_expr) => {}
+            VariableDefinition(_loc, _var_decl, _maybe_expr) => {}
             Assembly {
-                loc,
-                dialect,
-                flags,
-                block: yul_block,
+                loc: _,
+                dialect: _,
+                flags: _,
+                block: _yul_block,
             } => {}
-            Args(loc, args) => {}
-            If(loc, cond, true_body, maybe_false_body) => {}
-            While(loc, cond, body) => {}
-            Expression(loc, expr) => {}
-            VariableDefinition(loc, var_decl, maybe_expr) => {}
-            For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {}
-            DoWhile(loc, while_stmt, while_expr) => {}
-            Continue(loc) => {}
-            Break(loc) => {}
-            Return(loc, maybe_ret_expr) => {
+            Args(_loc, _args) => {}
+            If(_loc, _cond, _true_body, _maybe_false_body) => {}
+            While(_loc, _cond, _body) => {}
+            Expression(_loc, _expr) => {}
+            For(_loc, _maybe_for_start, _maybe_for_middle, _maybe_for_end, _maybe_for_body) => {}
+            DoWhile(_loc, _while_stmt, _while_expr) => {}
+            Continue(_loc) => {}
+            Break(_loc) => {}
+            Return(_loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     let expr_node = self.parse_expr(ret_expr);
                     if let Some(parent) = parent_ctx {
@@ -585,11 +593,11 @@ impl Analyzer {
                     }
                 }
             }
-            Revert(loc, maybe_err_path, exprs) => {}
-            RevertNamedArgs(loc, maybe_err_path, named_args) => {}
-            Emit(loc, emit_expr) => {}
-            Try(loc, try_expr, maybe_returns, clauses) => {}
-            Error(loc) => {}
+            Revert(_loc, _maybe_err_path, _exprs) => {}
+            RevertNamedArgs(_loc, _maybe_err_path, _named_args) => {}
+            Emit(_loc, _emit_expr) => {}
+            Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
+            Error(_loc) => {}
         }
     }
 }
@@ -621,26 +629,28 @@ contract Storage {
 
     function b4(A memory k, uint128 s, uint64 l, uint64 j) public returns (uint256) {
         require(l <= 10);
-        require(s > 5);
-        require(s - j  + 5 < l);
+        // require(s + j < 5);
+        require(s - j + 5 < l);
 
-        return k.a[s];
+        return k.a[s + 1];
     }
 }"###;
         let mut analyzer = Analyzer::default();
         let t = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
         println!("parse time: {:?}", t.elapsed().as_nanos());
-        // println!("{}", analyzer.dot_str());
+        // println!("{}", analyzer.dot_str_no_tmps());
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
         println!("contexts: {:?}", contexts);
         let t = std::time::Instant::now();
         for context in contexts.into_iter() {
-            let analysis =
-                analyzer.bounds_for_all(ContextNode::from(context), ReportConfig::new(true, false));
+            let config = ReportConfig::new(true, false, false);
+            let analysis = analyzer.bounds_for_all(ContextNode::from(context), config);
             analysis.print_report((0, &sol), &analyzer);
-            // let mins = analyzer.min_size_to_prevent_access_revert(ContextNode::from(context));
-            // mins[0].print_report((0, &sol), &analyzer);
+            let mins =
+                analyzer.min_size_to_prevent_access_revert(ContextNode::from(context), config);
+            mins.iter()
+                .for_each(|min| min.print_report((0, &sol), &analyzer));
         }
         println!("array analyze time: {:?}", t.elapsed().as_nanos());
     }

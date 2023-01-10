@@ -1,7 +1,4 @@
-use crate::Analyzer;
-use crate::AnalyzerLike;
-use crate::Node;
-use crate::NodeIdx;
+use crate::{AnalyzerLike, Node, NodeIdx};
 use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

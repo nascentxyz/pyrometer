@@ -1,5 +1,4 @@
-use crate::AnalyzerLike;
-use crate::{Analyzer, Node, NodeIdx};
+use crate::{AnalyzerLike, Node, NodeIdx};
 use solang_parser::pt::{
     FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation,
 };

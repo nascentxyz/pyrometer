@@ -1,6 +1,7 @@
 use crate::AnalyzerLike;
 use crate::ConcreteNode;
 use crate::ContextEdge;
+use crate::DynamicRangeSide;
 use crate::Edge;
 use crate::Field;
 use crate::FunctionParam;
@@ -74,6 +75,10 @@ impl ContextVarNode {
         self.underlying(analyzer).name.clone()
     }
 
+    pub fn display_name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
+        self.underlying(analyzer).display_name.clone()
+    }
+
     pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Range> {
         self.underlying(analyzer).ty.range(analyzer)
     }
@@ -90,60 +95,18 @@ impl ContextVarNode {
         self.underlying(analyzer).tmp_of()
     }
 
-    pub fn as_range_elem(&self, analyzer: &impl AnalyzerLike, loc: Loc) -> RangeElem {
-        match self.underlying(analyzer).ty {
-            VarType::Concrete(c) => {
-                let val = c.underlying(analyzer).uint_val().expect("Not uint bound");
-                RangeElem::Concrete(val, loc)
-            }
-            _ => RangeElem::Dynamic(self.0.into(), loc),
-        }
-    }
-
-    pub fn as_range_elem_w_expr(
+    pub fn as_range_elem(
         &self,
         analyzer: &impl AnalyzerLike,
+        range_side: DynamicRangeSide,
         loc: Loc,
-        op: Op,
-        op_rhs: impl Into<U256>,
     ) -> RangeElem {
         match self.underlying(analyzer).ty {
             VarType::Concrete(c) => {
                 let val = c.underlying(analyzer).uint_val().expect("Not uint bound");
-                let val = match op {
-                    Op::Add => val.saturating_add(op_rhs.into()),
-                    Op::Sub => val.saturating_sub(op_rhs.into()),
-                    Op::Mul => val.saturating_mul(op_rhs.into()),
-                    Op::Div => val.div(op_rhs.into()),
-                    Op::Mod => val.rem(op_rhs.into()),
-                    Op::Min => {
-                        let rhs = op_rhs.into();
-                        if val < rhs {
-                            val
-                        } else {
-                            rhs
-                        }
-                    }
-                    Op::Max => {
-                        let rhs = op_rhs.into();
-                        if val > rhs {
-                            val
-                        } else {
-                            rhs
-                        }
-                    }
-                };
-
                 RangeElem::Concrete(val, loc)
             }
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::Dynamic(self.0.into(), loc),
-                    op,
-                    rhs: RangeExprElem::Concrete(op_rhs.into(), Loc::Implicit),
-                };
-                RangeElem::Complex(expr)
-            }
+            _ => RangeElem::Dynamic(self.0.into(), range_side, loc),
         }
     }
 
@@ -174,22 +137,49 @@ impl ContextVarNode {
     pub fn next_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Self> {
         analyzer
             .graph()
-            .edges_directed(self.0.into(), Direction::Outgoing)
-            .filter(|edge| Edge::Context(ContextEdge::Next) == *edge.weight())
-            .map(|edge| ContextVarNode::from(edge.target()))
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Context(ContextEdge::Prev) == *edge.weight())
+            .map(|edge| ContextVarNode::from(edge.source()))
             .take(1)
             .next()
     }
 
     pub fn previous_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Self> {
-        // println!("getting previous version: {:?}", self.0);
         analyzer
             .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::Context(ContextEdge::Next) == *edge.weight())
-            .map(|edge| ContextVarNode::from(edge.source()))
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| Edge::Context(ContextEdge::Prev) == *edge.weight())
+            .map(|edge| ContextVarNode::from(edge.target()))
             .take(1)
             .next()
+    }
+
+    pub fn range_deps(&self, analyzer: &impl AnalyzerLike) -> Vec<Self> {
+        if let Some(range) = self.range(analyzer) {
+            range.dependent_on()
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn dependent_on(&self, analyzer: &impl AnalyzerLike, return_self: bool) -> Vec<Self> {
+        let underlying = self.underlying(analyzer);
+        let mut deps = if let Some(tmp) = underlying.tmp_of() {
+            let mut nodes = tmp.lhs.dependent_on(analyzer, true);
+            nodes.extend(tmp.rhs.dependent_on(analyzer, true));
+            nodes
+        } else if return_self {
+            vec![*self]
+        } else {
+            vec![]
+        };
+
+        deps.extend(self.range_deps(analyzer));
+        deps
+    }
+
+    pub fn is_concrete(&self, analyzer: &impl AnalyzerLike) -> bool {
+        matches!(self.underlying(analyzer).ty, VarType::Concrete(_))
     }
 }
 
@@ -197,6 +187,7 @@ impl ContextVarNode {
 pub struct ContextVar {
     pub loc: Option<Loc>,
     pub name: String,
+    pub display_name: String,
     pub storage: Option<StorageLocation>,
     pub tmp_of: Option<TmpConstruction>,
     pub ty: VarType,
@@ -232,6 +223,7 @@ impl ContextVar {
         ContextVar {
             loc: Some(loc),
             name: concrete_node.underlying(analyzer).as_string(),
+            display_name: concrete_node.underlying(analyzer).as_string(),
             storage: None,
             tmp_of: None,
             ty: VarType::Concrete(concrete_node),
@@ -281,7 +273,12 @@ impl ContextVar {
         if let Some(ty) = VarType::try_from_idx(analyzer, field.ty) {
             Some(ContextVar {
                 loc: Some(loc),
-                name: parent_var.name.clone() + "." + &field.name.expect("Field had no name").name,
+                name: parent_var.name.clone()
+                    + "."
+                    + &field.name.clone().expect("Field had no name").name,
+                display_name: parent_var.name.clone()
+                    + "."
+                    + &field.name.expect("Field had no name").name,
                 storage: parent_var.storage.clone(),
                 tmp_of: None,
                 ty,
@@ -298,7 +295,8 @@ impl ContextVar {
             if let Some(ty) = VarType::try_from_idx(analyzer, param.ty) {
                 Some(ContextVar {
                     loc: Some(param.loc),
-                    name: name.name,
+                    name: name.name.clone(),
+                    display_name: name.name,
                     storage: param.storage,
                     tmp_of: None,
                     ty,
@@ -319,7 +317,8 @@ impl ContextVar {
             if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
                 Some(ContextVar {
                     loc: Some(ret.loc),
-                    name: name.name,
+                    name: name.name.clone(),
+                    display_name: name.name,
                     storage: ret.storage,
                     tmp_of: None,
                     ty,

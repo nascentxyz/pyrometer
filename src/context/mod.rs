@@ -1,22 +1,22 @@
+use crate::bin_op::BinOp;
+use crate::require::Require;
 use crate::{
-    AnalyzerLike, BuiltInNode, Builtin, Concrete, ConcreteNode, DynBuiltin, Edge, FieldNode,
-    FunctionNode, FunctionParamNode, FunctionReturnNode, Node, NodeIdx, Op, Range, RangeElem,
-    RangeExpr, RangeExprElem, TypeNode, VarType,
+    AnalyzerLike, BuiltInNode, Builtin, Concrete, ConcreteNode, DynBuiltin, DynamicRangeSide, Edge,
+    FieldNode, FunctionNode, FunctionParamNode, FunctionReturnNode, Node, NodeIdx, Op, RangeElem,
+    TypeNode, VarType,
 };
-use ethers_core::types::I256;
-use ethers_core::types::U256;
-use solang_parser::pt::{Expression, Loc, Statement};
 
-use petgraph::graph::Edges;
-use petgraph::visit::EdgeRef;
-use petgraph::{graph::*, Directed, Direction};
+use ethers_core::types::U256;
+use petgraph::{visit::EdgeRef, Direction};
+use solang_parser::pt::{Expression, Loc, Statement};
 
 pub mod var;
 pub use var::*;
-pub mod analyzer;
-pub use analyzer::*;
-pub mod bounds_analyzer;
-pub use bounds_analyzer::*;
+pub mod exprs;
+pub use exprs::*;
+
+pub mod analyzers;
+pub use analyzers::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ContextEdge {
@@ -37,7 +37,7 @@ pub enum ContextEdge {
     Assign,
     StorageAssign,
     MemoryAssign,
-    Next,
+    Prev,
 
     // Control flow
     Return,
@@ -142,11 +142,13 @@ impl Context {
     }
 }
 
-pub trait ContextBuilder: AnalyzerLike + Sized {
+impl<T> ContextBuilder for T where T: AnalyzerLike + Sized + BinOp + Require {}
+
+pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
     fn parse_ctx_statement(
         &mut self,
         stmt: &Statement,
-        unchecked: bool,
+        _unchecked: bool,
         parent_ctx: Option<impl Into<NodeIdx> + Clone + Copy>,
     ) where
         Self: Sized,
@@ -213,17 +215,17 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                     .iter()
                     .for_each(|stmt| self.parse_ctx_statement(stmt, *unchecked, Some(ctx_node)));
             }
-            VariableDefinition(loc, var_decl, maybe_expr) => {}
+            VariableDefinition(_loc, _var_decl, _maybe_expr) => {}
             Assembly {
-                loc,
-                dialect,
-                flags,
-                block: yul_block,
+                loc: _,
+                dialect: _,
+                flags: _,
+                block: _yul_block,
             } => {}
-            Args(loc, args) => {}
-            If(loc, cond, true_body, maybe_false_body) => {}
-            While(loc, cond, body) => {}
-            Expression(loc, expr) => {
+            Args(_loc, _args) => {}
+            If(_loc, _cond, _true_body, _maybe_false_body) => {}
+            While(_loc, _cond, _body) => {}
+            Expression(_loc, expr) => {
                 if let Some(parent) = parent_ctx {
                     let expr_nodes = self.parse_ctx_expr(expr, ContextNode::from(parent.into()));
                     if expr_nodes.is_empty() {
@@ -232,12 +234,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                     }
                 }
             }
-            VariableDefinition(loc, var_decl, maybe_expr) => {}
-            For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {}
-            DoWhile(loc, while_stmt, while_expr) => {}
-            Continue(loc) => {}
-            Break(loc) => {}
-            Return(loc, maybe_ret_expr) => {
+            For(_loc, _maybe_for_start, _maybe_for_middle, _maybe_for_end, _maybe_for_body) => {}
+            DoWhile(_loc, _while_stmt, _while_expr) => {}
+            Continue(_loc) => {}
+            Break(_loc) => {}
+            Return(_loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
                         let expr_node =
@@ -246,17 +247,17 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                     }
                 }
             }
-            Revert(loc, maybe_err_path, exprs) => {}
-            RevertNamedArgs(loc, maybe_err_path, named_args) => {}
-            Emit(loc, emit_expr) => {}
-            Try(loc, try_expr, maybe_returns, clauses) => {}
-            Error(loc) => {}
+            Revert(_loc, _maybe_err_path, _exprs) => {}
+            RevertNamedArgs(_loc, _maybe_err_path, _named_args) => {}
+            Emit(_loc, _emit_expr) => {}
+            Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
+            Error(_loc) => {}
         }
     }
 
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Vec<NodeIdx> {
         use Expression::*;
-        // println!("ctx_expr: {:?}", expr);
+        println!("ctx_expr: {:?}", expr);
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone()) {
@@ -273,7 +274,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
             }
             Variable(ident) => {
                 if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-                    vec![cvar.into()]
+                    vec![self.advance_var(cvar, ident.loc).0.into()]
                 } else {
                     if let Some(idx) = self.user_types().get(&ident.name) {
                         vec![*idx]
@@ -318,12 +319,14 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                 }
             }
             ArraySubscript(loc, ty_expr, Some(index_expr)) => {
+                println!("index: {:#?}", index_expr);
                 let inner_ty = self.parse_ctx_expr(&ty_expr, ctx)[0];
                 let index_ty = self.parse_ctx_expr(&index_expr, ctx)[0];
 
                 let index_var = ContextVar {
                     loc: Some(*loc),
                     name: ContextVarNode::from(index_ty).name(self),
+                    display_name: ContextVarNode::from(index_ty).display_name(self),
                     storage: ContextVarNode::from(inner_ty).storage(self).clone(),
                     tmp_of: None,
                     ty: ContextVarNode::from(inner_ty)
@@ -397,25 +400,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                         }
                         e => todo!("member access: {:?}", e),
                     },
-                    // Struct(strukt) => {
-                    //     let field_idx = self.graph().edges_directed(member_idx, Direction::Incoming)
-                    //         .filter(|edge| *edge.weight() == Edge::Field)
-                    //         .map(|edge| FieldNode::from(edge.source()))
-                    //         .collect::<Vec<FieldNode>>()
-                    //         .iter()
-                    //         .filter_map(|field_node| {
-                    //             let field = field_node.underlying(self);
-                    //             if field.name == ident.name {
-                    //                 Some(field_node)
-                    //             } else {
-                    //                 None
-                    //             }
-                    //         })
-                    //         .take(1)
-                    //         .next()
-                    //         .expect(format!("No field with name {:?} in struct: {:?}", ident.name, strukt.name);
-                    //     let cvar = ContextVar::maybe_new_from_field(self, loc, ContextVarNode::from(member_idx))
-                    // }
                     _ => todo!(),
                 }
                 vec![member_idx]
@@ -430,6 +414,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
                         "{} < {}__{}",
                         lhs_cvar.name(self),
                         rhs_cvar.name(self),
+                        ctx.new_tmp(self)
+                    ),
+                    display_name: format!(
+                        "{} < {}__{}",
+                        lhs_cvar.display_name(self),
+                        rhs_cvar.display_name(self),
                         ctx.new_tmp(self)
                     ),
                     storage: None,
@@ -495,236 +485,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
         }
     }
 
-    fn handle_require(&mut self, inputs: &Vec<Expression>, ctx: ContextNode) {
-        println!("handling require");
-        match inputs.get(0) {
-            Some(Expression::Less(loc, lhs, rhs)) => {
-                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
-                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
-
-                let new_lhs = self.advance_var(lhs_cvar, *loc);
-                let new_rhs = self.advance_var(rhs_cvar, *loc);
-
-                if let Some(lhs_range) = new_lhs.underlying(self).ty.range(self) {
-                    if let Some(rhs_range) = new_rhs.underlying(self).ty.range(self) {
-                        println!(
-                            "{:#?}\n{:#?}\n{:#?}\n{:#?}",
-                            lhs_range,
-                            rhs_range,
-                            new_lhs.underlying(self),
-                            new_rhs.underlying(self)
-                        );
-                        let new_lhs_range = lhs_range.clone().lt(rhs_range.clone(), self);
-                        new_lhs.set_range_min(self, new_lhs_range.min);
-                        new_lhs.set_range_max(self, new_lhs_range.max);
-
-                        let new_rhs_range = rhs_range.gt(lhs_range.clone(), self);
-                        new_rhs.set_range_min(self, new_rhs_range.min);
-                        new_rhs.set_range_max(self, new_rhs_range.max);
-                    }
-                }
-
-                fn range_recursion(
-                    analyzer: &mut impl ContextBuilder,
-                    tmp_construction: TmpConstruction,
-                    rhs_cvar: ContextVarNode,
-                    ctx: ContextNode,
-                    loc: Loc,
-                ) {
-                    // handle lhs
-                    if !tmp_construction.lhs.is_const(analyzer) {
-                        let adjusted_gt_rhs = ContextVarNode::from(
-                            analyzer.op(
-                                loc,
-                                rhs_cvar,
-                                tmp_construction.rhs,
-                                ctx,
-                                tmp_construction.op.inverse(),
-                                false,
-                            )[0],
-                        );
-                        let new_underlying_lhs = analyzer.advance_var(tmp_construction.lhs, loc);
-                        println!(
-                            "range recursion for {:?}",
-                            new_underlying_lhs.name(analyzer)
-                        );
-                        if let Some(lhs_range) =
-                            new_underlying_lhs.underlying(analyzer).ty.range(analyzer)
-                        {
-                            if let Some(rhs_range) =
-                                adjusted_gt_rhs.underlying(analyzer).ty.range(analyzer)
-                            {
-                                // println!("{:#?}\n{:#?}\n{:#?}\n{:#?}", lhs_range, rhs_range, new_lhs.underlying(self), new_rhs.underlying(self));
-                                let new_lhs_range =
-                                    lhs_range.clone().lt(rhs_range.clone(), analyzer);
-                                new_underlying_lhs.set_range_min(analyzer, new_lhs_range.min);
-                                new_underlying_lhs.set_range_max(analyzer, new_lhs_range.max);
-
-                                if let Some(tmp) = new_underlying_lhs.tmp_of(analyzer) {
-                                    range_recursion(analyzer, tmp, adjusted_gt_rhs, ctx, loc);
-                                }
-                            }
-                        }
-                    }
-
-                    // handle rhs
-                    if !tmp_construction.rhs.is_const(analyzer) {
-                        let (adjusted_gt_rhs, range_op) = match tmp_construction.op {
-                            Op::Sub => {
-                                let concrete = ConcreteNode(
-                                    analyzer
-                                        .add_node(Node::Concrete(Concrete::Int(
-                                            256,
-                                            I256::from(-1i32),
-                                        )))
-                                        .index(),
-                                );
-                                let lhs_cvar =
-                                    ContextVar::new_from_concrete(loc, concrete, analyzer);
-                                let tmp_lhs = ContextVarNode::from(
-                                    analyzer.add_node(Node::ContextVar(lhs_cvar)),
-                                );
-                                let tmp_rhs = ContextVarNode::from(
-                                    analyzer.op(loc, rhs_cvar, tmp_lhs, ctx, Op::Mul, false)[0],
-                                );
-                                let new_rhs = ContextVarNode::from(
-                                    analyzer.op(
-                                        loc,
-                                        tmp_rhs,
-                                        tmp_construction.lhs,
-                                        ctx,
-                                        tmp_construction.op.inverse(),
-                                        false,
-                                    )[0],
-                                );
-                                (new_rhs, Range::gte)
-                            }
-                            _ => panic!("here"),
-                        };
-                        // TODO: this is wrong vvvvvvv
-
-                        // --------------------^^^^^^^
-
-                        let new_underlying_rhs = analyzer.advance_var(tmp_construction.rhs, loc);
-                        println!(
-                            "range recursion for {:?}",
-                            new_underlying_rhs.name(analyzer)
-                        );
-                        if let Some(lhs_range) =
-                            new_underlying_rhs.underlying(analyzer).ty.range(analyzer)
-                        {
-                            if let Some(rhs_range) =
-                                adjusted_gt_rhs.underlying(analyzer).ty.range(analyzer)
-                            {
-                                // println!("{:#?}\n{:#?}\n{:#?}\n{:#?}", lhs_range, rhs_range, new_lhs.underlying(self), new_rhs.underlying(self));
-                                let new_lhs_range =
-                                    range_op(lhs_range.clone(), rhs_range.clone(), analyzer);
-                                new_underlying_rhs.set_range_min(analyzer, new_lhs_range.min);
-                                new_underlying_rhs.set_range_max(analyzer, new_lhs_range.max);
-                                if let Some(tmp) = new_underlying_rhs.tmp_of(analyzer) {
-                                    range_recursion(analyzer, tmp, adjusted_gt_rhs, ctx, loc);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if let Some(tmp) = lhs_cvar.tmp_of(self) {
-                    range_recursion(self, tmp, rhs_cvar, ctx, *loc)
-                }
-
-                // if !lhs_cvar.is_const(self) {
-                //     let new_upper_bound = rhs_cvar.as_range_elem_w_expr(self, *loc, Op::Sub, 1);
-                //     let new_lhs = self.advance_var(lhs_cvar, *loc);
-                //     new_lhs.set_range_max(self, new_upper_bound);
-
-                //     // update the underlying
-                //     if let Some(tmp) = lhs_cvar.tmp_of(self) {
-
-                //         // rhs.range_min(self) - RangeElem::Concrete(1, Loc::Implicit) -
-                //         // min = rhs_cvar.range_min(self) -
-                //         if let Some(range) = new_underlying.underlying(self).ty.range(self) {
-                //             if let Some(other_range) = new_lhs.underlying(self).ty.range(self) {
-                //                 let new_range = range.lt_lhs(other_range, self);
-                //                 new_underlying.set_range_min(self, new_range.min);
-                //                 new_underlying.set_range_max(self, new_range.max);
-
-                //                 let new_range = range.lt_lhs(other_range, self);
-                //                 new_underlying.set_range_min(self, new_range.min);
-                //                 new_underlying.set_range_max(self, new_range.max);
-                //             }
-                //         }
-                //     }
-
-                // }
-                // let new_lower_bound = lhs_cvar.as_range_elem_w_expr(self, *loc, Op::Add, 1);
-                // let new_rhs = self.advance_var(rhs_cvar, *loc);
-                // if let Some(tmp) = rhs_cvar.tmp_of(self) {
-                //     let new_underlying = self.advance_var(tmp, *loc);
-                //     new_underlying.set_range_min(self, new_lower_bound.clone());
-                // }
-                // new_rhs.set_range_min(self, new_lower_bound);
-            }
-            Some(Expression::More(loc, lhs, rhs)) => {
-                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
-                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
-
-                if !lhs_cvar.is_const(self) {
-                    let new_lower_bound = rhs_cvar.as_range_elem_w_expr(self, *loc, Op::Add, 1);
-                    let new_lhs = self.advance_var(lhs_cvar, *loc);
-                    // if let Some(tmp) = lhs_cvar.tmp_of(self) {
-                    //     let new_underlying = self.advance_var(tmp, *loc);
-                    //     new_underlying.set_range_min(self, new_lower_bound.clone());
-                    // }
-                    new_lhs.set_range_min(self, new_lower_bound);
-                }
-                let new_upper_bound = lhs_cvar.as_range_elem_w_expr(self, *loc, Op::Sub, 1);
-                let new_rhs = self.advance_var(rhs_cvar, *loc);
-                new_rhs.set_range_max(self, new_upper_bound);
-            }
-            Some(Expression::MoreEqual(loc, lhs, rhs)) => {
-                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
-                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
-                if !lhs_cvar.is_const(self) {
-                    let new_lower_bound = rhs_cvar.as_range_elem(self, *loc);
-                    let new_lhs = self.advance_var(lhs_cvar, *loc);
-                    // if let Some(tmp) = lhs_cvar.tmp_of(self) {
-                    //     let new_underlying = self.advance_var(tmp, *loc);
-                    //     new_underlying.set_range_min(self, new_lower_bound.clone());
-                    // }
-                    new_lhs.set_range_min(self, new_lower_bound);
-                }
-                let new_upper_bound = lhs_cvar.as_range_elem(self, *loc);
-                let new_rhs = self.advance_var(rhs_cvar, *loc);
-                new_rhs.set_range_max(self, new_upper_bound);
-            }
-            Some(Expression::LessEqual(loc, lhs, rhs)) => {
-                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
-                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
-
-                if !lhs_cvar.is_const(self) {
-                    let new_upper_bound = rhs_cvar.as_range_elem(self, *loc);
-                    let new_lhs = self.advance_var(lhs_cvar, *loc);
-                    // update the underlying
-                    // if let Some(tmp) = lhs_cvar.tmp_of(self) {
-                    //     let new_underlying = self.advance_var(tmp, *loc);
-                    //     new_underlying.set_range_max(self, new_upper_bound.clone());
-                    // }
-                    new_lhs.set_range_max(self, new_upper_bound);
-                }
-                let new_lower_bound = lhs_cvar.as_range_elem(self, *loc);
-                let new_rhs = self.advance_var(rhs_cvar, *loc);
-                // if let Some(tmp) = rhs_cvar.tmp_of(self) {
-                //     let new_underlying = self.advance_var(tmp, *loc);
-                //     new_underlying.set_range_min(self, new_lower_bound.clone());
-                // }
-                new_rhs.set_range_min(self, new_lower_bound);
-            }
-            None => panic!("Empty require"),
-            _ => todo!(),
-        }
-    }
-
     fn assign(
         &mut self,
         loc: Loc,
@@ -739,8 +499,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
             (range.min, range.max)
         } else {
             (
-                RangeElem::Dynamic(rhs_cvar.into(), loc),
-                RangeElem::Dynamic(rhs_cvar.into(), loc),
+                RangeElem::Dynamic(rhs_cvar.into(), DynamicRangeSide::Min, loc),
+                RangeElem::Dynamic(rhs_cvar.into(), DynamicRangeSide::Max, loc),
             )
         };
 
@@ -750,78 +510,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
         vec![new_lhs.into()]
     }
 
-    fn op_expr(
-        &mut self,
-        loc: Loc,
-        lhs_expr: &Expression,
-        rhs_expr: &Expression,
-        ctx: ContextNode,
-        op: Op,
-        assign: bool,
-    ) -> Vec<NodeIdx> {
-        let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(&lhs_expr, ctx)[0]);
-        let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs_expr, ctx)[0]);
-        self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)
-    }
-
-    fn op(
-        &mut self,
-        loc: Loc,
-        lhs_cvar: ContextVarNode,
-        rhs_cvar: ContextVarNode,
-        ctx: ContextNode,
-        op: Op,
-        assign: bool,
-    ) -> Vec<NodeIdx> {
-        let new_lhs = if assign {
-            self.advance_var(lhs_cvar, loc)
-        } else {
-            let new_lhs_underlying = ContextVar {
-                loc: Some(loc),
-                name: format!(
-                    "tmp{}({} {} {})",
-                    ctx.new_tmp(self),
-                    lhs_cvar.name(self),
-                    op.to_string(),
-                    rhs_cvar.name(self)
-                ),
-                storage: None,
-                tmp_of: Some(TmpConstruction::new(lhs_cvar, op, rhs_cvar)),
-                ty: lhs_cvar.underlying(self).ty.clone(),
-            };
-
-            let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
-            self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
-            ContextVarNode::from(new_var)
-        };
-
-        if let Some(lhs_range) = new_lhs.range(self) {
-            if let Some(rhs_range) = rhs_cvar.range(self) {
-                let func = Range::fn_from_op(op);
-                let new_range = func(lhs_range, rhs_range);
-                new_lhs.set_range_min(self, new_range.min);
-                new_lhs.set_range_max(self, new_range.max);
-            }
-        } else {
-            let lhs_range = Range {
-                min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
-                max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
-            };
-            if let Some(rhs_range) = rhs_cvar.range(self) {
-                let func = Range::fn_from_op(op);
-                let new_range = func(lhs_range, rhs_range);
-                new_lhs.set_range_min(self, new_range.min);
-                new_lhs.set_range_max(self, new_range.max);
-            }
-        }
-        vec![new_lhs.into()]
-    }
-
     fn advance_var(&mut self, cvar_node: ContextVarNode, loc: Loc) -> ContextVarNode {
         let mut new_cvar = cvar_node.underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
-        self.add_edge(cvar_node.0, new_cvarnode, Edge::Context(ContextEdge::Next));
+        self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         ContextVarNode::from(new_cvarnode)
     }
 
@@ -829,7 +522,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized {
         let mut new_cvar = cvar_node.underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
-        self.add_edge(cvar_node.0, new_cvarnode, Edge::Context(ContextEdge::Next));
+        self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         ContextVarNode::from(new_cvarnode).underlying_mut(self)
     }
 }

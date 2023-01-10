@@ -32,6 +32,41 @@ pub enum VarType {
 }
 
 impl VarType {
+    pub fn concrete_to_builtin(&mut self, analyzer: &mut impl AnalyzerLike) {
+        match self {
+            VarType::Concrete(cnode) => {
+                match cnode.underlying(analyzer).clone() {
+                    crate::Concrete::Uint(size, val) => {
+                        let new_ty = VarType::BuiltIn(
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(size))),
+                            Some(Range {
+                                min: RangeElem::Concrete(val, Loc::Implicit),
+                                max: RangeElem::Concrete(val, Loc::Implicit),
+                            }),
+                        );
+                        *self = new_ty;
+                    }
+                    crate::Concrete::Int(size, val) => {
+                        let new_ty = VarType::BuiltIn(
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Int(size))),
+                            Some(Range {
+                                min: RangeElem::SignedConcrete(val, Loc::Implicit),
+                                max: RangeElem::SignedConcrete(val, Loc::Implicit),
+                            }),
+                        );
+                        *self = new_ty;
+                    }
+                    // Concrete::Bytes(size, val) => ,
+                    // Concrete::Address(Address),
+                    // Concrete::DynBytes(Vec<u8>),
+                    // Concrete::Array(Vec<Concrete>),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn try_from_idx(analyzer: &(impl AnalyzerLike + ?Sized), node: NodeIdx) -> Option<VarType> {
         // get node, check if typeable and convert idx into vartype
         match analyzer.node(node) {
@@ -90,7 +125,7 @@ impl VarType {
             Self::Concrete(_) => true,
             _ => {
                 if let Some(range) = self.range(analyzer) {
-                    range.min.eval(analyzer, false) == range.max.eval(analyzer, true)
+                    range.min.eval(analyzer) == range.max.eval(analyzer)
                 } else {
                     false
                 }
@@ -100,10 +135,7 @@ impl VarType {
 
     pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(RangeElem, RangeElem)> {
         if let Some(range) = self.range(analyzer) {
-            Some((
-                range.min.eval(analyzer, false),
-                range.max.eval(analyzer, true),
-            ))
+            Some((range.min.eval(analyzer), range.max.eval(analyzer)))
         } else {
             None
         }

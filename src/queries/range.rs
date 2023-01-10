@@ -1,18 +1,8 @@
-use crate::AnalyzerLike;
-use crate::Builtin;
-use crate::Concrete;
-use crate::ContextVarNode;
-use crate::NodeIdx;
-use crate::VarType;
-use ethers_core::types::I256;
-use ethers_core::types::U256;
+use crate::{AnalyzerLike, Builtin, ContextVarNode, NodeIdx, VarType};
+use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 use std::convert::TryFrom;
-use std::ops::Add;
-use std::ops::Div;
-use std::ops::Mul;
-use std::ops::Rem;
-use std::ops::Sub;
+use std::ops::{Add, Div, Mul, Rem, Sub};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RangeElemString {
@@ -45,36 +35,40 @@ pub struct Range {
 }
 
 impl Range {
-    pub fn lte(self, other: Self, analyzer: &impl AnalyzerLike) -> Self {
+    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+        let mut deps = self.min.dependent_on();
+        deps.extend(self.max.dependent_on());
+        deps
+    }
+
+    pub fn lte(self, other: Self) -> Self {
         Self {
             min: self.min,
-            max: self.max.min(other.max, analyzer),
+            max: self.max.min(other.max),
         }
     }
 
-    pub fn gte(self, other: Self, analyzer: &impl AnalyzerLike) -> Self {
+    pub fn gte(self, other: Self) -> Self {
         Self {
-            min: self.min.max(other.min, analyzer),
+            min: self.min.max(other.min),
             max: self.max,
         }
     }
 
-    pub fn lt(self, other: Self, analyzer: &impl AnalyzerLike) -> Self {
+    pub fn lt(self, other: Self) -> Self {
         Self {
             min: self.min,
-            max: self.max.min(
-                other.max - RangeElem::Concrete(1.into(), Loc::Implicit),
-                analyzer,
-            ),
+            max: self
+                .max
+                .min(other.max - RangeElem::Concrete(1.into(), Loc::Implicit)),
         }
     }
 
-    pub fn gt(self, other: Self, analyzer: &impl AnalyzerLike) -> Self {
+    pub fn gt(self, other: Self) -> Self {
         Self {
-            min: self.min.max(
-                other.min + RangeElem::Concrete(1.into(), Loc::Implicit),
-                analyzer,
-            ),
+            min: self
+                .min
+                .max(other.min + RangeElem::Concrete(1.into(), Loc::Implicit)),
             max: self.max,
         }
     }
@@ -86,7 +80,46 @@ impl Range {
             Op::Mul => Self::mul,
             Op::Div => Self::div,
             Op::Mod => Self::r#mod,
-            _ => unreachable!("Min or Max in wrong place"),
+            Op::Min => Self::min,
+            Op::Max => Self::max,
+        }
+    }
+
+    pub fn dyn_fn_from_op(
+        op: Op,
+    ) -> (
+        &'static dyn Fn(Range, ContextVarNode, (DynamicRangeSide, DynamicRangeSide), Loc) -> Range,
+        (DynamicRangeSide, DynamicRangeSide),
+    ) {
+        match op {
+            Op::Add => (
+                &Self::add_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Sub => (
+                &Self::sub_dyn,
+                (DynamicRangeSide::Max, DynamicRangeSide::Min),
+            ),
+            Op::Mul => (
+                &Self::mul_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Div => (
+                &Self::div_dyn,
+                (DynamicRangeSide::Max, DynamicRangeSide::Min),
+            ),
+            Op::Mod => (
+                &Self::mod_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Min => (
+                &Self::min_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Max => (
+                &Self::max_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
         }
     }
 
@@ -97,10 +130,34 @@ impl Range {
         }
     }
 
+    pub fn add_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min + RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max + RangeElem::Dynamic(other.into(), range_sides.1, loc),
+        }
+    }
+
     pub fn sub(self, other: Self) -> Self {
         Self {
             min: self.min - other.max,
             max: self.max - other.min,
+        }
+    }
+
+    pub fn sub_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min - RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max - RangeElem::Dynamic(other.into(), range_sides.1, loc),
         }
     }
 
@@ -111,10 +168,34 @@ impl Range {
         }
     }
 
+    pub fn mul_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min * RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max * RangeElem::Dynamic(other.into(), range_sides.1, loc),
+        }
+    }
+
     pub fn div(self, other: Self) -> Self {
         Self {
             min: self.min / other.max,
             max: self.max / other.min,
+        }
+    }
+
+    pub fn div_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min / RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max / RangeElem::Dynamic(other.into(), range_sides.1, loc),
         }
     }
 
@@ -124,38 +205,99 @@ impl Range {
             max: self.max % other.max,
         }
     }
+
+    pub fn mod_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min % RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max % RangeElem::Dynamic(other.into(), range_sides.1, loc),
+        }
+    }
+
+    pub fn min(self, other: Self) -> Self {
+        Self {
+            min: self.min.min(other.min),
+            max: self.max.min(other.max),
+        }
+    }
+
+    pub fn min_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self
+                .min
+                .min(RangeElem::Dynamic(other.into(), range_sides.0, loc)),
+            max: self
+                .max
+                .min(RangeElem::Dynamic(other.into(), range_sides.1, loc)),
+        }
+    }
+
+    pub fn max(self, other: Self) -> Self {
+        Self {
+            min: self.min.max(other.min),
+            max: self.max.max(other.max),
+        }
+    }
+
+    pub fn max_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self
+                .min
+                .max(RangeElem::Dynamic(other.into(), range_sides.0, loc)),
+            max: self
+                .max
+                .max(RangeElem::Dynamic(other.into(), range_sides.1, loc)),
+        }
+    }
 }
-
-// impl Add for Range {
-//     fn add(self, other: Self) -> Self {
-//         let min_expr = RangeExpr {
-//             lhs: RangeExprElem::from(self.min),
-//             op: Op::Add,
-//             rhs: RangeExprElem::from(other.min),
-//         };
-
-//         let max_expr = RangeExpr {
-//             lhs: RangeExprElem::from(self.max),
-//             op: Op::Add,
-//             rhs: RangeExprElem::from(other.max),
-//         };
-
-//         Self {
-//             min: RangeElem::Complex(expr),
-//             max: RangeElem::Complex(expr),
-//         }
-//     }
-// }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum RangeElem {
+    // TODO: add max or size to this element to do proper bounds (except unchecked)
     Concrete(U256, Loc),
     SignedConcrete(I256, Loc),
-    Dynamic(NodeIdx, Loc),
+    Dynamic(NodeIdx, DynamicRangeSide, Loc),
     Complex(RangeExpr),
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub enum DynamicRangeSide {
+    Min,
+    Max,
+}
+
+impl ToString for DynamicRangeSide {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Min => "range_min".to_string(),
+            Self::Max => "range_max".to_string(),
+        }
+    }
+}
+
 impl RangeElem {
+    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+        match self {
+            Self::Dynamic(idx, ..) => vec![ContextVarNode::from(*idx)],
+            Self::Complex(expr) => expr.dependent_on(),
+            _ => vec![],
+        }
+    }
+
     pub fn maybe_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
         use RangeElem::*;
         match (self, other) {
@@ -164,44 +306,22 @@ impl RangeElem {
         }
     }
 
-    pub fn min(self, other: Self, analyzer: &impl AnalyzerLike) -> Self {
-        match (self.eval(analyzer, false), other.eval(analyzer, false)) {
-            (Self::Concrete(val, _), Self::Concrete(other_val, _)) => {
-                if val < other_val {
-                    self
-                } else {
-                    other
-                }
-            }
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Min,
-                    rhs: RangeExprElem::from(other),
-                };
-                RangeElem::Complex(expr)
-            }
-        }
+    pub fn min(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Min,
+            rhs: RangeExprElem::from(other),
+        };
+        RangeElem::Complex(expr)
     }
 
-    pub fn max(self, other: Self, analyzer: &impl AnalyzerLike) -> Self {
-        match (self.eval(analyzer, true), other.eval(analyzer, true)) {
-            (Self::Concrete(val, _), Self::Concrete(other_val, _)) => {
-                if val > other_val {
-                    self
-                } else {
-                    other
-                }
-            }
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Max,
-                    rhs: RangeExprElem::from(other),
-                };
-                RangeElem::Complex(expr)
-            }
-        }
+    pub fn max(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Max,
+            rhs: RangeExprElem::from(other),
+        };
+        RangeElem::Complex(expr)
     }
 }
 
@@ -209,20 +329,12 @@ impl Add for RangeElem {
     type Output = Self;
 
     fn add(self, other: RangeElem) -> Self {
-        use RangeElem::*;
-        match (&self, &other) {
-            (Concrete(val, _), Concrete(val_other, loc)) => {
-                Concrete(val.saturating_add(*val_other), *loc)
-            }
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Add,
-                    rhs: RangeExprElem::from(other),
-                };
-                Complex(expr)
-            }
-        }
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Add,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
     }
 }
 
@@ -230,20 +342,12 @@ impl Sub for RangeElem {
     type Output = Self;
 
     fn sub(self, other: RangeElem) -> Self {
-        use RangeElem::*;
-        match (&self, &other) {
-            (Concrete(val, _), Concrete(val_other, loc)) => {
-                Concrete(val.saturating_sub(*val_other), *loc)
-            }
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Sub,
-                    rhs: RangeExprElem::from(other),
-                };
-                Complex(expr)
-            }
-        }
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Sub,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
     }
 }
 
@@ -251,20 +355,12 @@ impl Mul for RangeElem {
     type Output = Self;
 
     fn mul(self, other: RangeElem) -> Self {
-        use RangeElem::*;
-        match (&self, &other) {
-            (Concrete(val, _), Concrete(val_other, loc)) => {
-                Concrete(val.saturating_mul(*val_other), *loc)
-            }
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Mul,
-                    rhs: RangeExprElem::from(other),
-                };
-                Complex(expr)
-            }
-        }
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Mul,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
     }
 }
 
@@ -272,18 +368,12 @@ impl Div for RangeElem {
     type Output = Self;
 
     fn div(self, other: RangeElem) -> Self {
-        use RangeElem::*;
-        match (&self, &other) {
-            (Concrete(val, _), Concrete(val_other, loc)) => Concrete(val.div(*val_other), *loc),
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Div,
-                    rhs: RangeExprElem::from(other),
-                };
-                Complex(expr)
-            }
-        }
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Div,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
     }
 }
 
@@ -291,36 +381,33 @@ impl Rem for RangeElem {
     type Output = Self;
 
     fn rem(self, other: RangeElem) -> Self {
-        use RangeElem::*;
-        match (&self, &other) {
-            (Concrete(val, _), Concrete(val_other, loc)) => Concrete(val.rem(*val_other), *loc),
-            _ => {
-                let expr = RangeExpr {
-                    lhs: RangeExprElem::from(self),
-                    op: Op::Mod,
-                    rhs: RangeExprElem::from(other),
-                };
-                Complex(expr)
-            }
-        }
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Mod,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
     }
 }
 
 impl RangeElem {
-    pub fn eval(&self, analyzer: &impl AnalyzerLike, eval_for_max: bool) -> Self {
+    pub fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
         use RangeElem::*;
         match self {
             Concrete(..) => self.clone(),
             SignedConcrete(..) => self.clone(),
-            Dynamic(idx, _) => {
+            Dynamic(idx, range_side, _) => {
                 let cvar = ContextVarNode::from(*idx).underlying(analyzer);
                 match &cvar.ty {
                     VarType::BuiltIn(_, maybe_range) => {
                         if let Some(range) = maybe_range {
-                            if eval_for_max {
-                                range.max.eval(analyzer, eval_for_max)
-                            } else {
-                                range.min.eval(analyzer, eval_for_max)
+                            match range_side {
+                                DynamicRangeSide::Min => {
+                                    Self::from(range.min.clone().eval(analyzer))
+                                }
+                                DynamicRangeSide::Max => {
+                                    Self::from(range.max.clone().eval(analyzer))
+                                }
                             }
                         } else {
                             self.clone()
@@ -339,7 +426,7 @@ impl RangeElem {
                 }
             }
             Complex(ref expr) => {
-                if let Some(elem) = expr.eval(analyzer, eval_for_max) {
+                if let Some(elem) = expr.eval(analyzer) {
                     elem
                 } else {
                     self.clone()
@@ -354,11 +441,11 @@ impl RangeElem {
             Complex(expr) => expr.def_string(analyzer),
             Concrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
             SignedConcrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
-            Dynamic(idx, _loc) => {
+            Dynamic(idx, _range_side, _loc) => {
                 let cvar = ContextVarNode::from(*idx)
                     .first_version(analyzer)
                     .underlying(analyzer);
-                RangeElemString::new(cvar.name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
+                RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
         }
     }
@@ -368,9 +455,13 @@ impl RangeElem {
         match self {
             Concrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
             SignedConcrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
-            Dynamic(idx, loc) => {
+            Dynamic(idx, range_side, loc) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.name(analyzer);
+                let name = format!(
+                    "{}.{}",
+                    as_var.display_name(analyzer),
+                    range_side.to_string()
+                );
                 RangeElemString::new(name, *loc)
             }
             Complex(expr) => expr.to_range_string(analyzer),
@@ -381,9 +472,9 @@ impl RangeElem {
         use RangeElem::*;
         let mut range_strings = vec![];
         match self {
-            Dynamic(idx, _loc) => {
+            Dynamic(idx, _range_side, _loc) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.name(analyzer);
+                let name = as_var.display_name(analyzer);
                 if let Some(range) = as_var.range(analyzer) {
                     if let Some(ord) = range.min.maybe_ord(&range.max) {
                         match ord {
@@ -421,7 +512,7 @@ pub enum RangeExprElem {
     Expr(Box<RangeExpr>),
     Concrete(U256, Loc),
     SignedConcrete(I256, Loc),
-    Dynamic(NodeIdx, Loc),
+    Dynamic(NodeIdx, DynamicRangeSide, Loc),
 }
 
 impl From<RangeElem> for RangeExprElem {
@@ -430,26 +521,37 @@ impl From<RangeElem> for RangeExprElem {
             RangeElem::Complex(expr) => Self::Expr(Box::new(expr)),
             RangeElem::Concrete(val, loc) => Self::Concrete(val, loc),
             RangeElem::SignedConcrete(val, loc) => Self::SignedConcrete(val, loc),
-            RangeElem::Dynamic(idx, loc) => Self::Dynamic(idx, loc),
+            RangeElem::Dynamic(idx, range_side, loc) => Self::Dynamic(idx, range_side, loc),
         }
     }
 }
 
 impl RangeExprElem {
-    pub fn eval(&self, analyzer: &impl AnalyzerLike, eval_for_max: bool) -> Self {
+    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+        match self {
+            Self::Dynamic(idx, ..) => vec![ContextVarNode::from(*idx)],
+            Self::Expr(expr) => expr.dependent_on(),
+            _ => vec![],
+        }
+    }
+
+    pub fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
         use RangeExprElem::*;
         match self {
             Concrete(..) => self.clone(),
             SignedConcrete(..) => self.clone(),
-            Dynamic(idx, _) => {
+            Dynamic(idx, range_side, _) => {
                 let cvar = ContextVarNode::from(*idx).underlying(analyzer);
                 match &cvar.ty {
                     VarType::BuiltIn(_, maybe_range) => {
                         if let Some(range) = maybe_range {
-                            if eval_for_max {
-                                Self::from(range.max.clone().eval(analyzer, eval_for_max))
-                            } else {
-                                Self::from(range.min.clone().eval(analyzer, eval_for_max))
+                            match range_side {
+                                DynamicRangeSide::Min => {
+                                    Self::from(range.min.clone().eval(analyzer))
+                                }
+                                DynamicRangeSide::Max => {
+                                    Self::from(range.max.clone().eval(analyzer))
+                                }
                             }
                         } else {
                             self.clone()
@@ -468,7 +570,7 @@ impl RangeExprElem {
                 }
             }
             Expr(ref expr) => {
-                if let Some(elem) = expr.eval(analyzer, eval_for_max) {
+                if let Some(elem) = expr.eval(analyzer) {
                     Self::from(elem)
                 } else {
                     self.clone()
@@ -483,11 +585,11 @@ impl RangeExprElem {
             Expr(expr) => expr.def_string(analyzer),
             Concrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
             SignedConcrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
-            Dynamic(idx, _loc) => {
+            Dynamic(idx, _range_side, _loc) => {
                 let cvar = ContextVarNode::from(*idx)
                     .first_version(analyzer)
                     .underlying(analyzer);
-                RangeElemString::new(cvar.name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
+                RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
         }
     }
@@ -498,9 +600,13 @@ impl RangeExprElem {
             Expr(expr) => expr.to_range_string(analyzer),
             Concrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
             SignedConcrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
-            Dynamic(idx, loc) => {
+            Dynamic(idx, range_side, loc) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.name(analyzer);
+                let name = format!(
+                    "{}.{}",
+                    as_var.display_name(analyzer),
+                    range_side.to_string()
+                );
                 RangeElemString::new(name, *loc)
             }
         }
@@ -509,7 +615,9 @@ impl RangeExprElem {
     pub fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
         use RangeExprElem::*;
         match self {
-            Dynamic(idx, loc) => RangeElem::Dynamic(*idx, *loc).bounds_range_string(analyzer),
+            Dynamic(idx, range_side, loc) => {
+                RangeElem::Dynamic(*idx, *range_side, *loc).bounds_range_string(analyzer)
+            }
             Expr(expr) => expr.bounds_range_string(analyzer),
             _ => vec![],
         }
@@ -600,9 +708,15 @@ pub struct RangeExpr {
 }
 
 impl RangeExpr {
-    pub fn eval(&self, analyzer: &impl AnalyzerLike, eval_for_max: bool) -> Option<RangeElem> {
-        let lhs = self.lhs.clone().eval(analyzer, eval_for_max);
-        let rhs = self.rhs.clone().eval(analyzer, eval_for_max);
+    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+        let mut deps = self.lhs.dependent_on();
+        deps.extend(self.rhs.dependent_on());
+        deps
+    }
+
+    pub fn eval(&self, analyzer: &impl AnalyzerLike) -> Option<RangeElem> {
+        let lhs = self.lhs.clone().eval(analyzer);
+        let rhs = self.rhs.clone().eval(analyzer);
         lhs.exec_op(&rhs, self.op)
     }
 
@@ -611,11 +725,36 @@ impl RangeExpr {
     }
 
     pub fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
-        let lhs_str = self.lhs.to_range_string(analyzer);
-        let op = self.op.to_string();
-        let rhs_str = self.rhs.to_range_string(analyzer);
+        let lhs_r_str = self.lhs.to_range_string(analyzer);
+        let lhs_str = match self.lhs {
+            RangeExprElem::Expr(_) => {
+                let new_str = format!("({})", lhs_r_str.s);
+                RangeElemString::new(new_str, lhs_r_str.loc)
+            }
+            _ => lhs_r_str,
+        };
 
-        RangeElemString::new(lhs_str.s + &op + &rhs_str.s, lhs_str.loc)
+        let rhs_r_str = self.rhs.to_range_string(analyzer);
+
+        let rhs_str = match self.rhs {
+            RangeExprElem::Expr(_) => {
+                let new_str = format!("({})", rhs_r_str.s);
+                RangeElemString::new(new_str, rhs_r_str.loc)
+            }
+            _ => rhs_r_str,
+        };
+
+        if matches!(self.op, Op::Min | Op::Max) {
+            RangeElemString::new(
+                format!("{}({}, {})", self.op.to_string(), lhs_str.s, rhs_str.s),
+                lhs_str.loc,
+            )
+        } else {
+            RangeElemString::new(
+                format!("{} {} {}", lhs_str.s, self.op.to_string(), rhs_str.s),
+                lhs_str.loc,
+            )
+        }
     }
 
     pub fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
@@ -658,8 +797,8 @@ impl ToString for Op {
             Sub => "-".to_string(),
             Div => "/".to_string(),
             Mod => "%".to_string(),
-            Min => "<min>".to_string(),
-            Max => "<max>".to_string(),
+            Min => "min".to_string(),
+            Max => "max".to_string(),
         }
     }
 }
