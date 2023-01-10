@@ -67,10 +67,45 @@ impl VarType {
         }
     }
 
-    pub fn range(&self) -> Option<Range> {
+    pub fn range(&self, analyzer: &impl AnalyzerLike) -> Option<Range> {
         match self {
             Self::BuiltIn(_, range) => range.clone(),
+            Self::Concrete(cnode) => match cnode.underlying(analyzer) {
+                crate::Concrete::Uint(_, val) => Some(Range {
+                    min: RangeElem::Concrete(*val, Loc::Implicit),
+                    max: RangeElem::Concrete(*val, Loc::Implicit),
+                }),
+                crate::Concrete::Int(_, val) => Some(Range {
+                    min: RangeElem::SignedConcrete(*val, Loc::Implicit),
+                    max: RangeElem::SignedConcrete(*val, Loc::Implicit),
+                }),
+                _ => None,
+            },
             _ => None,
+        }
+    }
+
+    pub fn is_const(&self, analyzer: &impl AnalyzerLike) -> bool {
+        match self {
+            Self::Concrete(_) => true,
+            _ => {
+                if let Some(range) = self.range(analyzer) {
+                    range.min.eval(analyzer, false) == range.max.eval(analyzer, true)
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(RangeElem, RangeElem)> {
+        if let Some(range) = self.range(analyzer) {
+            Some((
+                range.min.eval(analyzer, false),
+                range.max.eval(analyzer, true),
+            ))
+        } else {
+            None
         }
     }
 

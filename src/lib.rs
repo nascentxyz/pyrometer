@@ -1,4 +1,4 @@
-use ethers_core::types::{Address, H256, U256};
+use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::Identifier;
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
@@ -76,7 +76,7 @@ impl Into<NodeIdx> for ConcreteNode {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Concrete {
     Uint(u16, U256),
-    Int(u16, U256),
+    Int(u16, I256),
     Bytes(u8, H256),
     Address(Address),
     DynBytes(Vec<u8>),
@@ -87,6 +87,22 @@ impl Concrete {
         match self {
             Concrete::Uint(_, val) => Some(*val),
             _ => None,
+        }
+    }
+
+    pub fn int_val(&self) -> Option<I256> {
+        match self {
+            Concrete::Int(_, val) => Some(*val),
+            _ => None,
+        }
+    }
+
+    pub fn as_string(&self) -> String {
+        match self {
+            Concrete::Uint(_, val) => val.to_string(),
+            Concrete::Int(_, val) => val.to_string(),
+            Concrete::Bytes(_, b) => format!("0x{:x}", b),
+            _ => todo!("concrete as string"),
         }
     }
 }
@@ -603,10 +619,11 @@ contract Storage {
     //     return k.a[s];
     // }
 
-    function b4(A memory k, uint256 s, uint256 l) public returns (uint256) {
+    function b4(A memory k, uint128 s, uint64 l, uint64 j) public returns (uint256) {
         require(l <= 10);
         require(s > 5);
-        require(s < l);
+        require(s - j  + 5 < l);
+
         return k.a[s];
     }
 }"###;
@@ -614,12 +631,13 @@ contract Storage {
         let t = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
         println!("parse time: {:?}", t.elapsed().as_nanos());
-        println!("{}", analyzer.dot_str());
+        // println!("{}", analyzer.dot_str());
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
         println!("contexts: {:?}", contexts);
         let t = std::time::Instant::now();
         for context in contexts.into_iter() {
-            let analysis = analyzer.bounds_for_all(ContextNode::from(context), true);
+            let analysis =
+                analyzer.bounds_for_all(ContextNode::from(context), ReportConfig::new(true, false));
             analysis.print_report((0, &sol), &analyzer);
             // let mins = analyzer.min_size_to_prevent_access_revert(ContextNode::from(context));
             // mins[0].print_report((0, &sol), &analyzer);

@@ -8,12 +8,36 @@ use crate::Search;
 use ariadne::{Color, ColorGenerator, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ReportConfig {
+    pub eval_bounds: bool,
+    pub show_tmps: bool,
+}
+
+impl ReportConfig {
+    pub fn new(eval_bounds: bool, show_tmps: bool) -> Self {
+        Self {
+            eval_bounds,
+            show_tmps,
+        }
+    }
+}
+
+impl Default for ReportConfig {
+    fn default() -> Self {
+        Self {
+            eval_bounds: true,
+            show_tmps: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BoundAnalysis {
     pub var_name: String,
     pub var_def: (LocSpan, Option<Range>),
     pub bound_changes: Vec<(LocSpan, Range)>,
-    pub eval_bounds: bool,
+    pub report_config: ReportConfig,
 }
 
 impl ReportDisplay for BoundAnalysis {
@@ -27,12 +51,12 @@ impl ReportDisplay for BoundAnalysis {
         let mut labels = if let Some(init_range) = &self.var_def.1 {
             vec![Label::new(self.var_def.0)
                 .with_message(format!(
-                    "\"{}\" initial range: {} to {}",
+                    "\"{}\" ∈ {{{}, {}}}",
                     self.var_name,
                     init_range.min.to_range_string(analyzer).s,
                     init_range.max.to_range_string(analyzer).s
                 ))
-                .with_color(Color::Cyan)]
+                .with_color(Color::Magenta)]
         } else {
             vec![]
         };
@@ -41,7 +65,7 @@ impl ReportDisplay for BoundAnalysis {
             self.bound_changes
                 .iter()
                 .map(|bound_change| {
-                    let min = if self.eval_bounds {
+                    let min = if self.report_config.eval_bounds {
                         bound_change
                             .1
                             .min
@@ -52,7 +76,7 @@ impl ReportDisplay for BoundAnalysis {
                         bound_change.1.min.to_range_string(analyzer).s
                     };
 
-                    let max = if self.eval_bounds {
+                    let max = if self.report_config.eval_bounds {
                         bound_change
                             .1
                             .max
@@ -64,10 +88,7 @@ impl ReportDisplay for BoundAnalysis {
                     };
 
                     Label::new(bound_change.0)
-                        .with_message(format!(
-                            "\"{}\" new range: {} to {}",
-                            self.var_name, min, max
-                        ))
+                        .with_message(format!("\"{}\" ∈ {{{}, {}}}", self.var_name, min, max))
                         .with_color(Color::Cyan)
                 })
                 .collect::<Vec<_>>(),
@@ -102,10 +123,10 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         &self,
         ctx: ContextNode,
         var_name: String,
-        eval_bounds: bool,
+        report_config: ReportConfig,
     ) -> BoundAnalysis {
         if let Some(cvar) = ctx.var_by_name(self, &var_name) {
-            return self.bounds_for_var_node(var_name, cvar, eval_bounds);
+            return self.bounds_for_var_node(var_name, cvar, report_config);
         }
         panic!("No variable in context with name: {}", var_name)
     }
@@ -113,13 +134,13 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         &self,
         var_name: String,
         cvar: ContextVarNode,
-        eval_bounds: bool,
+        report_config: ReportConfig,
     ) -> BoundAnalysis {
         let mut ba = BoundAnalysis {
             var_name: var_name,
             var_def: (LocSpan(cvar.loc(self)), cvar.range(self)),
             bound_changes: vec![],
-            eval_bounds,
+            report_config,
         };
 
         let mut curr = cvar;
@@ -185,16 +206,32 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
 }
 
 pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Sized {
-    fn bounds_for_all(&self, ctx: ContextNode, eval_bounds: bool) -> FunctionVarsBoundAnalysis {
+    fn bounds_for_all(
+        &self,
+        ctx: ContextNode,
+        report_config: ReportConfig,
+    ) -> FunctionVarsBoundAnalysis {
         let vars = ctx.vars(self);
         let analyses = vars
             .into_iter()
-            .map(|var| {
-                let name = var.name(self);
-                (
-                    name.clone(),
-                    self.bounds_for_var_node(name, var, eval_bounds),
-                )
+            .filter_map(|var| {
+                if report_config.show_tmps {
+                    let name = var.name(self);
+                    Some((
+                        name.clone(),
+                        self.bounds_for_var_node(name, var, report_config),
+                    ))
+                } else {
+                    if !var.is_tmp(self) {
+                        let name = var.name(self);
+                        Some((
+                            name.clone(),
+                            self.bounds_for_var_node(name, var, report_config),
+                        ))
+                    } else {
+                        None
+                    }
+                }
             })
             .collect();
         FunctionVarsBoundAnalysis {
