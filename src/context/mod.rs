@@ -1,19 +1,14 @@
-use crate::bin_op::BinOp;
-use crate::require::Require;
 use crate::{
-    AnalyzerLike, BuiltInNode, Builtin, Concrete, ConcreteNode, DynBuiltin, DynamicRangeSide, Edge,
-    FieldNode, FunctionNode, FunctionParamNode, FunctionReturnNode, Node, NodeIdx, Op, RangeElem,
-    TypeNode, VarType,
+    AnalyzerLike, BuiltInNode, Builtin, DynamicRangeSide, Edge, FunctionNode, FunctionParamNode,
+    FunctionReturnNode, Node, NodeIdx, Op, RangeElem, VarType,
 };
-
-use ethers_core::types::U256;
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Loc, Statement};
 
 pub mod var;
 pub use var::*;
 pub mod exprs;
-pub use exprs::*;
+use exprs::*;
 
 pub mod analyzers;
 pub use analyzers::*;
@@ -49,6 +44,19 @@ pub enum ContextEdge {
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ContextNode(pub usize);
 impl ContextNode {
+    pub fn associated_fn(&self, analyzer: &(impl AnalyzerLike + Search)) -> Option<FunctionNode> {
+        Some(FunctionNode::from(analyzer.search_for_ancestor(
+            self.0.into(),
+            &Edge::Context(ContextEdge::Context),
+        )?))
+    }
+
+    pub fn associated_fn_name(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+        self.associated_fn(analyzer)
+            .expect("No associated function for context")
+            .name(analyzer)
+    }
+
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl AnalyzerLike) -> &'a mut Context {
         match analyzer.node_mut(*self) {
             Node::Context(c) => c,
@@ -142,7 +150,7 @@ impl Context {
     }
 }
 
-impl<T> ContextBuilder for T where T: AnalyzerLike + Sized + BinOp + Require {}
+impl<T> ContextBuilder for T where T: AnalyzerLike + Sized + ExprParser {}
 
 pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
     fn parse_ctx_statement(
@@ -165,7 +173,15 @@ pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
                 let ctx_node = self.add_node(Node::Context(ctx));
 
                 if let Some(parent) = parent_ctx {
-                    self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Context));
+                    match self.node(parent) {
+                        Node::Function(_) => {
+                            self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Context));
+                        }
+                        Node::Context(_) => {
+                            self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Subcontext));
+                        }
+                        _ => {}
+                    }
                 }
 
                 // optionally add named input and named outputs into context
@@ -257,8 +273,54 @@ pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
 
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Vec<NodeIdx> {
         use Expression::*;
-        println!("ctx_expr: {:?}", expr);
         match expr {
+            Variable(ident) => self.variable(ident, ctx),
+            // literals
+            NumberLiteral(loc, int, exp) => self.number_literal(*loc, int, exp),
+            AddressLiteral(loc, addr) => self.address_literal(*loc, addr),
+            StringLiteral(lits) => lits
+                .iter()
+                .flat_map(|lit| self.string_literal(lit.loc, &lit.string))
+                .collect(),
+            BoolLiteral(loc, b) => self.bool_literal(*loc, *b),
+            // bin ops
+            Add(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Add, false)
+            }
+            AssignAdd(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Add, true)
+            }
+            Subtract(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Sub, false)
+            }
+            AssignSubtract(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Sub, true)
+            }
+            Multiply(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mul, false)
+            }
+            AssignMultiply(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mul, true)
+            }
+            Divide(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Div, false)
+            }
+            AssignDivide(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Div, true)
+            }
+            Modulo(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mod, false)
+            }
+            AssignModulo(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mod, true)
+            }
+            // assign
+            Assign(loc, lhs_expr, rhs_expr) => self.assign(*loc, lhs_expr, rhs_expr, ctx),
+            // array
+            ArraySubscript(_loc, ty_expr, None) => self.array_ty(ty_expr, ctx),
+            ArraySubscript(loc, ty_expr, Some(index_expr)) => {
+                self.index_into_array(*loc, ty_expr, index_expr, ctx)
+            }
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone()) {
                     if let Some(idx) = self.builtins().get(&builtin) {
@@ -272,137 +334,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
                     todo!("??")
                 }
             }
-            Variable(ident) => {
-                if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-                    vec![self.advance_var(cvar, ident.loc).0.into()]
-                } else {
-                    if let Some(idx) = self.user_types().get(&ident.name) {
-                        vec![*idx]
-                    } else {
-                        if let Some(func) = self.builtin_fns().get(&ident.name) {
-                            let (inputs, outputs) = self
-                                .builtin_fn_inputs()
-                                .get(&ident.name)
-                                .expect("builtin func but no inputs")
-                                .clone();
-                            let func_node = self.add_node(Node::Function(func.clone()));
-                            inputs.into_iter().for_each(|input| {
-                                let input_node = self.add_node(input);
-                                self.add_edge(input_node, func_node, Edge::FunctionParam);
-                            });
-                            outputs.into_iter().for_each(|output| {
-                                let output_node = self.add_node(output);
-                                self.add_edge(output_node, func_node, Edge::FunctionReturn);
-                            });
-                            vec![func_node]
-                        } else {
-                            let node = self.add_node(Node::Unresolved(ident.clone()));
-                            self.user_types_mut().insert(ident.name.clone(), node);
-                            vec![node]
-                        }
-                    }
-                }
-            }
-            ArraySubscript(_loc, ty_expr, None) => {
-                let inner_ty = self.parse_ctx_expr(&ty_expr, ctx)[0];
-                if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-                    let dyn_b = DynBuiltin::Array(var_type);
-                    if let Some(idx) = self.dyn_builtins().get(&dyn_b) {
-                        vec![*idx]
-                    } else {
-                        let idx = self.add_node(Node::DynBuiltin(dyn_b.clone()));
-                        self.dyn_builtins_mut().insert(dyn_b, idx);
-                        vec![idx]
-                    }
-                } else {
-                    todo!("???")
-                }
-            }
-            ArraySubscript(loc, ty_expr, Some(index_expr)) => {
-                println!("index: {:#?}", index_expr);
-                let inner_ty = self.parse_ctx_expr(&ty_expr, ctx)[0];
-                let index_ty = self.parse_ctx_expr(&index_expr, ctx)[0];
-
-                let index_var = ContextVar {
-                    loc: Some(*loc),
-                    name: ContextVarNode::from(index_ty).name(self),
-                    display_name: ContextVarNode::from(index_ty).display_name(self),
-                    storage: ContextVarNode::from(inner_ty).storage(self).clone(),
-                    tmp_of: None,
-                    ty: ContextVarNode::from(inner_ty)
-                        .ty(self)
-                        .array_underlying_ty(self),
-                };
-
-                let cvar_idx = self.add_node(Node::ContextVar(index_var));
-                self.add_edge(cvar_idx, inner_ty, Edge::Context(ContextEdge::IndexAccess));
-
-                self.add_edge(index_ty, cvar_idx, Edge::Context(ContextEdge::Index));
-
-                vec![cvar_idx]
-            }
-            NumberLiteral(loc, int, exp) => {
-                // TODO: improve this to actually work
-
-                let int = U256::from_dec_str(&int).unwrap();
-                let val = if !exp.is_empty() {
-                    let exp = U256::from_dec_str(&exp).unwrap();
-                    int.pow(exp)
-                } else {
-                    int
-                };
-                let concrete_node =
-                    ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(256, val))));
-                let ccvar =
-                    Node::ContextVar(ContextVar::new_from_concrete(*loc, concrete_node, self));
-                vec![self.add_node(ccvar)]
-            }
             MemberAccess(loc, member_expr, ident) => {
-                let member_idx = self.parse_ctx_expr(member_expr, ctx)[0];
-                match self.node(member_idx) {
-                    Node::ContextVar(cvar) => match &cvar.ty {
-                        VarType::User(TypeNode::Struct(struct_node)) => {
-                            let field = self
-                                .graph()
-                                .edges_directed(struct_node.0.into(), Direction::Incoming)
-                                .filter(|edge| *edge.weight() == Edge::Field)
-                                .map(|edge| FieldNode::from(edge.source()))
-                                .collect::<Vec<FieldNode>>()
-                                .iter()
-                                .filter_map(|field_node| {
-                                    let field = field_node.underlying(self);
-                                    if field.name.as_ref().expect("field wasnt named").name
-                                        == ident.name
-                                    {
-                                        Some(field)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .take(1)
-                                .next()
-                                .expect(&format!(
-                                    "No field with name {:?} in struct: {:?}",
-                                    ident.name,
-                                    struct_node.name(self)
-                                ));
-                            if let Some(field_cvar) =
-                                ContextVar::maybe_new_from_field(self, *loc, cvar, field.clone())
-                            {
-                                let fc_node = self.add_node(Node::ContextVar(field_cvar));
-                                self.add_edge(
-                                    fc_node,
-                                    member_idx,
-                                    Edge::Context(ContextEdge::AttrAccess),
-                                );
-                                return vec![fc_node];
-                            }
-                        }
-                        e => todo!("member access: {:?}", e),
-                    },
-                    _ => todo!(),
-                }
-                vec![member_idx]
+                self.member_access(*loc, member_expr, ident, ctx)
             }
             Less(loc, lhs, rhs) => {
                 let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
@@ -436,9 +369,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
                 let func_idx = self.parse_ctx_expr(func_expr, ctx)[0];
 
                 if let Some(func_name) = &FunctionNode::from(func_idx).underlying(self).name {
-                    if func_name.name == "require" {
-                        self.handle_require(input_exprs, ctx);
-                        return vec![];
+                    match &*func_name.name {
+                        "require" | "assert" => {
+                            self.handle_require(input_exprs, ctx);
+                            return vec![];
+                        }
+                        _ => {}
                     }
                 }
 
@@ -450,37 +386,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
                 // todo!("func call")
                 vec![func_idx]
             }
-            Add(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Add, false)
-            }
-            AssignAdd(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Add, true)
-            }
-            Subtract(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Sub, false)
-            }
-            AssignSubtract(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Sub, true)
-            }
-            Multiply(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mul, false)
-            }
-            AssignMultiply(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mul, true)
-            }
-            Divide(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Div, false)
-            }
-            AssignDivide(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Div, true)
-            }
-            Modulo(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mod, false)
-            }
-            AssignModulo(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mod, true)
-            }
-            Assign(loc, lhs_expr, rhs_expr) => self.assign(*loc, lhs_expr, rhs_expr, ctx),
+
             e => todo!("{:?}", e),
         }
     }

@@ -1,25 +1,11 @@
-use crate::AnalyzerLike;
-use crate::ConcreteNode;
-use crate::ContextEdge;
-use crate::DynamicRangeSide;
-use crate::Edge;
-use crate::Field;
-use crate::FunctionParam;
-use crate::FunctionReturn;
-use crate::Node;
-use crate::NodeIdx;
-use crate::Op;
-use crate::Range;
-use crate::RangeElem;
-use crate::RangeExpr;
-use crate::RangeExprElem;
-use crate::VarType;
+use crate::{
+    AnalyzerLike, ConcreteNode, ContextEdge, DynamicRangeSide, Edge, Field, FunctionParam,
+    FunctionReturn, Node, NodeIdx, Op, Range, RangeElem, VarType,
+};
 use ethers_core::types::U256;
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use solang_parser::pt::{Loc, StorageLocation};
-use std::ops::Div;
-use std::ops::Rem;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ContextVarNode(pub usize);
@@ -164,7 +150,7 @@ impl ContextVarNode {
 
     pub fn dependent_on(&self, analyzer: &impl AnalyzerLike, return_self: bool) -> Vec<Self> {
         let underlying = self.underlying(analyzer);
-        let mut deps = if let Some(tmp) = underlying.tmp_of() {
+        if let Some(tmp) = underlying.tmp_of() {
             let mut nodes = tmp.lhs.dependent_on(analyzer, true);
             nodes.extend(tmp.rhs.dependent_on(analyzer, true));
             nodes
@@ -172,10 +158,7 @@ impl ContextVarNode {
             vec![*self]
         } else {
             vec![]
-        };
-
-        deps.extend(self.range_deps(analyzer));
-        deps
+        }
     }
 
     pub fn is_concrete(&self, analyzer: &impl AnalyzerLike) -> bool {

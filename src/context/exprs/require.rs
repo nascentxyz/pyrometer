@@ -1,4 +1,4 @@
-use crate::bin_op::BinOp;
+use crate::exprs::BinOp;
 use crate::AnalyzerLike;
 use crate::Concrete;
 use crate::ConcreteNode;
@@ -20,7 +20,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
         ctx: ContextNode,
         loc: Loc,
         lhs_range_fn: fn(Range, Range) -> Range,
-        inverse_lhs_range_fn: fn(Range, Range) -> Range,
+        inversion_fns: (fn(Range, Range) -> Range, fn(Range, Range) -> Range),
         rhs_range_fn: fn(Range, Range) -> Range,
     ) {
         if let Some(lhs_range) = new_lhs.underlying(self).ty.range(self) {
@@ -36,7 +36,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
         }
 
         if let Some(tmp) = lhs_cvar.tmp_of(self) {
-            self.range_recursion(tmp, lhs_range_fn, inverse_lhs_range_fn, rhs_cvar, ctx, loc)
+            self.range_recursion(tmp, lhs_range_fn, inversion_fns, rhs_cvar, ctx, loc)
         }
     }
 
@@ -56,7 +56,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                     ctx,
                     *loc,
                     Range::lt,
-                    Range::gte,
+                    (Range::gte, Range::lte),
                     Range::gt,
                 );
             }
@@ -73,7 +73,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                     ctx,
                     *loc,
                     Range::gt,
-                    Range::lte,
+                    (Range::lte, Range::gte),
                     Range::lt,
                 );
             }
@@ -90,7 +90,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                     ctx,
                     *loc,
                     Range::gte,
-                    Range::lte,
+                    (Range::lte, Range::gte),
                     Range::lte,
                 );
             }
@@ -107,7 +107,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                     ctx,
                     *loc,
                     Range::lte,
-                    Range::gte,
+                    (Range::gte, Range::lte),
                     Range::gte,
                 );
             }
@@ -120,7 +120,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
         &mut self,
         tmp_construction: TmpConstruction,
         lhs_range_fn: fn(Range, Range) -> Range,
-        inverse_lhs_range_fn: fn(Range, Range) -> Range,
+        (flip_fn, no_flip_fn): (fn(Range, Range) -> Range, fn(Range, Range) -> Range),
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
         loc: Loc,
@@ -140,7 +140,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
             let new_underlying_lhs = self.advance_var(tmp_construction.lhs, loc);
             if let Some(lhs_range) = new_underlying_lhs.underlying(self).ty.range(self) {
                 if let Some(rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
-                    let new_lhs_range = lhs_range_fn(lhs_range, rhs_range.clone());
+                    let new_lhs_range = no_flip_fn(lhs_range, rhs_range.clone());
                     new_underlying_lhs.set_range_min(self, new_lhs_range.min);
                     new_underlying_lhs.set_range_max(self, new_lhs_range.max);
 
@@ -148,7 +148,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                         self.range_recursion(
                             tmp,
                             lhs_range_fn,
-                            inverse_lhs_range_fn,
+                            (flip_fn, no_flip_fn),
                             adjusted_gt_rhs,
                             ctx,
                             loc,
@@ -203,9 +203,9 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
             if let Some(lhs_range) = new_underlying_rhs.underlying(self).ty.range(self) {
                 if let Some(rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                     let new_lhs_range = if needs_inverse {
-                        inverse_lhs_range_fn(lhs_range.clone(), rhs_range.clone())
+                        flip_fn(lhs_range.clone(), rhs_range.clone())
                     } else {
-                        lhs_range_fn(lhs_range.clone(), rhs_range.clone())
+                        no_flip_fn(lhs_range.clone(), rhs_range.clone())
                     };
 
                     new_underlying_rhs.set_range_min(self, new_lhs_range.min);
@@ -214,7 +214,7 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                         self.range_recursion(
                             tmp,
                             lhs_range_fn,
-                            inverse_lhs_range_fn,
+                            (flip_fn, no_flip_fn),
                             adjusted_gt_rhs,
                             ctx,
                             loc,

@@ -80,6 +80,8 @@ pub enum Concrete {
     Bytes(u8, H256),
     Address(Address),
     DynBytes(Vec<u8>),
+    String(String),
+    Bool(bool),
     Array(Vec<Concrete>),
 }
 impl Concrete {
@@ -102,6 +104,7 @@ impl Concrete {
             Concrete::Uint(_, val) => val.to_string(),
             Concrete::Int(_, val) => val.to_string(),
             Concrete::Bytes(_, b) => format!("0x{:x}", b),
+            Concrete::String(s) => s.to_string(),
             _ => todo!("concrete as string"),
         }
     }
@@ -614,9 +617,9 @@ contract Storage {
         uint256[] a;
     }
 
-    // function b(A memory k) public returns (uint256) {
-    //     return k.a[0];
-    // }
+    function b(A memory k) public returns (uint256) {
+        return k.a[0];
+    }
 
     // function b2(A memory k, uint256 s) public returns (uint256) {
     //     return k.a[s];
@@ -628,11 +631,11 @@ contract Storage {
     // }
 
     function b4(A memory k, uint128 s, uint64 l, uint64 j) public returns (uint256) {
-        require(l <= 10);
-        // require(s + j < 5);
+        require(l <= 100);
+        assert(s + j < 5);
         require(s - j + 5 < l);
 
-        return k.a[s + 1];
+        return k.a[s];
     }
 }"###;
         let mut analyzer = Analyzer::default();

@@ -15,6 +15,14 @@ impl FunctionNode {
             ),
         }
     }
+
+    pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
+        self.underlying(analyzer)
+            .name
+            .clone()
+            .expect("Unnamed function")
+            .name
+    }
 }
 
 impl Into<NodeIdx> for FunctionNode {

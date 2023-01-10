@@ -2,7 +2,7 @@ use crate::{
     AnalyzerLike, BoundAnalysis, BoundAnalyzer, ContextEdge, ContextNode, ContextVarNode, Edge,
     LocSpan, ReportConfig, ReportDisplay, Search,
 };
-use ariadne::{Color, Label, Report, ReportKind, Source, Span};
+use ariadne::{Color, Fmt, Label, Report, ReportKind, Source, Span};
 use solang_parser::pt::Loc;
 
 #[derive(Debug, Clone)]
@@ -81,68 +81,71 @@ impl ReportDisplay for ArrayAccessAnalysis {
         ReportKind::Advice
     }
     fn msg(&self, analyzer: &impl AnalyzerLike) -> String {
+        let arr_name_len =
+            format!("{}.length", self.arr_def.display_name(analyzer)).fg(Color::Green);
+        let index_name = (&self.index_bounds.var_display_name).fg(Color::Green);
+        let min = if let Some(last) = self.index_bounds.bound_changes.last() {
+            if self.report_config.eval_bounds {
+                last.1.min.eval(analyzer).to_range_string(analyzer).s
+            } else {
+                last.1.min.to_range_string(analyzer).s
+            }
+        } else {
+            if self.report_config.eval_bounds {
+                self.index_bounds
+                    .var_def
+                    .1
+                    .clone()
+                    .expect("No initial bounds for variable")
+                    .min
+                    .eval(analyzer)
+                    .to_range_string(analyzer)
+                    .s
+            } else {
+                self.index_bounds
+                    .var_def
+                    .1
+                    .clone()
+                    .expect("No initial bounds for variable")
+                    .min
+                    .eval(analyzer)
+                    .to_range_string(analyzer)
+                    .s
+            }
+        };
+        let max = if let Some(last) = self.index_bounds.bound_changes.last() {
+            if self.report_config.eval_bounds {
+                last.1.max.eval(analyzer).to_range_string(analyzer).s
+            } else {
+                last.1.max.to_range_string(analyzer).s
+            }
+        } else {
+            if self.report_config.eval_bounds {
+                self.index_bounds
+                    .var_def
+                    .1
+                    .clone()
+                    .expect("No initial bounds for variable")
+                    .max
+                    .eval(analyzer)
+                    .to_range_string(analyzer)
+                    .s
+            } else {
+                self.index_bounds
+                    .var_def
+                    .1
+                    .clone()
+                    .expect("No initial bounds for variable")
+                    .max
+                    .eval(analyzer)
+                    .to_range_string(analyzer)
+                    .s
+            }
+        };
         match self.analysis_ty {
             ArrayAccess::MinSize => format!(
-                "Minimum array length: length must be > {}, which is in the range {{{}, {}}}",
-                self.index_bounds.var_display_name,
-                if let Some(last) = self.index_bounds.bound_changes.last() {
-                    if self.report_config.eval_bounds {
-                        last.1.min.eval(analyzer).to_range_string(analyzer).s
-                    } else {
-                        last.1.min.to_range_string(analyzer).s
-                    }
-                } else {
-                    if self.report_config.eval_bounds {
-                        self.index_bounds
-                            .var_def
-                            .1
-                            .clone()
-                            .expect("No initial bounds for variable")
-                            .min
-                            .eval(analyzer)
-                            .to_range_string(analyzer)
-                            .s
-                    } else {
-                        self.index_bounds
-                            .var_def
-                            .1
-                            .clone()
-                            .expect("No initial bounds for variable")
-                            .min
-                            .eval(analyzer)
-                            .to_range_string(analyzer)
-                            .s
-                    }
-                },
-                if let Some(last) = self.index_bounds.bound_changes.last() {
-                    if self.report_config.eval_bounds {
-                        last.1.max.eval(analyzer).to_range_string(analyzer).s
-                    } else {
-                        last.1.max.to_range_string(analyzer).s
-                    }
-                } else {
-                    if self.report_config.eval_bounds {
-                        self.index_bounds
-                            .var_def
-                            .1
-                            .clone()
-                            .expect("No initial bounds for variable")
-                            .max
-                            .eval(analyzer)
-                            .to_range_string(analyzer)
-                            .s
-                    } else {
-                        self.index_bounds
-                            .var_def
-                            .1
-                            .clone()
-                            .expect("No initial bounds for variable")
-                            .max
-                            .eval(analyzer)
-                            .to_range_string(analyzer)
-                            .s
-                    }
-                }
+                "Minimum array length requirement: {} > {}, which {} is in the range {{{}, {}}}",
+                arr_name_len, index_name, index_name, min, max
             ),
             ArrayAccess::MaxSize => "Maximum array length: length must be {}{}".to_string(),
         }
@@ -162,7 +165,10 @@ impl ReportDisplay for ArrayAccessAnalysis {
                 .with_message("Array accessed here")
                 .with_color(Color::Green),
             Label::new(self.index_bounds.var_def.0)
-                .with_message("Length enforced by this variable")
+                .with_message(format!(
+                    "Length enforced by this variable: {}",
+                    self.index_bounds.var_display_name
+                ))
                 .with_color(Color::Red),
         ]);
 

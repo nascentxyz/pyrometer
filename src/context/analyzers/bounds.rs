@@ -2,7 +2,7 @@ use crate::{
     AnalyzerLike, ContextNode, ContextVarNode, LocSpan, Range, ReportConfig, ReportDisplay, Search,
 };
 
-use ariadne::{Color, Label, Report, ReportKind, Source, Span};
+use ariadne::{Color, Fmt, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -164,7 +164,9 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
     ) -> (BoundAnalysis, Vec<BoundAnalysis>) {
         let bounds = self.bounds_for_var_node(var_name, cvar, report_config);
         let mut dependents = cvar.dependent_on(self, false);
+        dependents.sort_by(|a, b| a.display_name(self).cmp(&b.display_name(self)));
         dependents.dedup_by(|a, b| a.display_name(self) == b.display_name(self));
+
         let dep_bounds = dependents
             .into_iter()
             .filter_map(
@@ -207,6 +209,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
 #[derive(Debug, Clone)]
 pub struct FunctionVarsBoundAnalysis {
     pub ctx_loc: LocSpan,
+    pub ctx: ContextNode,
     pub vars: BTreeMap<String, BoundAnalysis>,
 }
 
@@ -214,8 +217,11 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, _analyzer: &(impl AnalyzerLike + Search)) -> String {
-        format!("Bounds for context")
+    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+        format!(
+            "Bounds for context: {}",
+            format!("function {}(..)", self.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
+        )
     }
 
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
@@ -256,9 +262,8 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         let vars = ctx.vars(self);
         let analyses = vars
             .into_iter()
-            .filter_map(|var| {
-                println!("{:?}", report_config);
-                match (report_config.show_tmps, report_config.show_consts) {
+            .filter_map(
+                |var| match (report_config.show_tmps, report_config.show_consts) {
                     (true, true) => {
                         let name = var.name(self);
                         Some((
@@ -299,11 +304,12 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                             None
                         }
                     }
-                }
-            })
+                },
+            )
             .collect();
         FunctionVarsBoundAnalysis {
             ctx_loc: LocSpan(ctx.underlying(self).loc),
+            ctx,
             vars: analyses,
         }
     }
