@@ -1,5 +1,6 @@
 use crate::{
-    AnalyzerLike, ContextNode, ContextVarNode, LocSpan, Range, ReportConfig, ReportDisplay, Search,
+    range::Range, AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay,
+    Search,
 };
 
 use ariadne::{Color, Fmt, Label, Report, ReportKind, Source, Span};

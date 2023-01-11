@@ -1,16 +1,15 @@
-use crate::exprs::BinOp;
-use crate::AnalyzerLike;
-use crate::Concrete;
-use crate::ConcreteNode;
 use ethers_core::types::I256;
 
 use crate::{
-    ContextBuilder, ContextNode, ContextVar, ContextVarNode, Node, Op, Range, TmpConstruction,
+    exprs::{BinOp, Variable},
+    range::{Op, Range},
+    AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ContextNode, ContextVar, ContextVarNode,
+    Node, TmpConstruction,
 };
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> Require for T where T: BinOp + Sized + AnalyzerLike {}
-pub trait Require: AnalyzerLike + BinOp + Sized {
+impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
+pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     /// Updates the range bounds for the variables passed into the require function. If the lefthand side is a temporary value,
     /// it will recursively update the range bounds for the underlying variable
     fn require(
@@ -111,7 +110,11 @@ pub trait Require: AnalyzerLike + BinOp + Sized {
                     Range::gte,
                 );
             }
-            _ => unreachable!("Require expr with noncomparator"),
+            Expression::Variable(ident) => {
+                let _boolean = self.variable(ident, ctx)[0];
+                // TODO: figure out if we need to do anything here
+            }
+            e => unreachable!("Require expr with noncomparator: {:?}", e),
         }
     }
 

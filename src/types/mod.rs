@@ -1,8 +1,8 @@
+use crate::range::{LenRange, Range, RangeElem};
 use crate::AnalyzerLike;
 use crate::ConcreteNode;
 use crate::Node;
 use crate::NodeIdx;
-use crate::{LenRange, Range, RangeElem};
 use ethers_core::types::U256;
 use solang_parser::pt::Loc;
 use solang_parser::pt::Type;

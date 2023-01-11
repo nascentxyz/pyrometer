@@ -13,10 +13,9 @@ use petgraph::{graph::*, Directed};
 mod builtin_fns;
 
 pub mod context;
-pub mod queries;
+pub mod range;
 pub mod types;
 use context::*;
-use queries::*;
 use types::*;
 
 pub type NodeIdx = NodeIndex<usize>;
@@ -635,6 +634,8 @@ contract Storage {
         assert(s + j < 5);
         require(s - j + 5 < l);
 
+        bool a = s < j;
+        require(a);
         return k.a[s];
     }
 }"###;

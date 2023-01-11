@@ -1,6 +1,7 @@
 use crate::{
-    AnalyzerLike, BuiltInNode, Builtin, DynamicRangeSide, Edge, FunctionNode, FunctionParamNode,
-    FunctionReturnNode, Node, NodeIdx, Op, RangeElem, VarType,
+    range::{DynamicRangeSide, Op, RangeElem},
+    AnalyzerLike, Builtin, Edge, FunctionNode, FunctionParamNode, FunctionReturnNode, Node,
+    NodeIdx,
 };
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Loc, Statement};
@@ -152,7 +153,7 @@ impl Context {
 
 impl<T> ContextBuilder for T where T: AnalyzerLike + Sized + ExprParser {}
 
-pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
+pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     fn parse_ctx_statement(
         &mut self,
         stmt: &Statement,
@@ -337,34 +338,13 @@ pub trait ContextBuilder: AnalyzerLike + Sized + BinOp + Require {
             MemberAccess(loc, member_expr, ident) => {
                 self.member_access(*loc, member_expr, ident, ctx)
             }
-            Less(loc, lhs, rhs) => {
-                let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(lhs, ctx)[0]);
-                let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs, ctx)[0]);
+            // comparator
+            Equal(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Eq, rhs, ctx),
+            Less(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Lt, rhs, ctx),
+            More(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Gt, rhs, ctx),
+            LessEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Lte, rhs, ctx),
+            MoreEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Gte, rhs, ctx),
 
-                let out_var = ContextVar {
-                    loc: Some(*loc),
-                    name: format!(
-                        "{} < {}__{}",
-                        lhs_cvar.name(self),
-                        rhs_cvar.name(self),
-                        ctx.new_tmp(self)
-                    ),
-                    display_name: format!(
-                        "{} < {}__{}",
-                        lhs_cvar.display_name(self),
-                        rhs_cvar.display_name(self),
-                        ctx.new_tmp(self)
-                    ),
-                    storage: None,
-                    tmp_of: None,
-                    ty: VarType::BuiltIn(
-                        BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                        None,
-                    ),
-                };
-
-                vec![self.add_node(Node::ContextVar(out_var))]
-            }
             FunctionCall(_loc, func_expr, input_exprs) => {
                 let func_idx = self.parse_ctx_expr(func_expr, ctx)[0];
 

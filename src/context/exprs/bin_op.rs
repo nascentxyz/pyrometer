@@ -1,7 +1,8 @@
 use crate::AnalyzerLike;
 use crate::{
-    ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, Node, NodeIdx, Op,
-    Range, RangeElem, TmpConstruction,
+    range::{Op, Range, RangeElem},
+    ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, Node, NodeIdx,
+    TmpConstruction,
 };
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};

@@ -1,6 +1,7 @@
 use crate::{
-    AnalyzerLike, ConcreteNode, ContextEdge, DynamicRangeSide, Edge, Field, FunctionParam,
-    FunctionReturn, Node, NodeIdx, Op, Range, RangeElem, VarType,
+    range::{DynamicRangeSide, Op, Range, RangeElem},
+    AnalyzerLike, ConcreteNode, ContextEdge, Edge, Field, FunctionParam, FunctionReturn, Node,
+    NodeIdx, VarType,
 };
 use ethers_core::types::U256;
 use petgraph::visit::EdgeRef;
