@@ -1,5 +1,9 @@
+use crate::range::RangeSize;
+use crate::range::BuiltinRange;
+use crate::range::ToRangeString;
+use crate::range::ElemEval;
 use crate::{
-    range::Range, AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay,
+    AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay,
     Search,
 };
 
@@ -10,8 +14,8 @@ use std::collections::BTreeMap;
 pub struct BoundAnalysis {
     pub var_name: String,
     pub var_display_name: String,
-    pub var_def: (LocSpan, Option<Range>),
-    pub bound_changes: Vec<(LocSpan, Range)>,
+    pub var_def: (LocSpan, Option<BuiltinRange>),
+    pub bound_changes: Vec<(LocSpan, BuiltinRange)>,
     pub report_config: ReportConfig,
 }
 
@@ -29,14 +33,14 @@ impl ReportDisplay for BoundAnalysis {
                     "\"{}\" ∈ {{{}, {}}}",
                     self.var_display_name,
                     if self.report_config.eval_bounds {
-                        init_range.min.eval(analyzer).to_range_string(analyzer).s
+                        init_range.range_min().eval(analyzer).to_range_string(analyzer).s
                     } else {
-                        init_range.min.to_range_string(analyzer).s
+                        init_range.range_min().to_range_string(analyzer).s
                     },
                     if self.report_config.eval_bounds {
-                        init_range.max.eval(analyzer).to_range_string(analyzer).s
+                        init_range.range_max().eval(analyzer).to_range_string(analyzer).s
                     } else {
-                        init_range.max.to_range_string(analyzer).s
+                        init_range.range_max().to_range_string(analyzer).s
                     }
                 ))
                 .with_color(Color::Magenta)]
@@ -51,23 +55,23 @@ impl ReportDisplay for BoundAnalysis {
                     let min = if self.report_config.eval_bounds {
                         bound_change
                             .1
-                            .min
+                            .range_min()
                             .eval(analyzer)
                             .to_range_string(analyzer)
                             .s
                     } else {
-                        bound_change.1.min.to_range_string(analyzer).s
+                        bound_change.1.range_min().to_range_string(analyzer).s
                     };
 
                     let max = if self.report_config.eval_bounds {
                         bound_change
                             .1
-                            .max
+                            .range_max()
                             .eval(analyzer)
                             .to_range_string(analyzer)
                             .s
                     } else {
-                        bound_change.1.max.to_range_string(analyzer).s
+                        bound_change.1.range_max().to_range_string(analyzer).s
                     };
 
                     Label::new(bound_change.0)

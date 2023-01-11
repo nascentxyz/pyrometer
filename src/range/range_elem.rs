@@ -1,3 +1,6 @@
+use crate::range::RangeSize;
+use crate::range::ToRangeString;
+use crate::range::ElemEval;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElemString, RangeExpr, RangeExprElem, RangeString},
     AnalyzerLike, ContextVarNode, NodeIdx, VarType,
@@ -14,6 +17,18 @@ pub enum RangeElem {
     SignedConcrete(I256, Loc),
     Dynamic(NodeIdx, DynamicRangeSide, Loc),
     Complex(RangeExpr),
+}
+
+impl From<U256> for RangeElem {
+    fn from(val: U256) -> Self {
+        Self::Concrete(val, Loc::Implicit)
+    }
+}
+
+impl From<I256> for RangeElem {
+    fn from(val: I256) -> Self {
+        Self::SignedConcrete(val, Loc::Implicit)
+    }
 }
 
 impl RangeElem {
@@ -117,8 +132,8 @@ impl Rem for RangeElem {
     }
 }
 
-impl RangeElem {
-    pub fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
+impl ElemEval for RangeElem {
+    fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
         use RangeElem::*;
         match self {
             Concrete(..) => self.clone(),
@@ -130,10 +145,10 @@ impl RangeElem {
                         if let Some(range) = maybe_range {
                             match range_side {
                                 DynamicRangeSide::Min => {
-                                    Self::from(range.min.clone().eval(analyzer))
+                                    Self::from(range.num_range().range_min().clone().eval(analyzer))
                                 }
                                 DynamicRangeSide::Max => {
-                                    Self::from(range.max.clone().eval(analyzer))
+                                    Self::from(range.num_range().range_max().clone().eval(analyzer))
                                 }
                             }
                         } else {
@@ -161,8 +176,10 @@ impl RangeElem {
             }
         }
     }
+}
 
-    pub fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+impl ToRangeString for RangeElem {
+    fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
         use RangeElem::*;
         match self {
             Complex(expr) => expr.def_string(analyzer),
@@ -177,7 +194,7 @@ impl RangeElem {
         }
     }
 
-    pub fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+    fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
         use RangeElem::*;
         match self {
             Concrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
@@ -195,7 +212,7 @@ impl RangeElem {
         }
     }
 
-    pub fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
+    fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
         use RangeElem::*;
         let mut range_strings = vec![];
         match self {
@@ -203,11 +220,11 @@ impl RangeElem {
                 let as_var = ContextVarNode::from(*idx);
                 let name = as_var.display_name(analyzer);
                 if let Some(range) = as_var.range(analyzer) {
-                    if let Some(ord) = range.min.maybe_ord(&range.max) {
+                    if let Some(ord) = range.num_range().range_min().maybe_ord(&range.num_range().range_max()) {
                         match ord {
                             std::cmp::Ordering::Greater => {
-                                let mut min = range.min.to_range_string(analyzer);
-                                let max = range.max.to_range_string(analyzer);
+                                let mut min = range.range_min().to_range_string(analyzer);
+                                let max = range.range_max().to_range_string(analyzer);
                                 min.s = format!("Always will revert, minimum bound for \"{}\" ({}) is required to be greater than max ({})", name, min.s, max.s);
                                 range_strings.push(RangeString::new(min, max));
                                 return range_strings;
@@ -216,14 +233,14 @@ impl RangeElem {
                         }
                     }
 
-                    let mut min = range.min.to_range_string(analyzer);
+                    let mut min = range.range_min().to_range_string(analyzer);
                     min.s = format!("\"{}\" ∈ {{{}, ", name, min.s);
-                    let max = range.max.to_range_string(analyzer);
+                    let max = range.range_max().to_range_string(analyzer);
 
                     range_strings.push(RangeString::new(min, max));
 
-                    range_strings.extend(range.min.bounds_range_string(analyzer));
-                    range_strings.extend(range.max.bounds_range_string(analyzer));
+                    range_strings.extend(range.range_min().bounds_range_string(analyzer));
+                    range_strings.extend(range.range_max().bounds_range_string(analyzer));
                 }
             }
             Complex(expr) => range_strings.extend(expr.bounds_range_string(analyzer)),

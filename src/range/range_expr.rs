@@ -1,3 +1,6 @@
+use crate::range::RangeSize;
+use crate::range::ToRangeString;
+use crate::range::ElemEval;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElem, RangeElemString, RangeString},
     AnalyzerLike, ContextVarNode, NodeIdx, VarType,
@@ -25,16 +28,8 @@ impl From<RangeElem> for RangeExprElem {
     }
 }
 
-impl RangeExprElem {
-    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
-        match self {
-            Self::Dynamic(idx, ..) => vec![ContextVarNode::from(*idx)],
-            Self::Expr(expr) => expr.dependent_on(),
-            _ => vec![],
-        }
-    }
-
-    pub fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
+impl ElemEval for RangeExprElem {
+    fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
         use RangeExprElem::*;
         match self {
             Concrete(..) => self.clone(),
@@ -46,10 +41,10 @@ impl RangeExprElem {
                         if let Some(range) = maybe_range {
                             match range_side {
                                 DynamicRangeSide::Min => {
-                                    Self::from(range.min.clone().eval(analyzer))
+                                    Self::from(range.num_range().range_min().clone().eval(analyzer))
                                 }
                                 DynamicRangeSide::Max => {
-                                    Self::from(range.max.clone().eval(analyzer))
+                                    Self::from(range.num_range().range_max().clone().eval(analyzer))
                                 }
                             }
                         } else {
@@ -77,8 +72,10 @@ impl RangeExprElem {
             }
         }
     }
+}
 
-    pub fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+impl ToRangeString for RangeExprElem {
+    fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
         use RangeExprElem::*;
         match self {
             Expr(expr) => expr.def_string(analyzer),
@@ -93,7 +90,7 @@ impl RangeExprElem {
         }
     }
 
-    pub fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+    fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
         use RangeExprElem::*;
         match self {
             Expr(expr) => expr.to_range_string(analyzer),
@@ -111,13 +108,23 @@ impl RangeExprElem {
         }
     }
 
-    pub fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
+    fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
         use RangeExprElem::*;
         match self {
             Dynamic(idx, range_side, loc) => {
                 RangeElem::Dynamic(*idx, *range_side, *loc).bounds_range_string(analyzer)
             }
             Expr(expr) => expr.bounds_range_string(analyzer),
+            _ => vec![],
+        }
+    }
+}
+
+impl RangeExprElem {
+    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+        match self {
+            Self::Dynamic(idx, ..) => vec![ContextVarNode::from(*idx)],
+            Self::Expr(expr) => expr.dependent_on(),
             _ => vec![],
         }
     }

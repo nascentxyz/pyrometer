@@ -1,3 +1,4 @@
+use crate::range::RangeSize;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElem},
     AnalyzerLike, Builtin, Edge, FunctionNode, FunctionParamNode, FunctionReturnNode, Node,
@@ -382,17 +383,21 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs_expr, ctx)[0]);
 
         let (new_lower_bound, new_upper_bound) = if let Some(range) = rhs_cvar.range(self) {
-            (range.min, range.max)
+            (range.range_min(), range.range_max())
         } else {
-            (
-                RangeElem::Dynamic(rhs_cvar.into(), DynamicRangeSide::Min, loc),
-                RangeElem::Dynamic(rhs_cvar.into(), DynamicRangeSide::Max, loc),
-            )
+            if let Some(range) = lhs_cvar.range(self) {
+                (
+                    range.elem_from_dyn(rhs_cvar.into(), DynamicRangeSide::Min, loc),
+                    range.elem_from_dyn(rhs_cvar.into(), DynamicRangeSide::Max, loc),
+                )
+            } else {
+                panic!("in assign, both lhs and rhs had no range")
+            }
         };
 
         let new_lhs = self.advance_var(lhs_cvar, loc);
-        new_lhs.set_range_min(self, new_lower_bound);
-        new_lhs.set_range_max(self, new_upper_bound);
+        new_lhs.set_range_min(self, new_lower_bound.into());
+        new_lhs.set_range_max(self, new_upper_bound.into());
         vec![new_lhs.into()]
     }
 

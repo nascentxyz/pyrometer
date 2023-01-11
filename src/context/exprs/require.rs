@@ -1,8 +1,10 @@
+use crate::range::RangeSize;
+use crate::range::BuiltinRange;
 use ethers_core::types::I256;
 
 use crate::{
     exprs::{BinOp, Variable},
-    range::{Op, Range},
+    range::{Op},
     AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ContextNode, ContextVar, ContextVarNode,
     Node, TmpConstruction,
 };
@@ -18,19 +20,19 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         (rhs_cvar, new_rhs): (ContextVarNode, ContextVarNode),
         ctx: ContextNode,
         loc: Loc,
-        lhs_range_fn: fn(Range, Range) -> Range,
-        inversion_fns: (fn(Range, Range) -> Range, fn(Range, Range) -> Range),
-        rhs_range_fn: fn(Range, Range) -> Range,
+        lhs_range_fn: fn(BuiltinRange, BuiltinRange) -> BuiltinRange,
+        inversion_fns: (fn(BuiltinRange, BuiltinRange) -> BuiltinRange, fn(BuiltinRange, BuiltinRange) -> BuiltinRange),
+        rhs_range_fn: fn(BuiltinRange, BuiltinRange) -> BuiltinRange,
     ) {
         if let Some(lhs_range) = new_lhs.underlying(self).ty.range(self) {
             if let Some(rhs_range) = new_rhs.underlying(self).ty.range(self) {
                 let new_lhs_range = lhs_range_fn(lhs_range.clone(), rhs_range.clone());
-                new_lhs.set_range_min(self, new_lhs_range.min);
-                new_lhs.set_range_max(self, new_lhs_range.max);
+                new_lhs.set_range_min(self, new_lhs_range.range_min());
+                new_lhs.set_range_max(self, new_lhs_range.range_max());
 
                 let new_rhs_range = rhs_range_fn(rhs_range, lhs_range.clone());
-                new_rhs.set_range_min(self, new_rhs_range.min);
-                new_rhs.set_range_max(self, new_rhs_range.max);
+                new_rhs.set_range_min(self, new_rhs_range.range_min());
+                new_rhs.set_range_max(self, new_rhs_range.range_max());
             }
         }
 
@@ -54,9 +56,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (rhs_cvar, new_rhs),
                     ctx,
                     *loc,
-                    Range::lt,
-                    (Range::gte, Range::lte),
-                    Range::gt,
+                    BuiltinRange::lt,
+                    (BuiltinRange::gte, BuiltinRange::lte),
+                    BuiltinRange::gt,
                 );
             }
             Expression::More(loc, lhs, rhs) => {
@@ -71,9 +73,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (rhs_cvar, new_rhs),
                     ctx,
                     *loc,
-                    Range::gt,
-                    (Range::lte, Range::gte),
-                    Range::lt,
+                    BuiltinRange::gt,
+                    (BuiltinRange::lte, BuiltinRange::gte),
+                    BuiltinRange::lt,
                 );
             }
             Expression::MoreEqual(loc, lhs, rhs) => {
@@ -88,9 +90,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (rhs_cvar, new_rhs),
                     ctx,
                     *loc,
-                    Range::gte,
-                    (Range::lte, Range::gte),
-                    Range::lte,
+                    BuiltinRange::gte,
+                    (BuiltinRange::lte, BuiltinRange::gte),
+                    BuiltinRange::lte,
                 );
             }
             Expression::LessEqual(loc, lhs, rhs) => {
@@ -105,9 +107,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (rhs_cvar, new_rhs),
                     ctx,
                     *loc,
-                    Range::lte,
-                    (Range::gte, Range::lte),
-                    Range::gte,
+                    BuiltinRange::lte,
+                    (BuiltinRange::gte, BuiltinRange::lte),
+                    BuiltinRange::gte,
                 );
             }
             Expression::Variable(ident) => {
@@ -122,8 +124,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     fn range_recursion(
         &mut self,
         tmp_construction: TmpConstruction,
-        lhs_range_fn: fn(Range, Range) -> Range,
-        (flip_fn, no_flip_fn): (fn(Range, Range) -> Range, fn(Range, Range) -> Range),
+        lhs_range_fn: fn(BuiltinRange, BuiltinRange) -> BuiltinRange,
+        (flip_fn, no_flip_fn): (fn(BuiltinRange, BuiltinRange) -> BuiltinRange, fn(BuiltinRange, BuiltinRange) -> BuiltinRange),
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
         loc: Loc,
@@ -144,8 +146,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             if let Some(lhs_range) = new_underlying_lhs.underlying(self).ty.range(self) {
                 if let Some(rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                     let new_lhs_range = no_flip_fn(lhs_range, rhs_range.clone());
-                    new_underlying_lhs.set_range_min(self, new_lhs_range.min);
-                    new_underlying_lhs.set_range_max(self, new_lhs_range.max);
+                    new_underlying_lhs.set_range_min(self, new_lhs_range.range_min());
+                    new_underlying_lhs.set_range_max(self, new_lhs_range.range_max());
 
                     if let Some(tmp) = new_underlying_lhs.tmp_of(self) {
                         self.range_recursion(
@@ -211,8 +213,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         no_flip_fn(lhs_range.clone(), rhs_range.clone())
                     };
 
-                    new_underlying_rhs.set_range_min(self, new_lhs_range.min);
-                    new_underlying_rhs.set_range_max(self, new_lhs_range.max);
+                    new_underlying_rhs.set_range_min(self, new_lhs_range.range_min());
+                    new_underlying_rhs.set_range_max(self, new_lhs_range.range_max());
                     if let Some(tmp) = new_underlying_rhs.tmp_of(self) {
                         self.range_recursion(
                             tmp,

@@ -1,3 +1,6 @@
+use crate::range::ToRangeString;
+use crate::range::RangeSize;
+use crate::range::ElemEval;
 use crate::{
     AnalyzerLike, BoundAnalysis, BoundAnalyzer, ContextEdge, ContextNode, ContextVarNode, Edge,
     LocSpan, ReportConfig, ReportDisplay, Search,
@@ -86,9 +89,9 @@ impl ReportDisplay for ArrayAccessAnalysis {
         let index_name = (&self.index_bounds.var_display_name).fg(Color::Green);
         let min = if let Some(last) = self.index_bounds.bound_changes.last() {
             if self.report_config.eval_bounds {
-                last.1.min.eval(analyzer).to_range_string(analyzer).s
+                last.1.range_min().eval(analyzer).to_range_string(analyzer).s
             } else {
-                last.1.min.to_range_string(analyzer).s
+                last.1.range_min().to_range_string(analyzer).s
             }
         } else {
             if self.report_config.eval_bounds {
@@ -97,7 +100,7 @@ impl ReportDisplay for ArrayAccessAnalysis {
                     .1
                     .clone()
                     .expect("No initial bounds for variable")
-                    .min
+                    .range_min()
                     .eval(analyzer)
                     .to_range_string(analyzer)
                     .s
@@ -107,7 +110,7 @@ impl ReportDisplay for ArrayAccessAnalysis {
                     .1
                     .clone()
                     .expect("No initial bounds for variable")
-                    .min
+                    .range_min()
                     .eval(analyzer)
                     .to_range_string(analyzer)
                     .s
@@ -115,9 +118,9 @@ impl ReportDisplay for ArrayAccessAnalysis {
         };
         let max = if let Some(last) = self.index_bounds.bound_changes.last() {
             if self.report_config.eval_bounds {
-                last.1.max.eval(analyzer).to_range_string(analyzer).s
+                last.1.range_max().eval(analyzer).to_range_string(analyzer).s
             } else {
-                last.1.max.to_range_string(analyzer).s
+                last.1.range_max().to_range_string(analyzer).s
             }
         } else {
             if self.report_config.eval_bounds {
@@ -126,7 +129,7 @@ impl ReportDisplay for ArrayAccessAnalysis {
                     .1
                     .clone()
                     .expect("No initial bounds for variable")
-                    .max
+                    .range_max()
                     .eval(analyzer)
                     .to_range_string(analyzer)
                     .s
@@ -136,7 +139,7 @@ impl ReportDisplay for ArrayAccessAnalysis {
                     .1
                     .clone()
                     .expect("No initial bounds for variable")
-                    .max
+                    .range_max()
                     .eval(analyzer)
                     .to_range_string(analyzer)
                     .s

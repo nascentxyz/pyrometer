@@ -640,22 +640,24 @@ contract Storage {
     }
 }"###;
         let mut analyzer = Analyzer::default();
-        let t = std::time::Instant::now();
+        let t0 = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
-        println!("parse time: {:?}", t.elapsed().as_nanos());
+        println!("parse time: {:?}", t0.elapsed().as_nanos());
         // println!("{}", analyzer.dot_str_no_tmps());
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
-        println!("contexts: {:?}", contexts);
-        let t = std::time::Instant::now();
+        // println!("contexts: {:?}", contexts);
+        let mut t = std::time::Instant::now();
         for context in contexts.into_iter() {
             let config = ReportConfig::new(true, false, false);
             let analysis = analyzer.bounds_for_all(ContextNode::from(context), config);
-            analysis.print_report((0, &sol), &analyzer);
             let mins =
                 analyzer.min_size_to_prevent_access_revert(ContextNode::from(context), config);
+            println!("array analyze time: {:?}", t.elapsed().as_nanos());
+            analysis.print_report((0, &sol), &analyzer);
             mins.iter()
                 .for_each(|min| min.print_report((0, &sol), &analyzer));
+            t = std::time::Instant::now();
         }
-        println!("array analyze time: {:?}", t.elapsed().as_nanos());
+        println!("total analyze time: {:?}", t0.elapsed().as_nanos());
     }
 }

@@ -1,10 +1,12 @@
+use crate::range::RangeSize;
+use crate::range::BuiltinRange;
 use crate::AnalyzerLike;
 use crate::{
-    range::{Op, Range, RangeElem},
+    range::{Op},
     ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, Node, NodeIdx,
     TmpConstruction,
 };
-use ethers_core::types::U256;
+
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BinOp for T where T: AnalyzerLike + Sized {}
@@ -66,16 +68,13 @@ pub trait BinOp: AnalyzerLike + Sized {
         let lhs_range = if let Some(lhs_range) = new_lhs.range(self) {
             lhs_range
         } else {
-            Range {
-                min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
-                max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
-            }
+            rhs_cvar.range(self).expect("Neither lhs nor rhs had a usable range")
         };
 
-        let (func, range_sides) = Range::dyn_fn_from_op(op);
+        let (func, range_sides) = BuiltinRange::dyn_fn_from_op(op);
         let new_range = func(lhs_range, rhs_cvar, range_sides, loc);
-        new_lhs.set_range_min(self, new_range.min);
-        new_lhs.set_range_max(self, new_range.max);
+        new_lhs.set_range_min(self, new_range.range_min());
+        new_lhs.set_range_max(self, new_range.range_max());
         vec![new_lhs.into()]
     }
 }

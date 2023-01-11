@@ -1,9 +1,12 @@
+use crate::range::BuiltinElem;
+use crate::range::BuiltinRange;
+use crate::range::RangeSize;
 use crate::{
-    range::{DynamicRangeSide, Op, Range, RangeElem},
+    range::{DynamicRangeSide, Op, RangeElem},
     AnalyzerLike, ConcreteNode, ContextEdge, Edge, Field, FunctionParam, FunctionReturn, Node,
     NodeIdx, VarType,
 };
-use ethers_core::types::U256;
+
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 use solang_parser::pt::{Loc, StorageLocation};
@@ -66,8 +69,17 @@ impl ContextVarNode {
         self.underlying(analyzer).display_name.clone()
     }
 
-    pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<Range> {
-        self.underlying(analyzer).ty.range(analyzer)
+    pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<BuiltinRange> {
+        match &self.underlying(analyzer).ty {
+            VarType::BuiltIn(_bn, Some(r)) => Some(r.clone()),
+            VarType::BuiltIn(bn, None) => {
+                BuiltinRange::try_from_builtin(bn.underlying(analyzer))
+            },
+            VarType::Concrete(cn) => {
+                Some(BuiltinRange::from(cn.underlying(analyzer).clone()))
+            },
+            _ => None
+        }
     }
 
     pub fn is_const(&self, analyzer: &impl AnalyzerLike) -> bool {
@@ -97,12 +109,14 @@ impl ContextVarNode {
         }
     }
 
-    pub fn set_range_min(&self, analyzer: &mut impl AnalyzerLike, new_min: RangeElem) {
-        self.underlying_mut(analyzer).set_range_min(new_min)
+    pub fn set_range_min(&self, analyzer: &mut impl AnalyzerLike, new_min: BuiltinElem) {
+        let fallback = self.underlying(analyzer).fallback_range(analyzer);
+        self.underlying_mut(analyzer).set_range_min(new_min, fallback);
     }
 
-    pub fn set_range_max(&self, analyzer: &mut impl AnalyzerLike, new_max: RangeElem) {
-        self.underlying_mut(analyzer).set_range_max(new_max)
+    pub fn set_range_max(&self, analyzer: &mut impl AnalyzerLike, new_max: BuiltinElem) {
+        let fallback = self.underlying(analyzer).fallback_range(analyzer);
+        self.underlying_mut(analyzer).set_range_max(new_max, fallback)
     }
 
     pub fn latest_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Self {
@@ -214,16 +228,33 @@ impl ContextVar {
         }
     }
 
-    pub fn set_range_min(&mut self, new_min: RangeElem) {
+    pub fn fallback_range(&self, analyzer: &impl AnalyzerLike) -> Option<BuiltinRange> {
+        match &self.ty {
+            VarType::BuiltIn(bn, ref maybe_range) => {
+                if let Some(range) = maybe_range {
+                    Some(range.clone())
+                } else {
+                    if let Some(range) = BuiltinRange::try_from_builtin(bn.underlying(analyzer)) {
+                        Some(range)
+                    } else {
+                        None
+                    }
+                }
+            }
+            VarType::Concrete(cn) => { Some(BuiltinRange::from(cn.underlying(analyzer).clone())) }
+            e => panic!("wasnt builtin: {:?}", e),
+        }
+    }
+
+    pub fn set_range_min(&mut self, new_min: BuiltinElem, fallback_range: Option<BuiltinRange>) {
         match &mut self.ty {
             VarType::BuiltIn(_bn, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
-                    range.min = new_min;
+                    range.set_range_min(new_min);
                 } else {
-                    *maybe_range = Some(Range {
-                        min: new_min,
-                        max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
-                    })
+                    let mut fr = fallback_range.expect("No range and no fallback_range");
+                    fr.set_range_min(new_min);
+                    *maybe_range = Some(fr);
                 }
             }
             VarType::Concrete(_) => {}
@@ -231,16 +262,15 @@ impl ContextVar {
         }
     }
 
-    pub fn set_range_max(&mut self, new_max: RangeElem) {
+    pub fn set_range_max(&mut self, new_max: BuiltinElem, fallback_range: Option<BuiltinRange>) {
         match &mut self.ty {
             VarType::BuiltIn(_bn, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
-                    range.max = new_max;
+                    range.set_range_max(new_max);
                 } else {
-                    *maybe_range = Some(Range {
-                        min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
-                        max: new_max,
-                    })
+                    let mut fr = fallback_range.expect("No range and no fallback_range");
+                    fr.set_range_max(new_max);
+                    *maybe_range = Some(fr);
                 }
             }
             VarType::Concrete(_) => {}

@@ -1,6 +1,7 @@
+use crate::range::RangeSize;
+use ethers_core::types::I256;
 use crate::{
-    range::{DynamicRangeSide, Op, RangeElem},
-    Builtin, ContextVarNode,
+    range::{DynamicRangeSide, Op, RangeElem}, ContextVarNode,
 };
 use ethers_core::types::U256;
 use solang_parser::pt::Loc;
@@ -11,29 +12,48 @@ pub struct Range {
     pub max: RangeElem,
 }
 
-impl Range {
-    pub fn try_from_builtin(builtin: &Builtin) -> Option<Self> {
-        match builtin {
-            Builtin::Uint(size) => {
-                if *size == 256 {
-                    Some(Range {
-                        min: RangeElem::Concrete(0.into(), Loc::Implicit),
-                        max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
-                    })
-                } else {
-                    Some(Range {
-                        min: RangeElem::Concrete(0.into(), Loc::Implicit),
-                        max: RangeElem::Concrete(
-                            U256::from(2).pow(U256::from(*size)) - 1,
-                            Loc::Implicit,
-                        ),
-                    })
-                }
-            }
-            _ => None,
-        }
+impl RangeSize for Range {
+    type Output = RangeElem;
+    fn range_min(&self) -> RangeElem {
+        self.min.clone()
+    }
+    fn range_max(&self) -> RangeElem {
+        self.max.clone()
     }
 
+    fn set_range_min(&mut self, new: Self::Output) {
+        self.min = new;
+    }
+
+    fn set_range_max(&mut self, new: Self::Output) {
+        self.max = new;
+    }
+}
+
+impl From<U256> for Range {
+    fn from(val: U256) -> Self {
+        let elem = RangeElem::from(val);
+        Range::from(elem)
+    }
+}
+
+impl From<I256> for Range {
+    fn from(val: I256) -> Self {
+        let elem = RangeElem::from(val);
+        Range::from(elem)
+    }
+}
+
+impl From<RangeElem> for Range {
+    fn from(elem: RangeElem) -> Self {
+        Range {
+            min: elem.clone(),
+            max: elem,
+        }
+    }
+}
+
+impl Range {
     pub fn dependent_on(&self) -> Vec<ContextVarNode> {
         let mut deps = self.min.dependent_on();
         deps.extend(self.max.dependent_on());

@@ -1,4 +1,7 @@
-use crate::range::{LenRange, Range, RangeElem};
+use crate::range::ElemEval;
+use crate::range::RangeSize;
+use crate::range::BuiltinElem;
+use crate::range::{LenRange, BuiltinRange, RangeElem};
 use crate::AnalyzerLike;
 use crate::ConcreteNode;
 use crate::Node;
@@ -25,7 +28,7 @@ pub use ty_ty::*;
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum VarType {
     User(TypeNode),
-    BuiltIn(BuiltInNode, Option<Range>),
+    BuiltIn(BuiltInNode, Option<BuiltinRange>),
     Array(DynBuiltInNode, Option<LenRange>),
     Mapping(DynBuiltInNode),
     Concrete(ConcreteNode),
@@ -39,20 +42,21 @@ impl VarType {
                     crate::Concrete::Uint(size, val) => {
                         let new_ty = VarType::BuiltIn(
                             BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(size))),
-                            Some(Range {
-                                min: RangeElem::Concrete(val, Loc::Implicit),
-                                max: RangeElem::Concrete(val, Loc::Implicit),
-                            }),
+                            Some(BuiltinRange::from(val)),
                         );
                         *self = new_ty;
                     }
                     crate::Concrete::Int(size, val) => {
                         let new_ty = VarType::BuiltIn(
                             BuiltInNode::from(analyzer.builtin_or_add(Builtin::Int(size))),
-                            Some(Range {
-                                min: RangeElem::SignedConcrete(val, Loc::Implicit),
-                                max: RangeElem::SignedConcrete(val, Loc::Implicit),
-                            }),
+                            Some(BuiltinRange::from(val)),
+                        );
+                        *self = new_ty;
+                    }
+                    crate::Concrete::Bool(b) => {
+                        let new_ty = VarType::BuiltIn(
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Bool)),
+                            Some(BuiltinRange::from(b)),
                         );
                         *self = new_ty;
                     }
@@ -71,7 +75,7 @@ impl VarType {
         // get node, check if typeable and convert idx into vartype
         match analyzer.node(node) {
             Node::VarType(a) => Some(a.clone()),
-            Node::Builtin(b) => Some(VarType::BuiltIn(node.into(), Range::try_from_builtin(b))),
+            Node::Builtin(b) => Some(VarType::BuiltIn(node.into(), BuiltinRange::try_from_builtin(b))),
             Node::DynBuiltin(dyn_b) => match dyn_b {
                 DynBuiltin::Array(_) => Some(VarType::Array(
                     node.into(),
@@ -102,18 +106,13 @@ impl VarType {
         }
     }
 
-    pub fn range(&self, analyzer: &impl AnalyzerLike) -> Option<Range> {
+    pub fn range(&self, analyzer: &impl AnalyzerLike) -> Option<BuiltinRange> {
         match self {
             Self::BuiltIn(_, range) => range.clone(),
             Self::Concrete(cnode) => match cnode.underlying(analyzer) {
-                crate::Concrete::Uint(_, val) => Some(Range {
-                    min: RangeElem::Concrete(*val, Loc::Implicit),
-                    max: RangeElem::Concrete(*val, Loc::Implicit),
-                }),
-                crate::Concrete::Int(_, val) => Some(Range {
-                    min: RangeElem::SignedConcrete(*val, Loc::Implicit),
-                    max: RangeElem::SignedConcrete(*val, Loc::Implicit),
-                }),
+                crate::Concrete::Uint(_, val) => Some(BuiltinRange::from(*val)),
+                crate::Concrete::Int(_, val) => Some(BuiltinRange::from(*val)),
+                crate::Concrete::Bool(b) => Some(BuiltinRange::from(*b)),
                 _ => None,
             },
             _ => None,
@@ -125,7 +124,7 @@ impl VarType {
             Self::Concrete(_) => true,
             _ => {
                 if let Some(range) = self.range(analyzer) {
-                    range.min.eval(analyzer) == range.max.eval(analyzer)
+                    range.range_min().eval(analyzer) == range.range_max().eval(analyzer)
                 } else {
                     false
                 }
@@ -133,9 +132,9 @@ impl VarType {
         }
     }
 
-    pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(RangeElem, RangeElem)> {
+    pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(BuiltinElem, BuiltinElem)> {
         if let Some(range) = self.range(analyzer) {
-            Some((range.min.eval(analyzer), range.max.eval(analyzer)))
+            Some((range.range_min().eval(analyzer), range.range_max().eval(analyzer)))
         } else {
             None
         }
