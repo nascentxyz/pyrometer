@@ -22,6 +22,12 @@ impl<T> ContextAnalyzer for T where
 #[derive(Debug, Copy, Clone)]
 pub struct LocSpan(pub Loc);
 
+impl Default for LocSpan {
+    fn default() -> Self {
+        LocSpan(Loc::Implicit)
+    }
+}
+
 impl Span for LocSpan {
     type SourceId = usize;
     fn source(&self) -> &Self::SourceId {
@@ -92,8 +98,8 @@ pub trait ReportDisplay {
     fn report_kind(&self) -> ReportKind;
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String;
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>>;
-    fn report(&self, analyzer: &(impl AnalyzerLike + Search)) -> Report<LocSpan>;
-    fn print_report(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search));
+    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocSpan>>;
+    fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search));
 }
 
 impl<T> Search for T where T: AnalyzerLike {}

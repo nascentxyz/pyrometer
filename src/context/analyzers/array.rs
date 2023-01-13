@@ -32,43 +32,44 @@ pub trait ArrayAccessAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Sized {
         ctx: ContextNode,
         report_config: ReportConfig,
     ) -> Vec<ArrayAccessAnalysis> {
-        let mut analyses = Default::default();
+        // let mut analyses = Default::default();
 
-        if let Some(arrays) =
-            self.nodes_with_children(ctx.into(), &Edge::Context(ContextEdge::IndexAccess))
-        {
-            analyses = arrays
-                .iter()
-                .flat_map(|(array, accesses)| {
-                    accesses
-                        .iter()
-                        .map(|access| {
-                            let cvar_idx = *self
-                                .search_children(*access, &Edge::Context(ContextEdge::Index))
-                                .iter()
-                                .take(1)
-                                .next()
-                                .expect("IndexAccess without Index");
-                            let cvar = ContextVarNode::from(cvar_idx);
-                            let name = cvar.name(self);
-                            let (index_bounds, dependent_bounds) =
-                                self.bounds_for_var_node_and_dependents(name, cvar, report_config);
-                            ArrayAccessAnalysis {
-                                arr_def: ContextVarNode::from(*array),
-                                arr_loc: LocSpan(ContextVarNode::from(*array).loc(self)),
-                                access_loc: LocSpan(cvar.loc(self)),
-                                index_bounds,
-                                dependent_bounds,
-                                analysis_ty: ArrayAccess::MinSize,
-                                report_config,
-                            }
-                        })
-                        .collect::<Vec<ArrayAccessAnalysis>>()
-                })
-                .collect();
-        }
+        todo!();
+        // if let Some(arrays) =
+        //     self.nodes_with_children(ctx.into(), &Edge::Context(ContextEdge::IndexAccess))
+        // {
+        //     analyses = arrays
+        //         .iter()
+        //         .flat_map(|(array, accesses)| {
+        //             accesses
+        //                 .iter()
+        //                 .map(|access| {
+        //                     let cvar_idx = *self
+        //                         .search_children(*access, &Edge::Context(ContextEdge::Index))
+        //                         .iter()
+        //                         .take(1)
+        //                         .next()
+        //                         .expect("IndexAccess without Index");
+        //                     let cvar = ContextVarNode::from(cvar_idx);
+        //                     let name = cvar.name(self);
+        //                     let (index_bounds, dependent_bounds) =
+        //                         self.bounds_for_var_node_and_dependents(name, cvar, report_config);
+        //                     ArrayAccessAnalysis {
+        //                         arr_def: ContextVarNode::from(*array),
+        //                         arr_loc: LocSpan(ContextVarNode::from(*array).loc(self)),
+        //                         access_loc: LocSpan(cvar.loc(self)),
+        //                         index_bounds,
+        //                         dependent_bounds,
+        //                         analysis_ty: ArrayAccess::MinSize,
+        //                         report_config,
+        //                     }
+        //                 })
+        //                 .collect::<Vec<ArrayAccessAnalysis>>()
+        //         })
+        //         .collect();
+        // }
 
-        analyses
+        // analyses
     }
 
     // fn max_size_to_prevent_access_revert(
@@ -189,7 +190,7 @@ impl ReportDisplay for ArrayAccessAnalysis {
 
         labels
     }
-    fn report(&self, analyzer: &(impl AnalyzerLike + Search)) -> Report<LocSpan> {
+    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             *self.arr_loc.source(),
@@ -201,10 +202,10 @@ impl ReportDisplay for ArrayAccessAnalysis {
             report = report.with_label(label);
         }
 
-        report.finish()
+        vec![report.finish()]
     }
-    fn print_report(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
-        let report = self.report(analyzer);
+    fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
+        let report = &self.reports(analyzer)[0];
         report.print((src.0, Source::from(src.1))).unwrap()
     }
 }

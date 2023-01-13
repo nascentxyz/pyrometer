@@ -1,3 +1,4 @@
+use solang_parser::pt::CodeLocation;
 use crate::Context;
 use crate::ExprRet;
 
@@ -6,10 +7,48 @@ use crate::{
     exprs::Require, ContextBuilder, ContextEdge, ContextNode, ContextVarNode, Edge, Node, NodeIdx,
 };
 
-use solang_parser::pt::{Expression, Loc};
+use solang_parser::pt::{Expression, Loc, Statement};
 
 impl<T> CondOp for T where T: AnalyzerLike + Require + Sized {}
 pub trait CondOp: AnalyzerLike + Require + Sized {
+    fn cond_op_stmt(
+        &mut self,
+        loc: Loc,
+        if_expr: &Expression,
+        true_stmt: &Statement,
+        false_stmt: &Option<Box<Statement>>,
+        ctx: ContextNode,
+    ) {
+        let true_subctx = ContextNode::from(
+            self.add_node(Node::Context(Context::new_subctx(ctx, loc, true, self))),
+        );
+        ctx.add_fork(true_subctx, self);
+        let false_subctx = ContextNode::from(
+            self.add_node(Node::Context(Context::new_subctx(ctx, loc, true, self))),
+        );
+        ctx.add_fork(false_subctx, self);
+        let ctx_fork = self.add_node(Node::ContextFork);
+        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+        self.add_edge(
+            NodeIdx::from(true_subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+        self.add_edge(
+            NodeIdx::from(false_subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+
+        self.true_fork_if_cvar(true_stmt.loc(), if_expr.clone(), true_subctx);
+        self.parse_ctx_statement(true_stmt, false, Some(true_subctx));
+
+        if let Some(false_stmt) = false_stmt {
+            self.false_fork_if_cvar(false_stmt.loc(), if_expr.clone(), false_subctx);
+            self.parse_ctx_statement(false_stmt, false, Some(false_subctx));    
+        }
+    }
+
     /// When we have a conditional operator, we create a fork in the context. One side of the fork is
     /// if the expression is true, the other is if it is false.
     fn cond_op_expr(
@@ -41,11 +80,13 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             Edge::Context(ContextEdge::Subcontext),
         );
 
+        let true_loc = true_expr.loc();
         let true_cvars = self.parse_ctx_expr(true_expr, true_subctx);
-        self.match_true(loc, &true_cvars, if_expr);
+        self.match_true(true_loc, &true_cvars, if_expr);
 
+        let false_loc = false_expr.loc();
         let false_cvars = self.parse_ctx_expr(false_expr, false_subctx);
-        self.match_false(loc, &false_cvars, if_expr);
+        self.match_false(false_loc, &false_cvars, if_expr);
 
         ExprRet::Fork(Box::new(true_cvars), Box::new(false_cvars))
     }
@@ -55,26 +96,20 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             ExprRet::CtxKilled => {}
             ExprRet::Single((fork_ctx, true_cvar)) => {
                 self.true_fork_if_cvar(
-                    ContextVarNode::from(*true_cvar)
-                        .underlying(self)
-                        .loc
-                        .unwrap_or(loc),
+                    loc,
                     if_expr.clone(),
                     *fork_ctx,
                 );
             }
             ExprRet::Multi(ref true_paths) => {
-                true_paths.iter().for_each(|expr_ret| {
-                    let (fork_ctx, true_cvar) = expr_ret.expect_single();
+                true_paths.iter().take(1).for_each(|expr_ret| {
+                    let (fork_ctx, _) = expr_ret.expect_single();
                     self.true_fork_if_cvar(
-                        ContextVarNode::from(true_cvar)
-                            .underlying(self)
-                            .loc
-                            .unwrap_or(loc),
+                        loc,
                         if_expr.clone(),
                         fork_ctx,
                     );
-                });
+                })
             }
             ExprRet::Fork(true_paths, other_true_paths) => {
                 self.match_true(loc, true_paths, if_expr);
@@ -88,26 +123,20 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             ExprRet::CtxKilled => {}
             ExprRet::Single((fork_ctx, false_cvar)) => {
                 self.false_fork_if_cvar(
-                    ContextVarNode::from(*false_cvar)
-                        .underlying(self)
-                        .loc
-                        .unwrap_or(loc),
+                    loc,
                     if_expr.clone(),
                     *fork_ctx,
                 );
             }
             ExprRet::Multi(ref false_paths) => {
-                false_paths.iter().for_each(|expr_ret| {
-                    let (fork_ctx, false_cvar) = expr_ret.expect_single();
+                false_paths.iter().take(1).for_each(|expr_ret| {
+                    let (fork_ctx, _) = expr_ret.expect_single();
                     self.false_fork_if_cvar(
-                        ContextVarNode::from(false_cvar)
-                            .underlying(self)
-                            .loc
-                            .unwrap_or(loc),
+                        loc,
                         if_expr.clone(),
                         fork_ctx,
                     );
-                });
+                })
             }
             ExprRet::Fork(false_paths, other_false_paths) => {
                 self.match_false(loc, false_paths, if_expr);

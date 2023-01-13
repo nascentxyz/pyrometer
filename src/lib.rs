@@ -574,36 +574,83 @@ contract Storage {
     //     return k.a[s];
     // }
 
-    function b4(A memory k, uint128 s, uint64 l, uint64 j) public returns (uint256) {
-        require(l <= 100);
-        assert(s + j < 5);
-        require(s - j + 5 < l);
-        bool q = s > j;
-        bool q2 = !q;
+    // function b4(A memory k, uint128 s, uint64 l, uint64 j) public returns (uint256) {
+    //     require(l <= 100);
+    //     assert(s + j < 5);
+    //     require(s - j + 5 < l);
+    //     bool q = s > j;
+    //     bool q2 = !q;
 
-        require(s > 5);
+    //     require(s > 5);
 
-        uint256 b = s > 5 ? 1 + 2 : 3 + 4;
-        require(b > 5);
-        // bool q = s < j;
-        // require(q);
-        // return k.a[s];
-    }
+    //     uint256 b = s > 5 ? 1 + 2 : 3 + 4;
+    //     require(b > 5);
+    //     // bool q = s < j;
+    //     // require(q);
+    //     // return k.a[s];
+    // }
 
     function b5(uint128 s) public returns (uint256) {
         (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
 
+        a += 1;
         require(a < 10);
-        require(b < 7);
-        require(s < 7);
-        return b;
+        require(b < 8);
+        require(b < 6);
+        if (s < 7) {
+            require(s < 100);
+            return s + 3;
+        } else {
+            require(s < 100);
+            return s + 1;
+        }
     }
+
+    // function exp(int256 x) internal pure returns (int256) {
+        // int256 FIXED_POINT_SCALE_BITS = 64;
+
+        // int256 FIXED_POINT_SCALE = int256(1) << uint256(FIXED_POINT_SCALE_BITS);
+
+        // uint256 UINT256_MAX = ~uint256(0);
+
+        // assert(FIXED_POINT_SCALE_BITS == 64);
+        // int256 ln2FixedPoint = 12786308645202655659;
+
+        // // int256 shiftLeft = x / ln2FixedPoint;
+        // // int256 remainder = x % ln2FixedPoint;
+        // // if (shiftLeft <= -FIXED_POINT_SCALE_BITS) return 0;
+        // // require(shiftLeft < (256 - FIXED_POINT_SCALE_BITS), "Exponentiation overflows");
+
+        // // int256 smallFactor = 4373;
+        // // int256 bigFactor = ln2FixedPoint / smallFactor;
+
+        // // int256 integerPower = remainder / bigFactor;
+        // // int256 smallRemainder = remainder % bigFactor;
+
+        // // int256 taylorApprox = FIXED_POINT_SCALE +
+        // //     smallRemainder +
+        // //     (smallRemainder * smallRemainder) /
+        // //     (2 * FIXED_POINT_SCALE) +
+        // //     (smallRemainder * smallRemainder * smallRemainder) /
+        // //     (6 * FIXED_POINT_SCALE * FIXED_POINT_SCALE);
+
+        // // int256 twoPowRecipSmallFactor = 18449668226934502855; // 2^(1/smallFactor) in fixed point
+        // // int256 prod;
+        // // if (integerPower >= 0) {
+        // //     prod = pow(twoPowRecipSmallFactor, integerPower) * taylorApprox;
+        // //     shiftLeft -= FIXED_POINT_SCALE_BITS;
+        // // } else {
+        // //     prod = (FIXED_POINT_SCALE * taylorApprox) / pow(twoPowRecipSmallFactor, -integerPower);
+        // // }
+
+        // // return shiftLeft >= 0 ? (prod << uint256(shiftLeft)) : (prod >> uint256(-shiftLeft));
+    // }
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
         println!("parse time: {:?}", t0.elapsed().as_nanos());
-        // println!("{}", analyzer.dot_str_no_tmps());
+        println!("{}", analyzer.dot_str_no_tmps());
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
         // println!("contexts: {:?}", contexts);
         let mut t = std::time::Instant::now();
@@ -630,7 +677,7 @@ contract Storage {
 
             let analysis = analyzer.bounds_for_all(ctx, config);
             println!("analysis time: {:?}", t.elapsed().as_nanos());
-            analysis.print_report((0, &sol), &analyzer);
+            analysis.print_reports((0, &sol), &analyzer);
             // mins.iter()
             //     .for_each(|min| min.print_report((0, &sol), &analyzer));
             t = std::time::Instant::now();

@@ -352,6 +352,14 @@ impl BuiltinRange {
                 &Self::div_dyn,
                 (DynamicRangeSide::Max, DynamicRangeSide::Min),
             ),
+            Op::Shl => (
+                &Self::shl_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Shr => (
+                &Self::shr_dyn,
+                (DynamicRangeSide::Max, DynamicRangeSide::Min),
+            ),
             Op::Mod => (
                 &Self::mod_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
@@ -418,6 +426,32 @@ impl BuiltinRange {
         loc: Loc,
     ) -> Self {
         Self::Num(self.as_num_range().div_dyn(other, range_sides, loc))
+    }
+
+    pub fn shl(self, other: Self) -> Self {
+        Self::Num(self.as_num_range().shl(other.as_num_range()))
+    }
+
+    pub fn shl_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self::Num(self.as_num_range().shl_dyn(other, range_sides, loc))
+    }
+
+    pub fn shr(self, other: Self) -> Self {
+        Self::Num(self.as_num_range().div(other.as_num_range()))
+    }
+
+    pub fn shr_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self::Num(self.as_num_range().shr_dyn(other, range_sides, loc))
     }
 
     pub fn r#mod(self, other: Self) -> Self {
@@ -534,6 +568,8 @@ pub enum Op {
     Gte,
     Eq,
     Not,
+    Shl,
+    Shr
 }
 
 impl Op {
@@ -544,6 +580,8 @@ impl Op {
             Mul => Div,
             Sub => Add,
             Div => Mul,
+            Shl => Shr,
+            Shr => Shl,
             e => panic!("tried to inverse unreversable op: {:?}", e),
         }
     }
@@ -557,6 +595,8 @@ impl ToString for Op {
             Mul => "*".to_string(),
             Sub => "-".to_string(),
             Div => "/".to_string(),
+            Shl => "<<".to_string(),
+            Shr => ">>".to_string(),
             Mod => "%".to_string(),
             Min => "min".to_string(),
             Max => "max".to_string(),

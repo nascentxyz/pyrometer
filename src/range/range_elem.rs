@@ -8,7 +8,7 @@ use crate::{
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, Div, Mul, Rem, Sub, Shl, Shr};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum RangeElem {
@@ -105,6 +105,32 @@ impl Div for RangeElem {
         let expr = RangeExpr {
             lhs: RangeExprElem::from(self),
             op: Op::Div,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
+    }
+}
+
+impl Shl for RangeElem {
+    type Output = Self;
+
+    fn shl(self, other: RangeElem) -> Self {
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Shl,
+            rhs: RangeExprElem::from(other),
+        };
+        Self::Complex(expr)
+    }
+}
+
+impl Shr for RangeElem {
+    type Output = Self;
+
+    fn shr(self, other: RangeElem) -> Self {
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Shr,
             rhs: RangeExprElem::from(other),
         };
         Self::Complex(expr)

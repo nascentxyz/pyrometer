@@ -1,3 +1,4 @@
+use crate::range::RangeEval;
 use crate::range::BuiltinRange;
 use crate::range::ElemEval;
 use crate::range::RangeSize;
@@ -6,25 +7,59 @@ use crate::{
     AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay, Search,
 };
 
-use ariadne::{Color, Fmt, Label, Report, ReportKind, Source, Span};
+use ariadne::{Color, Fmt, Label, Report, ReportKind, Source, Span, Config};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct BoundAnalysis {
-    pub ctx_path: String,
+    pub ctx: ContextNode,
     pub var_name: String,
     pub var_display_name: String,
     pub var_def: (LocSpan, Option<BuiltinRange>),
     pub bound_changes: Vec<(LocSpan, BuiltinRange)>,
     pub report_config: ReportConfig,
+    pub sub_ctxs: Vec<Self>,
+}
+
+impl Default for BoundAnalysis {
+    fn default() -> Self {
+        Self {
+            ctx: ContextNode(0),
+            var_name: Default::default(),
+            var_display_name: Default::default(),
+            var_def: Default::default(),
+            bound_changes: Default::default(),
+            report_config: Default::default(),
+            sub_ctxs: Default::default(),
+        }
+    }
+}
+
+impl BoundAnalysis {
+    pub fn flatten_by_ctx(mut self) -> BTreeMap<ContextNode, BoundAnalysis> {
+        let mut map = self.sub_ctxs.into_iter().fold(BTreeMap::default(), |mut map, sub_analysis| {
+            let inner_map = sub_analysis.flatten_by_ctx();
+            inner_map.into_iter().for_each(|(path, analysis)| {
+                let entry: &mut BoundAnalysis = map.entry(path).or_default();
+                *entry = analysis;
+            });
+            map
+        });
+
+        self.sub_ctxs = vec![];
+        let entry = map.entry(self.ctx.clone()).or_default();
+        *entry = self;
+
+        map
+    }
 }
 
 impl ReportDisplay for BoundAnalysis {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, _analyzer: &(impl AnalyzerLike + Search)) -> String {
-        format!("Bounds for {} in {}:", self.var_display_name, self.ctx_path)
+    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+        format!("Bounds for {} in {}:", self.var_display_name, self.ctx.underlying(analyzer).path)
     }
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
         let mut labels = if self.report_config.show_initial_bounds {
@@ -88,8 +123,15 @@ impl ReportDisplay for BoundAnalysis {
 
                     Label::new(bound_change.0)
                         .with_message(format!(
-                            "\"{}\" ∈ {{{}, {}}}",
-                            self.var_display_name, min, max
+                            "\"{}\" ∈ {{{}, {}}} {}",
+                            self.var_display_name,
+                            min,
+                            max,
+                            if bound_change.1.unsat(analyzer) {
+                                "- unsatisfiable range, would revert".fg(Color::Red)
+                            } else {
+                                "".fg(Color::Red)
+                            }
                         ))
                         .with_color(Color::Cyan)
                 })
@@ -99,24 +141,41 @@ impl ReportDisplay for BoundAnalysis {
         labels
     }
 
-    fn report(&self, analyzer: &(impl AnalyzerLike + Search)) -> Report<LocSpan> {
+    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             *self.var_def.0.source(),
             self.var_def.0.start(),
         )
-        .with_message(self.msg(analyzer));
+        .with_message(self.msg(analyzer))
+        .with_config(Config::default()
+            .with_cross_gap(false)
+            .with_underlines(true)
+            .with_tab_width(4));
 
         for label in self.labels(analyzer).into_iter() {
             report = report.with_label(label);
         }
 
-        report.finish()
+        
+        let mut reports = vec![report.finish()];
+
+        if self.report_config.show_subctxs {
+            reports.extend(
+                self.sub_ctxs.iter().flat_map(|analysis| {
+                    analysis.reports(analyzer)
+                }).collect::<Vec<_>>()
+            );
+        }
+
+        reports
     }
 
-    fn print_report(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
-        let report = self.report(analyzer);
-        report.print((src.0, Source::from(src.1))).unwrap()
+    fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
+        let reports = self.reports(analyzer);
+        reports.into_iter().for_each(|report| {
+            report.print((src.0, Source::from(src.1))).unwrap();    
+        });
     }
 }
 
@@ -127,30 +186,29 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         ctx: ContextNode,
         var_name: String,
         report_config: ReportConfig,
-    ) -> Vec<BoundAnalysis> {
-        if let Some(cvar) = ctx.var_by_name(self, &var_name) {
-            let mut analyses =
-                vec![self.bounds_for_var_node(var_name.clone(), cvar, report_config)];
-            if report_config.show_subctxs {
-                let mut subctxs = ctx.subcontexts(self);
-                subctxs.sort();
-                subctxs.dedup();
-                let curr = cvar.ctx(self);
-                analyses.extend(
-                    subctxs
-                        .into_iter()
-                        .filter(|sub_ctx| *sub_ctx != curr)
-                        .flat_map(|sub_ctx| {
-                            self.bounds_for_var(sub_ctx, var_name.clone(), report_config)
-                        })
-                        .collect::<Vec<_>>(),
-                );
-            }
-
-            return analyses;
+    ) -> Option<BoundAnalysis> {
+        let cvar = ctx.var_by_name(self, &var_name)?;
+        let mut analysis =
+            self.bounds_for_var_node(var_name.clone(), cvar, report_config);
+        if report_config.show_subctxs {
+            let mut subctxs = ctx.subcontexts(self);
+            subctxs.sort();
+            subctxs.dedup();
+            let curr = cvar.ctx(self);
+            let subctx_bounds = subctxs
+                .into_iter()
+                .filter(|sub_ctx| *sub_ctx != curr)
+                .filter_map(|sub_ctx| {
+                    self.bounds_for_var(sub_ctx, var_name.clone(), report_config)
+                })
+                .collect::<Vec<_>>();
+            analysis.sub_ctxs = subctx_bounds;
+            Some(analysis)
+        } else {
+            Some(analysis)
         }
 
-        vec![]
+        
     }
 
     /// Analyzes the bounds for a variable up to the provided node
@@ -163,12 +221,13 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         let mut curr = cvar.first_version(self);
 
         let mut ba = BoundAnalysis {
-            ctx_path: cvar.ctx(self).path(self),
+            ctx: cvar.ctx(self),
             var_name,
             var_display_name: cvar.display_name(self),
             var_def: (LocSpan(curr.loc(self)), curr.range(self)),
             bound_changes: vec![],
             report_config,
+            sub_ctxs: vec![],
         };
 
         if let Some(mut curr_range) = curr.range(self) {
@@ -199,48 +258,49 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         var_name: String,
         cvar: ContextVarNode,
         report_config: ReportConfig,
-    ) -> (BoundAnalysis, Vec<BoundAnalysis>) {
-        let bounds = self.bounds_for_var_node(var_name, cvar, report_config);
-        let mut dependents = cvar.dependent_on(self, false);
-        dependents.sort_by(|a, b| a.display_name(self).cmp(&b.display_name(self)));
-        dependents.dedup_by(|a, b| a.display_name(self) == b.display_name(self));
+    ) -> BoundAnalysis {
+        // let bounds = self.bounds_for_var_node(var_name, cvar, report_config);
+        // let mut dependents = cvar.dependent_on(self, false);
+        // dependents.sort_by(|a, b| a.display_name(self).cmp(&b.display_name(self)));
+        // dependents.dedup_by(|a, b| a.display_name(self) == b.display_name(self));
 
-        let dep_bounds = dependents
-            .into_iter()
-            .filter_map(
-                |var| match (report_config.show_tmps, report_config.show_consts) {
-                    (true, true) => {
-                        let name = var.name(self);
-                        Some(self.bounds_for_var_node(name, var, report_config))
-                    }
-                    (true, false) => {
-                        if !var.is_tmp(self) {
-                            let name = var.name(self);
-                            Some(self.bounds_for_var_node(name, var, report_config))
-                        } else {
-                            None
-                        }
-                    }
-                    (false, true) => {
-                        if !var.is_const(self) {
-                            let name = var.name(self);
-                            Some(self.bounds_for_var_node(name, var, report_config))
-                        } else {
-                            None
-                        }
-                    }
-                    (false, false) => {
-                        if !var.is_tmp(self) && !var.is_const(self) {
-                            let name = var.name(self);
-                            Some(self.bounds_for_var_node(name, var, report_config))
-                        } else {
-                            None
-                        }
-                    }
-                },
-            )
-            .collect();
-        (bounds, dep_bounds)
+        // let dep_bounds = dependents
+        //     .into_iter()
+        //     .filter_map(
+        //         |var| match (report_config.show_tmps, report_config.show_consts) {
+        //             (true, true) => {
+        //                 let name = var.name(self);
+        //                 Some(self.bounds_for_var_node(name, var, report_config))
+        //             }
+        //             (true, false) => {
+        //                 if !var.is_tmp(self) {
+        //                     let name = var.name(self);
+        //                     Some(self.bounds_for_var_node(name, var, report_config))
+        //                 } else {
+        //                     None
+        //                 }
+        //             }
+        //             (false, true) => {
+        //                 if !var.is_const(self) {
+        //                     let name = var.name(self);
+        //                     Some(self.bounds_for_var_node(name, var, report_config))
+        //                 } else {
+        //                     None
+        //                 }
+        //             }
+        //             (false, false) => {
+        //                 if !var.is_tmp(self) && !var.is_const(self) {
+        //                     let name = var.name(self);
+        //                     Some(self.bounds_for_var_node(name, var, report_config))
+        //                 } else {
+        //                     None
+        //                 }
+        //             }
+        //         },
+        //     )
+        //     .collect();
+        // (bounds, dep_bounds)
+        todo!()
     }
 }
 
@@ -249,7 +309,8 @@ pub struct FunctionVarsBoundAnalysis {
     pub ctx_loc: LocSpan,
     pub ctx: ContextNode,
     pub ctx_killed: Option<LocSpan>,
-    pub vars: BTreeMap<String, Vec<BoundAnalysis>>,
+    pub report_config: ReportConfig,
+    pub vars_by_ctx: BTreeMap<ContextNode, Vec<BoundAnalysis>>,
 }
 
 impl ReportDisplay for FunctionVarsBoundAnalysis {
@@ -264,44 +325,105 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
     }
 
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
-        let mut labels: Vec<_> = self
-            .vars
-            .iter()
-            .flat_map(|(_name, bound_analysis)| {
-                bound_analysis
-                    .iter()
-                    .flat_map(|analysis| analysis.labels(analyzer))
-            })
-            .collect();
-
-        if let Some(killed_span) = self.ctx_killed {
-            labels.push(
-                Label::new(killed_span)
-                    .with_message("Execution guaranteed to revert here!".fg(Color::Red))
-                    .with_color(Color::Red),
-            )
-        }
-        labels
+        vec![]
     }
 
-    fn report(&self, analyzer: &(impl AnalyzerLike + Search)) -> Report<LocSpan> {
+    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             *self.ctx_loc.source(),
             self.ctx_loc.start(),
         )
-        .with_message(self.msg(analyzer));
+        .with_message(self.msg(analyzer))
+        .with_config(Config::default()
+            .with_cross_gap(false)
+            .with_underlines(true)
+            .with_tab_width(4));
 
-        for label in self.labels(analyzer).into_iter() {
-            report = report.with_label(label);
+        report.add_labels(self.labels(analyzer));
+        if let Some(killed_span) = self.ctx_killed {
+            report = report.with_label(
+                Label::new(killed_span)
+                    .with_message("Execution guaranteed to revert here!".fg(Color::Red))
+                    .with_color(Color::Red),
+            );
         }
+        let mut reports = vec![report.finish()];
 
-        report.finish()
+        reports.extend(
+            self.vars_by_ctx.iter().map(|(ctx, analyses)| {
+                let bounds_string = ctx.ctx_deps(analyzer).iter().filter_map(|cvar| {
+                    let min = if self.report_config.eval_bounds {
+                        cvar.range(analyzer)?
+                            .range_min()
+                            .eval(analyzer)
+                            .to_range_string(analyzer)
+                            .s
+                    } else {
+                        cvar.range(analyzer)?.range_min().to_range_string(analyzer).s
+                    };
+
+                    let max = if self.report_config.eval_bounds {
+                        cvar.range(analyzer)?
+                            .range_max()
+                            .eval(analyzer)
+                            .to_range_string(analyzer)
+                            .s
+                    } else {
+                        cvar.range(analyzer)?.range_max().to_range_string(analyzer).s
+                    };
+
+                    Some(format!(
+                        "\"{}\" ∈ {{{}, {}}}",
+                        cvar.display_name(analyzer),
+                        min,
+                        max,
+                    ))
+                }).collect::<Vec<_>>().join(" ∧ ");
+                let mut report = Report::build(
+                    self.report_kind(),
+                    *self.ctx_loc.source(),
+                    self.ctx_loc.start(),
+                ).with_message(format!("Bounds for subcontext: {}{}{}", ctx.path(analyzer), if bounds_string.is_empty() { "" } else { " where " }, bounds_string))
+                    .with_config(Config::default()
+                    .with_cross_gap(false)
+                    .with_underlines(true)
+                    .with_tab_width(4));
+                let labels: Vec<_> = analyses
+                    .iter()
+                    .flat_map(|analysis| analysis.labels(analyzer))
+                    .collect();
+
+                report.add_labels(labels);
+
+
+                if let Some((loc, var)) = ctx.return_node(analyzer) {
+                    println!("context {} had return", ctx.path(analyzer));
+                    report.add_label(
+                        Label::new(LocSpan(loc))
+                            .with_message(format!(
+                                "\"{}\" ∈ {{{}, {}}}",
+                                var.display_name(analyzer),
+                                var.range(analyzer).expect("return had no range").range_min().eval(analyzer).to_range_string(analyzer).s,
+                                var.range(analyzer).expect("return had no range").range_max().eval(analyzer).to_range_string(analyzer).s,
+                            ))
+                            .with_color(Color::Green)
+                    );
+                } else {
+                    println!("context {} did not have a return", ctx.path(analyzer));
+                }
+                report.finish()
+            }).collect::<Vec<Report<LocSpan>>>()
+        );
+
+        reports
     }
 
-    fn print_report(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
-        let report = self.report(analyzer);
-        report.print((src.0, Source::from(src.1))).unwrap();
+    fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
+        let reports = &self.reports(analyzer);
+        reports.into_iter().for_each(|report| {
+            report.print((src.0, Source::from(src.1))).unwrap();    
+        });
     }
 }
 
@@ -315,18 +437,18 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         let mut vars = ctx.vars(self);
         vars.dedup();
 
-        let analyses = vars
+        let analyses: BTreeMap<ContextNode, Vec<BoundAnalysis>> = vars
             .into_iter()
             .filter_map(
                 |var| match (report_config.show_tmps, report_config.show_consts) {
                     (true, true) => {
                         let name = var.name(self);
-                        Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
+                        Some(self.bounds_for_var(ctx, name, report_config)?.flatten_by_ctx())
                     }
                     (true, false) => {
                         if !var.is_const(self) {
                             let name = var.name(self);
-                            Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
+                            Some(self.bounds_for_var(ctx, name, report_config)?.flatten_by_ctx())
                         } else {
                             None
                         }
@@ -334,7 +456,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     (false, true) => {
                         if !var.is_tmp(self) {
                             let name = var.name(self);
-                            Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
+                            Some(self.bounds_for_var(ctx, name, report_config)?.flatten_by_ctx())
                         } else {
                             None
                         }
@@ -342,14 +464,23 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     (false, false) => {
                         if !var.is_tmp(self) && !var.is_const(self) {
                             let name = var.name(self);
-                            Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
+                            Some(self.bounds_for_var(ctx, name, report_config)?.flatten_by_ctx())
                         } else {
                             None
                         }
                     }
                 },
             )
-            .collect();
+            .fold(BTreeMap::default(), |mut map, var_analysis| {
+                var_analysis.into_iter().for_each(|(ctx, analysis)| {
+                    let entry: &mut Vec<BoundAnalysis> = map.entry(ctx).or_default();
+                    entry.push(analysis);
+                    entry.sort_by(|a, b| a.var_name.cmp(&b.var_name));
+                    entry.dedup_by(|a, b| a.var_name == b.var_name);
+                });
+
+                map
+            });
         FunctionVarsBoundAnalysis {
             ctx_loc: LocSpan(ctx.underlying(self).loc),
             ctx,
@@ -358,7 +489,8 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             } else {
                 None
             },
-            vars: analyses,
+            vars_by_ctx: analyses,
+            report_config,
         }
     }
 }

@@ -99,6 +99,8 @@ impl Range {
             Op::Sub => Self::sub,
             Op::Mul => Self::mul,
             Op::Div => Self::div,
+            Op::Shl => Self::shl,
+            Op::Shr => Self::shr,
             Op::Mod => Self::r#mod,
             Op::Min => Self::min,
             Op::Max => Self::max,
@@ -128,6 +130,14 @@ impl Range {
             Op::Div => (
                 &Self::div_dyn,
                 (DynamicRangeSide::Max, DynamicRangeSide::Min),
+            ),
+            Op::Shr => (
+                &Self::shr_dyn,
+                (DynamicRangeSide::Max, DynamicRangeSide::Min),
+            ),
+            Op::Shl => (
+                &Self::shl_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
             ),
             Op::Mod => (
                 &Self::mod_dyn,
@@ -218,6 +228,44 @@ impl Range {
         Self {
             min: self.min / RangeElem::Dynamic(other.into(), range_sides.0, loc),
             max: self.max / RangeElem::Dynamic(other.into(), range_sides.1, loc),
+        }
+    }
+
+    pub fn shl(self, other: Self) -> Self {
+        Self {
+            min: self.min << other.min,
+            max: self.max << other.max,
+        }
+    }
+
+    pub fn shl_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min << RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max << RangeElem::Dynamic(other.into(), range_sides.1, loc),
+        }
+    }
+
+    pub fn shr(self, other: Self) -> Self {
+        Self {
+            min: self.min >> other.min,
+            max: self.max >> other.max,
+        }
+    }
+
+    pub fn shr_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min >> RangeElem::Dynamic(other.into(), range_sides.0, loc),
+            max: self.max >> RangeElem::Dynamic(other.into(), range_sides.1, loc),
         }
     }
 

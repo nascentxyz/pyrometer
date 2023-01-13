@@ -9,6 +9,22 @@ use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 use std::convert::TryFrom;
 
+macro_rules! as_u64_saturated {
+    ( $v:expr ) => {{
+        if $v.0[1] != 0 || $v.0[2] != 0 || $v.0[3] != 0 {
+            u64::MAX
+        } else {
+            $v.0[0]
+        }
+    }};
+}
+
+macro_rules! as_usize_saturated {
+    ( $v:expr ) => {{
+        as_u64_saturated!($v) as usize
+    }};
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum RangeExprElem {
     Expr(Box<RangeExpr>),
@@ -183,6 +199,8 @@ impl RangeExprElem {
                     self_val.saturating_mul(*other_val),
                     *loc,
                 )),
+                Op::Shl => Some(RangeElem::Concrete(self_val << as_usize_saturated!(*other_val), *loc)),
+                Op::Shr => Some(RangeElem::Concrete(self_val >> as_usize_saturated!(*other_val), *loc)),
                 Op::Div => Some(RangeElem::Concrete(self_val / other_val, *loc)),
                 Op::Sub => Some(RangeElem::Concrete(
                     self_val.saturating_sub(*other_val),
@@ -214,6 +232,8 @@ impl RangeExprElem {
                     self_val.saturating_mul(*other_val),
                     *loc,
                 )),
+                Op::Shl => Some(RangeElem::SignedConcrete(*self_val << as_usize_saturated!(other_val.into_raw()), *loc)),
+                Op::Shr => Some(RangeElem::SignedConcrete(*self_val >> as_usize_saturated!(other_val.into_raw()), *loc)),
                 Op::Div => Some(RangeElem::SignedConcrete(*self_val / *other_val, *loc)),
                 Op::Sub => Some(RangeElem::SignedConcrete(
                     self_val.saturating_sub(*other_val),

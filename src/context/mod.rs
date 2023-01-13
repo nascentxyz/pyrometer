@@ -72,12 +72,15 @@ pub enum ContextEdge {
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+/// A wrapper of a node index that corresponds to a [`Context`]
 pub struct ContextNode(pub usize);
 impl ContextNode {
+    /// The path of the underlying context
     pub fn path(&self, analyzer: &impl AnalyzerLike) -> String {
         self.underlying(analyzer).path.clone()
     }
 
+    /// *All* subcontexts (including subcontexts of subcontexts, recursively)
     pub fn subcontexts(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<ContextNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext))
@@ -86,14 +89,17 @@ impl ContextNode {
             .collect()
     }
 
+    /// Gets the associated function for the context
     pub fn associated_fn(&self, analyzer: &(impl AnalyzerLike + Search)) -> FunctionNode {
         self.underlying(analyzer).parent_fn
     }
 
+    /// Gets the associated function name for the context
     pub fn associated_fn_name(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
         self.underlying(analyzer).parent_fn.name(analyzer)
     }
 
+    /// Gets a mutable reference to the underlying context in the graph
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl AnalyzerLike) -> &'a mut Context {
         match analyzer.node_mut(*self) {
             Node::Context(c) => c,
@@ -104,6 +110,7 @@ impl ContextNode {
         }
     }
 
+    /// Gets an immutable reference to the underlying context in the graph
     pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Context {
         match analyzer.node(*self) {
             Node::Context(c) => c,
@@ -114,6 +121,7 @@ impl ContextNode {
         }
     }
 
+    /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl AnalyzerLike, name: &str) -> Option<ContextVarNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
@@ -131,6 +139,7 @@ impl ContextNode {
             .next()
     }
 
+    /// Gets all variables associated with a context
     pub fn vars(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
@@ -139,6 +148,7 @@ impl ContextNode {
             .collect()
     }
 
+    /// Gets the latest version of a variable associated with a context
     pub fn latest_var_by_name(
         &self,
         analyzer: &impl AnalyzerLike,
@@ -151,6 +161,7 @@ impl ContextNode {
         }
     }
 
+    /// Reads the current temporary counter and increments the counter
     pub fn new_tmp(&self, analyzer: &mut impl AnalyzerLike) -> usize {
         let context = self.underlying_mut(analyzer);
         let ret = context.tmp_var_ctr;
@@ -158,26 +169,31 @@ impl ContextNode {
         ret
     }
 
+    /// Returns all forks associated with the context
     pub fn forks(&self, analyzer: &impl AnalyzerLike) -> Vec<Self> {
         let context = self.underlying(analyzer);
         context.forks.clone()
     }
 
+    /// Returns all *live* forks associated with the context
     pub fn live_forks(&self, analyzer: &impl AnalyzerLike) -> Vec<Self> {
         let context = self.underlying(analyzer);
         context
             .forks
             .iter()
-            .filter(|fork_ctx| fork_ctx.is_killed(analyzer))
+            .filter(|fork_ctx| !fork_ctx.is_killed(analyzer))
             .cloned()
             .collect()
     }
 
+    /// Adds a fork to the context
     pub fn add_fork(&self, fork: ContextNode, analyzer: &mut impl AnalyzerLike) {
         let context = self.underlying_mut(analyzer);
         context.add_fork(fork);
     }
 
+    /// Kills the context by denoting it as killed. Recurses up the contexts and kills
+    /// parent contexts if all subcontexts of that context are killed
     pub fn kill(&self, analyzer: &mut impl AnalyzerLike, kill_loc: Loc) {
         let context = self.underlying_mut(analyzer);
         context.killed = Some(kill_loc);
@@ -186,6 +202,7 @@ impl ContextNode {
         }
     }
 
+    /// Kills if and only if all subcontexts are killed
     pub fn kill_if_all_forks_killed(&self, analyzer: &mut impl AnalyzerLike, kill_loc: Loc) {
         let context = self.underlying(analyzer);
         if context
@@ -201,12 +218,39 @@ impl ContextNode {
         }
     }
 
+    /// Returns whether the context is killed
     pub fn is_killed(&self, analyzer: &impl AnalyzerLike) -> bool {
         self.underlying(analyzer).killed.is_some()
     }
 
+    /// Returns an option to where the context was killed
     pub fn killed_loc(&self, analyzer: &impl AnalyzerLike) -> Option<Loc> {
         self.underlying(analyzer).killed
+    }
+
+    /// Returns a vector of variable dependencies for this context
+    pub fn ctx_deps(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
+        self.underlying(analyzer).ctx_deps.clone()
+    }
+
+    /// Returns a vector of variable dependencies for this context
+    pub fn add_ctx_dep(&self, dep: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
+        if !dep.is_const(analyzer) {
+            let underlying = self.underlying_mut(analyzer);
+            underlying.ctx_deps.push(dep);
+            let mut deps = underlying.ctx_deps.clone();
+            deps.sort_by(|a, b| a.display_name(analyzer).cmp(&b.display_name(analyzer)));
+            deps.dedup_by(|a, b| a.display_name(analyzer) == b.display_name(analyzer));
+            self.underlying_mut(analyzer).ctx_deps = deps;
+        } 
+    }
+
+    pub fn set_return_node(&self, ret_stmt_loc: Loc, ret: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
+        self.underlying_mut(analyzer).ret = Some((ret_stmt_loc, ret));
+    }
+
+    pub fn return_node(&self, analyzer: &impl AnalyzerLike) -> Option<(Loc, ContextVarNode)> {
+        self.underlying(analyzer).ret
     }
 }
 
@@ -224,17 +268,31 @@ impl From<NodeIdx> for ContextNode {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
+    /// The function associated with this context
     pub parent_fn: FunctionNode,
+    /// An optional parent context (i.e. this context is a fork or subcontext of another previous context)
     pub parent_ctx: Option<ContextNode>,
+    /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
+    /// like an if statement
+    pub ctx_deps: Vec<ContextVarNode>,
+    /// A string that represents the path taken from the root context (i.e. `fn_entry.fork.1`)
     pub path: String,
+    /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement
     pub killed: Option<Loc>,
+    /// Denotes whether this context is a fork of another context
     pub is_fork: bool,
+    /// A vector of forks of this context
     pub forks: Vec<ContextNode>,
+    /// A counter for temporary variables - this lets a context create unique temporary variables
     pub tmp_var_ctr: usize,
+    /// The location in source of the context
     pub loc: Loc,
+    /// The return node and the return location
+    pub ret: Option<(Loc, ContextVarNode)>,
 }
 
 impl Context {
+    /// Creates a new context from a function
     pub fn new(parent_fn: FunctionNode, loc: Loc) -> Self {
         Context {
             parent_fn,
@@ -242,12 +300,15 @@ impl Context {
             path: "fn_entry".to_string(),
             tmp_var_ctr: 0,
             killed: None,
+            ctx_deps: vec![],
             is_fork: false,
             forks: vec![],
+            ret: None,
             loc,
         }
     }
 
+    /// Creates a new subcontext from an existing context
     pub fn new_subctx(
         parent_ctx: ContextNode,
         loc: Loc,
@@ -267,13 +328,16 @@ impl Context {
                 }
             ),
             is_fork,
+            ctx_deps: parent_ctx.underlying(analyzer).ctx_deps.clone(),
             killed: None,
             forks: vec![],
             tmp_var_ctr: 0,
+            ret: None,
             loc,
         }
     }
 
+    /// Add a fork to this context
     pub fn add_fork(&mut self, fork_node: ContextNode) {
         self.forks.push(fork_node);
     }
@@ -290,7 +354,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     ) where
         Self: Sized,
     {
-        // println!("stmt: {:?}\n", stmt);
+        println!("stmt: {:?}\n", stmt);
         if let Some(parent) = parent_ctx {
             match self.node(parent) {
                 Node::Context(_) => {
@@ -337,15 +401,16 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         ctx_node
                     }
                     Node::Context(_) => {
-                        let ctx = Context::new_subctx(
-                            ContextNode::from(parent.into()),
-                            *loc,
-                            false,
-                            self,
-                        );
-                        let ctx_node = self.add_node(Node::Context(ctx));
-                        self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Subcontext));
-                        ctx_node
+                        // let ctx = Context::new_subctx(
+                        //     ContextNode::from(parent.into()),
+                        //     *loc,
+                        //     false,
+                        //     self,
+                        // );
+                        // let ctx_node = self.add_node(Node::Context(ctx));
+                        // self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Subcontext));
+                        // ctx_node
+                        parent.into()
                     }
                     e => todo!(
                         "Expected a context to be created by a function or context but got: {:?}",
@@ -465,7 +530,17 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 block: _yul_block,
             } => {}
             Args(_loc, _args) => {}
-            If(_loc, _cond, _true_body, _maybe_false_body) => {}
+            If(loc, if_expr, true_expr, maybe_false_expr) => {
+                let ctx = ContextNode::from(parent_ctx.expect("Dangling if statement").into());
+                let forks = ctx.live_forks(self);
+                if forks.is_empty() {
+                    self.cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, ctx)
+                } else {
+                    forks.into_iter().for_each(|parent| {
+                        self.cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, parent.into())
+                    })
+                }
+            }
             While(_loc, _cond, _body) => {}
             Expression(_loc, expr) => {
                 if let Some(parent) = parent_ctx {
@@ -476,17 +551,20 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             DoWhile(_loc, _while_stmt, _while_expr) => {}
             Continue(_loc) => {}
             Break(_loc) => {}
-            Return(_loc, maybe_ret_expr) => {
+            Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
                         let forks = ContextNode::from(parent.into()).live_forks(self);
                         if forks.is_empty() {
                             let paths =
                                 self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into()));
+                            println!("return paths: {:?}", paths);
                             match paths {
                                 ExprRet::CtxKilled => {}
                                 ExprRet::Single((ctx, expr)) => {
+                                    println!("adding return: {:?}", ctx.path(self));
                                     self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
+                                    ctx.set_return_node(*loc, expr.into(), self);
                                 }
                                 ExprRet::Multi(rets) => {
                                     rets.into_iter().for_each(|expr_ret| {
@@ -496,6 +574,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                             ctx,
                                             Edge::Context(ContextEdge::Return),
                                         );
+                                        ctx.set_return_node(*loc, expr.into(), self);
                                     });
                                 }
                                 ExprRet::Fork(_world1, _world2) => {
@@ -514,6 +593,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                             ctx,
                                             Edge::Context(ContextEdge::Return),
                                         );
+                                        ctx.set_return_node(*loc, expr.into(), self);
                                     }
                                     ExprRet::Multi(rets) => {
                                         rets.into_iter().for_each(|expr_ret| {
@@ -523,6 +603,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                                 ctx,
                                                 Edge::Context(ContextEdge::Return),
                                             );
+                                            ctx.set_return_node(*loc, expr.into(), self);
                                         });
                                     }
                                     ExprRet::Fork(_world1, _world2) => {
@@ -587,9 +668,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             return ExprRet::CtxKilled;
         }
 
+        println!("has any forks: {}", ctx.forks(self).len());
         if ctx.live_forks(self).is_empty() {
+            println!("has no live forks");
             self.parse_ctx_expr_inner(expr, ctx)
         } else {
+            println!("has live forks");
             ctx.live_forks(self).iter().for_each(|fork_ctx| {
                 // println!("fork_ctx: {}\n", fork_ctx.underlying(self).path);
                 self.parse_ctx_expr_inner(expr, *fork_ctx);
@@ -600,7 +684,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        // println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
+        println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
         match expr {
             Variable(ident) => self.variable(ident, ctx),
             // literals
@@ -643,6 +727,18 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             AssignModulo(loc, lhs_expr, rhs_expr) => {
                 self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Mod, true)
             }
+            ShiftLeft(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Shl, false)
+            }
+            AssignShiftLeft(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Shl, true)
+            }
+            ShiftRight(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Shr, false)
+            }
+            AssignShiftRight(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, Op::Shr, true)
+            }
             ConditionalOperator(loc, if_expr, true_expr, false_expr) => {
                 self.cond_op_expr(*loc, if_expr, true_expr, false_expr, ctx)
             }
@@ -678,17 +774,35 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             MoreEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Gte, rhs, ctx),
 
             Not(loc, expr) => self.not(*loc, expr, ctx),
-            FunctionCall(_loc, func_expr, input_exprs) => {
+            FunctionCall(loc, func_expr, input_exprs) => {
                 let (_ctx, func_idx) = self.parse_ctx_expr(func_expr, ctx).expect_single();
-
-                if let Some(func_name) = &FunctionNode::from(func_idx).underlying(self).name {
-                    match &*func_name.name {
-                        "require" | "assert" => {
-                            self.handle_require(input_exprs, ctx);
-                            return ExprRet::Multi(vec![]);
+                match self.node(func_idx) {
+                    Node::Function(underlying) => {
+                        if let Some(func_name) = &underlying.name {
+                            match &*func_name.name {
+                                "require" | "assert" => {
+                                    self.handle_require(input_exprs, ctx);
+                                    return ExprRet::Multi(vec![]);
+                                }
+                                _ => {}
+                            }
                         }
-                        _ => {}
                     }
+                    Node::Builtin(_ty) => {
+                        // it is a cast
+                        let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                        
+                        let new_var = self.advance_var_in_ctx(cvar.into(), *loc, ctx);
+                        new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
+                        if let Some(r) = ContextVarNode::from(cvar).range(self) {
+                            // TODO: cast the ranges appropriately (set cap or convert to signed/unsigned concrete)
+                            new_var.set_range_min(self, r.range_min());
+                            new_var.set_range_max(self, r.range_max());    
+                        }
+                        return ExprRet::Single((ctx, new_var.into()))
+
+                    }
+                    _ => todo!()
                 }
 
                 let _inputs: Vec<_> = input_exprs
@@ -796,9 +910,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        // println!("assign ctx: {}", ctx.underlying(self).path);
-        // println!("lhs assign var: {}", lhs_cvar.display_name(self));
-        // println!("rhs assign var: {}", rhs_cvar.display_name(self));
         let (new_lower_bound, new_upper_bound) = if let Some(range) = rhs_cvar.range(self) {
             (range.range_min(), range.range_max())
         } else {
