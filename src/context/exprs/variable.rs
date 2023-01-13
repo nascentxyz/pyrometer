@@ -1,5 +1,5 @@
-use crate::ExprRet;
 use crate::AnalyzerLike;
+use crate::ExprRet;
 use crate::{ContextBuilder, ContextNode, Edge, Node};
 use solang_parser::pt::Identifier;
 
@@ -22,7 +22,7 @@ pub trait Variable: AnalyzerLike + Sized {
                 // };
 
                 // println!("var ctx: {}", ctx.underlying(self).path);
-                
+
                 // self.add_edge(
                 //     cvar_node,
                 //     ctx,

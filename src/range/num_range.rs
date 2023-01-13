@@ -1,8 +1,9 @@
 use crate::range::RangeSize;
-use ethers_core::types::I256;
 use crate::{
-    range::{DynamicRangeSide, Op, RangeElem}, ContextVarNode,
+    range::{DynamicRangeSide, Op, RangeElem},
+    ContextVarNode,
 };
+use ethers_core::types::I256;
 use ethers_core::types::U256;
 use solang_parser::pt::Loc;
 

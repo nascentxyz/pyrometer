@@ -590,14 +590,14 @@ contract Storage {
         // return k.a[s];
     }
 
-    // function b5(uint128 s) public returns (uint256) {
-    //     (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
+    function b5(uint128 s) public returns (uint256) {
+        (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
 
-    //     require(a < 10);
-    //     require(b < 7);
-    //     require(s < 7);
-    //     return b;
-    // }
+        require(a < 10);
+        require(b < 7);
+        require(s < 7);
+        return b;
+    }
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
@@ -613,10 +613,11 @@ contract Storage {
                 show_tmps: false,
                 show_consts: true,
                 show_subctxs: true,
+                show_initial_bounds: true,
             };
             let ctx = ContextNode::from(context);
             // let analysis = analyzer.bounds_for_var(ctx, "b".to_string(), config);
-            
+
             // // let mins =
             // //     analyzer.min_size_to_prevent_access_revert(ContextNode::from(context), config);
             // println!("array analyze time: {:?}", t.elapsed().as_nanos());

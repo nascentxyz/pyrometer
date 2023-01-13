@@ -1,7 +1,7 @@
+use crate::range::BuiltinElem;
 use crate::range::ElemEval;
 use crate::range::RangeSize;
-use crate::range::BuiltinElem;
-use crate::range::{LenRange, BuiltinRange, RangeElem};
+use crate::range::{BuiltinRange, LenRange, RangeElem};
 use crate::AnalyzerLike;
 use crate::ConcreteNode;
 use crate::Node;
@@ -75,7 +75,10 @@ impl VarType {
         // get node, check if typeable and convert idx into vartype
         match analyzer.node(node) {
             Node::VarType(a) => Some(a.clone()),
-            Node::Builtin(b) => Some(VarType::BuiltIn(node.into(), BuiltinRange::try_from_builtin(b))),
+            Node::Builtin(b) => Some(VarType::BuiltIn(
+                node.into(),
+                BuiltinRange::try_from_builtin(b),
+            )),
             Node::DynBuiltin(dyn_b) => match dyn_b {
                 DynBuiltin::Array(_) => Some(VarType::Array(
                     node.into(),
@@ -135,7 +138,10 @@ impl VarType {
 
     pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(BuiltinElem, BuiltinElem)> {
         if let Some(range) = self.range(analyzer) {
-            Some((range.range_min().eval(analyzer), range.range_max().eval(analyzer)))
+            Some((
+                range.range_min().eval(analyzer),
+                range.range_max().eval(analyzer),
+            ))
         } else {
             None
         }

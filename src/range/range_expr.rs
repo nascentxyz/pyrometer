@@ -1,6 +1,6 @@
+use crate::range::ElemEval;
 use crate::range::RangeSize;
 use crate::range::ToRangeString;
-use crate::range::ElemEval;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElem, RangeElemString, RangeString},
     AnalyzerLike, ContextVarNode, NodeIdx, VarType,
@@ -92,20 +92,22 @@ impl ElemEval for RangeExprElem {
             (SignedConcrete(val0, _), SignedConcrete(val1, _)) => val0 == val1,
             (Concrete(val0, _), SignedConcrete(val1, _)) => {
                 if val1 >= I256::from(0) {
-                    val0 == val1.into_raw()    
+                    val0 == val1.into_raw()
                 } else {
                     false
                 }
-            },
+            }
             (SignedConcrete(val0, _), Concrete(val1, _)) => {
                 if val0 >= I256::from(0) {
-                    val0.into_raw() == val1    
+                    val0.into_raw() == val1
                 } else {
                     false
                 }
-            },
-            (Dynamic(node0, side0, _), Dynamic(node1, side1, _)) => node0 == node1 && side0 == side1,
-            _ => false
+            }
+            (Dynamic(node0, side0, _), Dynamic(node1, side1, _)) => {
+                node0 == node1 && side0 == side1
+            }
+            _ => false,
         }
     }
 

@@ -1,33 +1,24 @@
-use crate::ExprRet;
+use crate::range::BoolRange;
+use crate::range::BuiltinRange;
 use crate::range::ElemEval;
 use crate::range::RangeSize;
-use crate::range::BuiltinRange;
-use crate::range::BoolRange;
+use crate::ExprRet;
 use crate::{
     range::Op, AnalyzerLike, BuiltInNode, Builtin, ContextBuilder, ContextNode, ContextVar,
     ContextVarNode, Node, TmpConstruction, VarType,
 };
 
-use std::cmp::Ordering;
 use solang_parser::pt::{Expression, Loc};
+use std::cmp::Ordering;
 
 impl<T> Cmp for T where T: AnalyzerLike + Sized {}
 pub trait Cmp: AnalyzerLike + Sized {
-    fn not(
-        &mut self,
-        loc: Loc,
-        lhs_expr: &Expression,
-        ctx: ContextNode,
-    ) -> ExprRet {
+    fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> ExprRet {
         let lhs = self.parse_ctx_expr(&lhs_expr, ctx);
         self.not_inner(loc, lhs)
     }
 
-    fn not_inner(
-        &mut self,
-        loc: Loc,
-        lhs_expr: ExprRet,
-    ) -> ExprRet {
+    fn not_inner(&mut self, loc: Loc, lhs_expr: ExprRet) -> ExprRet {
         match lhs_expr {
             ExprRet::CtxKilled => lhs_expr,
             ExprRet::Single((ctx, lhs)) => {
@@ -36,32 +27,26 @@ pub trait Cmp: AnalyzerLike + Sized {
 
                 let out_var = ContextVar {
                     loc: Some(loc),
-                    name: format!(
-                        "tmp{}(!{})",
-                        lhs_cvar.name(self),
-                        ctx.new_tmp(self)
-                    ),
-                    display_name: format!(
-                        "!{}",
-                        lhs_cvar.display_name(self),
-                    ),
+                    name: format!("tmp{}(!{})", lhs_cvar.name(self), ctx.new_tmp(self)),
+                    display_name: format!("!{}", lhs_cvar.display_name(self),),
                     storage: None,
                     is_tmp: true,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, Op::Not, None)),
-                    ty: VarType::BuiltIn(BuiltInNode::from(self.builtin_or_add(Builtin::Bool)), Some(range)),
+                    ty: VarType::BuiltIn(
+                        BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                        Some(range),
+                    ),
                 };
 
                 ExprRet::Single((ctx, self.add_node(Node::ContextVar(out_var))))
-            },
+            }
             ExprRet::Multi(f) => {
                 panic!("not: {:?}", f)
             }
-            ExprRet::Fork(world1, world2) => {
-                ExprRet::Fork(
-                    Box::new(self.not_inner(loc, *world1)),
-                    Box::new(self.not_inner(loc, *world2)),
-                )
-            }
+            ExprRet::Fork(world1, world2) => ExprRet::Fork(
+                Box::new(self.not_inner(loc, *world1)),
+                Box::new(self.not_inner(loc, *world2)),
+            ),
         }
     }
 
@@ -77,13 +62,7 @@ pub trait Cmp: AnalyzerLike + Sized {
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
-    fn cmp_inner(
-        &mut self,
-        loc: Loc,
-        lhs_paths: &ExprRet,
-        op: Op,
-        rhs_paths: &ExprRet,
-    ) -> ExprRet {
+    fn cmp_inner(&mut self, loc: Loc, lhs_paths: &ExprRet, op: Op, rhs_paths: &ExprRet) -> ExprRet {
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
@@ -107,38 +86,44 @@ pub trait Cmp: AnalyzerLike + Sized {
                     storage: None,
                     is_tmp: true,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
-                    ty: VarType::BuiltIn(BuiltInNode::from(self.builtin_or_add(Builtin::Bool)), Some(range)),
+                    ty: VarType::BuiltIn(
+                        BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                        Some(range),
+                    ),
                 };
 
                 ExprRet::Single((*ctx, self.add_node(Node::ContextVar(out_var))))
             }
-            (l @ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
-                ExprRet::Multi(
-                    rhs_sides.into_iter().map(|expr_ret| {
-                        self.cmp_inner(loc, l, op, expr_ret)
-                    }).collect()
-                )
-            }
-            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => {
-                ExprRet::Multi(
-                    lhs_sides.iter().map(|expr_ret| {
-                        self.cmp_inner(loc, expr_ret, op, r)
-                    }).collect()
-                )
-            }
+            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
+                rhs_sides
+                    .into_iter()
+                    .map(|expr_ret| self.cmp_inner(loc, l, op, expr_ret))
+                    .collect(),
+            ),
+            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => ExprRet::Multi(
+                lhs_sides
+                    .iter()
+                    .map(|expr_ret| self.cmp_inner(loc, expr_ret, op, r))
+                    .collect(),
+            ),
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
                     ExprRet::Multi(
-                        lhs_sides.into_iter().zip(rhs_sides.into_iter()).map(|(lhs_expr_ret, rhs_expr_ret)| {
-                            self.cmp_inner(loc, lhs_expr_ret, op, rhs_expr_ret)
-                        }).collect()
+                        lhs_sides
+                            .into_iter()
+                            .zip(rhs_sides.into_iter())
+                            .map(|(lhs_expr_ret, rhs_expr_ret)| {
+                                self.cmp_inner(loc, lhs_expr_ret, op, rhs_expr_ret)
+                            })
+                            .collect(),
                     )
                 } else {
                     ExprRet::Multi(
-                        rhs_sides.into_iter().map(|rhs_expr_ret| {
-                            self.cmp_inner(loc, lhs_paths, op, rhs_expr_ret)
-                        }).collect()
+                        rhs_sides
+                            .into_iter()
+                            .map(|rhs_expr_ret| self.cmp_inner(loc, lhs_paths, op, rhs_expr_ret))
+                            .collect(),
                     )
                 }
             }
@@ -146,27 +131,23 @@ pub trait Cmp: AnalyzerLike + Sized {
                 ExprRet::Fork(
                     Box::new(ExprRet::Fork(
                         Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world1)),
-                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world2))
+                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world2)),
                     )),
                     Box::new(ExprRet::Fork(
                         Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world1)),
-                        Box::new(self.cmp_inner(loc, lhs_world2, op,rhs_world2))
+                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world2)),
                     )),
                 )
             }
-            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => {
-                ExprRet::Fork(
-                    Box::new(self.cmp_inner(loc, l, op, world1)),
-                    Box::new(self.cmp_inner(loc, l, op, world2))
-                )
-            }
-            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => {
-                ExprRet::Fork(
-                    Box::new(self.cmp_inner(loc, m, op, world1)),
-                    Box::new(self.cmp_inner(loc, m, op, world2))
-                )
-            }
-            (e, f) => todo!("any: {:?} {:?}", e, f)
+            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, l, op, world1)),
+                Box::new(self.cmp_inner(loc, l, op, world2)),
+            ),
+            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, m, op, world1)),
+                Box::new(self.cmp_inner(loc, m, op, world2)),
+            ),
+            (e, f) => todo!("any: {:?} {:?}", e, f),
         }
     }
 
@@ -177,7 +158,7 @@ pub trait Cmp: AnalyzerLike + Sized {
             // invert
             if lhs_min.range_eq(&lhs_range.range_max(), self) {
                 if let Some(inv_lhs_min) = lhs_min.bool_elem().invert(loc) {
-                    BuiltinRange::Bool(BoolRange::from(inv_lhs_min))    
+                    BuiltinRange::Bool(BoolRange::from(inv_lhs_min))
                 } else {
                     BuiltinRange::Bool(BoolRange::default())
                 }
@@ -189,7 +170,12 @@ pub trait Cmp: AnalyzerLike + Sized {
         }
     }
 
-    fn range_eval(&self, lhs_cvar: ContextVarNode, rhs_cvar: ContextVarNode, op: Op) -> BuiltinRange {
+    fn range_eval(
+        &self,
+        lhs_cvar: ContextVarNode,
+        rhs_cvar: ContextVarNode,
+        op: Op,
+    ) -> BuiltinRange {
         if let Some(lhs_range) = lhs_cvar.range(self) {
             if let Some(rhs_range) = rhs_cvar.range(self) {
                 match op {
@@ -310,15 +296,19 @@ pub trait Cmp: AnalyzerLike + Sized {
                             // check lhs_min == rhs_min, checks if lhs == rhs
                             lhs_min.range_ord(&rhs_min),
                             // check rhs_min == rhs_max, ensures rhs is const
-                            rhs_min.range_ord(&rhs_max)
+                            rhs_min.range_ord(&rhs_max),
                         ) {
-                            (Some(Ordering::Equal), Some(Ordering::Equal), Some(Ordering::Equal)) => {
+                            (
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                            ) => {
                                 return BuiltinRange::from(true);
                             }
                             _ => {}
                         }
                     }
-                    e => unreachable!("Cmp with strange op: {:?}", e)
+                    e => unreachable!("Cmp with strange op: {:?}", e),
                 }
                 BuiltinRange::Bool(BoolRange::default())
             } else {

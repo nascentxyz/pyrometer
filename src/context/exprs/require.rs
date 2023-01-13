@@ -1,19 +1,23 @@
-use crate::range::RangeEval;
-use crate::ExprRet;
-use crate::range::RangeSize;
 use crate::range::BuiltinRange;
+use crate::range::RangeEval;
+use crate::range::RangeSize;
+use crate::ExprRet;
 use ethers_core::types::I256;
 
 use crate::{
     exprs::{BinOp, Variable},
-    range::{Op},
+    range::Op,
     AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ContextNode, ContextVar, ContextVarNode,
     Node, TmpConstruction,
 };
 use solang_parser::pt::{Expression, Loc};
 
 type RequireRangeFn = &'static dyn Fn(BuiltinRange, BuiltinRange) -> BuiltinRange;
-type RequireRangeFns = (RequireRangeFn, (RequireRangeFn, RequireRangeFn), RequireRangeFn);
+type RequireRangeFns = (
+    RequireRangeFn,
+    (RequireRangeFn, RequireRangeFn),
+    RequireRangeFn,
+);
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
 pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
@@ -25,7 +29,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx);
                 let fns = (
                     &BuiltinRange::lt as RequireRangeFn,
-                    (&BuiltinRange::gte as RequireRangeFn, &BuiltinRange::lte as RequireRangeFn),
+                    (
+                        &BuiltinRange::gte as RequireRangeFn,
+                        &BuiltinRange::lte as RequireRangeFn,
+                    ),
                     &BuiltinRange::gt as RequireRangeFn,
                 );
                 self.handle_require_inner(*loc, &lhs_paths, &rhs_paths, fns);
@@ -35,10 +42,13 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx);
                 let fns = (
                     &BuiltinRange::gt as RequireRangeFn,
-                    (&BuiltinRange::lte as RequireRangeFn, &BuiltinRange::gte as RequireRangeFn),
+                    (
+                        &BuiltinRange::lte as RequireRangeFn,
+                        &BuiltinRange::gte as RequireRangeFn,
+                    ),
                     &BuiltinRange::lt as RequireRangeFn,
                 );
-                    
+
                 self.handle_require_inner(*loc, &lhs_paths, &rhs_paths, fns);
             }
             Expression::MoreEqual(loc, lhs, rhs) => {
@@ -46,7 +56,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx);
                 let fns = (
                     &BuiltinRange::gte as RequireRangeFn,
-                    (&BuiltinRange::lte as RequireRangeFn, &BuiltinRange::gte as RequireRangeFn),
+                    (
+                        &BuiltinRange::lte as RequireRangeFn,
+                        &BuiltinRange::gte as RequireRangeFn,
+                    ),
                     &BuiltinRange::lte as RequireRangeFn,
                 );
                 self.handle_require_inner(*loc, &lhs_paths, &rhs_paths, fns);
@@ -56,7 +69,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx);
                 let fns = (
                     &BuiltinRange::lte as RequireRangeFn,
-                    (&BuiltinRange::gte as RequireRangeFn, &BuiltinRange::lte as RequireRangeFn),
+                    (
+                        &BuiltinRange::gte as RequireRangeFn,
+                        &BuiltinRange::lte as RequireRangeFn,
+                    ),
                     &BuiltinRange::gte as RequireRangeFn,
                 );
                 self.handle_require_inner(*loc, &lhs_paths, &rhs_paths, fns);
@@ -77,8 +93,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         fns: RequireRangeFns,
     ) {
         match (lhs_paths, rhs_paths) {
-            (_, ExprRet::CtxKilled) => {},
-            (ExprRet::CtxKilled, _) => {},
+            (_, ExprRet::CtxKilled) => {}
+            (ExprRet::CtxKilled, _) => {}
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
@@ -107,33 +123,35 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     );
                 }
             }
-            (l @ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
-                rhs_sides.into_iter().for_each(|expr_ret| {
-                    self.handle_require_inner(loc, l, expr_ret, fns)
-                });
+            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
+                rhs_sides
+                    .into_iter()
+                    .for_each(|expr_ret| self.handle_require_inner(loc, l, expr_ret, fns));
             }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => {
-                lhs_sides.iter().for_each(|expr_ret| {
-                    self.handle_require_inner(loc, expr_ret, r, fns)
-                });
+                lhs_sides
+                    .iter()
+                    .for_each(|expr_ret| self.handle_require_inner(loc, expr_ret, r, fns));
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    lhs_sides.into_iter().zip(rhs_sides.into_iter()).for_each(|(lhs_expr_ret, rhs_expr_ret)| {
-                        self.handle_require_inner(loc, lhs_expr_ret, rhs_expr_ret, fns)
-                    });
+                    lhs_sides.into_iter().zip(rhs_sides.into_iter()).for_each(
+                        |(lhs_expr_ret, rhs_expr_ret)| {
+                            self.handle_require_inner(loc, lhs_expr_ret, rhs_expr_ret, fns)
+                        },
+                    );
                 } else {
-                        rhs_sides.into_iter().for_each(|rhs_expr_ret| {
-                            self.handle_require_inner(loc, lhs_paths, rhs_expr_ret, fns)
-                        });
+                    rhs_sides.into_iter().for_each(|rhs_expr_ret| {
+                        self.handle_require_inner(loc, lhs_paths, rhs_expr_ret, fns)
+                    });
                 }
             }
             (ExprRet::Fork(lhs_world1, lhs_world2), ExprRet::Fork(rhs_world1, rhs_world2)) => {
-                    self.handle_require_inner(loc, lhs_world1, rhs_world1, fns);
-                    self.handle_require_inner(loc, lhs_world1, rhs_world2, fns);
-                    self.handle_require_inner(loc, lhs_world2, rhs_world1, fns);
-                    self.handle_require_inner(loc, lhs_world2, rhs_world2, fns);
+                self.handle_require_inner(loc, lhs_world1, rhs_world1, fns);
+                self.handle_require_inner(loc, lhs_world1, rhs_world2, fns);
+                self.handle_require_inner(loc, lhs_world2, rhs_world1, fns);
+                self.handle_require_inner(loc, lhs_world2, rhs_world2, fns);
             }
             (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => {
                 self.handle_require_inner(loc, l, world1, fns);
@@ -143,7 +161,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 self.handle_require_inner(loc, m, world1, fns);
                 self.handle_require_inner(loc, m, world2, fns);
             }
-            (e, f) => todo!("any: {:?} {:?}", e, f)
+            (e, f) => todo!("any: {:?} {:?}", e, f),
         }
     }
 
@@ -166,7 +184,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 new_lhs.set_range_min(self, new_lhs_range.range_min());
                 new_lhs.set_range_max(self, new_lhs_range.range_max());
 
-
                 let new_rhs_range = rhs_range_fn(rhs_range, lhs_range.clone());
                 new_rhs.set_range_min(self, new_rhs_range.range_min());
                 new_rhs.set_range_max(self, new_rhs_range.range_max());
@@ -180,9 +197,16 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
         }
 
-
         if let Some(tmp) = lhs_cvar.tmp_of(self) {
-            self.range_recursion(tmp, lhs_range_fn, inversion_fns, rhs_cvar, ctx, loc, &mut any_unsat)
+            self.range_recursion(
+                tmp,
+                lhs_range_fn,
+                inversion_fns,
+                rhs_cvar,
+                ctx,
+                loc,
+                &mut any_unsat,
+            )
         }
     }
 
@@ -207,7 +231,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     ctx,
                     tmp_construction.op.inverse(),
                     false,
-                ).expect_single().1,
+                )
+                .expect_single()
+                .1,
             );
             let new_underlying_lhs = self.advance_var_in_ctx(tmp_construction.lhs, loc, ctx);
             if let Some(lhs_range) = new_underlying_lhs.underlying(self).ty.range(self) {
@@ -229,7 +255,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             adjusted_gt_rhs,
                             ctx,
                             loc,
-                            any_unsat
+                            any_unsat,
                         );
                     }
                 }
@@ -246,9 +272,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                                 .index(),
                         );
                         let lhs_cvar = ContextVar::new_from_concrete(loc, concrete, self);
-                        let tmp_lhs = ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
+                        let tmp_lhs =
+                            ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
                         let tmp_rhs = ContextVarNode::from(
-                            self.op(loc, rhs_cvar, tmp_lhs, ctx, Op::Mul, false).expect_single().1,
+                            self.op(loc, rhs_cvar, tmp_lhs, ctx, Op::Mul, false)
+                                .expect_single()
+                                .1,
                         );
                         let new_rhs = ContextVarNode::from(
                             self.op(
@@ -258,7 +287,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                                 ctx,
                                 tmp_construction.op.inverse(),
                                 false,
-                            ).expect_single().1,
+                            )
+                            .expect_single()
+                            .1,
                         );
                         (true, new_rhs)
                     }
@@ -271,7 +302,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                                 ctx,
                                 tmp_construction.op.inverse(),
                                 false,
-                            ).expect_single().1,
+                            )
+                            .expect_single()
+                            .1,
                         );
                         (false, new_rhs)
                     }
@@ -303,7 +336,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                                 adjusted_gt_rhs,
                                 ctx,
                                 loc,
-                                any_unsat
+                                any_unsat,
                             );
                         }
                     }

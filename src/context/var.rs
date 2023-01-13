@@ -1,8 +1,8 @@
-use crate::ContextNode;
-use crate::Search;
 use crate::range::BuiltinElem;
 use crate::range::BuiltinRange;
 use crate::range::RangeSize;
+use crate::ContextNode;
+use crate::Search;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElem},
     AnalyzerLike, ConcreteNode, ContextEdge, Edge, Field, FunctionParam, FunctionReturn, Node,
@@ -64,24 +64,24 @@ impl ContextVarNode {
     }
 
     pub fn ctx<'a>(&self, analyzer: &'a (impl AnalyzerLike + Search)) -> ContextNode {
-        ContextNode::from(analyzer.search_for_ancestor(
-            self.0.into(),
-            &Edge::Context(ContextEdge::Variable)
+        ContextNode::from(
+            analyzer
+                .search_for_ancestor(self.0.into(), &Edge::Context(ContextEdge::Variable))
+                .into_iter()
+                .take(1)
+                .next()
+                .expect("No associated ctx"),
         )
-            .into_iter()
-            .take(1)
-            .next()
-            .expect("No associated ctx"))
     }
 
     pub fn maybe_ctx<'a>(&self, analyzer: &'a (impl AnalyzerLike + Search)) -> Option<ContextNode> {
-        Some(ContextNode::from(analyzer.search_for_ancestor(
-            self.0.into(),
-            &Edge::Context(ContextEdge::Variable)
-        )
-            .into_iter()
-            .take(1)
-            .next()?))
+        Some(ContextNode::from(
+            analyzer
+                .search_for_ancestor(self.0.into(), &Edge::Context(ContextEdge::Variable))
+                .into_iter()
+                .take(1)
+                .next()?,
+        ))
     }
 
     pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
@@ -95,13 +95,9 @@ impl ContextVarNode {
     pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<BuiltinRange> {
         match &self.underlying(analyzer).ty {
             VarType::BuiltIn(_bn, Some(r)) => Some(r.clone()),
-            VarType::BuiltIn(bn, None) => {
-                BuiltinRange::try_from_builtin(bn.underlying(analyzer))
-            },
-            VarType::Concrete(cn) => {
-                Some(BuiltinRange::from(cn.underlying(analyzer).clone()))
-            },
-            _ => None
+            VarType::BuiltIn(bn, None) => BuiltinRange::try_from_builtin(bn.underlying(analyzer)),
+            VarType::Concrete(cn) => Some(BuiltinRange::from(cn.underlying(analyzer).clone())),
+            _ => None,
         }
     }
 
@@ -134,12 +130,14 @@ impl ContextVarNode {
 
     pub fn set_range_min(&self, analyzer: &mut impl AnalyzerLike, new_min: BuiltinElem) {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
-        self.underlying_mut(analyzer).set_range_min(new_min, fallback);
+        self.underlying_mut(analyzer)
+            .set_range_min(new_min, fallback);
     }
 
     pub fn set_range_max(&self, analyzer: &mut impl AnalyzerLike, new_max: BuiltinElem) {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
-        self.underlying_mut(analyzer).set_range_max(new_max, fallback)
+        self.underlying_mut(analyzer)
+            .set_range_max(new_max, fallback)
     }
 
     pub fn latest_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Self {
@@ -191,7 +189,7 @@ impl ContextVarNode {
         if let Some(tmp) = underlying.tmp_of() {
             let mut nodes = tmp.lhs.dependent_on(analyzer, true);
             if let Some(rhs) = tmp.rhs {
-                nodes.extend(rhs.dependent_on(analyzer, true));    
+                nodes.extend(rhs.dependent_on(analyzer, true));
             }
             nodes
         } else if return_self {
@@ -268,7 +266,7 @@ impl ContextVar {
                     }
                 }
             }
-            VarType::Concrete(cn) => { Some(BuiltinRange::from(cn.underlying(analyzer).clone())) }
+            VarType::Concrete(cn) => Some(BuiltinRange::from(cn.underlying(analyzer).clone())),
             e => panic!("wasnt builtin: {:?}", e),
         }
     }

@@ -1,11 +1,9 @@
-use crate::range::RangeSize;
 use crate::range::BuiltinRange;
+use crate::range::RangeSize;
 use crate::AnalyzerLike;
 use crate::{
-    range::{Op},
-    ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, Node,
-    TmpConstruction,
-    ExprRet
+    range::Op, ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, ExprRet,
+    Node, TmpConstruction,
 };
 
 use solang_parser::pt::{Expression, Loc};
@@ -29,47 +27,58 @@ pub trait BinOp: AnalyzerLike + Sized {
                 let rhs_cvar = ContextVarNode::from(rhs);
                 let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
                 if lhs_ctx != rhs_ctx {
-                    ExprRet::Multi(vec![all_vars, self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign)])
+                    ExprRet::Multi(vec![
+                        all_vars,
+                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
+                    ])
                 } else {
                     all_vars
                 }
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => {
-                ExprRet::Multi(
-                    rhs_sides.iter().map(|expr_ret| {
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
+                rhs_sides
+                    .iter()
+                    .map(|expr_ret| {
                         let (rhs_ctx, rhs) = expr_ret.expect_single();
                         let lhs_cvar = ContextVarNode::from(lhs);
                         let rhs_cvar = ContextVarNode::from(rhs);
                         let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
                         if lhs_ctx != rhs_ctx {
-                            ExprRet::Multi(vec![all_vars, self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign)])
+                            ExprRet::Multi(vec![
+                                all_vars,
+                                self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
+                            ])
                         } else {
                             all_vars
                         }
-                    }).collect()
-                )
-            }
-            (ExprRet::Multi(lhs_sides), ExprRet::Single((rhs_ctx, rhs))) => {
-                ExprRet::Multi(
-                    lhs_sides.iter().map(|expr_ret| {
+                    })
+                    .collect(),
+            ),
+            (ExprRet::Multi(lhs_sides), ExprRet::Single((rhs_ctx, rhs))) => ExprRet::Multi(
+                lhs_sides
+                    .iter()
+                    .map(|expr_ret| {
                         let (lhs_ctx, lhs) = expr_ret.expect_single();
                         let lhs_cvar = ContextVarNode::from(lhs);
                         let rhs_cvar = ContextVarNode::from(rhs);
                         let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
                         if lhs_ctx != rhs_ctx {
-                            ExprRet::Multi(vec![all_vars, self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign)])
+                            ExprRet::Multi(vec![
+                                all_vars,
+                                self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
+                            ])
                         } else {
                             all_vars
                         }
-                    }).collect()
-                )
-            }
+                    })
+                    .collect(),
+            ),
             (ExprRet::Multi(_lhs_sides), ExprRet::Multi(_rhs_sides)) => {
                 todo!("here")
             }
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (_, _) => todo!()
+            (_, _) => todo!(),
         }
         // lhs_paths.into_iter().flat_map(|lhs_expr_ret| {
         //     let (lhs_ctx, lhs) = lhs_expr_ret.expect_single();
@@ -130,7 +139,9 @@ pub trait BinOp: AnalyzerLike + Sized {
         let lhs_range = if let Some(lhs_range) = new_lhs.range(self) {
             lhs_range
         } else {
-            rhs_cvar.range(self).expect("Neither lhs nor rhs had a usable range")
+            rhs_cvar
+                .range(self)
+                .expect("Neither lhs nor rhs had a usable range")
         };
 
         let (func, range_sides) = BuiltinRange::dyn_fn_from_op(op);

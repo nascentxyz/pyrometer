@@ -1,10 +1,9 @@
-use crate::range::RangeSize;
 use crate::range::BuiltinRange;
-use crate::range::ToRangeString;
 use crate::range::ElemEval;
+use crate::range::RangeSize;
+use crate::range::ToRangeString;
 use crate::{
-    AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay,
-    Search,
+    AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay, Search,
 };
 
 use ariadne::{Color, Fmt, Label, Report, ReportKind, Source, Span};
@@ -28,23 +27,35 @@ impl ReportDisplay for BoundAnalysis {
         format!("Bounds for {} in {}:", self.var_display_name, self.ctx_path)
     }
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
-        let mut labels = if let Some(init_range) = &self.var_def.1 {
-            vec![Label::new(self.var_def.0)
-                .with_message(format!(
-                    "\"{}\" ∈ {{{}, {}}}",
-                    self.var_display_name,
-                    if self.report_config.eval_bounds {
-                        init_range.range_min().eval(analyzer).to_range_string(analyzer).s
-                    } else {
-                        init_range.range_min().to_range_string(analyzer).s
-                    },
-                    if self.report_config.eval_bounds {
-                        init_range.range_max().eval(analyzer).to_range_string(analyzer).s
-                    } else {
-                        init_range.range_max().to_range_string(analyzer).s
-                    }
-                ))
-                .with_color(Color::Magenta)]
+        let mut labels = if self.report_config.show_initial_bounds {
+            if let Some(init_range) = &self.var_def.1 {
+                vec![Label::new(self.var_def.0)
+                    .with_message(format!(
+                        "\"{}\" ∈ {{{}, {}}}",
+                        self.var_display_name,
+                        if self.report_config.eval_bounds {
+                            init_range
+                                .range_min()
+                                .eval(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else {
+                            init_range.range_min().to_range_string(analyzer).s
+                        },
+                        if self.report_config.eval_bounds {
+                            init_range
+                                .range_max()
+                                .eval(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else {
+                            init_range.range_max().to_range_string(analyzer).s
+                        }
+                    ))
+                    .with_color(Color::Magenta)]
+            } else {
+                vec![]
+            }
         } else {
             vec![]
         };
@@ -118,7 +129,8 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         report_config: ReportConfig,
     ) -> Vec<BoundAnalysis> {
         if let Some(cvar) = ctx.var_by_name(self, &var_name) {
-            let mut analyses = vec![self.bounds_for_var_node(var_name.clone(), cvar, report_config)];
+            let mut analyses =
+                vec![self.bounds_for_var_node(var_name.clone(), cvar, report_config)];
             if report_config.show_subctxs {
                 let mut subctxs = ctx.subcontexts(self);
                 subctxs.sort();
@@ -131,7 +143,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                         .flat_map(|sub_ctx| {
                             self.bounds_for_var(sub_ctx, var_name.clone(), report_config)
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>(),
                 );
             }
 
@@ -252,16 +264,21 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
     }
 
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
-        let mut labels: Vec<_> = self.vars
+        let mut labels: Vec<_> = self
+            .vars
             .iter()
-            .flat_map(|(_name, bound_analysis)| bound_analysis.iter().flat_map(|analysis| analysis.labels(analyzer)))
+            .flat_map(|(_name, bound_analysis)| {
+                bound_analysis
+                    .iter()
+                    .flat_map(|analysis| analysis.labels(analyzer))
+            })
             .collect();
 
         if let Some(killed_span) = self.ctx_killed {
             labels.push(
                 Label::new(killed_span)
                     .with_message("Execution guaranteed to revert here!".fg(Color::Red))
-                    .with_color(Color::Red)
+                    .with_color(Color::Red),
             )
         }
         labels
@@ -278,8 +295,6 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
         for label in self.labels(analyzer).into_iter() {
             report = report.with_label(label);
         }
-
-
 
         report.finish()
     }
@@ -306,18 +321,12 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                 |var| match (report_config.show_tmps, report_config.show_consts) {
                     (true, true) => {
                         let name = var.name(self);
-                        Some((
-                            name.clone(),
-                            self.bounds_for_var(ctx, name, report_config),
-                        ))
+                        Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
                     }
                     (true, false) => {
                         if !var.is_const(self) {
                             let name = var.name(self);
-                            Some((
-                                name.clone(),
-                                self.bounds_for_var(ctx, name, report_config),
-                            ))
+                            Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
                         } else {
                             None
                         }
@@ -325,10 +334,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     (false, true) => {
                         if !var.is_tmp(self) {
                             let name = var.name(self);
-                            Some((
-                                name.clone(),
-                                self.bounds_for_var(ctx, name, report_config),
-                            ))
+                            Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
                         } else {
                             None
                         }
@@ -336,10 +342,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     (false, false) => {
                         if !var.is_tmp(self) && !var.is_const(self) {
                             let name = var.name(self);
-                            Some((
-                                name.clone(),
-                                self.bounds_for_var(ctx, name, report_config),
-                            ))
+                            Some((name.clone(), self.bounds_for_var(ctx, name, report_config)))
                         } else {
                             None
                         }
@@ -350,7 +353,11 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         FunctionVarsBoundAnalysis {
             ctx_loc: LocSpan(ctx.underlying(self).loc),
             ctx,
-            ctx_killed: if let Some(loc) = ctx.killed_loc(self) { Some(LocSpan(loc)) } else { None },
+            ctx_killed: if let Some(loc) = ctx.killed_loc(self) {
+                Some(LocSpan(loc))
+            } else {
+                None
+            },
             vars: analyses,
         }
     }

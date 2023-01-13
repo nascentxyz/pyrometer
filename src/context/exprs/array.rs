@@ -67,7 +67,7 @@ pub trait Array: AnalyzerLike + Sized {
 
                 ExprRet::Single((lhs_ctx, cvar_idx))
             }
-            _ => todo!("here")
+            _ => todo!("here"),
         }
     }
 }

@@ -1,14 +1,14 @@
-use crate::range::RangeString;
-use crate::ContextVarNode;
-use crate::range::RangeElemString;
-use crate::range::ToRangeString;
 use crate::range::DynamicRangeSide;
-use crate::NodeIdx;
-use solang_parser::pt::Loc;
 use crate::range::ElemEval;
-use crate::AnalyzerLike;
-use crate::VarType;
+use crate::range::RangeElemString;
 use crate::range::RangeSize;
+use crate::range::RangeString;
+use crate::range::ToRangeString;
+use crate::AnalyzerLike;
+use crate::ContextVarNode;
+use crate::NodeIdx;
+use crate::VarType;
+use solang_parser::pt::Loc;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct BoolRange {
@@ -36,10 +36,7 @@ impl From<bool> for BoolRange {
 
 impl From<BoolElem> for BoolRange {
     fn from(b: BoolElem) -> Self {
-        Self {
-            min: b,
-            max: b,
-        }
+        Self { min: b, max: b }
     }
 }
 
@@ -47,16 +44,16 @@ impl From<BoolElem> for BoolRange {
 pub enum BoolElem {
     True(Loc),
     False(Loc),
-    Dynamic(NodeIdx, DynamicRangeSide, Loc)
+    Dynamic(NodeIdx, DynamicRangeSide, Loc),
 }
 
 impl BoolElem {
     pub fn set_loc(&mut self, loc: Loc) {
         use BoolElem::*;
         match self {
-            True(ref mut curr_loc)
-            | False(ref mut curr_loc)
-            | Dynamic(_, _, ref mut curr_loc) => *curr_loc = loc,
+            True(ref mut curr_loc) | False(ref mut curr_loc) | Dynamic(_, _, ref mut curr_loc) => {
+                *curr_loc = loc
+            }
         }
     }
 
@@ -65,7 +62,7 @@ impl BoolElem {
         match self {
             True(_) => Some(False(new_loc)),
             False(_) => Some(True(new_loc)),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -80,12 +77,12 @@ impl ElemEval for BoolElem {
                     VarType::BuiltIn(_, maybe_range) => {
                         if let Some(range) = maybe_range {
                             match range_side {
-                                DynamicRangeSide::Min => {
-                                    Self::from(range.bool_range().range_min().clone().eval(analyzer))
-                                }
-                                DynamicRangeSide::Max => {
-                                    Self::from(range.bool_range().range_max().clone().eval(analyzer))
-                                }
+                                DynamicRangeSide::Min => Self::from(
+                                    range.bool_range().range_min().clone().eval(analyzer),
+                                ),
+                                DynamicRangeSide::Max => Self::from(
+                                    range.bool_range().range_max().clone().eval(analyzer),
+                                ),
                             }
                         } else {
                             self.clone()
@@ -102,7 +99,7 @@ impl ElemEval for BoolElem {
                     _ => self.clone(),
                 }
             }
-            _ => self.clone()
+            _ => self.clone(),
         }
     }
 
@@ -112,7 +109,7 @@ impl ElemEval for BoolElem {
             (True(_), True(_)) => true,
             (False(_), False(_)) => true,
             (Dynamic(idx0, side0, _), Dynamic(idx1, side1, _)) => idx0 == idx1 && side0 == side1,
-            _ => false
+            _ => false,
         }
     }
 
@@ -123,7 +120,7 @@ impl ElemEval for BoolElem {
             (False(_), False(_)) => Some(std::cmp::Ordering::Equal),
             (True(_), False(_)) => Some(std::cmp::Ordering::Greater),
             (False(_), True(_)) => Some(std::cmp::Ordering::Less),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -186,7 +183,6 @@ impl ToRangeString for BoolElem {
                 RangeElemString::new(name, *loc)
             }
         }
-
     }
     fn bounds_range_string(&self, analyzer: &impl AnalyzerLike) -> Vec<RangeString> {
         use BoolElem::*;
@@ -210,6 +206,5 @@ impl ToRangeString for BoolElem {
         }
 
         range_strings
-
     }
 }

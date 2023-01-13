@@ -1,10 +1,10 @@
 use crate::range::ElemEval;
-use crate::VarType;
 use crate::range::RangeSize;
+use crate::VarType;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElem},
     AnalyzerLike, Builtin, Edge, FunctionNode, FunctionParamNode, FunctionReturnNode, Node,
-    NodeIdx
+    NodeIdx,
 };
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Loc, Statement};
@@ -29,14 +29,14 @@ impl ExprRet {
     pub fn expect_single(&self) -> (ContextNode, NodeIdx) {
         match self {
             ExprRet::Single(inner) => *inner,
-            _ => panic!("Expected a single return got multiple")
+            _ => panic!("Expected a single return got multiple"),
         }
     }
 
     pub fn expect_multi(self) -> Vec<ExprRet> {
         match self {
             ExprRet::Multi(inner) => inner,
-            _ => panic!("Expected a multi return got single")
+            _ => panic!("Expected a multi return got single"),
         }
     }
 }
@@ -79,7 +79,11 @@ impl ContextNode {
     }
 
     pub fn subcontexts(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<ContextNode> {
-        analyzer.search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext)).into_iter().map(|idx| ContextNode::from(idx)).collect()
+        analyzer
+            .search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext))
+            .into_iter()
+            .map(|idx| ContextNode::from(idx))
+            .collect()
     }
 
     pub fn associated_fn(&self, analyzer: &(impl AnalyzerLike + Search)) -> FunctionNode {
@@ -111,7 +115,8 @@ impl ContextNode {
     }
 
     pub fn var_by_name(&self, analyzer: &impl AnalyzerLike, name: &str) -> Option<ContextVarNode> {
-        analyzer.search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
+        analyzer
+            .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
             .into_iter()
             .filter_map(|cvar_node| {
                 let cvar_node = ContextVarNode::from(cvar_node);
@@ -127,7 +132,8 @@ impl ContextNode {
     }
 
     pub fn vars(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
-        analyzer.search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
+        analyzer
+            .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
             .into_iter()
             .map(|idx| ContextVarNode::from(idx))
             .collect()
@@ -159,7 +165,12 @@ impl ContextNode {
 
     pub fn live_forks(&self, analyzer: &impl AnalyzerLike) -> Vec<Self> {
         let context = self.underlying(analyzer);
-        context.forks.iter().filter(|fork_ctx| fork_ctx.is_killed(analyzer)).cloned().collect()
+        context
+            .forks
+            .iter()
+            .filter(|fork_ctx| fork_ctx.is_killed(analyzer))
+            .cloned()
+            .collect()
     }
 
     pub fn add_fork(&self, fork: ContextNode, analyzer: &mut impl AnalyzerLike) {
@@ -177,7 +188,11 @@ impl ContextNode {
 
     pub fn kill_if_all_forks_killed(&self, analyzer: &mut impl AnalyzerLike, kill_loc: Loc) {
         let context = self.underlying(analyzer);
-        if context.forks.iter().all(|fork_ctx| fork_ctx.is_killed(analyzer)) {
+        if context
+            .forks
+            .iter()
+            .all(|fork_ctx| fork_ctx.is_killed(analyzer))
+        {
             let context = self.underlying_mut(analyzer);
             context.killed = Some(kill_loc);
             if let Some(parent_ctx) = context.parent_ctx {
@@ -233,11 +248,24 @@ impl Context {
         }
     }
 
-    pub fn new_subctx(parent_ctx: ContextNode, loc: Loc, is_fork: bool, analyzer: &impl AnalyzerLike) -> Self {
+    pub fn new_subctx(
+        parent_ctx: ContextNode,
+        loc: Loc,
+        is_fork: bool,
+        analyzer: &impl AnalyzerLike,
+    ) -> Self {
         Context {
             parent_fn: parent_ctx.underlying(analyzer).parent_fn.clone(),
             parent_ctx: Some(parent_ctx),
-            path: format!("{}.{}", parent_ctx.underlying(analyzer).path, if is_fork { format!("fork.{}", parent_ctx.underlying(analyzer).forks.len()) } else { "child".to_string() }),
+            path: format!(
+                "{}.{}",
+                parent_ctx.underlying(analyzer).path,
+                if is_fork {
+                    format!("fork.{}", parent_ctx.underlying(analyzer).forks.len())
+                } else {
+                    "child".to_string()
+                }
+            ),
             is_fork,
             killed: None,
             forks: vec![],
@@ -278,21 +306,18 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         });
                     }
                 }
-                _ => {
-                    self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx)
-                }
+                _ => self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx),
             }
         } else {
             self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx)
         }
-        
     }
 
     fn parse_ctx_stmt_inner(
         &mut self,
         stmt: &Statement,
         _unchecked: bool,
-        parent_ctx: Option<impl Into<NodeIdx> + Clone + Copy>
+        parent_ctx: Option<impl Into<NodeIdx> + Clone + Copy>,
     ) where
         Self: Sized,
     {
@@ -312,14 +337,21 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         ctx_node
                     }
                     Node::Context(_) => {
-                        let ctx = Context::new_subctx(ContextNode::from(parent.into()), *loc, false, self);
+                        let ctx = Context::new_subctx(
+                            ContextNode::from(parent.into()),
+                            *loc,
+                            false,
+                            self,
+                        );
                         let ctx_node = self.add_node(Node::Context(ctx));
                         self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Subcontext));
                         ctx_node
                     }
-                    e => todo!("Expected a context to be created by a function or context but got: {:?}", e),
+                    e => todo!(
+                        "Expected a context to be created by a function or context but got: {:?}",
+                        e
+                    ),
                 };
-
 
                 // optionally add named input and named outputs into context
                 self.graph()
@@ -364,20 +396,23 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
                 let forks = ContextNode::from(ctx_node).live_forks(self);
                 if forks.is_empty() {
-                    statements
-                        .iter()
-                        .for_each(|stmt| self.parse_ctx_statement(stmt, *unchecked, Some(ctx_node)));  
+                    statements.iter().for_each(|stmt| {
+                        self.parse_ctx_statement(stmt, *unchecked, Some(ctx_node))
+                    });
                 } else {
                     forks.into_iter().for_each(|fork| {
-                        statements
-                            .iter()
-                            .for_each(|stmt| self.parse_ctx_statement(stmt, *unchecked, Some(fork)));
+                        statements.iter().for_each(|stmt| {
+                            self.parse_ctx_statement(stmt, *unchecked, Some(fork))
+                        });
                     });
                 }
-                
             }
             VariableDefinition(loc, var_decl, maybe_expr) => {
-                let ctx = ContextNode::from(parent_ctx.expect("No context for variable definition?").into());
+                let ctx = ContextNode::from(
+                    parent_ctx
+                        .expect("No context for variable definition?")
+                        .into(),
+                );
                 let forks = ctx.live_forks(self);
                 if forks.is_empty() {
                     let name = var_decl.name.clone().expect("Variable wasn't named");
@@ -422,7 +457,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         }
                     });
                 }
-                
             }
             Assembly {
                 loc: _,
@@ -450,14 +484,18 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                             let paths =
                                 self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into()));
                             match paths {
-                                ExprRet::CtxKilled => {},
+                                ExprRet::CtxKilled => {}
                                 ExprRet::Single((ctx, expr)) => {
                                     self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
                                 }
                                 ExprRet::Multi(rets) => {
                                     rets.into_iter().for_each(|expr_ret| {
                                         let (ctx, expr) = expr_ret.expect_single();
-                                        self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
+                                        self.add_edge(
+                                            expr,
+                                            ctx,
+                                            Edge::Context(ContextEdge::Return),
+                                        );
                                     });
                                 }
                                 ExprRet::Fork(_world1, _world2) => {
@@ -469,14 +507,22 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                 let paths =
                                     self.parse_ctx_expr(ret_expr, ContextNode::from(parent));
                                 match paths {
-                                    ExprRet::CtxKilled => {},
+                                    ExprRet::CtxKilled => {}
                                     ExprRet::Single((ctx, expr)) => {
-                                        self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
+                                        self.add_edge(
+                                            expr,
+                                            ctx,
+                                            Edge::Context(ContextEdge::Return),
+                                        );
                                     }
                                     ExprRet::Multi(rets) => {
                                         rets.into_iter().for_each(|expr_ret| {
                                             let (ctx, expr) = expr_ret.expect_single();
-                                            self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
+                                            self.add_edge(
+                                                expr,
+                                                ctx,
+                                                Edge::Context(ContextEdge::Return),
+                                            );
                                         });
                                     }
                                     ExprRet::Fork(_world1, _world2) => {
@@ -498,7 +544,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn match_var_def(&mut self, loc: Loc, var: &ContextVar, rhs_paths: &ExprRet) {
         match rhs_paths {
-            ExprRet::CtxKilled => {},
+            ExprRet::CtxKilled => {}
             ExprRet::Single((rhs_ctx, rhs)) => {
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var.clone())));
                 self.add_edge(lhs, *rhs_ctx, Edge::Context(ContextEdge::Variable));
@@ -520,7 +566,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn match_expr(&mut self, paths: &ExprRet) {
         match paths {
-            ExprRet::CtxKilled => {},
+            ExprRet::CtxKilled => {}
             ExprRet::Single((ctx, expr)) => {
                 self.add_edge(*expr, *ctx, Edge::Context(ContextEdge::Call));
             }
@@ -538,7 +584,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         if ctx.is_killed(self) {
-            return ExprRet::CtxKilled
+            return ExprRet::CtxKilled;
         }
 
         if ctx.live_forks(self).is_empty() {
@@ -560,10 +606,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             // literals
             NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp),
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
-            StringLiteral(lits) => ExprRet::Multi(lits
-                .iter()
-                .map(|lit| self.string_literal(ctx, lit.loc, &lit.string))
-                .collect()),
+            StringLiteral(lits) => ExprRet::Multi(
+                lits.iter()
+                    .map(|lit| self.string_literal(ctx, lit.loc, &lit.string))
+                    .collect(),
+            ),
             BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
             // bin ops
             Add(loc, lhs_expr, rhs_expr) => {
@@ -624,7 +671,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 self.member_access(*loc, member_expr, ident, ctx)
             }
             // // comparator
-            Equal(loc, lhs, rhs) =>self.cmp(*loc, lhs, Op::Eq, rhs, ctx),
+            Equal(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Eq, rhs, ctx),
             Less(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Lt, rhs, ctx),
             More(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Gt, rhs, ctx),
             LessEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, Op::Lte, rhs, ctx),
@@ -683,33 +730,38 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 self.assign(loc, lhs_cvar, rhs_cvar, *rhs_ctx)
             }
-            (l @ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
-                ExprRet::Multi(
-                    rhs_sides.iter().map(|expr_ret| {
-                        self.match_assign_sides(loc, l, expr_ret, ctx)
-                    }).collect()
-                )
-            }
-            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => {
-                ExprRet::Multi(
-                    lhs_sides.iter().map(|expr_ret| {
-                        self.match_assign_sides(loc, expr_ret, r, ctx)
-                    }).collect()
-                )
-            }
+            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
+                rhs_sides
+                    .iter()
+                    .map(|expr_ret| self.match_assign_sides(loc, l, expr_ret, ctx))
+                    .collect(),
+            ),
+            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => ExprRet::Multi(
+                lhs_sides
+                    .iter()
+                    .map(|expr_ret| self.match_assign_sides(loc, expr_ret, r, ctx))
+                    .collect(),
+            ),
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
                     ExprRet::Multi(
-                        lhs_sides.iter().zip(rhs_sides.iter()).map(|(lhs_expr_ret, rhs_expr_ret)| {
-                            self.match_assign_sides(loc, lhs_expr_ret, rhs_expr_ret, ctx)
-                        }).collect()
+                        lhs_sides
+                            .iter()
+                            .zip(rhs_sides.iter())
+                            .map(|(lhs_expr_ret, rhs_expr_ret)| {
+                                self.match_assign_sides(loc, lhs_expr_ret, rhs_expr_ret, ctx)
+                            })
+                            .collect(),
                     )
                 } else {
                     ExprRet::Multi(
-                        rhs_sides.iter().map(|rhs_expr_ret| {
-                            self.match_assign_sides(loc, lhs_paths, rhs_expr_ret, ctx)
-                        }).collect()
+                        rhs_sides
+                            .iter()
+                            .map(|rhs_expr_ret| {
+                                self.match_assign_sides(loc, lhs_paths, rhs_expr_ret, ctx)
+                            })
+                            .collect(),
                     )
                 }
             }
@@ -717,27 +769,23 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 ExprRet::Fork(
                     Box::new(ExprRet::Fork(
                         Box::new(self.match_assign_sides(loc, lhs_world1, rhs_world1, ctx)),
-                        Box::new(self.match_assign_sides(loc, lhs_world1, rhs_world2, ctx))
+                        Box::new(self.match_assign_sides(loc, lhs_world1, rhs_world2, ctx)),
                     )),
                     Box::new(ExprRet::Fork(
                         Box::new(self.match_assign_sides(loc, lhs_world2, rhs_world1, ctx)),
-                        Box::new(self.match_assign_sides(loc, lhs_world2, rhs_world2, ctx))
+                        Box::new(self.match_assign_sides(loc, lhs_world2, rhs_world2, ctx)),
                     )),
                 )
             }
-            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => {
-                ExprRet::Fork(
-                    Box::new(self.match_assign_sides(loc, l, world1, ctx)),
-                    Box::new(self.match_assign_sides(loc, l, world2, ctx))
-                )
-            }
-            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => {
-                ExprRet::Fork(
-                    Box::new(self.match_assign_sides(loc, m, world1, ctx)),
-                    Box::new(self.match_assign_sides(loc, m, world2, ctx))
-                )
-            }
-            (e, f) => todo!("any: {:?} {:?}", e, f)
+            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
+                Box::new(self.match_assign_sides(loc, l, world1, ctx)),
+                Box::new(self.match_assign_sides(loc, l, world2, ctx)),
+            ),
+            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
+                Box::new(self.match_assign_sides(loc, m, world1, ctx)),
+                Box::new(self.match_assign_sides(loc, m, world2, ctx)),
+            ),
+            (e, f) => todo!("any: {:?} {:?}", e, f),
         }
     }
 
@@ -771,7 +819,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         ExprRet::Single((ctx, new_lhs.into()))
     }
 
-    fn advance_var_in_ctx(&mut self, cvar_node: ContextVarNode, loc: Loc, ctx: ContextNode) -> ContextVarNode {
+    fn advance_var_in_ctx(
+        &mut self,
+        cvar_node: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> ContextVarNode {
         // println!("advancing: {}", cvar_node.display_name(self));
         let mut new_cvar = cvar_node.underlying(self).clone();
         new_cvar.loc = Some(loc);
@@ -783,9 +836,9 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         } else {
-            self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));    
+            self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         }
-        
+
         ContextVarNode::from(new_cvarnode)
     }
 

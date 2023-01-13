@@ -55,15 +55,23 @@ pub struct ReportConfig {
     pub show_tmps: bool,
     pub show_consts: bool,
     pub show_subctxs: bool,
+    pub show_initial_bounds: bool,
 }
 
 impl ReportConfig {
-    pub fn new(eval_bounds: bool, show_tmps: bool, show_consts: bool, show_subctxs: bool) -> Self {
+    pub fn new(
+        eval_bounds: bool,
+        show_tmps: bool,
+        show_consts: bool,
+        show_subctxs: bool,
+        show_initial_bounds: bool,
+    ) -> Self {
         Self {
             eval_bounds,
             show_tmps,
             show_consts,
             show_subctxs,
+            show_initial_bounds,
         }
     }
 }
@@ -75,6 +83,7 @@ impl Default for ReportConfig {
             show_tmps: false,
             show_consts: false,
             show_subctxs: true,
+            show_initial_bounds: true,
         }
     }
 }

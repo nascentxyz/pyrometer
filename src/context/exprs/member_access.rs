@@ -1,6 +1,6 @@
 use crate::{
-    AnalyzerLike, ContextBuilder, ContextEdge, ContextNode, ContextVar, Edge, FieldNode, Node,
-    NodeIdx, TypeNode, VarType, ExprRet
+    AnalyzerLike, ContextBuilder, ContextEdge, ContextNode, ContextVar, Edge, ExprRet, FieldNode,
+    Node, NodeIdx, TypeNode, VarType,
 };
 use petgraph::{visit::EdgeRef, Direction};
 

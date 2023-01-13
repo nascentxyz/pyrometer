@@ -1,5 +1,5 @@
-use crate::ExprRet;
 use crate::ContextNode;
+use crate::ExprRet;
 use crate::{AnalyzerLike, Concrete, ConcreteNode, ContextVar, Node, NodeIdx};
 use ethers_core::types::{Address, U256};
 use solang_parser::pt::Loc;
@@ -8,7 +8,13 @@ use std::str::FromStr;
 impl<T> Literal for T where T: AnalyzerLike + Sized {}
 
 pub trait Literal: AnalyzerLike + Sized {
-    fn number_literal(&mut self, ctx: ContextNode, loc: Loc, integer: &String, exponent: &String) -> ExprRet {
+    fn number_literal(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        integer: &String,
+        exponent: &String,
+    ) -> ExprRet {
         let int = U256::from_dec_str(&integer).unwrap();
         let val = if !exponent.is_empty() {
             let exp = U256::from_dec_str(&exponent).unwrap();
