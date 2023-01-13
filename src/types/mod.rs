@@ -95,6 +95,7 @@ impl VarType {
             Node::Var(var) => VarType::try_from_idx(analyzer, var.ty),
             Node::Ty(ty) => VarType::try_from_idx(analyzer, ty.ty),
             Node::Error(..)
+            | Node::ContextFork
             | Node::FunctionParam(..)
             | Node::FunctionReturn(..)
             | Node::ErrorParam(..)
@@ -124,7 +125,7 @@ impl VarType {
             Self::Concrete(_) => true,
             _ => {
                 if let Some(range) = self.range(analyzer) {
-                    range.range_min().eval(analyzer) == range.range_max().eval(analyzer)
+                    range.range_min().range_eq(&range.range_max(), analyzer)
                 } else {
                     false
                 }

@@ -28,6 +28,17 @@ impl From<RangeElem> for RangeExprElem {
     }
 }
 
+impl Into<RangeElem> for RangeExprElem {
+    fn into(self) -> RangeElem {
+        match self {
+            Self::Expr(expr) => RangeElem::Complex(*expr),
+            Self::Concrete(val, loc) => RangeElem::Concrete(val, loc),
+            Self::SignedConcrete(val, loc) => RangeElem::SignedConcrete(val, loc),
+            Self::Dynamic(idx, range_side, loc) => RangeElem::Dynamic(idx, range_side, loc),
+        }
+    }
+}
+
 impl ElemEval for RangeExprElem {
     fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
         use RangeExprElem::*;
@@ -71,6 +82,36 @@ impl ElemEval for RangeExprElem {
                 }
             }
         }
+    }
+
+    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+        use RangeExprElem::*;
+        match (self.eval(analyzer), other.eval(analyzer)) {
+            (Expr(expr0), Expr(expr1)) => expr0 == expr1,
+            (Concrete(val0, _), Concrete(val1, _)) => val0 == val1,
+            (SignedConcrete(val0, _), SignedConcrete(val1, _)) => val0 == val1,
+            (Concrete(val0, _), SignedConcrete(val1, _)) => {
+                if val1 >= I256::from(0) {
+                    val0 == val1.into_raw()    
+                } else {
+                    false
+                }
+            },
+            (SignedConcrete(val0, _), Concrete(val1, _)) => {
+                if val0 >= I256::from(0) {
+                    val0.into_raw() == val1    
+                } else {
+                    false
+                }
+            },
+            (Dynamic(node0, side0, _), Dynamic(node1, side1, _)) => node0 == node1 && side0 == side1,
+            _ => false
+        }
+    }
+
+    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let as_re: RangeElem = self.clone().into();
+        as_re.range_ord(&(other.clone()).into())
     }
 }
 
@@ -226,6 +267,22 @@ impl RangeExpr {
         let lhs = self.lhs.clone().eval(analyzer);
         let rhs = self.rhs.clone().eval(analyzer);
         lhs.exec_op(&rhs, self.op)
+    }
+
+    pub fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+        let lhs = self.lhs.clone().eval(analyzer);
+        let rhs = self.rhs.clone().eval(analyzer);
+        if let Some(new_lhs) = lhs.exec_op(&rhs, self.op) {
+            let lhs = other.lhs.clone().eval(analyzer);
+            let rhs = other.rhs.clone().eval(analyzer);
+            if let Some(new_rhs) = lhs.exec_op(&rhs, other.op) {
+                new_lhs.range_eq(&new_rhs, analyzer)
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     pub fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {

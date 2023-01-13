@@ -1,3 +1,5 @@
+use crate::ContextNode;
+use crate::Search;
 use crate::range::BuiltinElem;
 use crate::range::BuiltinRange;
 use crate::range::RangeSize;
@@ -59,6 +61,27 @@ impl ContextVarNode {
         self.underlying(analyzer)
             .loc
             .expect("No loc for contextvar")
+    }
+
+    pub fn ctx<'a>(&self, analyzer: &'a (impl AnalyzerLike + Search)) -> ContextNode {
+        ContextNode::from(analyzer.search_for_ancestor(
+            self.0.into(),
+            &Edge::Context(ContextEdge::Variable)
+        )
+            .into_iter()
+            .take(1)
+            .next()
+            .expect("No associated ctx"))
+    }
+
+    pub fn maybe_ctx<'a>(&self, analyzer: &'a (impl AnalyzerLike + Search)) -> Option<ContextNode> {
+        Some(ContextNode::from(analyzer.search_for_ancestor(
+            self.0.into(),
+            &Edge::Context(ContextEdge::Variable)
+        )
+            .into_iter()
+            .take(1)
+            .next()?))
     }
 
     pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
@@ -167,7 +190,9 @@ impl ContextVarNode {
         let underlying = self.underlying(analyzer);
         if let Some(tmp) = underlying.tmp_of() {
             let mut nodes = tmp.lhs.dependent_on(analyzer, true);
-            nodes.extend(tmp.rhs.dependent_on(analyzer, true));
+            if let Some(rhs) = tmp.rhs {
+                nodes.extend(rhs.dependent_on(analyzer, true));    
+            }
             nodes
         } else if return_self {
             vec![*self]
@@ -187,6 +212,7 @@ pub struct ContextVar {
     pub name: String,
     pub display_name: String,
     pub storage: Option<StorageLocation>,
+    pub is_tmp: bool,
     pub tmp_of: Option<TmpConstruction>,
     pub ty: VarType,
 }
@@ -195,18 +221,18 @@ pub struct ContextVar {
 pub struct TmpConstruction {
     pub lhs: ContextVarNode,
     pub op: Op,
-    pub rhs: ContextVarNode,
+    pub rhs: Option<ContextVarNode>,
 }
 
 impl TmpConstruction {
-    pub fn new(lhs: ContextVarNode, op: Op, rhs: ContextVarNode) -> Self {
+    pub fn new(lhs: ContextVarNode, op: Op, rhs: Option<ContextVarNode>) -> Self {
         Self { lhs, op, rhs }
     }
 }
 
 impl ContextVar {
     pub fn is_tmp(&self) -> bool {
-        self.tmp_of.is_some()
+        self.is_tmp || self.tmp_of.is_some()
     }
 
     pub fn tmp_of(&self) -> Option<TmpConstruction> {
@@ -223,6 +249,7 @@ impl ContextVar {
             name: concrete_node.underlying(analyzer).as_string(),
             display_name: concrete_node.underlying(analyzer).as_string(),
             storage: None,
+            is_tmp: true,
             tmp_of: None,
             ty: VarType::Concrete(concrete_node),
         }
@@ -294,6 +321,7 @@ impl ContextVar {
                     + "."
                     + &field.name.expect("Field had no name").name,
                 storage: parent_var.storage.clone(),
+                is_tmp: false,
                 tmp_of: None,
                 ty,
             })
@@ -312,6 +340,7 @@ impl ContextVar {
                     name: name.name.clone(),
                     display_name: name.name,
                     storage: param.storage,
+                    is_tmp: false,
                     tmp_of: None,
                     ty,
                 })
@@ -334,6 +363,7 @@ impl ContextVar {
                     name: name.name.clone(),
                     display_name: name.name,
                     storage: ret.storage,
+                    is_tmp: false,
                     tmp_of: None,
                     ty,
                 })

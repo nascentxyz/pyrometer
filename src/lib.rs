@@ -25,6 +25,7 @@ pub type EdgeIdx = EdgeIndex<usize>;
 pub enum Node {
     Context(Context),
     ContextVar(ContextVar),
+    ContextFork,
     Builtin(Builtin),
     DynBuiltin(DynBuiltin),
     VarType(VarType),
@@ -546,62 +547,6 @@ impl Analyzer {
         let ty = Ty::new(self, ty_def.clone());
         TyNode(self.add_node(ty).index())
     }
-
-    pub fn parse_statement(
-        &mut self,
-        stmt: &Statement,
-        _unchecked: bool,
-        parent_ctx: Option<impl Into<NodeIdx>>,
-    ) {
-        use Statement::*;
-        // println!("stmt: {:?}", stmt);
-        match stmt {
-            Block {
-                loc,
-                unchecked,
-                statements,
-            } => {
-                let ctx = Context::new(*loc);
-                let ctx_node = self.add_node(Node::Context(ctx));
-
-                if let Some(parent) = parent_ctx {
-                    self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Context));
-                }
-
-                statements
-                    .iter()
-                    .for_each(|stmt| self.parse_statement(stmt, *unchecked, Some(ctx_node)));
-            }
-            VariableDefinition(_loc, _var_decl, _maybe_expr) => {}
-            Assembly {
-                loc: _,
-                dialect: _,
-                flags: _,
-                block: _yul_block,
-            } => {}
-            Args(_loc, _args) => {}
-            If(_loc, _cond, _true_body, _maybe_false_body) => {}
-            While(_loc, _cond, _body) => {}
-            Expression(_loc, _expr) => {}
-            For(_loc, _maybe_for_start, _maybe_for_middle, _maybe_for_end, _maybe_for_body) => {}
-            DoWhile(_loc, _while_stmt, _while_expr) => {}
-            Continue(_loc) => {}
-            Break(_loc) => {}
-            Return(_loc, maybe_ret_expr) => {
-                if let Some(ret_expr) = maybe_ret_expr {
-                    let expr_node = self.parse_expr(ret_expr);
-                    if let Some(parent) = parent_ctx {
-                        self.add_edge(expr_node, parent, Edge::Context(ContextEdge::Return));
-                    }
-                }
-            }
-            Revert(_loc, _maybe_err_path, _exprs) => {}
-            RevertNamedArgs(_loc, _maybe_err_path, _named_args) => {}
-            Emit(_loc, _emit_expr) => {}
-            Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
-            Error(_loc) => {}
-        }
-    }
 }
 
 #[cfg(test)]
@@ -612,13 +557,13 @@ mod tests {
     fn it_works() {
         let sol = r###"
 contract Storage {
-    struct A {
-        uint256[] a;
-    }
+    // struct A {
+    //     uint256[] a;
+    // }
 
-    function b(A memory k) public returns (uint256) {
-        return k.a[0];
-    }
+    // function b(A memory k) public returns (uint256) {
+    //     return k.a[0];
+    // }
 
     // function b2(A memory k, uint256 s) public returns (uint256) {
     //     return k.a[s];
@@ -633,11 +578,26 @@ contract Storage {
         require(l <= 100);
         assert(s + j < 5);
         require(s - j + 5 < l);
+        bool q = s > j;
+        bool q2 = !q;
 
-        bool a = s < j;
-        require(a);
-        return k.a[s];
+        require(s > 5);
+
+        uint256 b = s > 5 ? 1 + 2 : 3 + 4;
+        require(b > 5);
+        // bool q = s < j;
+        // require(q);
+        // return k.a[s];
     }
+
+    // function b5(uint128 s) public returns (uint256) {
+    //     (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
+
+    //     require(a < 10);
+    //     require(b < 7);
+    //     require(s < 7);
+    //     return b;
+    // }
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
@@ -648,14 +608,30 @@ contract Storage {
         // println!("contexts: {:?}", contexts);
         let mut t = std::time::Instant::now();
         for context in contexts.into_iter() {
-            let config = ReportConfig::new(true, false, false);
-            let analysis = analyzer.bounds_for_all(ContextNode::from(context), config);
-            let mins =
-                analyzer.min_size_to_prevent_access_revert(ContextNode::from(context), config);
-            println!("array analyze time: {:?}", t.elapsed().as_nanos());
+            let config = ReportConfig {
+                eval_bounds: true,
+                show_tmps: false,
+                show_consts: true,
+                show_subctxs: true,
+            };
+            let ctx = ContextNode::from(context);
+            // let analysis = analyzer.bounds_for_var(ctx, "b".to_string(), config);
+            
+            // // let mins =
+            // //     analyzer.min_size_to_prevent_access_revert(ContextNode::from(context), config);
+            // println!("array analyze time: {:?}", t.elapsed().as_nanos());
+            // analysis.iter().for_each(|a| a.print_report((0, &sol), &analyzer));
+
+            // let analysis = analyzer.bounds_for_var(ctx, "a".to_string(), config);
+            // analysis.iter().for_each(|a| a.print_report((0, &sol), &analyzer));
+            // let analysis = analyzer.bounds_for_var(ctx, "s".to_string(), config);
+            // analysis.iter().for_each(|a| a.print_report((0, &sol), &analyzer));
+
+            let analysis = analyzer.bounds_for_all(ctx, config);
+            println!("analysis time: {:?}", t.elapsed().as_nanos());
             analysis.print_report((0, &sol), &analyzer);
-            mins.iter()
-                .for_each(|min| min.print_report((0, &sol), &analyzer));
+            // mins.iter()
+            //     .for_each(|min| min.print_report((0, &sol), &analyzer));
             t = std::time::Instant::now();
         }
         println!("total analyze time: {:?}", t0.elapsed().as_nanos());

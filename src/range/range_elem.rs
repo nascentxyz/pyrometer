@@ -40,14 +40,6 @@ impl RangeElem {
         }
     }
 
-    pub fn maybe_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        use RangeElem::*;
-        match (self, other) {
-            (Concrete(s, _), Concrete(o, _)) => Some(s.cmp(o)),
-            _ => None,
-        }
-    }
-
     pub fn min(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: RangeExprElem::from(self),
@@ -176,6 +168,54 @@ impl ElemEval for RangeElem {
             }
         }
     }
+
+    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+        use RangeElem::*;
+        match (self.eval(analyzer), other.eval(analyzer)) {
+            (Concrete(val0, _), Concrete(val1, _)) => val0 == val1,
+            (SignedConcrete(val0, _), SignedConcrete(val1, _)) => val0 == val1,
+            (Concrete(val0, _), SignedConcrete(val1, _)) => {
+                if val1 >= I256::from(0) {
+                    val0 == val1.into_raw()    
+                } else {
+                    false
+                }
+            },
+            (SignedConcrete(val0, _), Concrete(val1, _)) => {
+                if val0 >= I256::from(0) {
+                    val0.into_raw() == val1    
+                } else {
+                    false
+                }
+            },
+            (Dynamic(node0, side0, _), Dynamic(node1, side1, _)) => node0 == node1 && side0 == side1,
+            (Complex(expr0), Complex(expr1)) => expr0.range_eq(&expr1, analyzer),
+            _ => false
+        }
+    }
+
+    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use RangeElem::*;
+        match (self, other) {
+            (Concrete(s, _), Concrete(o, _)) => Some(s.cmp(o)),
+            (SignedConcrete(s, _), SignedConcrete(o, _)) => Some(s.cmp(o)),
+            (SignedConcrete(s, _), Concrete(o, _)) => {
+                if s >= &I256::from(0) {
+                    Some(s.into_raw().cmp(o))
+                } else {
+                    Some(std::cmp::Ordering::Less)
+                }
+            },
+            (Concrete(s, _), SignedConcrete(o, _)) => {
+                if o >= &I256::from(0) {
+                    Some(s.cmp(&o.into_raw()))
+                } else {
+                    Some(std::cmp::Ordering::Greater)
+                }
+            },
+            _ => None,
+        }
+    }
 }
 
 impl ToRangeString for RangeElem {
@@ -220,7 +260,7 @@ impl ToRangeString for RangeElem {
                 let as_var = ContextVarNode::from(*idx);
                 let name = as_var.display_name(analyzer);
                 if let Some(range) = as_var.range(analyzer) {
-                    if let Some(ord) = range.num_range().range_min().maybe_ord(&range.num_range().range_max()) {
+                    if let Some(ord) = range.num_range().range_min().range_ord(&range.num_range().range_max()) {
                         match ord {
                             std::cmp::Ordering::Greater => {
                                 let mut min = range.range_min().to_range_string(analyzer);

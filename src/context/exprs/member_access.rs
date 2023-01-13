@@ -1,6 +1,6 @@
 use crate::{
     AnalyzerLike, ContextBuilder, ContextEdge, ContextNode, ContextVar, Edge, FieldNode, Node,
-    NodeIdx, TypeNode, VarType,
+    NodeIdx, TypeNode, VarType, ExprRet
 };
 use petgraph::{visit::EdgeRef, Direction};
 
@@ -15,8 +15,8 @@ pub trait MemberAccess: AnalyzerLike + Sized {
         member_expr: &Expression,
         ident: &Identifier,
         ctx: ContextNode,
-    ) -> Vec<NodeIdx> {
-        let member_idx = self.parse_ctx_expr(member_expr, ctx)[0];
+    ) -> ExprRet {
+        let (_, member_idx) = self.parse_ctx_expr(member_expr, ctx).expect_single();
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Struct(struct_node)) => {
@@ -47,13 +47,13 @@ pub trait MemberAccess: AnalyzerLike + Sized {
                     {
                         let fc_node = self.add_node(Node::ContextVar(field_cvar));
                         self.add_edge(fc_node, member_idx, Edge::Context(ContextEdge::AttrAccess));
-                        return vec![fc_node];
+                        return ExprRet::Single((ctx, fc_node));
                     }
                 }
                 e => todo!("member access: {:?}", e),
             },
-            _ => todo!(),
+            e => todo!("{:?}", e),
         }
-        vec![member_idx]
+        ExprRet::Single((ctx, member_idx))
     }
 }

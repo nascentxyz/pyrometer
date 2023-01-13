@@ -3,8 +3,9 @@ use crate::range::BuiltinRange;
 use crate::AnalyzerLike;
 use crate::{
     range::{Op},
-    ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, Node, NodeIdx,
+    ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, Node,
     TmpConstruction,
+    ExprRet
 };
 
 use solang_parser::pt::{Expression, Loc};
@@ -19,10 +20,70 @@ pub trait BinOp: AnalyzerLike + Sized {
         ctx: ContextNode,
         op: Op,
         assign: bool,
-    ) -> Vec<NodeIdx> {
-        let lhs_cvar = ContextVarNode::from(self.parse_ctx_expr(&lhs_expr, ctx)[0]);
-        let rhs_cvar = ContextVarNode::from(self.parse_ctx_expr(rhs_expr, ctx)[0]);
-        self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)
+    ) -> ExprRet {
+        let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
+        let rhs_paths = self.parse_ctx_expr(&rhs_expr, ctx);
+        match (lhs_paths, rhs_paths) {
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+                let lhs_cvar = ContextVarNode::from(lhs);
+                let rhs_cvar = ContextVarNode::from(rhs);
+                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
+                if lhs_ctx != rhs_ctx {
+                    ExprRet::Multi(vec![all_vars, self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign)])
+                } else {
+                    all_vars
+                }
+            }
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => {
+                ExprRet::Multi(
+                    rhs_sides.iter().map(|expr_ret| {
+                        let (rhs_ctx, rhs) = expr_ret.expect_single();
+                        let lhs_cvar = ContextVarNode::from(lhs);
+                        let rhs_cvar = ContextVarNode::from(rhs);
+                        let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
+                        if lhs_ctx != rhs_ctx {
+                            ExprRet::Multi(vec![all_vars, self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign)])
+                        } else {
+                            all_vars
+                        }
+                    }).collect()
+                )
+            }
+            (ExprRet::Multi(lhs_sides), ExprRet::Single((rhs_ctx, rhs))) => {
+                ExprRet::Multi(
+                    lhs_sides.iter().map(|expr_ret| {
+                        let (lhs_ctx, lhs) = expr_ret.expect_single();
+                        let lhs_cvar = ContextVarNode::from(lhs);
+                        let rhs_cvar = ContextVarNode::from(rhs);
+                        let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
+                        if lhs_ctx != rhs_ctx {
+                            ExprRet::Multi(vec![all_vars, self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign)])
+                        } else {
+                            all_vars
+                        }
+                    }).collect()
+                )
+            }
+            (ExprRet::Multi(_lhs_sides), ExprRet::Multi(_rhs_sides)) => {
+                todo!("here")
+            }
+            (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
+            (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
+            (_, _) => todo!()
+        }
+        // lhs_paths.into_iter().flat_map(|lhs_expr_ret| {
+        //     let (lhs_ctx, lhs) = lhs_expr_ret.expect_single();
+        //     rhs_paths.iter().flat_map(|rhs_expr_ret| {
+        //         let (rhs_ctx, rhs) = rhs_expr_ret.expect_single();
+        //         let lhs_cvar = ContextVarNode::from(lhs);
+        //         let rhs_cvar = ContextVarNode::from(*rhs);
+        //         let mut all_vars = vec![self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign)];
+        //         if lhs_ctx != *rhs_ctx {
+        //             all_vars.push(self.op(loc, lhs_cvar, rhs_cvar, *rhs_ctx, op, assign));
+        //         }
+        //         all_vars
+        //     }).collect::<Vec<ExprRet>>()
+        // }).collect::<Vec<ExprRet>>()
     }
 
     fn op(
@@ -33,9 +94,9 @@ pub trait BinOp: AnalyzerLike + Sized {
         ctx: ContextNode,
         op: Op,
         assign: bool,
-    ) -> Vec<NodeIdx> {
+    ) -> ExprRet {
         let new_lhs = if assign {
-            self.advance_var(lhs_cvar, loc)
+            self.advance_var_in_ctx(lhs_cvar, loc, ctx)
         } else {
             let mut new_lhs_underlying = ContextVar {
                 loc: Some(loc),
@@ -53,7 +114,8 @@ pub trait BinOp: AnalyzerLike + Sized {
                     rhs_cvar.display_name(self)
                 ),
                 storage: None,
-                tmp_of: Some(TmpConstruction::new(lhs_cvar, op, rhs_cvar)),
+                is_tmp: true,
+                tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                 ty: lhs_cvar.underlying(self).ty.clone(),
             };
 
@@ -75,6 +137,6 @@ pub trait BinOp: AnalyzerLike + Sized {
         let new_range = func(lhs_range, rhs_cvar, range_sides, loc);
         new_lhs.set_range_min(self, new_range.range_min());
         new_lhs.set_range_max(self, new_range.range_max());
-        vec![new_lhs.into()]
+        ExprRet::Single((ctx, new_lhs.into()))
     }
 }

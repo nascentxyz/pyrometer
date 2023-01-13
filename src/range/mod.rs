@@ -126,7 +126,25 @@ pub trait ToRangeString {
 
 pub trait ElemEval {
 	fn eval(&self, analyzer: &impl AnalyzerLike) -> Self;
+	fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
+	fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
 }
+
+pub trait RangeEval<T: ElemEval>: RangeSize<Output = T> {
+	fn sat(&self, analyzer: &impl AnalyzerLike) -> bool {
+		match self.range_min().eval(analyzer).range_ord(&self.range_max().eval(analyzer)) {
+			None
+			|Some(std::cmp::Ordering::Less)
+			| Some(std::cmp::Ordering::Equal) => true,
+			_ => false
+		}
+	}
+	fn unsat(&self, analyzer: &impl AnalyzerLike) -> bool {
+		!self.sat(analyzer)
+	}
+}
+
+impl<R, T> RangeEval<T> for R where R: RangeSize<Output = T>, T: ElemEval + std::fmt::Debug {}
 
 impl RangeSize for BuiltinRange {
 	type Output = BuiltinElem;
@@ -166,6 +184,29 @@ impl ElemEval for BuiltinElem {
 		match self {
 			Self::Bool(b) => BuiltinElem::Bool(b.eval(analyzer)),
 			Self::Num(num) => BuiltinElem::Num(num.eval(analyzer)),
+		}
+	}
+	fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+		match (self, other) {
+			(BuiltinElem::Bool(b0), BuiltinElem::Bool(b1)) => {
+				b0.range_eq(b1, analyzer)
+			}
+			(BuiltinElem::Num(n0), BuiltinElem::Num(n1)) => {
+				n0.range_eq(n1, analyzer)
+			}
+			_ => false
+		}
+	}
+
+	fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+		match (self, other) {
+			(BuiltinElem::Bool(b0), BuiltinElem::Bool(b1)) => {
+				b0.range_ord(b1)
+			}
+			(BuiltinElem::Num(n0), BuiltinElem::Num(n1)) => {
+				n0.range_ord(n1)
+			}
+			_ => None
 		}
 	}
 }
@@ -490,6 +531,7 @@ pub enum Op {
     Gt,
     Gte,
     Eq,
+    Not,
 }
 
 impl Op {
@@ -521,6 +563,7 @@ impl ToString for Op {
             Lte => "<=".to_string(),
             Gte => ">=".to_string(),
             Eq => "==".to_string(),
+            Not => "!".to_string(),
         }
     }
 }
