@@ -1,6 +1,7 @@
 use crate::AnalyzerLike;
+use crate::ContextVar;
 use crate::ExprRet;
-use crate::{ContextBuilder, ContextNode, Edge, Node};
+use crate::{ContextBuilder, ContextEdge, ContextNode, Edge, Node};
 use solang_parser::pt::Identifier;
 
 impl<T> Variable for T where T: AnalyzerLike + Sized {}
@@ -31,7 +32,11 @@ pub trait Variable: AnalyzerLike + Sized {
                 ExprRet::Single((ctx, cvar))
             } else {
                 if let Some(idx) = self.user_types().get(&ident.name) {
-                    ExprRet::Single((ctx, *idx))
+                    let var = ContextVar::maybe_from_user_ty(self, ident.loc, *idx)
+                        .expect("Could not create context variable from user type");
+                    let new_cvarnode = self.add_node(Node::ContextVar(var));
+                    self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
+                    ExprRet::Single((ctx, new_cvarnode))
                 } else {
                     if let Some(func) = self.builtin_fns().get(&ident.name) {
                         let (inputs, outputs) = self

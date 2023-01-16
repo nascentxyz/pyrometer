@@ -199,8 +199,14 @@ impl RangeExprElem {
                     self_val.saturating_mul(*other_val),
                     *loc,
                 )),
-                Op::Shl => Some(RangeElem::Concrete(self_val << as_usize_saturated!(*other_val), *loc)),
-                Op::Shr => Some(RangeElem::Concrete(self_val >> as_usize_saturated!(*other_val), *loc)),
+                Op::Shl => Some(RangeElem::Concrete(
+                    self_val << as_usize_saturated!(*other_val),
+                    *loc,
+                )),
+                Op::Shr => Some(RangeElem::Concrete(
+                    self_val >> as_usize_saturated!(*other_val),
+                    *loc,
+                )),
                 Op::Div => Some(RangeElem::Concrete(self_val / other_val, *loc)),
                 Op::Sub => Some(RangeElem::Concrete(
                     self_val.saturating_sub(*other_val),
@@ -232,8 +238,14 @@ impl RangeExprElem {
                     self_val.saturating_mul(*other_val),
                     *loc,
                 )),
-                Op::Shl => Some(RangeElem::SignedConcrete(*self_val << as_usize_saturated!(other_val.into_raw()), *loc)),
-                Op::Shr => Some(RangeElem::SignedConcrete(*self_val >> as_usize_saturated!(other_val.into_raw()), *loc)),
+                Op::Shl => Some(RangeElem::SignedConcrete(
+                    *self_val << as_usize_saturated!(other_val.into_raw()),
+                    *loc,
+                )),
+                Op::Shr => Some(RangeElem::SignedConcrete(
+                    *self_val >> as_usize_saturated!(other_val.into_raw()),
+                    *loc,
+                )),
                 Op::Div => Some(RangeElem::SignedConcrete(*self_val / *other_val, *loc)),
                 Op::Sub => Some(RangeElem::SignedConcrete(
                     self_val.saturating_sub(*other_val),

@@ -389,7 +389,7 @@ impl Analyzer {
                 self.add_edge(node, sup_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let node = self.parse_var_def(&*def);
+                let node = self.parse_var_def(&*def, false);
                 self.add_edge(node, sup_node, Edge::Var);
             }
             FunctionDefinition(def) => {
@@ -429,7 +429,7 @@ impl Analyzer {
                 self.add_edge(node, con_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let node = self.parse_var_def(&*def);
+                let node = self.parse_var_def(&*def, true);
                 self.add_edge(node, con_node, Edge::Var);
             }
             FunctionDefinition(def) => {
@@ -531,6 +531,7 @@ impl Analyzer {
             }
         });
 
+        // we delay the function body parsing to the end after parsing all sources
         if let Some(body) = &func_def.body {
             self.parse_ctx_statement(body, false, Some(func_node));
         }
@@ -538,9 +539,11 @@ impl Analyzer {
         func_node
     }
 
-    pub fn parse_var_def(&mut self, var_def: &VariableDefinition) -> VarNode {
-        let var = Var::new(self, var_def.clone());
-        VarNode(self.add_node(var).index())
+    pub fn parse_var_def(&mut self, var_def: &VariableDefinition, in_contract: bool) -> VarNode {
+        let var = Var::new(self, var_def.clone(), in_contract);
+        let var_node = VarNode::from(self.add_node(var));
+        self.user_types.insert(var_node.name(self), var_node.into());
+        var_node
     }
 
     pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {
@@ -557,94 +560,20 @@ mod tests {
     fn it_works() {
         let sol = r###"
 contract Storage {
-    // struct A {
-    //     uint256[] a;
-    // }
+    uint256 c;
 
-    // function b(A memory k) public returns (uint256) {
-    //     return k.a[0];
-    // }
-
-    // function b2(A memory k, uint256 s) public returns (uint256) {
-    //     return k.a[s];
-    // }
-
-    // function b3(A memory k, uint256 s) public returns (uint256) {
-    //     require(s < 10);
-    //     return k.a[s];
-    // }
-
-    // function b4(A memory k, uint128 s, uint64 l, uint64 j) public returns (uint256) {
-    //     require(l <= 100);
-    //     assert(s + j < 5);
-    //     require(s - j + 5 < l);
-    //     bool q = s > j;
-    //     bool q2 = !q;
-
-    //     require(s > 5);
-
-    //     uint256 b = s > 5 ? 1 + 2 : 3 + 4;
-    //     require(b > 5);
-    //     // bool q = s < j;
-    //     // require(q);
-    //     // return k.a[s];
-    // }
-
-    function b5(uint128 s) public returns (uint256) {
-        (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
-
-        a += 1;
-        require(a < 10);
-        require(b < 8);
-        require(b < 6);
-        if (s < 7) {
-            require(s < 100);
-            return s + 3;
-        } else {
-            require(s < 100);
-            return s + 1;
-        }
+    function b5(uint128 s) public  {
+        c += s;
+        // (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
+        // a += 1;
+        // require(a < 10);
+        // require(b < 8);
+        // if (s < 7) {
+        //     c += 1;
+        // } else {
+        //     c += 2;
+        // }
     }
-
-    // function exp(int256 x) internal pure returns (int256) {
-        // int256 FIXED_POINT_SCALE_BITS = 64;
-
-        // int256 FIXED_POINT_SCALE = int256(1) << uint256(FIXED_POINT_SCALE_BITS);
-
-        // uint256 UINT256_MAX = ~uint256(0);
-
-        // assert(FIXED_POINT_SCALE_BITS == 64);
-        // int256 ln2FixedPoint = 12786308645202655659;
-
-        // // int256 shiftLeft = x / ln2FixedPoint;
-        // // int256 remainder = x % ln2FixedPoint;
-        // // if (shiftLeft <= -FIXED_POINT_SCALE_BITS) return 0;
-        // // require(shiftLeft < (256 - FIXED_POINT_SCALE_BITS), "Exponentiation overflows");
-
-        // // int256 smallFactor = 4373;
-        // // int256 bigFactor = ln2FixedPoint / smallFactor;
-
-        // // int256 integerPower = remainder / bigFactor;
-        // // int256 smallRemainder = remainder % bigFactor;
-
-        // // int256 taylorApprox = FIXED_POINT_SCALE +
-        // //     smallRemainder +
-        // //     (smallRemainder * smallRemainder) /
-        // //     (2 * FIXED_POINT_SCALE) +
-        // //     (smallRemainder * smallRemainder * smallRemainder) /
-        // //     (6 * FIXED_POINT_SCALE * FIXED_POINT_SCALE);
-
-        // // int256 twoPowRecipSmallFactor = 18449668226934502855; // 2^(1/smallFactor) in fixed point
-        // // int256 prod;
-        // // if (integerPower >= 0) {
-        // //     prod = pow(twoPowRecipSmallFactor, integerPower) * taylorApprox;
-        // //     shiftLeft -= FIXED_POINT_SCALE_BITS;
-        // // } else {
-        // //     prod = (FIXED_POINT_SCALE * taylorApprox) / pow(twoPowRecipSmallFactor, -integerPower);
-        // // }
-
-        // // return shiftLeft >= 0 ? (prod << uint256(shiftLeft)) : (prod >> uint256(-shiftLeft));
-    // }
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
@@ -656,7 +585,7 @@ contract Storage {
         let mut t = std::time::Instant::now();
         for context in contexts.into_iter() {
             let config = ReportConfig {
-                eval_bounds: true,
+                eval_bounds: false,
                 show_tmps: false,
                 show_consts: true,
                 show_subctxs: true,

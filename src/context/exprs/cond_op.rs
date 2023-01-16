@@ -1,6 +1,6 @@
-use solang_parser::pt::CodeLocation;
 use crate::Context;
 use crate::ExprRet;
+use solang_parser::pt::CodeLocation;
 
 use crate::AnalyzerLike;
 use crate::{
@@ -45,7 +45,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
 
         if let Some(false_stmt) = false_stmt {
             self.false_fork_if_cvar(false_stmt.loc(), if_expr.clone(), false_subctx);
-            self.parse_ctx_statement(false_stmt, false, Some(false_subctx));    
+            self.parse_ctx_statement(false_stmt, false, Some(false_subctx));
         }
     }
 
@@ -95,22 +95,12 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
         match true_cvars {
             ExprRet::CtxKilled => {}
             ExprRet::Single((fork_ctx, true_cvar)) => {
-                self.true_fork_if_cvar(
-                    loc,
-                    if_expr.clone(),
-                    *fork_ctx,
-                );
+                self.true_fork_if_cvar(loc, if_expr.clone(), *fork_ctx);
             }
-            ExprRet::Multi(ref true_paths) => {
-                true_paths.iter().take(1).for_each(|expr_ret| {
-                    let (fork_ctx, _) = expr_ret.expect_single();
-                    self.true_fork_if_cvar(
-                        loc,
-                        if_expr.clone(),
-                        fork_ctx,
-                    );
-                })
-            }
+            ExprRet::Multi(ref true_paths) => true_paths.iter().take(1).for_each(|expr_ret| {
+                let (fork_ctx, _) = expr_ret.expect_single();
+                self.true_fork_if_cvar(loc, if_expr.clone(), fork_ctx);
+            }),
             ExprRet::Fork(true_paths, other_true_paths) => {
                 self.match_true(loc, true_paths, if_expr);
                 self.match_true(loc, other_true_paths, if_expr);
@@ -122,22 +112,12 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
         match false_cvars {
             ExprRet::CtxKilled => {}
             ExprRet::Single((fork_ctx, false_cvar)) => {
-                self.false_fork_if_cvar(
-                    loc,
-                    if_expr.clone(),
-                    *fork_ctx,
-                );
+                self.false_fork_if_cvar(loc, if_expr.clone(), *fork_ctx);
             }
-            ExprRet::Multi(ref false_paths) => {
-                false_paths.iter().take(1).for_each(|expr_ret| {
-                    let (fork_ctx, _) = expr_ret.expect_single();
-                    self.false_fork_if_cvar(
-                        loc,
-                        if_expr.clone(),
-                        fork_ctx,
-                    );
-                })
-            }
+            ExprRet::Multi(ref false_paths) => false_paths.iter().take(1).for_each(|expr_ret| {
+                let (fork_ctx, _) = expr_ret.expect_single();
+                self.false_fork_if_cvar(loc, if_expr.clone(), fork_ctx);
+            }),
             ExprRet::Fork(false_paths, other_false_paths) => {
                 self.match_false(loc, false_paths, if_expr);
                 self.match_false(loc, other_false_paths, if_expr);

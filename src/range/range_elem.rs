@@ -8,7 +8,7 @@ use crate::{
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 
-use std::ops::{Add, Div, Mul, Rem, Sub, Shl, Shr};
+use std::ops::{Add, Div, Mul, Rem, Shl, Shr, Sub};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum RangeElem {

@@ -8,6 +8,7 @@ use crate::{
 };
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Loc, Statement};
+use std::collections::HashMap;
 
 pub mod var;
 pub use var::*;
@@ -229,23 +230,25 @@ impl ContextNode {
     }
 
     /// Returns a vector of variable dependencies for this context
-    pub fn ctx_deps(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
+    pub fn ctx_deps(&self, analyzer: &impl AnalyzerLike) -> HashMap<String, ContextVarNode> {
         self.underlying(analyzer).ctx_deps.clone()
     }
 
     /// Returns a vector of variable dependencies for this context
     pub fn add_ctx_dep(&self, dep: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
         if !dep.is_const(analyzer) {
+            let dep_name = dep.name(analyzer);
             let underlying = self.underlying_mut(analyzer);
-            underlying.ctx_deps.push(dep);
-            let mut deps = underlying.ctx_deps.clone();
-            deps.sort_by(|a, b| a.display_name(analyzer).cmp(&b.display_name(analyzer)));
-            deps.dedup_by(|a, b| a.display_name(analyzer) == b.display_name(analyzer));
-            self.underlying_mut(analyzer).ctx_deps = deps;
-        } 
+            underlying.ctx_deps.insert(dep_name, dep);
+        }
     }
 
-    pub fn set_return_node(&self, ret_stmt_loc: Loc, ret: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
+    pub fn set_return_node(
+        &self,
+        ret_stmt_loc: Loc,
+        ret: ContextVarNode,
+        analyzer: &mut impl AnalyzerLike,
+    ) {
         self.underlying_mut(analyzer).ret = Some((ret_stmt_loc, ret));
     }
 
@@ -274,7 +277,7 @@ pub struct Context {
     pub parent_ctx: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
-    pub ctx_deps: Vec<ContextVarNode>,
+    pub ctx_deps: HashMap<String, ContextVarNode>,
     /// A string that represents the path taken from the root context (i.e. `fn_entry.fork.1`)
     pub path: String,
     /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement
@@ -293,14 +296,14 @@ pub struct Context {
 
 impl Context {
     /// Creates a new context from a function
-    pub fn new(parent_fn: FunctionNode, loc: Loc) -> Self {
+    pub fn new(parent_fn: FunctionNode, fn_name: String, loc: Loc) -> Self {
         Context {
             parent_fn,
             parent_ctx: None,
-            path: "fn_entry".to_string(),
+            path: fn_name,
             tmp_var_ctr: 0,
             killed: None,
-            ctx_deps: vec![],
+            ctx_deps: Default::default(),
             is_fork: false,
             forks: vec![],
             ret: None,
@@ -395,7 +398,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 let parent = parent_ctx.expect("Free floating contexts shouldn't happen");
                 let ctx_node = match self.node(parent) {
                     Node::Function(_fn_node) => {
-                        let ctx = Context::new(FunctionNode::from(parent.into()), *loc);
+                        let ctx = Context::new(
+                            FunctionNode::from(parent.into()),
+                            FunctionNode::from(parent.into()).name(self),
+                            *loc,
+                        );
                         let ctx_node = self.add_node(Node::Context(ctx));
                         self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Context));
                         ctx_node
@@ -615,7 +622,19 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     }
                 }
             }
-            Revert(_loc, _maybe_err_path, _exprs) => {}
+            Revert(loc, _maybe_err_path, _exprs) => {
+                if let Some(parent) = parent_ctx {
+                    let parent = ContextNode::from(parent.into());
+                    let forks = parent.live_forks(self);
+                    if forks.is_empty() {
+                        parent.kill(self, *loc);
+                    } else {
+                        forks.into_iter().for_each(|parent| {
+                            parent.kill(self, *loc);
+                        });
+                    }
+                }
+            }
             RevertNamedArgs(_loc, _maybe_err_path, _named_args) => {}
             Emit(_loc, _emit_expr) => {}
             Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
@@ -791,18 +810,18 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     Node::Builtin(_ty) => {
                         // it is a cast
                         let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-                        
+
                         let new_var = self.advance_var_in_ctx(cvar.into(), *loc, ctx);
-                        new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
+                        new_var.underlying_mut(self).ty =
+                            VarType::try_from_idx(self, func_idx).expect("");
                         if let Some(r) = ContextVarNode::from(cvar).range(self) {
                             // TODO: cast the ranges appropriately (set cap or convert to signed/unsigned concrete)
                             new_var.set_range_min(self, r.range_min());
-                            new_var.set_range_max(self, r.range_max());    
+                            new_var.set_range_max(self, r.range_max());
                         }
-                        return ExprRet::Single((ctx, new_var.into()))
-
+                        return ExprRet::Single((ctx, new_var.into()));
                     }
-                    _ => todo!()
+                    _ => todo!(),
                 }
 
                 let _inputs: Vec<_> = input_exprs

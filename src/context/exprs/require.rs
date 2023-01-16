@@ -177,7 +177,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         inversion_fns: (RequireRangeFn, RequireRangeFn),
         rhs_range_fn: RequireRangeFn,
     ) {
-
         let mut any_unsat = false;
         if let Some(lhs_range) = new_lhs.underlying(self).ty.range(self) {
             if let Some(rhs_range) = new_rhs.underlying(self).ty.range(self) {

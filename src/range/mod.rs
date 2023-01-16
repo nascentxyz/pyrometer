@@ -569,7 +569,7 @@ pub enum Op {
     Eq,
     Not,
     Shl,
-    Shr
+    Shr,
 }
 
 impl Op {

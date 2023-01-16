@@ -303,6 +303,66 @@ impl ContextVar {
         }
     }
 
+    pub fn maybe_from_user_ty(
+        analyzer: &impl AnalyzerLike,
+        loc: Loc,
+        node_idx: NodeIdx,
+    ) -> Option<Self> {
+        if let Some(ty) = VarType::try_from_idx(analyzer, node_idx) {
+            let (name, storage) = match analyzer.node(node_idx) {
+                Node::Contract(c) => {
+                    let name = c.name.clone().expect("Contract had no name").name;
+                    (name, None)
+                }
+                Node::Function(f) => {
+                    let name = f.name.clone().expect("Function had no name").name;
+                    (name, None)
+                }
+                Node::Struct(s) => {
+                    let name = s.name.clone().expect("Struct had no name").name;
+                    (name, None)
+                }
+                Node::Enum(e) => {
+                    let name = e.name.clone().expect("Enum had no name").name;
+                    (name, None)
+                }
+                Node::Var(var) => {
+                    let name = var.name.clone().expect("Variable had no name").name;
+                    let storage = if var.in_contract {
+                        if !var.attrs.iter().any(|attr| match attr {
+                            solang_parser::pt::VariableAttribute::Constant(_) => true,
+                            _ => false,
+                        }) {
+                            Some(StorageLocation::Storage(var.loc))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    (name, storage)
+                }
+                Node::Ty(ty) => {
+                    let name = &ty.name.name;
+                    (name.clone(), None)
+                }
+                _ => return None,
+            };
+
+            Some(ContextVar {
+                loc: Some(loc),
+                name: name.clone(),
+                display_name: name,
+                storage: storage,
+                is_tmp: false,
+                tmp_of: None,
+                ty,
+            })
+        } else {
+            None
+        }
+    }
+
     pub fn maybe_new_from_field(
         analyzer: &impl AnalyzerLike,
         loc: Loc,
