@@ -4,6 +4,7 @@ pub mod num_range;
 pub mod range_elem;
 pub mod range_expr;
 
+use crate::ContextNode;
 use crate::range::bool_range::BoolElem;
 use crate::AnalyzerLike;
 use crate::Concrete;
@@ -129,24 +130,24 @@ pub trait ToRangeString {
 }
 
 pub trait ElemEval {
-    fn eval(&self, analyzer: &impl AnalyzerLike) -> Self;
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
+    fn eval(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> Self;
+    fn range_eq(&self, other: &Self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool;
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
 }
 
 pub trait RangeEval<T: ElemEval>: RangeSize<Output = T> {
-    fn sat(&self, analyzer: &impl AnalyzerLike) -> bool {
+    fn sat(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool {
         match self
             .range_min()
-            .eval(analyzer)
-            .range_ord(&self.range_max().eval(analyzer))
+            .eval(ctx, analyzer)
+            .range_ord(&self.range_max().eval(ctx, analyzer))
         {
             None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => true,
             _ => false,
         }
     }
-    fn unsat(&self, analyzer: &impl AnalyzerLike) -> bool {
-        !self.sat(analyzer)
+    fn unsat(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool {
+        !self.sat(ctx, analyzer)
     }
 }
 
@@ -191,16 +192,16 @@ impl RangeSize for BuiltinRange {
 }
 
 impl ElemEval for BuiltinElem {
-    fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
+    fn eval(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> Self {
         match self {
-            Self::Bool(b) => BuiltinElem::Bool(b.eval(analyzer)),
-            Self::Num(num) => BuiltinElem::Num(num.eval(analyzer)),
+            Self::Bool(b) => BuiltinElem::Bool(b.eval(ctx, analyzer)),
+            Self::Num(num) => BuiltinElem::Num(num.eval(ctx, analyzer)),
         }
     }
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, other: &Self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool {
         match (self, other) {
-            (BuiltinElem::Bool(b0), BuiltinElem::Bool(b1)) => b0.range_eq(b1, analyzer),
-            (BuiltinElem::Num(n0), BuiltinElem::Num(n1)) => n0.range_eq(n1, analyzer),
+            (BuiltinElem::Bool(b0), BuiltinElem::Bool(b1)) => b0.range_eq(b1, ctx, analyzer),
+            (BuiltinElem::Num(n0), BuiltinElem::Num(n1)) => n0.range_eq(n1, ctx, analyzer),
             _ => false,
         }
     }
@@ -316,63 +317,128 @@ impl BuiltinRange {
         Self::Num(self.as_num_range().gt(other.as_num_range()))
     }
 
-    pub fn fn_from_op(op: Op) -> impl Fn(Self, Self) -> Self {
+    pub fn lte_dyn(self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self::Num(self.as_num_range().lte_dyn(other, range_sides, loc))
+    }
+
+    pub fn gte_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self::Num(self.as_num_range().gte_dyn(other, range_sides, loc))
+    }
+
+    pub fn lt_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self::Num(self.as_num_range().lt_dyn(other, range_sides, loc))
+    }
+
+    pub fn gt_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self::Num(self.as_num_range().gt_dyn(other, range_sides, loc))
+    }
+
+    pub fn fn_from_op(op: Op) -> Option<&'static dyn Fn(BuiltinRange, BuiltinRange) -> BuiltinRange> {
         match op {
-            Op::Add => Self::add,
-            Op::Sub => Self::sub,
-            Op::Mul => Self::mul,
-            Op::Div => Self::div,
-            Op::Mod => Self::r#mod,
-            Op::Min => Self::min,
-            Op::Max => Self::max,
-            _ => unreachable!("Comparator operations shouldn't exist in a range"),
+            Op::Add => Some(&Self::add),
+            Op::Sub => Some(&Self::sub),
+            Op::Mul => Some(&Self::mul),
+            Op::Div => Some(&Self::div),
+            Op::Mod => Some(&Self::r#mod),
+            Op::Min => Some(&Self::min),
+            Op::Max => Some(&Self::max),
+            Op::Lt => Some(&Self::lt),
+            Op::Lte => Some(&Self::lte),
+            Op::Gt => Some(&Self::gt),
+            Op::Gte => Some(&Self::gte),
+            // Op::Eq => Some(Self::eq),
+            // Op::Neq => Some(Self::neq),
+            _ => None,
         }
     }
 
     pub fn dyn_fn_from_op(
         op: Op,
-    ) -> (
+    ) -> Option<(
         &'static dyn Fn(Self, ContextVarNode, (DynamicRangeSide, DynamicRangeSide), Loc) -> Self,
         (DynamicRangeSide, DynamicRangeSide),
-    ) {
+    )> {
         match op {
-            Op::Add => (
+            Op::Add => Some((
                 &Self::add_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
-            ),
-            Op::Sub => (
+            )),
+            Op::Sub => Some((
                 &Self::sub_dyn,
                 (DynamicRangeSide::Max, DynamicRangeSide::Min),
-            ),
-            Op::Mul => (
+            )),
+            Op::Mul => Some((
                 &Self::mul_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
-            ),
-            Op::Div => (
+            )),
+            Op::Div => Some((
                 &Self::div_dyn,
                 (DynamicRangeSide::Max, DynamicRangeSide::Min),
-            ),
-            Op::Shl => (
+            )),
+            Op::Shl => Some((
                 &Self::shl_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
-            ),
-            Op::Shr => (
+            )),
+            Op::Shr => Some((
                 &Self::shr_dyn,
                 (DynamicRangeSide::Max, DynamicRangeSide::Min),
-            ),
-            Op::Mod => (
+            )),
+            Op::Mod => Some((
                 &Self::mod_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
-            ),
-            Op::Min => (
+            )),
+            Op::Min => Some((
                 &Self::min_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
-            ),
-            Op::Max => (
+            )),
+            Op::Max => Some((
                 &Self::max_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
-            ),
-            _ => unreachable!("Comparator operations shouldn't exist in a range"),
+            )),
+            Op::Eq => Some((
+                &Self::eq_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            )),
+            Op::Neq => Some((
+                &Self::neq_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            )),
+            Op::Lt => Some((
+                &Self::lt_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            )),
+            Op::Lte => Some((
+                &Self::lte_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            )),
+            Op::Gt => Some((
+                &Self::gt_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            )),
+            Op::Gte => Some((
+                &Self::gte_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            )),
+            e => None, //unreachable!("Comparator operations shouldn't exist in a range: {:?}", e),
         }
     }
 
@@ -492,6 +558,30 @@ impl BuiltinRange {
     ) -> Self {
         Self::Num(self.as_num_range().max_dyn(other, range_sides, loc))
     }
+
+    pub fn eq_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        match self {
+            Self::Num(n) => BuiltinRange::Num(n.eq_dyn(other, range_sides, loc)),
+            Self::Bool(b) => BuiltinRange::Bool(b.eq_dyn(other, range_sides, loc)),
+        }
+    }
+
+    pub fn neq_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        match self {
+            Self::Num(n) => BuiltinRange::Num(n.neq_dyn(other, range_sides, loc)),
+            Self::Bool(b) => BuiltinRange::Bool(b.neq_dyn(other, range_sides, loc)),
+        }
+    }
 }
 
 impl From<U256> for BuiltinRange {
@@ -567,22 +657,30 @@ pub enum Op {
     Gt,
     Gte,
     Eq,
+    Neq,
     Not,
     Shl,
     Shr,
+    And,
+    Where,
+    ExprMin,
+    ExprMax,
 }
 
 impl Op {
-    pub fn inverse(self) -> Self {
+    pub fn inverse(self) -> Option<Self> {
         use Op::*;
         match self {
-            Add => Sub,
-            Mul => Div,
-            Sub => Add,
-            Div => Mul,
-            Shl => Shr,
-            Shr => Shl,
-            e => panic!("tried to inverse unreversable op: {:?}", e),
+            Add => Some(Sub),
+            Mul => Some(Div),
+            Sub => Some(Add),
+            Div => Some(Mul),
+            Shl => Some(Shr),
+            Shr => Some(Shl),
+            Eq => Some(Neq),
+            Neq => Some(Eq),
+            _ => None
+            // e => panic!("tried to inverse unreversable op: {:?}", e),
         }
     }
 }
@@ -600,12 +698,17 @@ impl ToString for Op {
             Mod => "%".to_string(),
             Min => "min".to_string(),
             Max => "max".to_string(),
+            ExprMin => "min".to_string(),
+            ExprMax => "max".to_string(),
             Lt => "<".to_string(),
             Gt => ">".to_string(),
             Lte => "<=".to_string(),
             Gte => ">=".to_string(),
             Eq => "==".to_string(),
+            Neq => "!=".to_string(),
             Not => "!".to_string(),
+            And => "&".to_string(),
+            Where => "where".to_string(),
         }
     }
 }

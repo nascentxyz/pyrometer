@@ -1,12 +1,16 @@
-use crate::range::BoolRange;
-use crate::range::BuiltinRange;
-use crate::range::ElemEval;
-use crate::range::RangeSize;
+use shared::range::elem_ty::RangeConcrete;
+use shared::range::elem_ty::RangeExpr;
+use shared::range::elem_ty::Elem;
+use shared::range::SolcRange;
+
+use shared::range::{elem::RangeOp, elem::RangeElem};
+use shared::range::Range;
+use shared::Node;
+use shared::analyzer::AnalyzerLike;
+use shared::nodes::*;
+use shared::context::*;
 use crate::ExprRet;
-use crate::{
-    range::Op, AnalyzerLike, BuiltInNode, Builtin, ContextBuilder, ContextNode, ContextVar,
-    ContextVarNode, Node, TmpConstruction, VarType,
-};
+use crate::ContextBuilder;
 
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;
@@ -23,7 +27,7 @@ pub trait Cmp: AnalyzerLike + Sized {
             ExprRet::CtxKilled => lhs_expr,
             ExprRet::Single((ctx, lhs)) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
-                let range = self.not_eval(loc, lhs_cvar);
+                let range = self.not_eval(ctx, loc, lhs_cvar);
 
                 let out_var = ContextVar {
                     loc: Some(loc),
@@ -31,7 +35,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                     display_name: format!("!{}", lhs_cvar.display_name(self),),
                     storage: None,
                     is_tmp: true,
-                    tmp_of: Some(TmpConstruction::new(lhs_cvar, Op::Not, None)),
+                    tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::Not, None)),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                         Some(range),
@@ -54,7 +58,7 @@ pub trait Cmp: AnalyzerLike + Sized {
         &mut self,
         loc: Loc,
         lhs_expr: &Expression,
-        op: Op,
+        op: RangeOp,
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
@@ -62,12 +66,13 @@ pub trait Cmp: AnalyzerLike + Sized {
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
-    fn cmp_inner(&mut self, loc: Loc, lhs_paths: &ExprRet, op: Op, rhs_paths: &ExprRet) -> ExprRet {
+    
+    fn cmp_inner(&mut self, loc: Loc, lhs_paths: &ExprRet, op: RangeOp, rhs_paths: &ExprRet) -> ExprRet {
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
-                let range = self.range_eval(lhs_cvar, rhs_cvar, op);
+                let range = self.range_eval(*ctx, lhs_cvar, rhs_cvar, op);
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(
@@ -151,145 +156,163 @@ pub trait Cmp: AnalyzerLike + Sized {
         }
     }
 
-    fn not_eval(&self, loc: Loc, lhs_cvar: ContextVarNode) -> BuiltinRange {
+    fn not_eval(&self, ctx: ContextNode, loc: Loc, lhs_cvar: ContextVarNode) -> SolcRange {
         if let Some(lhs_range) = lhs_cvar.range(self) {
             let lhs_min = lhs_range.range_min();
 
             // invert
             if lhs_min.range_eq(&lhs_range.range_max(), self) {
-                if let Some(inv_lhs_min) = lhs_min.bool_elem().invert(loc) {
-                    BuiltinRange::Bool(BoolRange::from(inv_lhs_min))
-                } else {
-                    BuiltinRange::Bool(BoolRange::default())
+                let val = Elem::Expr(RangeExpr {
+                    lhs: Box::new(lhs_min),
+                    op: RangeOp::Not,
+                    rhs: Box::new(Elem::Null),
+                });
+
+                return SolcRange {
+                    min: val.clone(),
+                    max: val,
                 }
-            } else {
-                BuiltinRange::Bool(BoolRange::default())
             }
-        } else {
-            BuiltinRange::Bool(BoolRange::default())
+        }
+
+        let min = RangeConcrete {
+            val: Concrete::Bool(false),
+            loc,
+        };
+
+        let max = RangeConcrete {
+            val: Concrete::Bool(true),
+            loc,
+        };
+        SolcRange {
+            min: Elem::Concrete(min),
+            max: Elem::Concrete(max),
         }
     }
 
     fn range_eval(
         &self,
+        ctx: ContextNode,
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
-        op: Op,
-    ) -> BuiltinRange {
+        op: RangeOp,
+    ) -> SolcRange {
         if let Some(lhs_range) = lhs_cvar.range(self) {
             if let Some(rhs_range) = rhs_cvar.range(self) {
                 match op {
-                    Op::Lt => {
+                    RangeOp::Lt => {
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // true
-                        let lhs_max = lhs_range.range_max().eval(self).num_elem();
-                        let rhs_min = rhs_range.range_min().eval(self).num_elem();
+
+
+                        let lhs_max = lhs_range.range_max().eval(self);
+                        let rhs_min = rhs_range.range_min().eval(self);
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             _ => {}
                         }
 
                         // Similarly if lhs_min >= rhs_max, we know this cmp will evaluate to
                         // false
-                        let lhs_min = lhs_range.range_min().eval(self).num_elem();
-                        let rhs_max = rhs_range.range_max().eval(self).num_elem();
+                        let lhs_min = lhs_range.range_min().eval(self);
+                        let rhs_max = rhs_range.range_max().eval(self);
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
-                                return BuiltinRange::from(false);
+                                return false.into();
                             }
                             Some(Ordering::Equal) => {
-                                return BuiltinRange::from(false);
+                                return false.into();
                             }
                             _ => {}
                         }
                     }
-                    Op::Gt => {
+                    RangeOp::Gt => {
                         // if lhs_min > rhs_max, we know this cmp will evaluate to
                         // true
-                        let lhs_min = lhs_range.range_min().eval(self).num_elem();
-                        let rhs_max = rhs_range.range_max().eval(self).num_elem();
+                        let lhs_min = lhs_range.range_min().eval(self);
+                        let rhs_max = rhs_range.range_max().eval(self);
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             _ => {}
                         }
 
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
                         // false
-                        let lhs_max = lhs_range.range_max().eval(self).num_elem();
-                        let rhs_min = rhs_range.range_min().eval(self).num_elem();
+                        let lhs_max = lhs_range.range_max().eval(self);
+                        let rhs_min = rhs_range.range_min().eval(self);
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
-                                return BuiltinRange::from(false);
+                                return false.into();
                             }
                             Some(Ordering::Equal) => {
-                                return BuiltinRange::from(false);
+                                return false.into();
                             }
                             _ => {}
                         }
                     }
-                    Op::Lte => {
+                    RangeOp::Lte => {
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
                         // true
-                        let lhs_max = lhs_range.range_max().eval(self).num_elem();
-                        let rhs_min = rhs_range.range_min().eval(self).num_elem();
+                        let lhs_max = lhs_range.range_max().eval(self);
+                        let rhs_min = rhs_range.range_min().eval(self);
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             Some(Ordering::Equal) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             _ => {}
                         }
 
                         // Similarly if lhs_min > rhs_max, we know this cmp will evaluate to
                         // false
-                        let lhs_min = lhs_range.range_min().eval(self).num_elem();
-                        let rhs_max = rhs_range.range_max().eval(self).num_elem();
+                        let lhs_min = lhs_range.range_min().eval(self);
+                        let rhs_max = rhs_range.range_max().eval(self);
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
-                                return BuiltinRange::from(false);
+                                return false.into();
                             }
                             _ => {}
                         }
                     }
-                    Op::Gte => {
+                    RangeOp::Gte => {
                         // if lhs_min >= rhs_max, we know this cmp will evaluate to
                         // true
-                        let lhs_min = lhs_range.range_min().eval(self).num_elem();
-                        let rhs_max = rhs_range.range_max().eval(self).num_elem();
+                        let lhs_min = lhs_range.range_min().eval(self);
+                        let rhs_max = rhs_range.range_max().eval(self);
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             Some(Ordering::Equal) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             _ => {}
                         }
 
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // false
-                        let lhs_max = lhs_range.range_max().eval(self).num_elem();
-                        let rhs_min = rhs_range.range_min().eval(self).num_elem();
+                        let lhs_max = lhs_range.range_max().eval(self);
+                        let rhs_min = rhs_range.range_min().eval(self);
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
-                                return BuiltinRange::from(false);
+                                return false.into();
                             }
                             _ => {}
                         }
                     }
-                    Op::Eq => {
+                    RangeOp::Eq => {
                         // if all elems are equal we know its true
                         // we dont know anything else
-                        let lhs_min = lhs_range.range_min().eval(self).num_elem();
-                        let lhs_max = lhs_range.range_max().eval(self).num_elem();
-                        let rhs_min = rhs_range.range_min().eval(self).num_elem();
-                        let rhs_max = rhs_range.range_max().eval(self).num_elem();
+                        let lhs_min = lhs_range.range_min().eval(self);
+                        let lhs_max = lhs_range.range_max().eval(self);
+                        let rhs_min = rhs_range.range_min().eval(self);
+                        let rhs_max = rhs_range.range_max().eval(self);
                         match (
                             // check lhs_min == lhs_max, ensures lhs is const
                             lhs_min.range_ord(&lhs_max),
@@ -303,19 +326,19 @@ pub trait Cmp: AnalyzerLike + Sized {
                                 Some(Ordering::Equal),
                                 Some(Ordering::Equal),
                             ) => {
-                                return BuiltinRange::from(true);
+                                return true.into();
                             }
                             _ => {}
                         }
                     }
                     e => unreachable!("Cmp with strange op: {:?}", e),
                 }
-                BuiltinRange::Bool(BoolRange::default())
+                SolcRange::default_bool()
             } else {
-                BuiltinRange::Bool(BoolRange::default())
+                SolcRange::default_bool()
             }
         } else {
-            BuiltinRange::Bool(BoolRange::default())
+            SolcRange::default_bool()
         }
     }
 }

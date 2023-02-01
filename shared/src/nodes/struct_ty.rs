@@ -1,7 +1,7 @@
-use crate::AnalyzerLike;
+use crate::analyzer::AnalyzerLike;
 use crate::Node;
 use crate::NodeIdx;
-use solang_parser::pt::{Identifier, Loc, StructDefinition, VariableDeclaration};
+use solang_parser::pt::{Identifier, Loc, StructDefinition, VariableDeclaration, Expression};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct StructNode(pub usize);
@@ -105,7 +105,7 @@ impl Into<Node> for Field {
 }
 
 impl Field {
-    pub fn new(analyzer: &mut impl AnalyzerLike, var_def: VariableDeclaration) -> Field {
+    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, var_def: VariableDeclaration) -> Field {
         let ty_idx = analyzer.parse_expr(&var_def.ty);
         Field {
             loc: var_def.loc,

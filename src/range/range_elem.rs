@@ -1,3 +1,4 @@
+use crate::ContextNode;
 use crate::range::ElemEval;
 use crate::range::RangeSize;
 use crate::range::ToRangeString;
@@ -17,6 +18,7 @@ pub enum RangeElem {
     SignedConcrete(I256, Loc),
     Dynamic(NodeIdx, DynamicRangeSide, Loc),
     Complex(RangeExpr),
+    EmptyRhs,
 }
 
 impl From<U256> for RangeElem {
@@ -53,6 +55,24 @@ impl RangeElem {
         let expr = RangeExpr {
             lhs: RangeExprElem::from(self),
             op: Op::Max,
+            rhs: RangeExprElem::from(other),
+        };
+        RangeElem::Complex(expr)
+    }
+
+    pub fn eq(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Eq,
+            rhs: RangeExprElem::from(other),
+        };
+        RangeElem::Complex(expr)
+    }
+
+    pub fn neq(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: RangeExprElem::from(self),
+            op: Op::Neq,
             rhs: RangeExprElem::from(other),
         };
         RangeElem::Complex(expr)
@@ -151,22 +171,23 @@ impl Rem for RangeElem {
 }
 
 impl ElemEval for RangeElem {
-    fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
+    fn eval(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> Self {
         use RangeElem::*;
         match self {
             Concrete(..) => self.clone(),
             SignedConcrete(..) => self.clone(),
             Dynamic(idx, range_side, _) => {
-                let cvar = ContextVarNode::from(*idx).underlying(analyzer);
+                println!("first: {:#?}\n latest: {:#?}", ContextVarNode::from(*idx).underlying(analyzer), ContextVarNode::from(*idx).latest_version_in_ctx(ctx, analyzer).underlying(analyzer));
+                let cvar = ContextVarNode::from(*idx).latest_version_in_ctx(ctx, analyzer).underlying(analyzer);
                 match &cvar.ty {
                     VarType::BuiltIn(_, maybe_range) => {
                         if let Some(range) = maybe_range {
                             match range_side {
                                 DynamicRangeSide::Min => {
-                                    Self::from(range.num_range().range_min().clone().eval(analyzer))
+                                    Self::from(range.num_range().range_min().clone().eval(ctx, analyzer))
                                 }
                                 DynamicRangeSide::Max => {
-                                    Self::from(range.num_range().range_max().clone().eval(analyzer))
+                                    Self::from(range.num_range().range_max().clone().eval(ctx, analyzer))
                                 }
                             }
                         } else {
@@ -186,18 +207,19 @@ impl ElemEval for RangeElem {
                 }
             }
             Complex(ref expr) => {
-                if let Some(elem) = expr.eval(analyzer) {
+                if let Some(elem) = expr.eval(ctx, analyzer) {
                     elem
                 } else {
                     self.clone()
                 }
             }
+            RangeElem::EmptyRhs => self.clone(),
         }
     }
 
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, other: &Self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool {
         use RangeElem::*;
-        match (self.eval(analyzer), other.eval(analyzer)) {
+        match (self.eval(ctx, analyzer), other.eval(ctx, analyzer)) {
             (Concrete(val0, _), Concrete(val1, _)) => val0 == val1,
             (SignedConcrete(val0, _), SignedConcrete(val1, _)) => val0 == val1,
             (Concrete(val0, _), SignedConcrete(val1, _)) => {
@@ -217,7 +239,7 @@ impl ElemEval for RangeElem {
             (Dynamic(node0, side0, _), Dynamic(node1, side1, _)) => {
                 node0 == node1 && side0 == side1
             }
-            (Complex(expr0), Complex(expr1)) => expr0.range_eq(&expr1, analyzer),
+            (Complex(expr0), Complex(expr1)) => expr0.range_eq(&expr1, ctx, analyzer),
             _ => false,
         }
     }
@@ -259,6 +281,7 @@ impl ToRangeString for RangeElem {
                     .underlying(analyzer);
                 RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
+            EmptyRhs => RangeElemString::new("".to_string(), Loc::Implicit)
         }
     }
 
@@ -270,13 +293,13 @@ impl ToRangeString for RangeElem {
             Dynamic(idx, range_side, loc) => {
                 let as_var = ContextVarNode::from(*idx);
                 let name = format!(
-                    "{}.{}",
+                    "{}",
                     as_var.display_name(analyzer),
-                    range_side.to_string()
                 );
                 RangeElemString::new(name, *loc)
             }
             Complex(expr) => expr.to_range_string(analyzer),
+            EmptyRhs => RangeElemString::new("".to_string(), Loc::Implicit)
         }
     }
 

@@ -1,10 +1,11 @@
-use crate::range::BuiltinRange;
-use crate::range::RangeSize;
-use crate::AnalyzerLike;
-use crate::{
-    range::Op, ContextBuilder, ContextEdge, ContextNode, ContextVar, ContextVarNode, Edge, ExprRet,
-    Node, TmpConstruction,
-};
+use std::collections::BTreeMap;
+use shared::range::Range;
+use shared::range::SolcRange;
+use shared::range::elem::RangeOp;
+use crate::context::ContextBuilder;
+use crate::ExprRet;
+use shared::context::*;
+use shared::{Node, Edge, analyzer::AnalyzerLike};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -16,7 +17,7 @@ pub trait BinOp: AnalyzerLike + Sized {
         lhs_expr: &Expression,
         rhs_expr: &Expression,
         ctx: ContextNode,
-        op: Op,
+        op: RangeOp,
         assign: bool,
     ) -> ExprRet {
         let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
@@ -101,7 +102,7 @@ pub trait BinOp: AnalyzerLike + Sized {
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
-        op: Op,
+        op: RangeOp,
         assign: bool,
     ) -> ExprRet {
         let new_lhs = if assign {
@@ -136,7 +137,7 @@ pub trait BinOp: AnalyzerLike + Sized {
             ContextVarNode::from(new_var)
         };
 
-        let lhs_range = if let Some(lhs_range) = new_lhs.range(self) {
+        let mut lhs_range = if let Some(lhs_range) = new_lhs.range(self) {
             lhs_range
         } else {
             rhs_cvar
@@ -144,7 +145,8 @@ pub trait BinOp: AnalyzerLike + Sized {
                 .expect("Neither lhs nor rhs had a usable range")
         };
 
-        let (func, range_sides) = BuiltinRange::dyn_fn_from_op(op);
+        let (func, range_sides) = SolcRange::dyn_fn_from_op(op);
+        // lhs_range.update_deps(ctx, self);
         let new_range = func(lhs_range, rhs_cvar, range_sides, loc);
         new_lhs.set_range_min(self, new_range.range_min());
         new_lhs.set_range_max(self, new_range.range_max());

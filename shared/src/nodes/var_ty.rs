@@ -1,5 +1,5 @@
-use crate::{AnalyzerLike, Node, NodeIdx};
-use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition};
+use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
+use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition, Expression};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct VarNode(pub usize);
@@ -54,7 +54,7 @@ impl Into<Node> for Var {
 
 impl Var {
     pub fn new(
-        analyzer: &mut impl AnalyzerLike,
+        analyzer: &mut impl AnalyzerLike<Expr = Expression>,
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {

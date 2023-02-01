@@ -1,132 +1,22 @@
-use ethers_core::types::{Address, H256, I256, U256};
-use solang_parser::pt::Identifier;
+use shared::nodes::*;
+use shared::analyzer::*;
+use shared::{Node, Edge, NodeIdx};
+use ethers_core::types::{U256};
+
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
-    FunctionDefinition, SourceUnit, SourceUnitPart, Statement, StructDefinition, TypeDefinition,
+    FunctionDefinition, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
     VariableDefinition,
 };
 use std::collections::HashMap;
 
-use petgraph::dot::Dot;
 use petgraph::{graph::*, Directed};
 
 mod builtin_fns;
 
 pub mod context;
-pub mod range;
-pub mod types;
+// pub mod range;
 use context::*;
-use types::*;
-
-pub type NodeIdx = NodeIndex<usize>;
-pub type EdgeIdx = EdgeIndex<usize>;
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Node {
-    Context(Context),
-    ContextVar(ContextVar),
-    ContextFork,
-    Builtin(Builtin),
-    DynBuiltin(DynBuiltin),
-    VarType(VarType),
-    SourceUnit(usize),
-    SourceUnitPart(usize, usize),
-    Contract(Contract),
-    Function(Function),
-    FunctionParam(FunctionParam),
-    FunctionReturn(FunctionReturn),
-    Struct(Struct),
-    Enum(Enum),
-    Error(Error),
-    ErrorParam(ErrorParam),
-    Field(Field),
-    Var(Var),
-    Ty(Ty),
-    Unresolved(Identifier),
-    Concrete(Concrete),
-}
-
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct ConcreteNode(pub usize);
-
-impl ConcreteNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Concrete {
-        match analyzer.node(*self) {
-            Node::Concrete(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be Concrete but it was: {:?}",
-                e
-            ),
-        }
-    }
-}
-
-impl From<NodeIdx> for ConcreteNode {
-    fn from(idx: NodeIdx) -> Self {
-        ConcreteNode(idx.index())
-    }
-}
-
-impl Into<NodeIdx> for ConcreteNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Concrete {
-    Uint(u16, U256),
-    Int(u16, I256),
-    Bytes(u8, H256),
-    Address(Address),
-    DynBytes(Vec<u8>),
-    String(String),
-    Bool(bool),
-    Array(Vec<Concrete>),
-}
-impl Concrete {
-    pub fn uint_val(&self) -> Option<U256> {
-        match self {
-            Concrete::Uint(_, val) => Some(*val),
-            _ => None,
-        }
-    }
-
-    pub fn int_val(&self) -> Option<I256> {
-        match self {
-            Concrete::Int(_, val) => Some(*val),
-            _ => None,
-        }
-    }
-
-    pub fn as_string(&self) -> String {
-        match self {
-            Concrete::Uint(_, val) => val.to_string(),
-            Concrete::Int(_, val) => val.to_string(),
-            Concrete::Bytes(_, b) => format!("0x{:x}", b),
-            Concrete::String(s) => s.to_string(),
-            _ => todo!("concrete as string"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub enum Edge {
-    Part,
-    Context(ContextEdge),
-    Contract,
-    Field,
-    Enum,
-    Struct,
-    Error,
-    ErrorParam,
-    Event,
-    Var,
-    Ty,
-    Func,
-    FunctionParam,
-    FunctionReturn,
-}
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
@@ -153,79 +43,6 @@ impl Default for Analyzer {
     }
 }
 
-pub trait AnalyzerLike: GraphLike {
-    fn builtin_fns(&self) -> &HashMap<String, Function>;
-    fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
-    fn builtins(&self) -> &HashMap<Builtin, NodeIdx>;
-    fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx>;
-    fn builtin_or_add(&mut self, builtin: Builtin) -> NodeIdx {
-        if let Some(idx) = self.builtins().get(&builtin) {
-            *idx
-        } else {
-            let idx = self.add_node(Node::Builtin(builtin.clone()));
-            self.builtins_mut().insert(builtin, idx);
-            idx
-        }
-    }
-    fn dyn_builtins(&self) -> &HashMap<DynBuiltin, NodeIdx>;
-    fn dyn_builtins_mut(&mut self) -> &mut HashMap<DynBuiltin, NodeIdx>;
-    fn user_types(&self) -> &HashMap<String, NodeIdx>;
-    fn user_types_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
-    fn parse_expr(&mut self, expr: &Expression) -> NodeIdx;
-}
-
-pub trait GraphLike {
-    fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize>;
-    fn graph(&self) -> &Graph<Node, Edge, Directed, usize>;
-
-    fn add_node(&mut self, node: impl Into<Node>) -> NodeIdx {
-        self.graph_mut().add_node(node.into())
-    }
-
-    fn node(&self, node: impl Into<NodeIdx>) -> &Node {
-        self.graph()
-            .node_weight(node.into())
-            .expect("Index not in graph")
-    }
-
-    fn node_mut(&mut self, node: impl Into<NodeIdx>) -> &mut Node {
-        self.graph_mut()
-            .node_weight_mut(node.into())
-            .expect("Index not in graph")
-    }
-
-    fn add_edge(
-        &mut self,
-        from_node: impl Into<NodeIdx>,
-        to_node: impl Into<NodeIdx>,
-        edge: impl Into<Edge>,
-    ) {
-        self.graph_mut()
-            .add_edge(from_node.into(), to_node.into(), edge.into());
-    }
-
-    fn dot_str(&self) -> String {
-        format!("{:?}", Dot::new(self.graph()))
-    }
-
-    fn dot_str_no_tmps(&self) -> String {
-        let new_graph = self.graph().filter_map(
-            |_idx, node| match node {
-                Node::ContextVar(cvar) => {
-                    if cvar.tmp_of.is_some() {
-                        None
-                    } else {
-                        Some(node)
-                    }
-                }
-                _ => Some(node),
-            },
-            |_idx, edge| Some(edge),
-        );
-        format!("{:?}", Dot::new(&new_graph))
-    }
-}
-
 impl GraphLike for Analyzer {
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
         &mut self.graph
@@ -237,6 +54,7 @@ impl GraphLike for Analyzer {
 }
 
 impl AnalyzerLike for Analyzer {
+    type Expr = Expression;
     fn builtin_fns(&self) -> &HashMap<String, Function> {
         &self.builtin_fns
     }
@@ -404,7 +222,7 @@ impl Analyzer {
             Annotation(_anno) => todo!(),
             Using(_using) => todo!(),
             StraySemicolon(_loc) => todo!(),
-            PragmaDirective(_, _, _) => todo!(),
+            PragmaDirective(_, _, _) => {},
             ImportDirective(_) => todo!(),
         }
         sup_node
@@ -554,6 +372,7 @@ impl Analyzer {
 
 #[cfg(test)]
 mod tests {
+    use shared::context::{ContextNode, ContextEdge};
     use super::*;
 
     #[test]
@@ -562,54 +381,52 @@ mod tests {
 contract Storage {
     uint256 c;
 
-    function b5(uint128 s) public  {
-        c += s;
-        // (uint256 a, uint256 b) = s < 5 ? (1 + 2, 5) : (3 + 4, 6);
+    function b5(uint64 x) public  {
+        // if (x % 2 == 0) {
+        //     x = x / 2;
+        // } else {
+        //     x = x * 3 + 1;
+        //     require( x % 2 == 0);
+        // }
+        c += x;
+        (uint256 a, uint256 b) = x < 5 ? (1 + 2, 5) : (3 + 4, 6);
         // a += 1;
         // require(a < 10);
         // require(b < 8);
-        // if (s < 7) {
-        //     c += 1;
-        // } else {
-        //     c += 2;
-        // }
+        if (x < 7) {
+            c += 1;
+        } else {
+            if (x < 10) {
+                c += 2;    
+            } else {
+                c += 3;
+            }
+        }
+
+        x += 10;
+
+        c += x*0;
     }
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
         println!("parse time: {:?}", t0.elapsed().as_nanos());
-        println!("{}", analyzer.dot_str_no_tmps());
+        println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
-        // println!("contexts: {:?}", contexts);
-        let mut t = std::time::Instant::now();
         for context in contexts.into_iter() {
             let config = ReportConfig {
-                eval_bounds: false,
+                eval_bounds: true,
+                simplify_bounds: true,
                 show_tmps: false,
                 show_consts: true,
                 show_subctxs: true,
                 show_initial_bounds: true,
             };
             let ctx = ContextNode::from(context);
-            // let analysis = analyzer.bounds_for_var(ctx, "b".to_string(), config);
-
-            // // let mins =
-            // //     analyzer.min_size_to_prevent_access_revert(ContextNode::from(context), config);
-            // println!("array analyze time: {:?}", t.elapsed().as_nanos());
-            // analysis.iter().for_each(|a| a.print_report((0, &sol), &analyzer));
-
-            // let analysis = analyzer.bounds_for_var(ctx, "a".to_string(), config);
-            // analysis.iter().for_each(|a| a.print_report((0, &sol), &analyzer));
-            // let analysis = analyzer.bounds_for_var(ctx, "s".to_string(), config);
-            // analysis.iter().for_each(|a| a.print_report((0, &sol), &analyzer));
 
             let analysis = analyzer.bounds_for_all(ctx, config);
-            println!("analysis time: {:?}", t.elapsed().as_nanos());
             analysis.print_reports((0, &sol), &analyzer);
-            // mins.iter()
-            //     .for_each(|min| min.print_report((0, &sol), &analyzer));
-            t = std::time::Instant::now();
         }
         println!("total analyze time: {:?}", t0.elapsed().as_nanos());
     }

@@ -1,6 +1,6 @@
-use crate::{AnalyzerLike, Node, NodeIdx};
+use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
 use solang_parser::pt::{
-    FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation,
+    FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation, Expression
 };
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -106,7 +106,7 @@ impl Into<Node> for FunctionParam {
 }
 
 impl FunctionParam {
-    pub fn new(analyzer: &mut impl AnalyzerLike, param: Parameter) -> Self {
+    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, param: Parameter) -> Self {
         FunctionParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),
@@ -158,7 +158,7 @@ pub struct FunctionReturn {
 }
 
 impl FunctionReturn {
-    pub fn new(analyzer: &mut impl AnalyzerLike, param: Parameter) -> Self {
+    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, param: Parameter) -> Self {
         FunctionReturn {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

@@ -1,3 +1,4 @@
+use crate::ContextNode;
 use crate::range::ElemEval;
 use crate::range::RangeSize;
 use crate::range::ToRangeString;
@@ -31,6 +32,7 @@ pub enum RangeExprElem {
     Concrete(U256, Loc),
     SignedConcrete(I256, Loc),
     Dynamic(NodeIdx, DynamicRangeSide, Loc),
+    EmptyRhs,
 }
 
 impl From<RangeElem> for RangeExprElem {
@@ -40,6 +42,7 @@ impl From<RangeElem> for RangeExprElem {
             RangeElem::Concrete(val, loc) => Self::Concrete(val, loc),
             RangeElem::SignedConcrete(val, loc) => Self::SignedConcrete(val, loc),
             RangeElem::Dynamic(idx, range_side, loc) => Self::Dynamic(idx, range_side, loc),
+            RangeElem::EmptyRhs => Self::EmptyRhs,
         }
     }
 }
@@ -51,27 +54,28 @@ impl Into<RangeElem> for RangeExprElem {
             Self::Concrete(val, loc) => RangeElem::Concrete(val, loc),
             Self::SignedConcrete(val, loc) => RangeElem::SignedConcrete(val, loc),
             Self::Dynamic(idx, range_side, loc) => RangeElem::Dynamic(idx, range_side, loc),
+            Self::EmptyRhs => RangeElem::EmptyRhs,
         }
     }
 }
 
 impl ElemEval for RangeExprElem {
-    fn eval(&self, analyzer: &impl AnalyzerLike) -> Self {
+    fn eval(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> Self {
         use RangeExprElem::*;
         match self {
             Concrete(..) => self.clone(),
             SignedConcrete(..) => self.clone(),
             Dynamic(idx, range_side, _) => {
-                let cvar = ContextVarNode::from(*idx).underlying(analyzer);
+                let cvar = ContextVarNode::from(*idx).latest_version_in_ctx(ctx, analyzer).underlying(analyzer);
                 match &cvar.ty {
                     VarType::BuiltIn(_, maybe_range) => {
                         if let Some(range) = maybe_range {
                             match range_side {
                                 DynamicRangeSide::Min => {
-                                    Self::from(range.num_range().range_min().clone().eval(analyzer))
+                                    Self::from(range.num_range().range_min().clone().eval(ctx, analyzer))
                                 }
                                 DynamicRangeSide::Max => {
-                                    Self::from(range.num_range().range_max().clone().eval(analyzer))
+                                    Self::from(range.num_range().range_max().clone().eval(ctx, analyzer))
                                 }
                             }
                         } else {
@@ -91,18 +95,19 @@ impl ElemEval for RangeExprElem {
                 }
             }
             Expr(ref expr) => {
-                if let Some(elem) = expr.eval(analyzer) {
+                if let Some(elem) = expr.eval(ctx, analyzer) {
                     Self::from(elem)
                 } else {
                     self.clone()
                 }
             }
+            EmptyRhs => self.clone(),
         }
     }
 
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, other: &Self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool {
         use RangeExprElem::*;
-        match (self.eval(analyzer), other.eval(analyzer)) {
+        match (self.eval(ctx, analyzer), other.eval(ctx, analyzer)) {
             (Expr(expr0), Expr(expr1)) => expr0 == expr1,
             (Concrete(val0, _), Concrete(val1, _)) => val0 == val1,
             (SignedConcrete(val0, _), SignedConcrete(val1, _)) => val0 == val1,
@@ -146,6 +151,7 @@ impl ToRangeString for RangeExprElem {
                     .underlying(analyzer);
                 RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
+            EmptyRhs => RangeElemString::new("".to_string(), Loc::Implicit)
         }
     }
 
@@ -155,15 +161,15 @@ impl ToRangeString for RangeExprElem {
             Expr(expr) => expr.to_range_string(analyzer),
             Concrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
             SignedConcrete(val, loc) => RangeElemString::new(val.to_string(), *loc),
-            Dynamic(idx, range_side, loc) => {
+            Dynamic(idx, _range_side, loc) => {
                 let as_var = ContextVarNode::from(*idx);
                 let name = format!(
-                    "{}.{}",
+                    "{}",
                     as_var.display_name(analyzer),
-                    range_side.to_string()
                 );
                 RangeElemString::new(name, *loc)
             }
+            EmptyRhs => RangeElemString::new("".to_string(), Loc::Implicit)
         }
     }
 
@@ -188,7 +194,7 @@ impl RangeExprElem {
         }
     }
 
-    pub fn exec_op(&self, other: &Self, op: Op) -> Option<RangeElem> {
+    pub fn exec_op(&self, other: &Self, op: Op, for_max: bool) -> Option<RangeElem> {
         match (self, other) {
             (Self::Concrete(self_val, loc), Self::Concrete(other_val, _)) => match op {
                 Op::Add => Some(RangeElem::Concrete(
@@ -227,7 +233,21 @@ impl RangeExprElem {
                         Some(RangeElem::Concrete(*other_val, *loc))
                     }
                 }
-                _ => unreachable!("Comparator operations shouldn't exist in a range"),
+                Op::Eq => {
+                    if self_val == other_val {
+                        Some(RangeElem::Concrete(1.into(), *loc))
+                    } else {
+                        Some(RangeElem::Concrete(0.into(), *loc))
+                    }
+                }
+                Op::Neq => {
+                    if self_val == other_val {
+                        Some(RangeElem::Concrete(0.into(), *loc))
+                    } else {
+                        Some(RangeElem::Concrete(1.into(), *loc))
+                    }
+                }
+                _ => None,
             },
             (Self::SignedConcrete(self_val, loc), Self::SignedConcrete(other_val, _)) => match op {
                 Op::Add => Some(RangeElem::SignedConcrete(
@@ -266,17 +286,31 @@ impl RangeExprElem {
                         Some(RangeElem::SignedConcrete(*other_val, *loc))
                     }
                 }
-                _ => unreachable!("Comparator operations shouldn't exist in a range"),
+                Op::Eq => {
+                    if self_val == other_val {
+                        Some(RangeElem::Concrete(1.into(), *loc))
+                    } else {
+                        Some(RangeElem::Concrete(0.into(), *loc))
+                    }
+                }
+                Op::Neq => {
+                    if self_val == other_val {
+                        Some(RangeElem::Concrete(0.into(), *loc))
+                    } else {
+                        Some(RangeElem::Concrete(1.into(), *loc))
+                    }
+                }
+                _ => None,
             },
             (Self::Concrete(self_val, loc), Self::SignedConcrete(..)) => {
                 let new_lhs =
                     Self::SignedConcrete(I256::try_from(*self_val).unwrap_or(I256::MAX), *loc);
-                new_lhs.exec_op(other, op)
+                new_lhs.exec_op(other, op, for_max)
             }
             (Self::SignedConcrete(..), Self::Concrete(other_val, loc)) => {
                 let new_rhs =
                     Self::SignedConcrete(I256::try_from(*other_val).unwrap_or(I256::MAX), *loc);
-                self.exec_op(&new_rhs, op)
+                self.exec_op(&new_rhs, op, for_max)
             }
             _ => None,
         }
@@ -297,20 +331,20 @@ impl RangeExpr {
         deps
     }
 
-    pub fn eval(&self, analyzer: &impl AnalyzerLike) -> Option<RangeElem> {
-        let lhs = self.lhs.clone().eval(analyzer);
-        let rhs = self.rhs.clone().eval(analyzer);
-        lhs.exec_op(&rhs, self.op)
+    pub fn eval(&self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> Option<RangeElem> {
+        let lhs = self.lhs.clone().eval(ctx, analyzer);
+        let rhs = self.rhs.clone().eval(ctx, analyzer);
+        lhs.exec_op(&rhs, self.op, true)
     }
 
-    pub fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
-        let lhs = self.lhs.clone().eval(analyzer);
-        let rhs = self.rhs.clone().eval(analyzer);
-        if let Some(new_lhs) = lhs.exec_op(&rhs, self.op) {
-            let lhs = other.lhs.clone().eval(analyzer);
-            let rhs = other.rhs.clone().eval(analyzer);
-            if let Some(new_rhs) = lhs.exec_op(&rhs, other.op) {
-                new_lhs.range_eq(&new_rhs, analyzer)
+    pub fn range_eq(&self, other: &Self, ctx: ContextNode, analyzer: &impl AnalyzerLike) -> bool {
+        let lhs = self.lhs.clone().eval(ctx, analyzer);
+        let rhs = self.rhs.clone().eval(ctx, analyzer);
+        if let Some(new_lhs) = lhs.exec_op(&rhs, self.op, true) {
+            let lhs = other.lhs.clone().eval(ctx, analyzer);
+            let rhs = other.rhs.clone().eval(ctx, analyzer);
+            if let Some(new_rhs) = lhs.exec_op(&rhs, other.op, true) {
+                new_lhs.range_eq(&new_rhs, ctx, analyzer)
             } else {
                 false
             }
@@ -346,6 +380,11 @@ impl RangeExpr {
         if matches!(self.op, Op::Min | Op::Max) {
             RangeElemString::new(
                 format!("{}({}, {})", self.op.to_string(), lhs_str.s, rhs_str.s),
+                lhs_str.loc,
+            )
+        } else if matches!(self.op, Op::ExprMin | Op::ExprMax) {
+            RangeElemString::new(
+                format!("{}({})", self.op.to_string(), lhs_str.s),
                 lhs_str.loc,
             )
         } else {

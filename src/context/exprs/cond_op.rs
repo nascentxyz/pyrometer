@@ -1,10 +1,11 @@
-use crate::Context;
+use shared::context::*;
+use shared::{Node, Edge, NodeIdx};
 use crate::ExprRet;
 use solang_parser::pt::CodeLocation;
 
 use crate::AnalyzerLike;
 use crate::{
-    exprs::Require, ContextBuilder, ContextEdge, ContextNode, ContextVarNode, Edge, Node, NodeIdx,
+    exprs::Require, ContextBuilder,
 };
 
 use solang_parser::pt::{Expression, Loc, Statement};
@@ -128,6 +129,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
     /// Creates the true_fork cvar (updates bounds assuming its true)
     fn true_fork_if_cvar(&mut self, loc: Loc, if_expr: Expression, true_fork_ctx: ContextNode) {
         let if_expr = match if_expr {
+            Expression::Equal(_loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
             Expression::Less(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
             Expression::More(_loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
             Expression::MoreEqual(_loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
@@ -145,6 +147,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
     /// Creates the false_fork cvar (inverts the expression and sets the bounds assuming its false)
     fn false_fork_if_cvar(&mut self, loc: Loc, if_expr: Expression, false_fork_ctx: ContextNode) {
         let inv_if_expr = match if_expr {
+            Expression::Equal(_loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
             Expression::Less(_loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
             Expression::More(_loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
             Expression::MoreEqual(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
@@ -152,6 +155,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             Expression::Variable(ref _ident) => Expression::Not(loc, Box::new(if_expr)),
             e => todo!("Wasnt comparator: {:?}", e),
         };
+        println!("inverse if expr: {:?}", inv_if_expr);
         self.handle_require(&vec![inv_if_expr], false_fork_ctx)
     }
 }

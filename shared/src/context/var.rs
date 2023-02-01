@@ -1,11 +1,15 @@
-use crate::range::BuiltinElem;
-use crate::range::BuiltinRange;
-use crate::range::RangeSize;
-use crate::ContextNode;
-use crate::Search;
+use crate::range::elem_ty::Dynamic;
+use crate::range::elem_ty::DynSide;
+use crate::range::elem_ty::RangeConcrete;
+use crate::range::Range;
+use crate::Concrete;
+use crate::range::elem_ty::Elem;
+use crate::range::SolcRange;
 use crate::{
-    range::{DynamicRangeSide, Op, RangeElem},
-    AnalyzerLike, ConcreteNode, ContextEdge, Edge, Field, FunctionParam, FunctionReturn, Node,
+    analyzer::{AnalyzerLike, Search},
+    context::ContextNode,
+    range::elem::RangeOp,
+    nodes::ConcreteNode, ContextEdge, Edge, Field, FunctionParam, FunctionReturn, Node,
     NodeIdx, VarType,
 };
 
@@ -84,6 +88,14 @@ impl ContextVarNode {
         ))
     }
 
+    pub fn update_deps(&mut self, ctx: ContextNode, analyzer: &mut impl AnalyzerLike) {
+        if let Some(mut range) = self.range(analyzer) {
+            range.update_deps(ctx, analyzer);
+            self.set_range_min(analyzer, range.min);
+            self.set_range_max(analyzer, range.max);
+        }
+    }
+
     pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
         self.underlying(analyzer).name.clone()
     }
@@ -92,17 +104,21 @@ impl ContextVarNode {
         self.underlying(analyzer).display_name.clone()
     }
 
-    pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<BuiltinRange> {
+    pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<SolcRange> {
         match &self.underlying(analyzer).ty {
             VarType::BuiltIn(_bn, Some(r)) => Some(r.clone()),
-            VarType::BuiltIn(bn, None) => BuiltinRange::try_from_builtin(bn.underlying(analyzer)),
-            VarType::Concrete(cn) => Some(BuiltinRange::from(cn.underlying(analyzer).clone())),
+            VarType::BuiltIn(bn, None) => SolcRange::try_from_builtin(bn.underlying(analyzer)),
+            VarType::Concrete(cn) => SolcRange::from(cn.underlying(analyzer).clone()),
             _ => None,
         }
     }
 
     pub fn is_const(&self, analyzer: &impl AnalyzerLike) -> bool {
         self.underlying(analyzer).ty.is_const(analyzer)
+    }
+
+    pub fn is_symbolic(&self, analyzer: &impl AnalyzerLike) -> bool {
+        self.underlying(analyzer).ty.is_symbolic(analyzer)
     }
 
     pub fn is_tmp(&self, analyzer: &impl AnalyzerLike) -> bool {
@@ -116,25 +132,24 @@ impl ContextVarNode {
     pub fn as_range_elem(
         &self,
         analyzer: &impl AnalyzerLike,
-        range_side: DynamicRangeSide,
+        range_side: DynSide,
         loc: Loc,
-    ) -> RangeElem {
+    ) -> Elem<Concrete> {
         match self.underlying(analyzer).ty {
             VarType::Concrete(c) => {
-                let val = c.underlying(analyzer).uint_val().expect("Not uint bound");
-                RangeElem::Concrete(val, loc)
+                Elem::Concrete(RangeConcrete { val: c.underlying(analyzer).clone(), loc })
             }
-            _ => RangeElem::Dynamic(self.0.into(), range_side, loc),
+            _ => Elem::Dynamic(Dynamic { idx: self.0.into(), side: range_side, loc }),
         }
     }
 
-    pub fn set_range_min(&self, analyzer: &mut impl AnalyzerLike, new_min: BuiltinElem) {
+    pub fn set_range_min(&self, analyzer: &mut impl AnalyzerLike, new_min: Elem<Concrete>) {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
             .set_range_min(new_min, fallback);
     }
 
-    pub fn set_range_max(&self, analyzer: &mut impl AnalyzerLike, new_max: BuiltinElem) {
+    pub fn set_range_max(&self, analyzer: &mut impl AnalyzerLike, new_max: Elem<Concrete>) {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
             .set_range_max(new_max, fallback)
@@ -146,6 +161,34 @@ impl ContextVarNode {
             latest = next;
         }
         latest
+    }
+
+    pub fn latest_version_less_than<'a>(&self, idx: NodeIdx, analyzer: &'a impl AnalyzerLike) -> Self {
+        let mut latest = *self;
+        while let Some(next) = latest.next_version(analyzer) {
+            if next.0 <= idx.index() {
+                latest = next;
+            } else {
+                break;
+            }
+        }
+        latest
+    }
+
+    pub fn latest_version_in_ctx<'a>(&self, ctx: ContextNode, analyzer: &'a impl AnalyzerLike) -> Self {
+        if let Some(cvar) = ctx.var_by_name(analyzer, &self.name(analyzer)) {
+            cvar.latest_version(analyzer)
+        } else {
+            *self
+        }
+    }
+
+    pub fn latest_version_in_ctx_less_than<'a>(&self, idx: NodeIdx, ctx: ContextNode, analyzer: &'a impl AnalyzerLike) -> Self {
+        if let Some(cvar) = ctx.var_by_name(analyzer, &self.name(analyzer)) {
+            cvar.latest_version_less_than(idx, analyzer)
+        } else {
+            *self
+        }
     }
 
     pub fn first_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Self {
@@ -218,12 +261,12 @@ pub struct ContextVar {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TmpConstruction {
     pub lhs: ContextVarNode,
-    pub op: Op,
+    pub op: RangeOp,
     pub rhs: Option<ContextVarNode>,
 }
 
 impl TmpConstruction {
-    pub fn new(lhs: ContextVarNode, op: Op, rhs: Option<ContextVarNode>) -> Self {
+    pub fn new(lhs: ContextVarNode, op: RangeOp, rhs: Option<ContextVarNode>) -> Self {
         Self { lhs, op, rhs }
     }
 }
@@ -253,25 +296,25 @@ impl ContextVar {
         }
     }
 
-    pub fn fallback_range(&self, analyzer: &impl AnalyzerLike) -> Option<BuiltinRange> {
+    pub fn fallback_range(&self, analyzer: &impl AnalyzerLike) -> Option<SolcRange> {
         match &self.ty {
             VarType::BuiltIn(bn, ref maybe_range) => {
                 if let Some(range) = maybe_range {
                     Some(range.clone())
                 } else {
-                    if let Some(range) = BuiltinRange::try_from_builtin(bn.underlying(analyzer)) {
+                    if let Some(range) = SolcRange::try_from_builtin(bn.underlying(analyzer)) {
                         Some(range)
                     } else {
                         None
                     }
                 }
             }
-            VarType::Concrete(cn) => Some(BuiltinRange::from(cn.underlying(analyzer).clone())),
+            VarType::Concrete(cn) => SolcRange::from(cn.underlying(analyzer).clone()),
             e => panic!("wasnt builtin: {:?}", e),
         }
     }
 
-    pub fn set_range_min(&mut self, new_min: BuiltinElem, fallback_range: Option<BuiltinRange>) {
+    pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
             VarType::BuiltIn(_bn, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
@@ -287,7 +330,7 @@ impl ContextVar {
         }
     }
 
-    pub fn set_range_max(&mut self, new_max: BuiltinElem, fallback_range: Option<BuiltinRange>) {
+    pub fn set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
             VarType::BuiltIn(_bn, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {

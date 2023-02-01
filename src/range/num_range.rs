@@ -1,3 +1,5 @@
+use crate::range::RangeExprElem;
+use crate::range::RangeExpr;
 use crate::range::RangeSize;
 use crate::{
     range::{DynamicRangeSide, Op, RangeElem},
@@ -93,6 +95,61 @@ impl Range {
         }
     }
 
+    pub fn lte_dyn(self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min,
+            max: self
+                .max
+                .min(RangeElem::Dynamic(other.into(), range_sides.1, loc)),
+        }
+    }
+
+    pub fn gte_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self
+                .min
+                .max(RangeElem::Dynamic(other.into(), range_sides.0, loc)),
+            max: self.max,
+        }
+    }
+
+    pub fn lt_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min,
+            max: self
+                .max
+                .min(RangeElem::Dynamic(other.into(), range_sides.1, loc) - RangeElem::Concrete(1.into(), Loc::Implicit)),
+        }
+    }
+
+    pub fn gt_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self
+                .min
+                .max(RangeElem::Dynamic(other.into(), range_sides.0, loc) + RangeElem::Concrete(1.into(), Loc::Implicit)),
+            max: self.max,
+        }
+    }
+
     pub fn fn_from_op(op: Op) -> impl Fn(Range, Range) -> Range {
         match op {
             Op::Add => Self::add,
@@ -149,6 +206,22 @@ impl Range {
             ),
             Op::Max => (
                 &Self::max_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Lt => (
+                &Self::lt_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Lte => (
+                &Self::lte_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Gt => (
+                &Self::gt_dyn,
+                (DynamicRangeSide::Min, DynamicRangeSide::Max),
+            ),
+            Op::Gte => (
+                &Self::gte_dyn,
                 (DynamicRangeSide::Min, DynamicRangeSide::Max),
             ),
             _ => unreachable!("Comparator operations shouldn't exist in a range"),
@@ -271,8 +344,8 @@ impl Range {
 
     pub fn r#mod(self, other: Self) -> Self {
         Self {
-            min: self.min % other.min,
-            max: self.max % other.max,
+            min: self.min.clone().min(self.min % other.min),
+            max: other.max.clone().min(self.max % other.max),
         }
     }
 
@@ -283,8 +356,8 @@ impl Range {
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min % RangeElem::Dynamic(other.into(), range_sides.0, loc),
-            max: self.max % RangeElem::Dynamic(other.into(), range_sides.1, loc),
+            min: self.min.clone().min(self.min % RangeElem::Dynamic(other.into(), range_sides.0, loc)),
+            max: RangeElem::Dynamic(other.into(), range_sides.1, loc).min(self.max % RangeElem::Dynamic(other.into(), range_sides.1, loc)),
         }
     }
 
@@ -331,6 +404,42 @@ impl Range {
             max: self
                 .max
                 .max(RangeElem::Dynamic(other.into(), range_sides.1, loc)),
+        }
+    }
+
+    pub fn eq_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        let min = self
+                .min
+                .eq(RangeElem::Dynamic(other.into(), range_sides.0, loc));
+        let max = self
+                .max
+                .eq(RangeElem::Dynamic(other.into(), range_sides.1, loc));
+        Self {
+            min: min.clone().max(max.clone()),
+            max: min.max(max),
+        }
+    }
+
+    pub fn neq_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynamicRangeSide, DynamicRangeSide),
+        loc: Loc,
+    ) -> Self {
+        let min = self
+                .min
+                .neq(RangeElem::Dynamic(other.into(), range_sides.0, loc));
+        let max = self
+                .max
+                .neq(RangeElem::Dynamic(other.into(), range_sides.1, loc));
+        Self {
+            min: min.clone().max(max.clone()),
+            max: min.max(max),
         }
     }
 }

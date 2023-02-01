@@ -1,9 +1,7 @@
 use crate::context::ContextBuilder;
-use crate::ContextNode;
-use crate::Edge;
 use crate::ExprRet;
-use crate::VarType;
-use crate::{AnalyzerLike, ContextEdge, ContextVar, Node};
+use shared::context::*;
+use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node};
 use solang_parser::pt::ParameterList;
 
 use solang_parser::pt::Loc;

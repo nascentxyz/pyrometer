@@ -1,11 +1,13 @@
-use crate::range::BuiltinRange;
-use crate::range::ElemEval;
-use crate::range::RangeEval;
-use crate::range::RangeSize;
-use crate::range::ToRangeString;
-use crate::{
-    AnalyzerLike, ContextNode, ContextVarNode, LocSpan, ReportConfig, ReportDisplay, Search,
+
+use shared::range::RangeEval;
+use shared::range::SolcRange;
+use shared::range::elem::RangeElem;
+use shared::range::range_string::*;
+use shared::range::Range;
+use shared::{
+    analyzer::{Search, AnalyzerLike}, context::*,
 };
+use crate::{LocSpan, ReportConfig, ReportDisplay};
 
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
@@ -15,9 +17,9 @@ pub struct BoundAnalysis {
     pub ctx: ContextNode,
     pub var_name: String,
     pub var_display_name: String,
-    pub var_def: (LocSpan, Option<BuiltinRange>),
+    pub var_def: (LocSpan, Option<SolcRange>),
     pub storage: bool,
-    pub bound_changes: Vec<(LocSpan, BuiltinRange)>,
+    pub bound_changes: Vec<(LocSpan, SolcRange)>,
     pub report_config: ReportConfig,
     pub sub_ctxs: Vec<Self>,
 }
@@ -84,6 +86,12 @@ impl ReportDisplay for BoundAnalysis {
                                 .eval(analyzer)
                                 .to_range_string(analyzer)
                                 .s
+                        } else if self.report_config.simplify_bounds {
+                            init_range
+                                .range_min()
+                                .simplify(analyzer)
+                                .to_range_string(analyzer)
+                                .s
                         } else {
                             init_range.range_min().to_range_string(analyzer).s
                         },
@@ -91,6 +99,12 @@ impl ReportDisplay for BoundAnalysis {
                             init_range
                                 .range_max()
                                 .eval(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else if self.report_config.simplify_bounds {
+                            init_range
+                                .range_max()
+                                .simplify(analyzer)
                                 .to_range_string(analyzer)
                                 .s
                         } else {
@@ -121,6 +135,13 @@ impl ReportDisplay for BoundAnalysis {
                             .eval(analyzer)
                             .to_range_string(analyzer)
                             .s
+                    } else if self.report_config.simplify_bounds {
+                        bound_change
+                            .1
+                            .range_min()
+                            .simplify(analyzer)
+                            .to_range_string(analyzer)
+                            .s
                     } else {
                         bound_change.1.range_min().to_range_string(analyzer).s
                     };
@@ -132,11 +153,18 @@ impl ReportDisplay for BoundAnalysis {
                             .eval(analyzer)
                             .to_range_string(analyzer)
                             .s
+                    } else if self.report_config.simplify_bounds {
+                        bound_change
+                            .1
+                            .range_max()
+                            .simplify(analyzer)
+                            .to_range_string(analyzer)
+                            .s
                     } else {
                         bound_change.1.range_max().to_range_string(analyzer).s
                     };
 
-                    Label::new(bound_change.0)
+                    let label = Label::new(bound_change.0)
                         .with_message(format!(
                             "{}\"{}\" ∈ {{{}, {}}} {}",
                             if self.storage { "storage var " } else { "" },
@@ -144,12 +172,17 @@ impl ReportDisplay for BoundAnalysis {
                             min,
                             max,
                             if bound_change.1.unsat(analyzer) {
-                                "- unsatisfiable range, would revert".fg(Color::Red)
+                                "- unsatisfiable range, unreachable".fg(Color::Red)
                             } else {
                                 "".fg(Color::Red)
                             }
-                        ))
-                        .with_color(Color::Cyan)
+                        ));
+
+                    if !self.storage {
+                        label.with_color(Color::Cyan)
+                    } else {
+                        label.with_color(Color::Green)
+                    }
                 })
                 .collect::<Vec<_>>(),
         );
@@ -190,7 +223,17 @@ impl ReportDisplay for BoundAnalysis {
     fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
-            report.print((src.0, Source::from(src.1))).unwrap();
+            let mut st = std::io::BufWriter::new(Vec::new());
+            report.write((src.0, Source::from(src.1)), &mut st);
+            println!("{}", String::from_utf8(st.into_inner().unwrap()).unwrap());
+            // report.print((src.0, Source::from(src.1))).unwrap();
+        });
+    }
+
+    fn eprint_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
+        let reports = self.reports(analyzer);
+        reports.into_iter().for_each(|report| {
+            report.eprint((src.0, Source::from(src.1))).unwrap();
         });
     }
 }
@@ -202,9 +245,10 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         ctx: ContextNode,
         var_name: String,
         report_config: ReportConfig,
+        is_subctx: bool,
     ) -> Option<BoundAnalysis> {
         let cvar = ctx.var_by_name(self, &var_name)?;
-        let mut analysis = self.bounds_for_var_node(var_name.clone(), cvar, report_config);
+        let mut analysis = self.bounds_for_var_node(var_name.clone(), cvar, report_config, is_subctx);
         if report_config.show_subctxs {
             let mut subctxs = ctx.subcontexts(self);
             subctxs.sort();
@@ -213,7 +257,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             let subctx_bounds = subctxs
                 .into_iter()
                 .filter(|sub_ctx| *sub_ctx != curr)
-                .filter_map(|sub_ctx| self.bounds_for_var(sub_ctx, var_name.clone(), report_config))
+                .filter_map(|sub_ctx| self.bounds_for_var(sub_ctx, var_name.clone(), report_config, true))
                 .collect::<Vec<_>>();
             analysis.sub_ctxs = subctx_bounds;
             Some(analysis)
@@ -228,15 +272,16 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         var_name: String,
         cvar: ContextVarNode,
         report_config: ReportConfig,
+        is_subctx: bool
     ) -> BoundAnalysis {
-        println!("bounds for var: {}", var_name);
+        // println!("bounds for var: {}", var_name);
         let mut curr = cvar.first_version(self);
 
         let mut ba = BoundAnalysis {
             ctx: cvar.ctx(self),
             var_name,
             var_display_name: cvar.display_name(self),
-            var_def: (LocSpan(curr.loc(self)), curr.range(self)),
+            var_def: (LocSpan(curr.loc(self)), if !is_subctx { curr.range(self) } else { None }),
             bound_changes: vec![],
             report_config,
             sub_ctxs: vec![],
@@ -264,57 +309,6 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
 
         return ba;
     }
-
-    /// Analyzes the bounds for a variable up to the provided node
-    fn bounds_for_var_node_and_dependents(
-        &self,
-        var_name: String,
-        cvar: ContextVarNode,
-        report_config: ReportConfig,
-    ) -> BoundAnalysis {
-        // let bounds = self.bounds_for_var_node(var_name, cvar, report_config);
-        // let mut dependents = cvar.dependent_on(self, false);
-        // dependents.sort_by(|a, b| a.display_name(self).cmp(&b.display_name(self)));
-        // dependents.dedup_by(|a, b| a.display_name(self) == b.display_name(self));
-
-        // let dep_bounds = dependents
-        //     .into_iter()
-        //     .filter_map(
-        //         |var| match (report_config.show_tmps, report_config.show_consts) {
-        //             (true, true) => {
-        //                 let name = var.name(self);
-        //                 Some(self.bounds_for_var_node(name, var, report_config))
-        //             }
-        //             (true, false) => {
-        //                 if !var.is_tmp(self) {
-        //                     let name = var.name(self);
-        //                     Some(self.bounds_for_var_node(name, var, report_config))
-        //                 } else {
-        //                     None
-        //                 }
-        //             }
-        //             (false, true) => {
-        //                 if !var.is_const(self) {
-        //                     let name = var.name(self);
-        //                     Some(self.bounds_for_var_node(name, var, report_config))
-        //                 } else {
-        //                     None
-        //                 }
-        //             }
-        //             (false, false) => {
-        //                 if !var.is_tmp(self) && !var.is_const(self) {
-        //                     let name = var.name(self);
-        //                     Some(self.bounds_for_var_node(name, var, report_config))
-        //                 } else {
-        //                     None
-        //                 }
-        //             }
-        //         },
-        //     )
-        //     .collect();
-        // (bounds, dep_bounds)
-        todo!()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -337,7 +331,7 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
         )
     }
 
-    fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
+    fn labels(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>> {
         vec![]
     }
 
@@ -379,6 +373,12 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
                                     .eval(analyzer)
                                     .to_range_string(analyzer)
                                     .s
+                            } else if self.report_config.simplify_bounds {
+                                cvar.range(analyzer)?
+                                    .range_min()
+                                    .simplify(analyzer)
+                                    .to_range_string(analyzer)
+                                    .s
                             } else {
                                 cvar.range(analyzer)?
                                     .range_min()
@@ -390,6 +390,12 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
                                 cvar.range(analyzer)?
                                     .range_max()
                                     .eval(analyzer)
+                                    .to_range_string(analyzer)
+                                    .s
+                            } else if self.report_config.simplify_bounds {
+                                cvar.range(analyzer)?
+                                    .range_max()
+                                    .simplify(analyzer)
                                     .to_range_string(analyzer)
                                     .s
                             } else {
@@ -437,7 +443,7 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
                     report.add_labels(labels);
 
                     if let Some((loc, var)) = ctx.return_node(analyzer) {
-                        println!("context {} had return", ctx.path(analyzer));
+                        // println!("context {} had return", ctx.path(analyzer));
                         report.add_label(
                             Label::new(LocSpan(loc))
                                 .with_message(
@@ -462,7 +468,7 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
                                 .with_color(Color::Green),
                         );
                     } else {
-                        println!("context {} did not have a return", ctx.path(analyzer));
+                        // println!("context {} did not have a return", ctx.path(analyzer));
                     }
                     report.finish()
                 })
@@ -474,8 +480,17 @@ impl ReportDisplay for FunctionVarsBoundAnalysis {
 
     fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
+        for report in reports.into_iter() {
+            let mut st = std::io::BufWriter::new(Vec::new());
+            report.write((src.0, Source::from(src.1)), &mut st);
+            println!("{}", String::from_utf8(st.into_inner().unwrap()).unwrap());
+        }
+    }
+
+    fn eprint_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search)) {
+        let reports = &self.reports(analyzer);
         reports.into_iter().for_each(|report| {
-            report.print((src.0, Source::from(src.1))).unwrap();
+            report.eprint((src.0, Source::from(src.1))).unwrap();
         });
     }
 }
@@ -488,7 +503,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         report_config: ReportConfig,
     ) -> FunctionVarsBoundAnalysis {
         let mut vars = ctx.vars(self);
-        println!("{:?}", vars);
+        // println!("{:?}", vars);
         vars.dedup();
 
         let analyses: BTreeMap<ContextNode, Vec<BoundAnalysis>> = vars
@@ -498,7 +513,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     (true, true) => {
                         let name = var.name(self);
                         Some(
-                            self.bounds_for_var(ctx, name, report_config)?
+                            self.bounds_for_var(ctx, name, report_config, false)?
                                 .flatten_by_ctx(),
                         )
                     }
@@ -506,7 +521,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                         if !var.is_const(self) {
                             let name = var.name(self);
                             Some(
-                                self.bounds_for_var(ctx, name, report_config)?
+                                self.bounds_for_var(ctx, name, report_config, false)?
                                     .flatten_by_ctx(),
                             )
                         } else {
@@ -517,7 +532,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                         if !var.is_tmp(self) {
                             let name = var.name(self);
                             Some(
-                                self.bounds_for_var(ctx, name, report_config)?
+                                self.bounds_for_var(ctx, name, report_config, false)?
                                     .flatten_by_ctx(),
                             )
                         } else {
@@ -528,7 +543,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                         if !var.is_tmp(self) && !var.is_const(self) {
                             let name = var.name(self);
                             Some(
-                                self.bounds_for_var(ctx, name, report_config)?
+                                self.bounds_for_var(ctx, name, report_config, false)?
                                     .flatten_by_ctx(),
                             )
                         } else {

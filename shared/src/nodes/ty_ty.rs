@@ -1,7 +1,7 @@
-use crate::AnalyzerLike;
+use crate::analyzer::AnalyzerLike;
 use crate::Node;
 use crate::NodeIdx;
-use solang_parser::pt::{Identifier, Loc, TypeDefinition};
+use solang_parser::pt::{Identifier, Loc, TypeDefinition, Expression};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct TyNode(pub usize);
@@ -26,7 +26,7 @@ impl Into<Node> for Ty {
 }
 
 impl Ty {
-    pub fn new(analyzer: &mut impl AnalyzerLike, ty: TypeDefinition) -> Ty {
+    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, ty: TypeDefinition) -> Ty {
         Ty {
             loc: ty.loc,
             ty: analyzer.parse_expr(&ty.ty),

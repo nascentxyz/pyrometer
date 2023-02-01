@@ -1,35 +1,38 @@
-use crate::range::BuiltinElem;
-use crate::range::ElemEval;
-use crate::range::RangeSize;
-use crate::range::{BuiltinRange, LenRange, RangeElem};
-use crate::AnalyzerLike;
-use crate::ConcreteNode;
+use crate::range::elem_ty::RangeConcrete;
+use crate::range::elem_ty::Elem;
+use crate::range::elem::RangeElem;
+use crate::range::SolcRange;
+use crate::range::Range;
+use crate::context::ContextNode;
+use crate::analyzer::AnalyzerLike;
 use crate::Node;
 use crate::NodeIdx;
-use ethers_core::types::U256;
+
 use solang_parser::pt::Loc;
 use solang_parser::pt::Type;
 
-pub mod contract_ty;
+mod contract_ty;
 pub use contract_ty::*;
-pub mod enum_ty;
+mod enum_ty;
 pub use enum_ty::*;
-pub mod struct_ty;
+mod struct_ty;
 pub use struct_ty::*;
-pub mod func_ty;
+mod func_ty;
 pub use func_ty::*;
-pub mod err_ty;
+mod err_ty;
 pub use err_ty::*;
-pub mod var_ty;
+mod var_ty;
 pub use var_ty::*;
-pub mod ty_ty;
+mod ty_ty;
 pub use ty_ty::*;
+mod concrete;
+pub use concrete::*;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum VarType {
     User(TypeNode),
-    BuiltIn(BuiltInNode, Option<BuiltinRange>),
-    Array(DynBuiltInNode, Option<LenRange>),
+    BuiltIn(BuiltInNode, Option<SolcRange>),
+    Array(DynBuiltInNode, Option<SolcRange>),
     Mapping(DynBuiltInNode),
     Concrete(ConcreteNode),
 }
@@ -38,25 +41,40 @@ impl VarType {
     pub fn concrete_to_builtin(&mut self, analyzer: &mut impl AnalyzerLike) {
         match self {
             VarType::Concrete(cnode) => {
-                match cnode.underlying(analyzer).clone() {
-                    crate::Concrete::Uint(size, val) => {
+                let c = cnode.underlying(analyzer).clone();
+                match c {
+                    crate::Concrete::Uint(ref size, _) => {
                         let new_ty = VarType::BuiltIn(
-                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(size))),
-                            Some(BuiltinRange::from(val)),
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(*size))),
+                            SolcRange::from(c)
                         );
                         *self = new_ty;
                     }
-                    crate::Concrete::Int(size, val) => {
+                    crate::Concrete::Int(ref size, _) => {
                         let new_ty = VarType::BuiltIn(
-                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Int(size))),
-                            Some(BuiltinRange::from(val)),
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Int(*size))),
+                            SolcRange::from(c)
                         );
                         *self = new_ty;
                     }
-                    crate::Concrete::Bool(b) => {
+                    crate::Concrete::Bool(_) => {
                         let new_ty = VarType::BuiltIn(
                             BuiltInNode::from(analyzer.builtin_or_add(Builtin::Bool)),
-                            Some(BuiltinRange::from(b)),
+                            SolcRange::from(c)
+                        );
+                        *self = new_ty;
+                    }
+                    crate::Concrete::Address(_) => {
+                        let new_ty = VarType::BuiltIn(
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Address)),
+                            SolcRange::from(c)
+                        );
+                        *self = new_ty;
+                    }
+                    crate::Concrete::Bytes(ref s, _) => {
+                        let new_ty = VarType::BuiltIn(
+                            BuiltInNode::from(analyzer.builtin_or_add(Builtin::Bytes(*s))),
+                            SolcRange::from(c)
                         );
                         *self = new_ty;
                     }
@@ -77,14 +95,14 @@ impl VarType {
             Node::VarType(a) => Some(a.clone()),
             Node::Builtin(b) => Some(VarType::BuiltIn(
                 node.into(),
-                BuiltinRange::try_from_builtin(b),
+                SolcRange::try_from_builtin(b),
             )),
             Node::DynBuiltin(dyn_b) => match dyn_b {
                 DynBuiltin::Array(_) => Some(VarType::Array(
                     node.into(),
-                    Some(LenRange {
-                        min: RangeElem::Concrete(U256::zero(), Loc::Implicit),
-                        max: RangeElem::Concrete(U256::MAX, Loc::Implicit),
+                    Some(SolcRange {
+                        min: Elem::Concrete(RangeConcrete { val: Concrete::Uint(8, 0.into()), loc: Loc::Implicit }),
+                        max: Elem::Concrete(RangeConcrete { val: Concrete::Uint(8, 255.into()), loc: Loc::Implicit }),
                     }),
                 )),
                 DynBuiltin::Mapping(_, _) => Some(VarType::Mapping(node.into())),
@@ -110,15 +128,10 @@ impl VarType {
         }
     }
 
-    pub fn range(&self, analyzer: &impl AnalyzerLike) -> Option<BuiltinRange> {
+    pub fn range(&self, analyzer: &impl AnalyzerLike) -> Option<SolcRange> {
         match self {
             Self::BuiltIn(_, range) => range.clone(),
-            Self::Concrete(cnode) => match cnode.underlying(analyzer) {
-                crate::Concrete::Uint(_, val) => Some(BuiltinRange::from(*val)),
-                crate::Concrete::Int(_, val) => Some(BuiltinRange::from(*val)),
-                crate::Concrete::Bool(b) => Some(BuiltinRange::from(*b)),
-                _ => None,
-            },
+            Self::Concrete(cnode) => SolcRange::from(cnode.underlying(analyzer).clone()),
             _ => None,
         }
     }
@@ -136,7 +149,14 @@ impl VarType {
         }
     }
 
-    pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(BuiltinElem, BuiltinElem)> {
+    pub fn is_symbolic(&self, _analyzer: &impl AnalyzerLike) -> bool {
+        match self {
+            Self::Concrete(_) => false,
+            _ => true
+        }
+    }
+
+    pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
         if let Some(range) = self.range(analyzer) {
             Some((
                 range.range_min().eval(analyzer),

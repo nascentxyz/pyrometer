@@ -1,35 +1,31 @@
-use crate::AnalyzerLike;
-use crate::ContextVar;
+use crate::context::ContextBuilder;
+use shared::analyzer::AnalyzerLike;
+use shared::context::*;
 use crate::ExprRet;
-use crate::{ContextBuilder, ContextEdge, ContextNode, Edge, Node};
+use shared::{Edge, Node};
 use solang_parser::pt::Identifier;
 
 impl<T> Variable for T where T: AnalyzerLike + Sized {}
 
 pub trait Variable: AnalyzerLike + Sized {
     fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> ExprRet {
+        println!("this ctx: {}", ctx.underlying(self).path);
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-            ExprRet::Single((ctx, self.advance_var_in_ctx(cvar, ident.loc, ctx).0.into()))
+            let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);
+            ExprRet::Single((ctx, var.0.into()))
         } else {
             if let Some(parent_ctx) = ctx.underlying(self).parent_ctx {
                 // check if we can inherit it
+                println!("parent ctx: {:?}", parent_ctx.underlying(self).path);
                 let (_pctx, cvar) = self.variable(ident, parent_ctx).expect_single();
-                // let cvar_node = ContextVarNode::from(cvar);
-                // let cvar_node = if fork {
-                //     let copy_var = cvar_node.underlying(self).clone();
-                //     ContextVarNode::from(self.add_node(Node::ContextVar(copy_var)))
-                // } else {
-                //     cvar_node
-                // };
-
-                // println!("var ctx: {}", ctx.underlying(self).path);
-
-                // self.add_edge(
-                //     cvar_node,
-                //     ctx,
-                //     Edge::Context(ContextEdge::Variable),
-                // );
-                ExprRet::Single((ctx, cvar))
+                match self.node(cvar) {
+                    Node::ContextVar(_) => {
+                        let mut ctx_cvar = self.advance_var_in_ctx(cvar.into(), ident.loc, ctx);
+                        ctx_cvar.update_deps(ctx, self);
+                        ExprRet::Single((ctx, ctx_cvar.0.into()))
+                    }
+                    _ => ExprRet::Single((ctx, cvar))
+                }
             } else {
                 if let Some(idx) = self.user_types().get(&ident.name) {
                     let var = ContextVar::maybe_from_user_ty(self, ident.loc, *idx)

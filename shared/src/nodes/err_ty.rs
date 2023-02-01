@@ -1,5 +1,5 @@
-use crate::{AnalyzerLike, Node, NodeIdx};
-use solang_parser::pt::{ErrorDefinition, ErrorParameter, Identifier, Loc};
+use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
+use solang_parser::pt::{ErrorDefinition, ErrorParameter, Identifier, Loc, Expression};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ErrorNode(pub usize);
@@ -66,7 +66,7 @@ impl Into<Node> for ErrorParam {
 }
 
 impl ErrorParam {
-    pub fn new(analyzer: &mut impl AnalyzerLike, param: ErrorParameter) -> Self {
+    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, param: ErrorParameter) -> Self {
         ErrorParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

@@ -1,6 +1,9 @@
+use shared::analyzer::AnalyzerLike;
+use shared::nodes::*;
+use shared::context::*;
+use shared::{Node, Edge};
 use crate::{
-    AnalyzerLike, ContextBuilder, ContextEdge, ContextNode, ContextVar, Edge, ExprRet, FieldNode,
-    Node, NodeIdx, TypeNode, VarType,
+    ContextBuilder,  ExprRet
 };
 use petgraph::{visit::EdgeRef, Direction};
 
