@@ -1,11 +1,4 @@
-
-
-
-use crate::{
-    AnalyzerLike, BoundAnalyzer, Search,
-};
-
-
+use crate::{AnalyzerLike, BoundAnalyzer, Search};
 
 // #[derive(Debug, Clone)]
 // pub enum ArrayAccess {
@@ -25,8 +18,7 @@ use crate::{
 // }
 
 // impl<T> ArrayAccessAnalyzer for T where T: BoundAnalyzer + Search + AnalyzerLike + Sized {}
-pub trait ArrayAccessAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Sized {
-}
+pub trait ArrayAccessAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Sized {}
 //     fn min_size_to_prevent_access_revert(
 //         &self,
 //         ctx: ContextNode,

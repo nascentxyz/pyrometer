@@ -1,7 +1,7 @@
 use crate::context::ContextBuilder;
+use crate::ExprRet;
 use shared::analyzer::AnalyzerLike;
 use shared::context::*;
-use crate::ExprRet;
 use shared::{Edge, Node};
 use solang_parser::pt::Identifier;
 
@@ -24,7 +24,7 @@ pub trait Variable: AnalyzerLike + Sized {
                         ctx_cvar.update_deps(ctx, self);
                         ExprRet::Single((ctx, ctx_cvar.0.into()))
                     }
-                    _ => ExprRet::Single((ctx, cvar))
+                    _ => ExprRet::Single((ctx, cvar)),
                 }
             } else {
                 if let Some(idx) = self.user_types().get(&ident.name) {

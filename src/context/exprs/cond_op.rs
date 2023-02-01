@@ -1,12 +1,10 @@
-use shared::context::*;
-use shared::{Node, Edge, NodeIdx};
 use crate::ExprRet;
+use shared::context::*;
+use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::CodeLocation;
 
 use crate::AnalyzerLike;
-use crate::{
-    exprs::Require, ContextBuilder,
-};
+use crate::{exprs::Require, ContextBuilder};
 
 use solang_parser::pt::{Expression, Loc, Statement};
 

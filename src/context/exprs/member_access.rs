@@ -1,11 +1,9 @@
-use shared::analyzer::AnalyzerLike;
-use shared::nodes::*;
-use shared::context::*;
-use shared::{Node, Edge};
-use crate::{
-    ContextBuilder,  ExprRet
-};
+use crate::{ContextBuilder, ExprRet};
 use petgraph::{visit::EdgeRef, Direction};
+use shared::analyzer::AnalyzerLike;
+use shared::context::*;
+use shared::nodes::*;
+use shared::{Edge, Node};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 

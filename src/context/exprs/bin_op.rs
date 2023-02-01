@@ -1,11 +1,11 @@
-use std::collections::BTreeMap;
-use shared::range::Range;
-use shared::range::SolcRange;
-use shared::range::elem::RangeOp;
 use crate::context::ContextBuilder;
 use crate::ExprRet;
 use shared::context::*;
-use shared::{Node, Edge, analyzer::AnalyzerLike};
+use shared::range::elem::RangeOp;
+use shared::range::Range;
+use shared::range::SolcRange;
+use shared::{analyzer::AnalyzerLike, Edge, Node};
+use std::collections::BTreeMap;
 
 use solang_parser::pt::{Expression, Loc};
 

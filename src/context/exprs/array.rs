@@ -1,10 +1,7 @@
-use shared::context::*;
-use shared::analyzer::AnalyzerLike;
 use crate::ExprRet;
-use crate::{
-    ContextBuilder, DynBuiltin,
-    Edge, Node, VarType,
-};
+use crate::{ContextBuilder, DynBuiltin, Edge, Node, VarType};
+use shared::analyzer::AnalyzerLike;
+use shared::context::*;
 
 use solang_parser::pt::{Expression, Loc};
 

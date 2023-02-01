@@ -1,16 +1,16 @@
+use shared::range::elem_ty::Elem;
 use shared::range::elem_ty::RangeConcrete;
 use shared::range::elem_ty::RangeExpr;
-use shared::range::elem_ty::Elem;
 use shared::range::SolcRange;
 
-use shared::range::{elem::RangeOp, elem::RangeElem};
-use shared::range::Range;
-use shared::Node;
-use shared::analyzer::AnalyzerLike;
-use shared::nodes::*;
-use shared::context::*;
-use crate::ExprRet;
 use crate::ContextBuilder;
+use crate::ExprRet;
+use shared::analyzer::AnalyzerLike;
+use shared::context::*;
+use shared::nodes::*;
+use shared::range::Range;
+use shared::range::{elem::RangeElem, elem::RangeOp};
+use shared::Node;
 
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;
@@ -66,8 +66,14 @@ pub trait Cmp: AnalyzerLike + Sized {
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
-    
-    fn cmp_inner(&mut self, loc: Loc, lhs_paths: &ExprRet, op: RangeOp, rhs_paths: &ExprRet) -> ExprRet {
+
+    fn cmp_inner(
+        &mut self,
+        loc: Loc,
+        lhs_paths: &ExprRet,
+        op: RangeOp,
+        rhs_paths: &ExprRet,
+    ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
@@ -171,7 +177,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                 return SolcRange {
                     min: val.clone(),
                     max: val,
-                }
+                };
             }
         }
 
@@ -203,7 +209,6 @@ pub trait Cmp: AnalyzerLike + Sized {
                     RangeOp::Lt => {
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // true
-
 
                         let lhs_max = lhs_range.range_max().eval(self);
                         let rhs_min = rhs_range.range_min().eval(self);

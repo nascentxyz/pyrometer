@@ -1,13 +1,13 @@
-
-use shared::range::RangeEval;
-use shared::range::SolcRange;
+use crate::{LocSpan, ReportConfig, ReportDisplay};
 use shared::range::elem::RangeElem;
 use shared::range::range_string::*;
 use shared::range::Range;
+use shared::range::RangeEval;
+use shared::range::SolcRange;
 use shared::{
-    analyzer::{Search, AnalyzerLike}, context::*,
+    analyzer::{AnalyzerLike, Search},
+    context::*,
 };
-use crate::{LocSpan, ReportConfig, ReportDisplay};
 
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
@@ -164,19 +164,18 @@ impl ReportDisplay for BoundAnalysis {
                         bound_change.1.range_max().to_range_string(analyzer).s
                     };
 
-                    let label = Label::new(bound_change.0)
-                        .with_message(format!(
-                            "{}\"{}\" ∈ {{{}, {}}} {}",
-                            if self.storage { "storage var " } else { "" },
-                            self.var_display_name,
-                            min,
-                            max,
-                            if bound_change.1.unsat(analyzer) {
-                                "- unsatisfiable range, unreachable".fg(Color::Red)
-                            } else {
-                                "".fg(Color::Red)
-                            }
-                        ));
+                    let label = Label::new(bound_change.0).with_message(format!(
+                        "{}\"{}\" ∈ {{{}, {}}} {}",
+                        if self.storage { "storage var " } else { "" },
+                        self.var_display_name,
+                        min,
+                        max,
+                        if bound_change.1.unsat(analyzer) {
+                            "- unsatisfiable range, unreachable".fg(Color::Red)
+                        } else {
+                            "".fg(Color::Red)
+                        }
+                    ));
 
                     if !self.storage {
                         label.with_color(Color::Cyan)
@@ -248,7 +247,8 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         is_subctx: bool,
     ) -> Option<BoundAnalysis> {
         let cvar = ctx.var_by_name(self, &var_name)?;
-        let mut analysis = self.bounds_for_var_node(var_name.clone(), cvar, report_config, is_subctx);
+        let mut analysis =
+            self.bounds_for_var_node(var_name.clone(), cvar, report_config, is_subctx);
         if report_config.show_subctxs {
             let mut subctxs = ctx.subcontexts(self);
             subctxs.sort();
@@ -257,7 +257,9 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             let subctx_bounds = subctxs
                 .into_iter()
                 .filter(|sub_ctx| *sub_ctx != curr)
-                .filter_map(|sub_ctx| self.bounds_for_var(sub_ctx, var_name.clone(), report_config, true))
+                .filter_map(|sub_ctx| {
+                    self.bounds_for_var(sub_ctx, var_name.clone(), report_config, true)
+                })
                 .collect::<Vec<_>>();
             analysis.sub_ctxs = subctx_bounds;
             Some(analysis)
@@ -272,7 +274,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         var_name: String,
         cvar: ContextVarNode,
         report_config: ReportConfig,
-        is_subctx: bool
+        is_subctx: bool,
     ) -> BoundAnalysis {
         // println!("bounds for var: {}", var_name);
         let mut curr = cvar.first_version(self);
@@ -281,7 +283,10 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             ctx: cvar.ctx(self),
             var_name,
             var_display_name: cvar.display_name(self),
-            var_def: (LocSpan(curr.loc(self)), if !is_subctx { curr.range(self) } else { None }),
+            var_def: (
+                LocSpan(curr.loc(self)),
+                if !is_subctx { curr.range(self) } else { None },
+            ),
             bound_changes: vec![],
             report_config,
             sub_ctxs: vec![],

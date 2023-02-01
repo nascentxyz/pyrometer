@@ -3,9 +3,9 @@ pub use array::*;
 pub mod bounds;
 pub use bounds::*;
 
-use shared::analyzer::Search;
-use crate::{AnalyzerLike};
+use crate::AnalyzerLike;
 use ariadne::{Label, Report, ReportKind, Span};
+use shared::analyzer::Search;
 use solang_parser::pt::Loc;
 
 pub trait ContextAnalyzer:

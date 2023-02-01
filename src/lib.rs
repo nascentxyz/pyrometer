@@ -1,7 +1,7 @@
-use shared::nodes::*;
+use ethers_core::types::U256;
 use shared::analyzer::*;
-use shared::{Node, Edge, NodeIdx};
-use ethers_core::types::{U256};
+use shared::nodes::*;
+use shared::{Edge, Node, NodeIdx};
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
@@ -222,7 +222,7 @@ impl Analyzer {
             Annotation(_anno) => todo!(),
             Using(_using) => todo!(),
             StraySemicolon(_loc) => todo!(),
-            PragmaDirective(_, _, _) => {},
+            PragmaDirective(_, _, _) => {}
             ImportDirective(_) => todo!(),
         }
         sup_node
@@ -372,8 +372,8 @@ impl Analyzer {
 
 #[cfg(test)]
 mod tests {
-    use shared::context::{ContextNode, ContextEdge};
     use super::*;
+    use shared::context::{ContextEdge, ContextNode};
 
     #[test]
     fn it_works() {

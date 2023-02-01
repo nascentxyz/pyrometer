@@ -1,14 +1,14 @@
+use shared::context::*;
 use shared::range::elem_ty::Dynamic;
 use shared::range::Range;
-use shared::context::*;
 
 use crate::VarType;
-use shared::{
-    analyzer::AnalyzerLike, nodes::*, Node, NodeIdx, Edge, range::elem_ty::DynSide, range::elem::RangeOp,
-};
 use petgraph::{visit::EdgeRef, Direction};
+use shared::{
+    analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, range::elem_ty::DynSide, Edge, Node,
+    NodeIdx,
+};
 use solang_parser::pt::{Expression, Loc, Statement};
-
 
 pub mod exprs;
 use exprs::*;
@@ -649,7 +649,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         loc: Loc,
         ctx: ContextNode,
     ) -> ContextVarNode {
-        println!("advancing: {} in {}", cvar_node.display_name(self), ctx.underlying(self).path);
+        println!(
+            "advancing: {} in {}",
+            cvar_node.display_name(self),
+            ctx.underlying(self).path
+        );
         let mut new_cvar = cvar_node.underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
