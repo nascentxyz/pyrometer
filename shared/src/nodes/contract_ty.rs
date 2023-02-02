@@ -1,10 +1,29 @@
+use crate::analyzer::AnalyzerLike;
 use crate::Node;
 use crate::NodeIdx;
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ContractNode(pub usize);
+impl ContractNode {
+    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Contract {
+        match analyzer.node(*self) {
+            Node::Contract(func) => func,
+            e => panic!(
+                "Node type confusion: expected node to be Contract but it was: {:?}",
+                e
+            ),
+        }
+    }
 
+    pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
+        self.underlying(analyzer)
+            .name
+            .clone()
+            .expect("Unnamed contract")
+            .name
+    }
+}
 impl Into<NodeIdx> for ContractNode {
     fn into(self) -> NodeIdx {
         self.0.into()

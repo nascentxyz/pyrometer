@@ -267,6 +267,15 @@ pub enum Elem<T> {
 }
 
 impl<T> Elem<T> {
+	pub fn cast(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::Cast,
+            rhs: Box::new(other),
+        };
+        Elem::Expr(expr)
+    }
+
 	pub fn min(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -531,6 +540,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 				assert!(matches!(rhs, Elem::Null));
 				lhs.range_not().unwrap_or(Elem::Expr(self.clone()))
 			}
+			RangeOp::Cast => {
+				lhs.range_cast(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
 			_ => todo!()
 		}
 	}
@@ -590,6 +602,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			RangeOp::Not => {
 				assert!(matches!(rhs, Elem::Null));
 				lhs.range_not().unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::Cast => {
+				lhs.range_cast(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			_ => todo!()
 		}

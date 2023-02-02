@@ -382,42 +382,27 @@ contract Storage {
     uint256 c;
 
     function b5(uint64 x) public  {
-        // if (x % 2 == 0) {
-        //     x = x / 2;
-        // } else {
-        //     x = x * 3 + 1;
-        //     require( x % 2 == 0);
-        // }
-        c += x;
-        (uint256 a, uint256 b) = x < 5 ? (1 + 2, 5) : (3 + 4, 6);
-        // a += 1;
-        // require(a < 10);
-        // require(b < 8);
-        if (x < 7) {
-            c += 1;
-        } else {
-            if (x < 10) {
-                c += 2;    
-            } else {
-                c += 3;
-            }
-        }
+        address a = address(uint160(1));
 
-        x += 10;
+        int256 b = int256(1);
+        b -= 10000;
 
-        c += x*0;
+        c = uint256(int256(uint256(x)) - b);
+        c += 10 + 20;
+
     }
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
         let entry = analyzer.parse(&sol, 0).unwrap();
+        let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
         println!("parse time: {:?}", t0.elapsed().as_nanos());
         println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
         for context in contexts.into_iter() {
             let config = ReportConfig {
                 eval_bounds: true,
-                simplify_bounds: true,
+                simplify_bounds: false,
                 show_tmps: false,
                 show_consts: true,
                 show_subctxs: true,
@@ -425,8 +410,10 @@ contract Storage {
             };
             let ctx = ContextNode::from(context);
 
-            let analysis = analyzer.bounds_for_all(ctx, config);
-            analysis.print_reports((0, &sol), &analyzer);
+            let analysis =
+                analyzer.bounds_for_var(None, &file_mapping, ctx, "a".to_string(), config, false);
+            println!("{:#?}", analysis);
+            // analysis.print_reports(("test.sol".to_string(), &sol), &analyzer);
         }
         println!("total analyze time: {:?}", t0.elapsed().as_nanos());
     }

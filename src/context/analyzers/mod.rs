@@ -7,6 +7,7 @@ use crate::AnalyzerLike;
 use ariadne::{Label, Report, ReportKind, Span};
 use shared::analyzer::Search;
 use solang_parser::pt::Loc;
+use std::collections::BTreeMap;
 
 pub trait ContextAnalyzer:
     AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer + ArrayAccessAnalyzer
@@ -46,6 +47,55 @@ impl Span for LocSpan {
 
     fn end(&self) -> usize {
         match self.0 {
+            Loc::File(_, _, end) => end,
+            Loc::Implicit => 0,
+            _ => todo!("handle non file loc"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LocStrSpan(pub String, pub Loc);
+
+impl Default for LocStrSpan {
+    fn default() -> Self {
+        LocStrSpan("".to_string(), Loc::Implicit)
+    }
+}
+
+impl LocStrSpan {
+    fn new(file_mapping: &BTreeMap<usize, String>, loc: Loc) -> Self {
+        let source = match loc {
+            Loc::File(ref f, _, _) => f,
+            Loc::Implicit => &0,
+            _ => todo!("handle non file loc"),
+        };
+        LocStrSpan(
+            file_mapping
+                .get(source)
+                .expect("No file for num")
+                .to_string(),
+            loc,
+        )
+    }
+}
+
+impl Span for LocStrSpan {
+    type SourceId = String;
+    fn source(&self) -> &Self::SourceId {
+        &self.0
+    }
+
+    fn start(&self) -> usize {
+        match self.1 {
+            Loc::File(_, start, _) => start,
+            Loc::Implicit => 0,
+            _ => todo!("handle non file loc"),
+        }
+    }
+
+    fn end(&self) -> usize {
+        match self.1 {
             Loc::File(_, _, end) => end,
             Loc::Implicit => 0,
             _ => todo!("handle non file loc"),
@@ -99,8 +149,8 @@ impl Default for ReportConfig {
 pub trait ReportDisplay {
     fn report_kind(&self) -> ReportKind;
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String;
-    fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocSpan>>;
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocSpan>>;
-    fn print_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search));
-    fn eprint_reports(&self, src: (usize, &str), analyzer: &(impl AnalyzerLike + Search));
+    fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>>;
+    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>>;
+    fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search));
+    fn eprint_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search));
 }

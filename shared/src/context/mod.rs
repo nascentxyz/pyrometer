@@ -1,3 +1,4 @@
+use petgraph::{Direction, visit::EdgeRef};
 use crate::{Node, NodeIdx, Edge};
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
@@ -192,6 +193,20 @@ impl ContextNode {
             .collect()
     }
 
+    /// Gets all variables associated with a context
+    pub fn local_vars(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
+        analyzer.graph().edges_directed(self.0.into(), Direction::Incoming)
+            .filter_map(|edge| {
+                if edge.weight() == &Edge::Context(ContextEdge::Variable) {
+                    Some(edge.source())
+                } else {
+                    None
+                }
+            })
+            .map(|idx| ContextVarNode::from(idx))
+            .collect()
+    }
+
     /// Gets the latest version of a variable associated with a context
     pub fn latest_var_by_name(
         &self,
@@ -262,6 +277,29 @@ impl ContextNode {
         }
     }
 
+    /// Gets parent list
+    pub fn parent_list(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextNode> {
+        let context = self.underlying(analyzer);
+        let mut parents = vec![];
+        if let Some(parent_ctx) = context.parent_ctx {
+            parents.push(parent_ctx);
+            parents.extend(parent_ctx.parent_list(analyzer));
+        }
+        parents
+    }
+
+    /// Gets all terminal children
+    pub fn terminal_child_list(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextNode> {
+        let context = self.underlying(analyzer);
+        if context.forks.is_empty() {
+            vec![*self]
+        } else {
+            context.forks.iter().flat_map(|fork| {
+                fork.terminal_child_list(analyzer)
+            }).collect()
+        }
+    }
+
     /// Returns whether the context is killed
     pub fn is_killed(&self, analyzer: &impl AnalyzerLike) -> bool {
         self.underlying(analyzer).killed.is_some()
@@ -279,7 +317,7 @@ impl ContextNode {
 
     /// Returns a vector of variable dependencies for this context
     pub fn add_ctx_dep(&self, dep: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
-        if !dep.is_const(analyzer) {
+        if dep.is_symbolic(analyzer) {
             let dep_name = dep.name(analyzer);
             let underlying = self.underlying_mut(analyzer);
             underlying.ctx_deps.insert(dep_name, dep);
@@ -292,7 +330,9 @@ impl ContextNode {
         ret: ContextVarNode,
         analyzer: &mut impl AnalyzerLike,
     ) {
-        self.underlying_mut(analyzer).ret = Some((ret_stmt_loc, ret));
+        let underlying = self.underlying_mut(analyzer);
+        underlying.ret = Some((ret_stmt_loc, ret));
+        underlying.killed = Some(ret_stmt_loc);
     }
 
     pub fn return_node(&self, analyzer: &impl AnalyzerLike) -> Option<(Loc, ContextVarNode)> {

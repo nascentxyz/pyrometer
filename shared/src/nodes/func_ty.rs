@@ -1,3 +1,6 @@
+use crate::Edge;
+use crate::context::{ContextEdge, ContextNode};
+use petgraph::{Direction, visit::EdgeRef};
 use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
 use solang_parser::pt::{
     FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation, Expression
@@ -22,6 +25,17 @@ impl FunctionNode {
             .clone()
             .expect("Unnamed function")
             .name
+    }
+
+    pub fn body_ctx<'a>(&self, analyzer: &'a impl AnalyzerLike) -> ContextNode {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Context(ContextEdge::Context) == *edge.weight())
+            .map(|edge| ContextNode::from(edge.source()))
+            .take(1)
+            .next()
+            .expect("No context for function")
     }
 }
 

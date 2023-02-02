@@ -24,6 +24,7 @@ pub enum RangeOp {
     Shr,
     And,
     Where,
+    Cast,
 }
 
 
@@ -67,6 +68,7 @@ impl ToString for RangeOp {
             Not => "!".to_string(),
             And => "&".to_string(),
             Where => "where".to_string(),
+            Cast => "cast".to_string(),
         }
     }
 }

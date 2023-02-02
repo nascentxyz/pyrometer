@@ -1,3 +1,4 @@
+use ethers_core::types::Address;
 use crate::context::ContextNode;
 use std::collections::BTreeMap;
 use crate::range::elem_ty::Dynamic;
@@ -59,7 +60,7 @@ impl SolcRange {
                     max: Elem::Concrete(RangeConcrete { val: c, loc: Loc::Implicit }),
                 })
             }
-            _ => None
+            e => { println!("from: {:?}", e); None}
         }
     }
     pub fn try_from_builtin(builtin: &Builtin) -> Option<Self> {
@@ -104,6 +105,15 @@ impl SolcRange {
                     min: Elem::Concrete(RangeConcrete { val: Concrete::Bool(false), loc: Loc::Implicit }),
                     max: Elem::Concrete(RangeConcrete {
                         val: Concrete::Bool(true),
+                        loc: Loc::Implicit,
+                    }),
+                })
+            },
+            Builtin::Address => {
+                Some(SolcRange {
+                    min: Elem::Concrete(RangeConcrete { val: Concrete::Address(Address::from_slice(&[0x00; 20])), loc: Loc::Implicit }),
+                    max: Elem::Concrete(RangeConcrete {
+                        val: Concrete::Address(Address::from_slice(&[0xff; 20])),
                         loc: Loc::Implicit,
                     }),
                 })
@@ -362,10 +372,10 @@ impl SolcRange {
     ) -> Self {
         let min = self
                 .min
-                .eq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)));
+                .max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)));
         let max = self
                 .max
-                .eq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)));
+                .min(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)));
         Self {
             min: min.clone().max(max.clone()),
             max: min.max(max),
@@ -440,6 +450,7 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
     fn unsat(&self, analyzer: &impl AnalyzerLike) -> bool {
         !self.sat(analyzer)
     }
+    fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
 }
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
@@ -452,6 +463,28 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
             None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => true,
             _ => false,
         }
+    }
+
+    fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+        let min_contains = match self
+            .range_min()
+            .eval(analyzer)
+            .range_ord(&other.range_min().eval(analyzer))
+        {
+            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => true,
+            _ => false,
+        };
+
+        let max_contains = match self
+            .range_max()
+            .eval(analyzer)
+            .range_ord(&other.range_max().eval(analyzer))
+        {
+            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal) => true,
+            _ => false,
+        };
+
+        min_contains && max_contains
     }
 }
 

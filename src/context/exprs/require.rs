@@ -153,7 +153,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx);
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx);
 
-                // println!("rhs underlying: {:?}", new_rhs.underlying(self));
                 self.require(
                     (lhs_cvar, new_lhs),
                     (rhs_cvar, new_rhs),
@@ -257,7 +256,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
             let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
-            // println!("new lhs range: {} {}", new_lhs_range.range_min().eval(self).to_range_string(self).s, new_lhs_range.range_max().eval(self).to_range_string(self).s);
+            println!(
+                "new lhs range: {} {}",
+                new_lhs_range.range_min().eval(self).to_range_string(self).s,
+                new_lhs_range.range_max().eval(self).to_range_string(self).s
+            );
             new_lhs.set_range_min(self, new_lhs_range.range_min());
             new_lhs.set_range_max(self, new_lhs_range.range_max());
 
@@ -311,8 +314,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     fn uninvertable_range_recursion(
         &mut self,
         tmp_construction: TmpConstruction,
-        new_lhs_core: ContextVarNode,
-        rhs_cvar: ContextVarNode,
+        _new_lhs_core: ContextVarNode,
+        _rhs_cvar: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,
     ) {
@@ -374,7 +377,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             );
             let new_underlying_lhs = self.advance_var_in_ctx(tmp_construction.lhs, loc, ctx);
             if let Some(lhs_range) = new_underlying_lhs.underlying(self).ty.range(self) {
-                if let Some(rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
+                if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                     let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(no_flip_op);
                     let new_lhs_range =
                         lhs_range_fn(lhs_range.clone(), adjusted_gt_rhs, range_sides, loc);

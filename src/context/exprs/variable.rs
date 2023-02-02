@@ -9,14 +9,12 @@ impl<T> Variable for T where T: AnalyzerLike + Sized {}
 
 pub trait Variable: AnalyzerLike + Sized {
     fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> ExprRet {
-        println!("this ctx: {}", ctx.underlying(self).path);
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
             let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);
             ExprRet::Single((ctx, var.0.into()))
         } else {
             if let Some(parent_ctx) = ctx.underlying(self).parent_ctx {
                 // check if we can inherit it
-                println!("parent ctx: {:?}", parent_ctx.underlying(self).path);
                 let (_pctx, cvar) = self.variable(ident, parent_ctx).expect_single();
                 match self.node(cvar) {
                     Node::ContextVar(_) => {

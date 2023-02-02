@@ -1,3 +1,4 @@
+use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::RangeExpr;
 use crate::range::elem::RangeOp;
@@ -99,6 +100,21 @@ impl ToRangeString for RangeExpr<Concrete> {
                 format!("{}({}, {})", self.op.to_string(), lhs_str.s, rhs_str.s),
                 lhs_str.loc,
             )
+        } else if matches!(self.op, RangeOp::Cast) {
+            match self.rhs.eval(analyzer) {
+                Elem::Concrete(c) => {
+                    RangeElemString::new(
+                        format!("{}({})", c.val.as_builtin().as_string(), lhs_str.s),
+                        lhs_str.loc,
+                    )
+                }
+                _ => {
+                    RangeElemString::new(
+                        format!("{}({}, {})", self.op.to_string(), lhs_str.s, rhs_str.s),
+                        lhs_str.loc,
+                    )
+                }
+            }
         } else {
             RangeElemString::new(
                 format!("{} {} {}", lhs_str.s, self.op.to_string(), rhs_str.s),

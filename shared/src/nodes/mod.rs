@@ -268,6 +268,22 @@ impl Builtin {
             _ => None,
         }
     }
+
+    pub fn as_string(&self) -> String {
+        use Builtin::*;
+        match self {
+            Address => "address".to_string(),
+            AddressPayable => "payable".to_string(),
+            Payable => "payable".to_string(),
+            Bool => "bool".to_string(),
+            String => "string".to_string(),
+            Int(size) => format!("int{}", size),
+            Uint(size) => format!("uint{}", size),
+            Bytes(size) => format!("bytes{}", size),
+            Rational => "rational".to_string(),
+            DynamicBytes => "bytes".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

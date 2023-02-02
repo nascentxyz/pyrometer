@@ -1,6 +1,9 @@
 use shared::context::*;
+use shared::range::elem::RangeElem;
 use shared::range::elem_ty::Dynamic;
+use shared::range::elem_ty::RangeConcrete;
 use shared::range::Range;
+use shared::range::{elem_ty::Elem, SolcRange};
 
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
@@ -15,6 +18,8 @@ use exprs::*;
 
 pub mod analyzers;
 pub use analyzers::*;
+pub mod queries;
+pub use queries::*;
 
 #[derive(Debug, Clone)]
 pub enum ExprRet {
@@ -397,7 +402,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
+        // println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
         match expr {
             Variable(ident) => self.variable(ident, ctx),
             // literals
@@ -501,17 +506,21 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                             }
                         }
                     }
-                    Node::Builtin(_ty) => {
+                    Node::Builtin(ty) => {
                         // it is a cast
+                        let ty = ty.clone();
                         let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
 
                         let new_var = self.advance_var_in_ctx(cvar.into(), *loc, ctx);
                         new_var.underlying_mut(self).ty =
                             VarType::try_from_idx(self, func_idx).expect("");
+
+                        // cast the ranges
                         if let Some(r) = ContextVarNode::from(cvar).range(self) {
-                            // TODO: cast the ranges appropriately (set cap or convert to signed/unsigned concrete)
-                            new_var.set_range_min(self, r.range_min());
-                            new_var.set_range_max(self, r.range_max());
+                            let curr_range =
+                                SolcRange::try_from_builtin(&ty).expect("No default range");
+                            new_var.set_range_min(self, r.range_min().cast(curr_range.range_min()));
+                            new_var.set_range_max(self, r.range_max().cast(curr_range.range_max()));
                         }
                         return ExprRet::Single((ctx, new_var.into()));
                     }
@@ -623,18 +632,10 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        let (new_lower_bound, new_upper_bound) = if let Some(range) = rhs_cvar.range(self) {
-            (range.range_min(), range.range_max())
-        } else {
-            if let Some(range) = lhs_cvar.range(self) {
-                (
-                    Dynamic::new(rhs_cvar.into(), DynSide::Min, loc).into(),
-                    Dynamic::new(rhs_cvar.into(), DynSide::Max, loc).into(),
-                )
-            } else {
-                panic!("in assign, both lhs and rhs had no range")
-            }
-        };
+        let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
+            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Min, loc)),
+            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Max, loc)),
+        );
 
         let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
         new_lhs.set_range_min(self, new_lower_bound.into());
@@ -649,11 +650,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         loc: Loc,
         ctx: ContextNode,
     ) -> ContextVarNode {
-        println!(
-            "advancing: {} in {}",
-            cvar_node.display_name(self),
-            ctx.underlying(self).path
-        );
         let mut new_cvar = cvar_node.underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));

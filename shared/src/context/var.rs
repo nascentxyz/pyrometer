@@ -302,7 +302,9 @@ impl ContextVar {
                 if let Some(range) = maybe_range {
                     Some(range.clone())
                 } else {
-                    if let Some(range) = SolcRange::try_from_builtin(bn.underlying(analyzer)) {
+                    let underlying = bn.underlying(analyzer);
+                    println!("fallback range buitlin: {:?}", underlying);
+                    if let Some(range) = SolcRange::try_from_builtin(underlying) {
                         Some(range)
                     } else {
                         None
