@@ -24,6 +24,7 @@ contract S {
     function run() public returns (uint256) {
         Storage s = new Storage();
         uint256 a = s.b5(10);
+        uint256 a = s.b5(10);
         return a;
     }
 }

@@ -479,7 +479,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
     }
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
         format!(
-            "Bounds for context: {}",
+            "Bounds for function: {}",
             format!("function {}(..)", self.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
         )
     }
