@@ -24,8 +24,8 @@ struct Args {
 
 fn main() {
     let args = Args::parse();
-    let path_str = args.path.clone().to_string();
-    let verbosity = args.verbosity.clone();
+    let path_str = args.path.to_string();
+    let verbosity = args.verbosity;
     let config = match verbosity {
         0 => ReportConfig {
             eval_bounds: true,
@@ -73,7 +73,7 @@ fn main() {
     let file_mapping = vec![(0usize, path_str.clone())].into_iter().collect();
     let funcs = analyzer.search_children(entry, &crate::Edge::Func);
     for func in funcs.into_iter() {
-        if args.funcs.len() > 0 {
+        if !args.funcs.is_empty() {
             if args
                 .funcs
                 .contains(&FunctionNode::from(func).name(&analyzer))
