@@ -54,7 +54,7 @@ impl Span for LocSpan {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LocStrSpan(pub String, pub Loc);
 
 impl Default for LocStrSpan {

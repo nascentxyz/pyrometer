@@ -117,6 +117,7 @@ impl VarType {
             Node::Ty(ty) => VarType::try_from_idx(analyzer, ty.ty),
             Node::Error(..)
             | Node::ContextFork
+            | Node::FunctionCall
             | Node::FunctionParam(..)
             | Node::FunctionReturn(..)
             | Node::ErrorParam(..)
@@ -139,6 +140,7 @@ impl VarType {
     pub fn is_const(&self, analyzer: &impl AnalyzerLike) -> bool {
         match self {
             Self::Concrete(_) => true,
+            Self::User(TypeNode::Func(_)) => false,
             _ => {
                 if let Some(range) = self.range(analyzer) {
                     range.range_min().range_eq(&range.range_max(), analyzer)
@@ -153,6 +155,13 @@ impl VarType {
         match self {
             Self::Concrete(_) => false,
             _ => true
+        }
+    }
+
+    pub fn func_node(&self, _analyzer: &impl AnalyzerLike) -> Option<FunctionNode> {
+        match self {
+            Self::User(TypeNode::Func(func_node)) => Some(*func_node),
+            _ => None
         }
     }
 

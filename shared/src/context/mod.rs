@@ -25,6 +25,7 @@ pub enum ContextEdge {
     AttrAccess,
     Index,
     IndexAccess,
+    FuncAccess,
 
     // Variable incoming edges
     Assign,
@@ -54,14 +55,20 @@ pub struct Context {
     pub killed: Option<Loc>,
     /// Denotes whether this context is a fork of another context
     pub is_fork: bool,
+    /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
+    pub fn_call: Option<FunctionNode>,
+    /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
+    pub ext_fn_call: Option<FunctionNode>,
     /// A vector of forks of this context
     pub forks: Vec<ContextNode>,
+    /// A vector of children of this context
+    pub children: Vec<ContextNode>,
     /// A counter for temporary variables - this lets a context create unique temporary variables
     pub tmp_var_ctr: usize,
     /// The location in source of the context
     pub loc: Loc,
     /// The return node and the return location
-    pub ret: Option<(Loc, ContextVarNode)>,
+    pub ret: Vec<(Loc, ContextVarNode)>,
 }
 
 impl Context {
@@ -75,8 +82,11 @@ impl Context {
             killed: None,
             ctx_deps: Default::default(),
             is_fork: false,
+            fn_call: None,
+            ext_fn_call: None,
             forks: vec![],
-            ret: None,
+            children: vec![],
+            ret: vec![],
             loc,
         }
     }
@@ -86,8 +96,20 @@ impl Context {
         parent_ctx: ContextNode,
         loc: Loc,
         is_fork: bool,
+        fn_call: Option<FunctionNode>,
+        fn_ext: bool,
         analyzer: &impl AnalyzerLike,
     ) -> Self {
+        let (ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
+            if fn_ext {
+                (Some(fn_call), None)
+            } else {
+                (None, Some(fn_call))
+            }
+        } else {
+            (None, None)
+        };
+
         Context {
             parent_fn: parent_ctx.underlying(analyzer).parent_fn.clone(),
             parent_ctx: Some(parent_ctx),
@@ -97,15 +119,18 @@ impl Context {
                 if is_fork {
                     format!("fork.{}", parent_ctx.underlying(analyzer).forks.len())
                 } else {
-                    "child".to_string()
+                    format!("child.{}", parent_ctx.underlying(analyzer).children.len())
                 }
             ),
             is_fork,
+            fn_call,
+            ext_fn_call,
             ctx_deps: parent_ctx.underlying(analyzer).ctx_deps.clone(),
             killed: None,
             forks: vec![],
-            tmp_var_ctr: 0,
-            ret: None,
+            children: vec![],
+            tmp_var_ctr: parent_ctx.underlying(analyzer).tmp_var_ctr,
+            ret: vec![],
             loc,
         }
     }
@@ -113,6 +138,11 @@ impl Context {
     /// Add a fork to this context
     pub fn add_fork(&mut self, fork_node: ContextNode) {
         self.forks.push(fork_node);
+    }
+
+    /// Add a child to this context
+    pub fn add_child(&mut self, child_node: ContextNode) {
+        self.children.push(child_node);
     }
 }
 
@@ -137,6 +167,16 @@ impl ContextNode {
     /// Gets the associated function for the context
     pub fn associated_fn(&self, analyzer: &(impl AnalyzerLike + Search)) -> FunctionNode {
         self.underlying(analyzer).parent_fn
+    }
+
+    /// Checks whether a function is external to the current context
+    pub fn is_fn_ext(&self, fn_node: FunctionNode, analyzer: &(impl AnalyzerLike + Search)) -> bool {
+        match fn_node.contract(analyzer) {
+            None => false,
+            Some(fn_ctrt) => {
+                self.associated_fn(analyzer).contract(analyzer) != Some(fn_ctrt)        
+            }
+        }
     }
 
     /// Gets the associated function name for the context
@@ -240,7 +280,7 @@ impl ContextNode {
         context
             .forks
             .iter()
-            .filter(|fork_ctx| !fork_ctx.is_killed(analyzer))
+            .filter(|fork_ctx| !fork_ctx.is_ended(analyzer))
             .cloned()
             .collect()
     }
@@ -251,28 +291,34 @@ impl ContextNode {
         context.add_fork(fork);
     }
 
+    /// Adds a child to the context
+    pub fn add_child(&self, child: ContextNode, analyzer: &mut impl AnalyzerLike) {
+        let context = self.underlying_mut(analyzer);
+        context.add_child(child);
+    }
+
     /// Kills the context by denoting it as killed. Recurses up the contexts and kills
     /// parent contexts if all subcontexts of that context are killed
     pub fn kill(&self, analyzer: &mut impl AnalyzerLike, kill_loc: Loc) {
         let context = self.underlying_mut(analyzer);
         context.killed = Some(kill_loc);
         if let Some(parent_ctx) = context.parent_ctx {
-            parent_ctx.kill_if_all_forks_killed(analyzer, kill_loc);
+            parent_ctx.end_if_all_forks_ended(analyzer, kill_loc);
         }
     }
 
     /// Kills if and only if all subcontexts are killed
-    pub fn kill_if_all_forks_killed(&self, analyzer: &mut impl AnalyzerLike, kill_loc: Loc) {
+    pub fn end_if_all_forks_ended(&self, analyzer: &mut impl AnalyzerLike, kill_loc: Loc) {
         let context = self.underlying(analyzer);
         if context
             .forks
             .iter()
-            .all(|fork_ctx| fork_ctx.is_killed(analyzer))
+            .all(|fork_ctx| fork_ctx.is_ended(analyzer))
         {
             let context = self.underlying_mut(analyzer);
             context.killed = Some(kill_loc);
             if let Some(parent_ctx) = context.parent_ctx {
-                parent_ctx.kill_if_all_forks_killed(analyzer, kill_loc);
+                parent_ctx.end_if_all_forks_ended(analyzer, kill_loc);
             }
         }
     }
@@ -300,9 +346,26 @@ impl ContextNode {
         }
     }
 
+    pub fn returning_child_list(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextNode> {
+        let context = self.underlying(analyzer);
+        if context.children.is_empty() {
+            vec![*self]
+        } else {
+            context.children.iter().flat_map(|child| {
+                child.returning_child_list(analyzer)
+            }).collect()
+        }
+    }
+
     /// Returns whether the context is killed
     pub fn is_killed(&self, analyzer: &impl AnalyzerLike) -> bool {
         self.underlying(analyzer).killed.is_some()
+    }
+
+    /// Returns whether the context is killed
+    pub fn is_ended(&self, analyzer: &impl AnalyzerLike) -> bool {
+        let underlying = self.underlying(analyzer);
+        underlying.killed.is_some() || !underlying.ret.is_empty()
     }
 
     /// Returns an option to where the context was killed
@@ -324,19 +387,17 @@ impl ContextNode {
         }
     }
 
-    pub fn set_return_node(
+    pub fn add_return_node(
         &self,
         ret_stmt_loc: Loc,
         ret: ContextVarNode,
         analyzer: &mut impl AnalyzerLike,
     ) {
-        let underlying = self.underlying_mut(analyzer);
-        underlying.ret = Some((ret_stmt_loc, ret));
-        underlying.killed = Some(ret_stmt_loc);
+        self.underlying_mut(analyzer).ret.push((ret_stmt_loc, ret));
     }
 
-    pub fn return_node(&self, analyzer: &impl AnalyzerLike) -> Option<(Loc, ContextVarNode)> {
-        self.underlying(analyzer).ret
+    pub fn return_nodes(&self, analyzer: &impl AnalyzerLike) -> Vec<(Loc, ContextVarNode)> {
+        self.underlying(analyzer).ret.clone()
     }
 }
 

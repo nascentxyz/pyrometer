@@ -22,6 +22,7 @@ pub enum Node {
     Context(Context),
     ContextVar(ContextVar),
     ContextFork,
+    FunctionCall,
     Builtin(Builtin),
     DynBuiltin(DynBuiltin),
     VarType(VarType),

@@ -1,9 +1,12 @@
 use shared::context::*;
+use shared::nodes::TypeNode::Func;
 use shared::range::elem::RangeElem;
 use shared::range::elem_ty::Dynamic;
 use shared::range::elem_ty::RangeConcrete;
 use shared::range::Range;
 use shared::range::{elem_ty::Elem, SolcRange};
+use solang_parser::pt::StorageLocation;
+use solang_parser::pt::VariableDeclaration;
 
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
@@ -33,7 +36,22 @@ impl ExprRet {
     pub fn expect_single(&self) -> (ContextNode, NodeIdx) {
         match self {
             ExprRet::Single(inner) => *inner,
-            _ => panic!("Expected a single return got multiple"),
+            e => panic!("Expected a single return got: {:?}", e),
+        }
+    }
+
+    pub fn is_single(&self) -> bool {
+        match self {
+            ExprRet::Single(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn has_fork(&self) -> bool {
+        match self {
+            ExprRet::Fork(_, _) => true,
+            ExprRet::Multi(multis) => multis.iter().any(|expr_ret| expr_ret.has_fork()),
+            _ => false,
         }
     }
 
@@ -61,7 +79,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             match self.node(parent) {
                 Node::Context(_) => {
                     let ctx = ContextNode::from(parent.into());
-                    if ctx.is_killed(self) {
+                    if ctx.is_ended(self) {
                         return;
                     }
                     if ctx.live_forks(self).is_empty() {
@@ -186,45 +204,21 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 );
                 let forks = ctx.live_forks(self);
                 if forks.is_empty() {
-                    let name = var_decl.name.clone().expect("Variable wasn't named");
-                    let (lhs_ctx, ty) = self.parse_ctx_expr(&var_decl.ty, ctx).expect_single();
-                    let ty = VarType::try_from_idx(self, ty).expect("Not a known type");
-                    let var = ContextVar {
-                        loc: Some(*loc),
-                        name: name.to_string(),
-                        display_name: name.to_string(),
-                        storage: var_decl.storage.clone(),
-                        is_tmp: false,
-                        tmp_of: None,
-                        ty,
-                    };
+                    let lhs_paths = self.parse_ctx_expr(&var_decl.ty, ctx);
                     if let Some(rhs) = maybe_expr {
                         let rhs_paths = self.parse_ctx_expr(rhs, ctx);
-                        self.match_var_def(*loc, &var, &rhs_paths);
+                        self.match_var_def(var_decl, *loc, &lhs_paths, Some(&rhs_paths));
                     } else {
-                        let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
-                        self.add_edge(lhs, lhs_ctx, Edge::Context(ContextEdge::Variable));
+                        self.match_var_def(var_decl, *loc, &lhs_paths, None)
                     }
                 } else {
                     forks.into_iter().for_each(|ctx| {
-                        let name = var_decl.name.clone().expect("Variable wasn't named");
-                        let (lhs_ctx, ty) = self.parse_ctx_expr(&var_decl.ty, ctx).expect_single();
-                        let ty = VarType::try_from_idx(self, ty).expect("Not a known type");
-                        let var = ContextVar {
-                            loc: Some(*loc),
-                            name: name.to_string(),
-                            display_name: name.to_string(),
-                            storage: var_decl.storage.clone(),
-                            is_tmp: false,
-                            tmp_of: None,
-                            ty,
-                        };
+                        let lhs_paths = self.parse_ctx_expr(&var_decl.ty, ctx);
                         if let Some(rhs) = maybe_expr {
                             let rhs_paths = self.parse_ctx_expr(rhs, ctx);
-                            self.match_var_def(*loc, &var, &rhs_paths);
+                            self.match_var_def(var_decl, *loc, &lhs_paths, Some(&rhs_paths));
                         } else {
-                            let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
-                            self.add_edge(lhs, lhs_ctx, Edge::Context(ContextEdge::Variable));
+                            self.match_var_def(var_decl, *loc, &lhs_paths, None)
                         }
                     });
                 }
@@ -270,7 +264,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                 ExprRet::Single((ctx, expr)) => {
                                     // println!("adding return: {:?}", ctx.path(self));
                                     self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
-                                    ctx.set_return_node(*loc, expr.into(), self);
+                                    ctx.add_return_node(*loc, expr.into(), self);
                                 }
                                 ExprRet::Multi(rets) => {
                                     rets.into_iter().for_each(|expr_ret| {
@@ -280,7 +274,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                             ctx,
                                             Edge::Context(ContextEdge::Return),
                                         );
-                                        ctx.set_return_node(*loc, expr.into(), self);
+                                        // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
+                                        ctx.add_return_node(*loc, expr.into(), self);
                                     });
                                 }
                                 ExprRet::Fork(_world1, _world2) => {
@@ -299,7 +294,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                             ctx,
                                             Edge::Context(ContextEdge::Return),
                                         );
-                                        ctx.set_return_node(*loc, expr.into(), self);
+                                        // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
+                                        ctx.add_return_node(*loc, expr.into(), self);
                                     }
                                     ExprRet::Multi(rets) => {
                                         rets.into_iter().for_each(|expr_ret| {
@@ -309,7 +305,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                                 ctx,
                                                 Edge::Context(ContextEdge::Return),
                                             );
-                                            ctx.set_return_node(*loc, expr.into(), self);
+                                            // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
+                                            ctx.add_return_node(*loc, expr.into(), self);
                                         });
                                     }
                                     ExprRet::Fork(_world1, _world2) => {
@@ -341,25 +338,95 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         }
     }
 
-    fn match_var_def(&mut self, loc: Loc, var: &ContextVar, rhs_paths: &ExprRet) {
-        match rhs_paths {
-            ExprRet::CtxKilled => {}
-            ExprRet::Single((rhs_ctx, rhs)) => {
+    fn match_var_def(
+        &mut self,
+        var_decl: &VariableDeclaration,
+        loc: Loc,
+        lhs_paths: &ExprRet,
+        rhs_paths: Option<&ExprRet>,
+    ) {
+        match (lhs_paths, rhs_paths) {
+            (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::Single((rhs_ctx, rhs)))) => {
+                let name = var_decl.name.clone().expect("Variable wasn't named");
+                let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
+                let var = ContextVar {
+                    loc: Some(loc),
+                    name: name.to_string(),
+                    display_name: name.to_string(),
+                    storage: var_decl.storage.clone(),
+                    is_tmp: false,
+                    tmp_of: None,
+                    ty,
+                };
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var.clone())));
                 self.add_edge(lhs, *rhs_ctx, Edge::Context(ContextEdge::Variable));
                 let rhs = ContextVarNode::from(*rhs);
                 let (_, new_lhs) = self.assign(loc, lhs, rhs, *rhs_ctx).expect_single();
                 self.add_edge(new_lhs, *rhs_ctx, Edge::Context(ContextEdge::Variable));
             }
-            ExprRet::Multi(rets) => {
-                rets.into_iter().for_each(|expr_ret| {
-                    self.match_var_def(loc, var, expr_ret);
+            (ExprRet::Single((lhs_ctx, ty)), None) => {
+                let name = var_decl.name.clone().expect("Variable wasn't named");
+                let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
+                let var = ContextVar {
+                    loc: Some(loc),
+                    name: name.to_string(),
+                    display_name: name.to_string(),
+                    storage: var_decl.storage.clone(),
+                    is_tmp: false,
+                    tmp_of: None,
+                    ty,
+                };
+                let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                self.add_edge(lhs, *lhs_ctx, Edge::Context(ContextEdge::Variable));
+            }
+            (l @ ExprRet::Single((_lhs_ctx, _lhs)), Some(ExprRet::Multi(rhs_sides))) => {
+                rhs_sides.iter().for_each(|expr_ret| {
+                    self.match_var_def(var_decl, loc, l, Some(expr_ret));
                 });
             }
-            ExprRet::Fork(world1, world2) => {
-                self.match_var_def(loc, var, world1);
-                self.match_var_def(loc, var, world2);
+            (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => {
+                lhs_sides.iter().for_each(|expr_ret| {
+                    self.match_var_def(var_decl, loc, expr_ret, r);
+                });
             }
+            (ExprRet::Multi(lhs_sides), None) => {
+                lhs_sides.iter().for_each(|expr_ret| {
+                    self.match_var_def(var_decl, loc, expr_ret, None);
+                });
+            }
+            (ExprRet::Multi(lhs_sides), Some(ExprRet::Multi(rhs_sides))) => {
+                // try to zip sides if they are the same length
+                if lhs_sides.len() == rhs_sides.len() {
+                    lhs_sides.iter().zip(rhs_sides.iter()).for_each(
+                        |(lhs_expr_ret, rhs_expr_ret)| {
+                            self.match_var_def(var_decl, loc, lhs_expr_ret, Some(rhs_expr_ret))
+                        },
+                    );
+                } else {
+                    rhs_sides.iter().for_each(|rhs_expr_ret| {
+                        self.match_var_def(var_decl, loc, lhs_paths, Some(rhs_expr_ret))
+                    });
+                }
+            }
+            (
+                ExprRet::Fork(lhs_world1, lhs_world2),
+                Some(ExprRet::Fork(rhs_world1, rhs_world2)),
+            ) => {
+                self.match_var_def(var_decl, loc, lhs_world1, Some(rhs_world1));
+                self.match_var_def(var_decl, loc, lhs_world1, Some(rhs_world2));
+
+                self.match_var_def(var_decl, loc, lhs_world2, Some(rhs_world1));
+                self.match_var_def(var_decl, loc, lhs_world2, Some(rhs_world2))
+            }
+            (l @ ExprRet::Single(_), Some(ExprRet::Fork(world1, world2))) => {
+                self.match_var_def(var_decl, loc, l, Some(world1));
+                self.match_var_def(var_decl, loc, l, Some(world2));
+            }
+            (m @ ExprRet::Multi(_), Some(ExprRet::Fork(world1, world2))) => {
+                self.match_var_def(var_decl, loc, m, Some(world1));
+                self.match_var_def(var_decl, loc, m, Some(world2));
+            }
+            (e, f) => todo!("any: {:?} {:?}", e, f),
         }
     }
 
@@ -382,27 +449,29 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     }
 
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
-        if ctx.is_killed(self) {
+        if ctx.is_ended(self) {
             return ExprRet::CtxKilled;
         }
 
-        // println!("has any forks: {}", ctx.forks(self).len());
         if ctx.live_forks(self).is_empty() {
-            // println!("has no live forks");
             self.parse_ctx_expr_inner(expr, ctx)
         } else {
-            // println!("has live forks");
-            ctx.live_forks(self).iter().for_each(|fork_ctx| {
-                // println!("fork_ctx: {}\n", fork_ctx.underlying(self).path);
-                self.parse_ctx_expr(expr, *fork_ctx);
-            });
-            ExprRet::Multi(vec![])
+            let rets: Vec<_> = ctx
+                .live_forks(self)
+                .iter()
+                .map(|fork_ctx| self.parse_ctx_expr(expr, *fork_ctx))
+                .collect();
+            if rets.len() == 1 {
+                rets.into_iter().take(1).next().unwrap()
+            } else {
+                ExprRet::Multi(rets)
+            }
         }
     }
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        // println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
+        println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
         match expr {
             Variable(ident) => self.variable(ident, ctx),
             // literals
@@ -493,7 +562,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
             Not(loc, expr) => self.not(*loc, expr, ctx),
             FunctionCall(loc, func_expr, input_exprs) => {
-                let (_ctx, func_idx) = self.parse_ctx_expr(func_expr, ctx).expect_single();
+                let (func_ctx, mut func_idx) = self.parse_ctx_expr(func_expr, ctx).expect_single();
+                println!("func call: {:?}", self.node(func_idx));
                 match self.node(func_idx) {
                     Node::Function(underlying) => {
                         if let Some(func_name) = &underlying.name {
@@ -502,7 +572,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                                     self.handle_require(input_exprs, ctx);
                                     return ExprRet::Multi(vec![]);
                                 }
-                                _ => {}
+                                e => todo!("builtin function: {:?}", e),
                             }
                         }
                     }
@@ -524,7 +594,23 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         }
                         return ExprRet::Single((ctx, new_var.into()));
                     }
-                    _ => todo!(),
+                    Node::ContextVar(maybe_func) => {
+                        if let Some(func_node) = maybe_func.ty.func_node(self) {
+                            // get the inputs
+                            let inputs = ExprRet::Multi(
+                                input_exprs
+                                    .iter()
+                                    .map(|expr| self.parse_ctx_expr(expr, ctx))
+                                    .collect(),
+                            );
+
+                            return self.func_call(func_ctx, *loc, &inputs, func_node);
+                        }
+                    }
+                    Node::Contract(_) => {
+                        // TODO: figure out if we need to do anything
+                    }
+                    e => todo!("{:?}", e),
                 }
 
                 let _inputs: Vec<_> = input_exprs
@@ -536,8 +622,175 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 // vec![func_idx]
                 ExprRet::Single((ctx, func_idx))
             }
-
+            New(loc, expr) => self.parse_ctx_expr(expr, ctx),
             e => todo!("{:?}", e),
+        }
+    }
+
+    // fn new_expr(
+    //     &mut self,
+    //     loc: Loc,
+    //     new_paths: &ExprRet
+    // ) -> ExprRet {
+    //     match new_paths {
+    //         ExprRet::Single((ctx, elem)) => {
+
+    //         }
+    //     }
+    // }
+
+    fn func_call(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        input_paths: &ExprRet,
+        func: FunctionNode,
+    ) -> ExprRet {
+        let params = func.params(self);
+        match input_paths {
+            ExprRet::Single((_ctx, input_var)) => {
+                // if we get a single var, we expect the func to only take a single
+                // variable
+                return self.func_call_inner(
+                    ctx,
+                    func,
+                    loc,
+                    vec![ContextVarNode::from(*input_var).latest_version(self)],
+                    params,
+                );
+            }
+            ExprRet::Multi(inputs) => {
+                // check if the inputs length matchs func params length
+                // if they do, check that none are forks
+                if inputs.len() == params.len() {
+                    if !input_paths.has_fork() {
+                        let input_vars = inputs
+                            .into_iter()
+                            .map(|expr_ret| {
+                                let (_ctx, var) = expr_ret.expect_single();
+                                ContextVarNode::from(var).latest_version(self)
+                            })
+                            .collect();
+                        return self.func_call_inner(ctx, func, loc, input_vars, params);
+                    } else {
+                        panic!("input has fork - need to flatten")
+                    }
+                }
+            }
+            _ => todo!("here"),
+        }
+        ExprRet::CtxKilled
+    }
+
+    fn func_call_inner(
+        &mut self,
+        ctx: ContextNode,
+        func_node: FunctionNode,
+        loc: Loc,
+        inputs: Vec<ContextVarNode>,
+        params: Vec<FunctionParamNode>,
+    ) -> ExprRet {
+        let fn_ext = ctx.is_fn_ext(func_node, self);
+
+        let subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
+            ctx,
+            loc,
+            false,
+            Some(func_node.into()),
+            fn_ext,
+            self,
+        ))));
+        ctx.add_child(subctx, self);
+        let ctx_fork = self.add_node(Node::FunctionCall);
+        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
+        self.add_edge(ctx_fork, func_node, Edge::Context(ContextEdge::Call));
+        self.add_edge(
+            NodeIdx::from(subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+
+        params.iter().zip(inputs.iter()).for_each(|(param, input)| {
+            if let Some(name) = param.maybe_name(self) {
+                let mut new_cvar = input.latest_version(self).underlying(self).clone();
+                new_cvar.loc = Some(param.loc(self));
+                new_cvar.name = name.clone();
+                new_cvar.display_name = name;
+                new_cvar.is_tmp = false;
+                new_cvar.storage =
+                    if let Some(StorageLocation::Storage(_)) = param.underlying(self).storage {
+                        new_cvar.storage
+                    } else {
+                        None
+                    };
+
+                let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+
+                match (node.range(self), param.range(self)) {
+                    (Some(r), Some(r2)) => {
+                        let new_min = r.range_min().cast(r2.range_min());
+                        let new_max = r.range_max().cast(r2.range_max());
+                        node.set_range_min(self, new_min);
+                        node.set_range_max(self, new_max);
+                    }
+                    (l, r) => todo!("{:?} {:?}", l, r),
+                }
+                self.add_edge(node, subctx, Edge::Context(ContextEdge::Variable));
+            }
+        });
+
+        if let Some(body) = func_node.underlying(self).body.clone() {
+            self.parse_ctx_statement(&body, false, Some(subctx));
+            // adjust any storage variables
+            let vars = subctx.vars(self);
+            vars.iter().for_each(|old_var| {
+                let var = old_var.latest_version(self);
+                let underlying = var.underlying(self).clone();
+                if underlying.storage.is_some() {
+                    println!("here, {}", underlying.display_name);
+                    if let Some(parent_var) = ctx.var_by_name(self, &underlying.name) {
+                        let parent_var = parent_var.latest_version(self);
+                        if let Some(r) = underlying.ty.range(self) {
+                            let new_parent_var = self.advance_var_in_ctx(
+                                parent_var,
+                                underlying.loc.expect("No loc for val change"),
+                                ctx,
+                            );
+                            new_parent_var.set_range_min(self, r.range_min());
+                            new_parent_var.set_range_max(self, r.range_max());
+                            println!("set ranges: {:?}", r);
+                        } else {
+                            println!(
+                                "no range for var by name: {} in parent: {} child: {}",
+                                underlying.name,
+                                ctx.path(self),
+                                subctx.path(self)
+                            );
+                        }
+                    } else {
+                        println!(
+                            "no var by name: {} in parent: {} child: {}",
+                            underlying.name,
+                            ctx.path(self),
+                            subctx.path(self)
+                        );
+                    }
+                } else {
+                    println!("not here, {}", underlying.display_name);
+                }
+            });
+            // adjust the output type to match the return type of the function call
+            ExprRet::Multi(
+                subctx
+                    .underlying(self)
+                    .ret
+                    .clone()
+                    .into_iter()
+                    .map(|(_, node)| ExprRet::Single((ctx, node.into())))
+                    .collect(),
+            )
+        } else {
+            todo!("no function body")
         }
     }
 
@@ -550,6 +803,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     ) -> ExprRet {
         let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
         let rhs_paths = self.parse_ctx_expr(&rhs_expr, ctx);
+        println!("assign exprs");
         self.match_assign_sides(loc, &lhs_paths, &rhs_paths, ctx)
     }
 
@@ -562,8 +816,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
-                let lhs_cvar = ContextVarNode::from(*lhs);
-                let rhs_cvar = ContextVarNode::from(*rhs);
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.assign(loc, lhs_cvar, rhs_cvar, *rhs_ctx)
             }
             (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
@@ -632,14 +886,27 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
+        println!(
+            "assign: {} {}",
+            lhs_cvar.display_name(self),
+            rhs_cvar.display_name(self)
+        );
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
-            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Min, loc)),
-            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Max, loc)),
+            Elem::Dynamic(Dynamic::new(
+                rhs_cvar.latest_version(self).into(),
+                DynSide::Min,
+                loc,
+            )),
+            Elem::Dynamic(Dynamic::new(
+                rhs_cvar.latest_version(self).into(),
+                DynSide::Max,
+                loc,
+            )),
         );
 
-        let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
-        new_lhs.set_range_min(self, new_lower_bound.into());
-        new_lhs.set_range_max(self, new_upper_bound.into());
+        let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
+        let _ = new_lhs.try_set_range_min(self, new_lower_bound.into());
+        let _ = new_lhs.try_set_range_max(self, new_upper_bound.into());
 
         ExprRet::Single((ctx, new_lhs.into()))
     }
@@ -650,7 +917,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         loc: Loc,
         ctx: ContextNode,
     ) -> ContextVarNode {
-        let mut new_cvar = cvar_node.underlying(self).clone();
+        assert_eq!(None, cvar_node.next_version(self));
+        let mut new_cvar = cvar_node.latest_version(self).underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
         if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
@@ -667,7 +935,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     }
 
     fn advance_var_underlying(&mut self, cvar_node: ContextVarNode, loc: Loc) -> &mut ContextVar {
-        let mut new_cvar = cvar_node.underlying(self).clone();
+        assert_eq!(None, cvar_node.next_version(self));
+        let mut new_cvar = cvar_node.latest_version(self).underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
         self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));

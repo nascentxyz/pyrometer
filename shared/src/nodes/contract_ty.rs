@@ -23,6 +23,10 @@ impl ContractNode {
             .expect("Unnamed contract")
             .name
     }
+
+    pub fn loc<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Loc {
+        self.underlying(analyzer).loc
+    }
 }
 impl Into<NodeIdx> for ContractNode {
     fn into(self) -> NodeIdx {

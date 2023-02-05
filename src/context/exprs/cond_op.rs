@@ -18,13 +18,13 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
         false_stmt: &Option<Box<Statement>>,
         ctx: ContextNode,
     ) {
-        let true_subctx = ContextNode::from(
-            self.add_node(Node::Context(Context::new_subctx(ctx, loc, true, self))),
-        );
+        let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
+            ctx, loc, true, None, false, self,
+        ))));
         ctx.add_fork(true_subctx, self);
-        let false_subctx = ContextNode::from(
-            self.add_node(Node::Context(Context::new_subctx(ctx, loc, true, self))),
-        );
+        let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
+            ctx, loc, true, None, false, self,
+        ))));
         ctx.add_fork(false_subctx, self);
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
@@ -58,13 +58,13 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
         false_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
-        let true_subctx = ContextNode::from(
-            self.add_node(Node::Context(Context::new_subctx(ctx, loc, true, self))),
-        );
+        let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
+            ctx, loc, true, None, false, self,
+        ))));
         ctx.add_fork(true_subctx, self);
-        let false_subctx = ContextNode::from(
-            self.add_node(Node::Context(Context::new_subctx(ctx, loc, true, self))),
-        );
+        let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
+            ctx, loc, true, None, false, self,
+        ))));
         ctx.add_fork(false_subctx, self);
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));

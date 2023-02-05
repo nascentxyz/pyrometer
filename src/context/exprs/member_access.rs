@@ -51,6 +51,39 @@ pub trait MemberAccess: AnalyzerLike + Sized {
                         return ExprRet::Single((ctx, fc_node));
                     }
                 }
+                VarType::User(TypeNode::Contract(con_node)) => {
+                    // we can only access functions via this pattern
+                    let func = self
+                        .graph()
+                        .edges_directed(con_node.0.into(), Direction::Incoming)
+                        .filter(|edge| *edge.weight() == Edge::Func)
+                        .map(|edge| FunctionNode::from(edge.source()))
+                        .collect::<Vec<FunctionNode>>()
+                        .into_iter()
+                        .filter_map(|func_node| {
+                            let func = func_node.underlying(self);
+                            if func.name.as_ref().expect("func wasnt named").name == ident.name {
+                                Some(func_node)
+                            } else {
+                                None
+                            }
+                        })
+                        .take(1)
+                        .next()
+                        .expect(&format!(
+                            "No function with name {:?} in contract: {:?}",
+                            ident.name,
+                            con_node.name(self)
+                        ));
+
+                    if let Some(func_cvar) =
+                        ContextVar::maybe_from_user_ty(self, loc, func.0.into())
+                    {
+                        let fn_node = self.add_node(Node::ContextVar(func_cvar));
+                        self.add_edge(fn_node, member_idx, Edge::Context(ContextEdge::FuncAccess));
+                        return ExprRet::Single((ctx, fn_node));
+                    }
+                }
                 e => todo!("member access: {:?}", e),
             },
             e => todo!("{:?}", e),

@@ -64,7 +64,7 @@ impl RangeElem<Concrete> for Dynamic {
             		}
             	)
             },
-            _ => Elem::Dynamic(self.clone()),
+            e => {println!("dynamic {:?}", e); Elem::Dynamic(self.clone())},
         }
 	}
 
@@ -264,6 +264,12 @@ pub enum Elem<T> {
 	Concrete(RangeConcrete<T>),
 	Expr(RangeExpr<T>),
 	Null,
+}
+
+impl From<Concrete> for Elem<Concrete> {
+	fn from(c: Concrete) -> Self {
+		Elem::Concrete(RangeConcrete { val: c, loc: Loc::Implicit })
+	}
 }
 
 impl<T> Elem<T> {

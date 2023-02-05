@@ -372,10 +372,10 @@ impl SolcRange {
     ) -> Self {
         let min = self
                 .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)));
+                .eq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)));
         let max = self
                 .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)));
+                .eq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)));
         Self {
             min: min.clone().max(max.clone()),
             max: min.max(max),

@@ -1,3 +1,4 @@
+use crate::LocSpan;
 use crate::LocStrSpan;
 use crate::{ReportConfig, ReportDisplay};
 use shared::range::elem::RangeElem;
@@ -9,6 +10,9 @@ use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
 };
+use solang_parser::pt::CodeLocation;
+use solang_parser::pt::Loc;
+use std::collections::BTreeSet;
 
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
@@ -19,6 +23,7 @@ pub struct BoundAnalysis {
     pub var_name: String,
     pub var_display_name: String,
     pub var_def: (LocStrSpan, Option<SolcRange>),
+    pub func_span: Option<LocStrSpan>,
     pub storage: bool,
     pub bound_changes: Vec<(LocStrSpan, SolcRange)>,
     pub report_config: ReportConfig,
@@ -32,6 +37,7 @@ impl Default for BoundAnalysis {
             var_name: Default::default(),
             var_display_name: Default::default(),
             var_def: Default::default(),
+            func_span: Default::default(),
             bound_changes: Default::default(),
             report_config: Default::default(),
             sub_ctxs: Default::default(),
@@ -174,7 +180,9 @@ impl ReportDisplay for BoundAnalysis {
                             "".fg(Color::Red)
                         }
                     ))
-                    .with_color(Color::Magenta)]
+                    .with_color(Color::Magenta)
+                    .with_order(-1)
+                    .with_priority(-1)]
             } else {
                 vec![]
             }
@@ -185,7 +193,8 @@ impl ReportDisplay for BoundAnalysis {
         labels.extend(
             self.bound_changes
                 .iter()
-                .map(|bound_change| {
+                .enumerate()
+                .map(|(i, bound_change)| {
                     let min = if self.report_config.eval_bounds {
                         bound_change
                             .1
@@ -222,18 +231,20 @@ impl ReportDisplay for BoundAnalysis {
                         bound_change.1.range_max().to_range_string(analyzer).s
                     };
 
-                    let label = Label::new(bound_change.0.clone()).with_message(format!(
-                        "{}\"{}\" ∈ {{{}, {}}} {}",
-                        if self.storage { "storage var " } else { "" },
-                        self.var_display_name,
-                        min,
-                        max,
-                        if bound_change.1.unsat(analyzer) {
-                            "- unsatisfiable range, unreachable".fg(Color::Red)
-                        } else {
-                            "".fg(Color::Red)
-                        }
-                    ));
+                    let label = Label::new(bound_change.0.clone())
+                        .with_message(format!(
+                            "{}\"{}\" ∈ {{{}, {}}} {}",
+                            if self.storage { "storage var " } else { "" },
+                            self.var_display_name,
+                            min,
+                            max,
+                            if bound_change.1.unsat(analyzer) {
+                                "- unsatisfiable range, unreachable".fg(Color::Red)
+                            } else {
+                                "".fg(Color::Red)
+                            }
+                        ))
+                        .with_order(i as i32);
 
                     if !self.storage {
                         label.with_color(Color::Cyan)
@@ -306,6 +317,12 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             .into_iter()
             .filter_map(|ctx| Some((ctx, ctx.var_by_name(self, &var_name)?)))
             .for_each(|(ctx, cvar)| {
+                println!(
+                    "ctx: {:?}, path: {}, var: {}",
+                    ctx,
+                    ctx.path(self),
+                    var_name
+                );
                 let analysis = self.bounds_for_var_node(
                     inherited.clone(),
                     file_mapping,
@@ -405,15 +422,29 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
     ) -> BoundAnalysis {
         let mut curr = cvar.first_version(self);
 
+        let ctx = cvar.ctx(self);
+        let func_span = if let Some(fn_call) = ctx.underlying(self).fn_call {
+            println!("had func span: {:?}, {}", fn_call, ctx.path(self));
+            Some(LocStrSpan::new(&file_mapping, fn_call.underlying(self).loc))
+        } else {
+            println!("had no func span, {}", ctx.path(self));
+            Some(LocStrSpan::new(
+                &file_mapping,
+                ctx.underlying(self).parent_fn.underlying(self).loc,
+            ))
+        };
+
         let mut ba = if let Some(inherited) = inherited {
             let mut new_ba = inherited.clone();
-            new_ba.ctx = cvar.ctx(self);
+            new_ba.ctx = ctx;
+            new_ba.func_span = func_span;
             new_ba
         } else {
             BoundAnalysis {
-                ctx: cvar.ctx(self),
+                ctx,
                 var_name,
                 var_display_name: cvar.display_name(self),
+                func_span,
                 var_def: (
                     LocStrSpan::new(&file_mapping, curr.loc(self)),
                     if !is_subctx { curr.range(self) } else { None },
@@ -580,36 +611,134 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         .flat_map(|analysis| analysis.labels(analyzer))
                         .collect();
 
+                    // let underlying = ctx.underlying(analyzer);
+                    // let f = LocSpan(underlying.parent_fn.underlying(analyzer).loc);
+                    // labels.push(Label::new(
+                    //     LocStrSpan::new(self.file_mapping, Loc::File(*f.source(), f.start(), underlying.loc.end()))
+                    // ).with_message("Function span").with_color(Color::Default));
+
                     report.add_labels(labels);
 
-                    if let Some((loc, var)) = ctx.return_node(analyzer) {
-                        // println!("context {} had return", ctx.path(analyzer));
-                        report.add_label(
-                            Label::new(LocStrSpan::new(self.file_mapping, loc))
-                                .with_message(
-                                    &format!(
-                                        "returns: \"{}\" ∈ {{{}, {}}}",
-                                        var.display_name(analyzer),
-                                        var.range(analyzer)
-                                            .expect("return had no range")
-                                            .range_min()
-                                            .eval(analyzer)
-                                            .to_range_string(analyzer)
-                                            .s,
-                                        var.range(analyzer)
-                                            .expect("return had no range")
-                                            .range_max()
-                                            .eval(analyzer)
-                                            .to_range_string(analyzer)
-                                            .s,
+                    ctx.return_nodes(analyzer)
+                        .into_iter()
+                        .for_each(|(loc, var)| {
+                            println!("context {} had return", ctx.path(analyzer));
+                            report.add_label(
+                                Label::new(LocStrSpan::new(self.file_mapping, loc))
+                                    .with_message(
+                                        &format!(
+                                            "returns: \"{}\" ∈ {{{}, {}}}",
+                                            var.display_name(analyzer),
+                                            var.range(analyzer)
+                                                .expect("return had no range")
+                                                .range_min()
+                                                .eval(analyzer)
+                                                .to_range_string(analyzer)
+                                                .s,
+                                            var.range(analyzer)
+                                                .expect("return had no range")
+                                                .range_max()
+                                                .eval(analyzer)
+                                                .to_range_string(analyzer)
+                                                .s,
+                                        )
+                                        .fg(Color::Yellow),
                                     )
-                                    .fg(Color::Yellow),
-                                )
-                                .with_color(Color::Yellow),
-                        );
-                    } else {
-                        // println!("context {} did not have a return", ctx.path(analyzer));
-                    }
+                                    .with_color(Color::Yellow),
+                            );
+                        });
+
+                    report.add_label(
+                        Label::new(LocStrSpan::new(
+                            self.file_mapping,
+                            ctx.underlying(analyzer)
+                                .parent_fn
+                                .underlying(analyzer)
+                                .body
+                                .as_ref()
+                                .expect("No body")
+                                .loc(),
+                        ))
+                        .with_message("Entry function call")
+                        .with_priority(-2)
+                        .with_order(-2),
+                    );
+
+                    ctx.underlying(analyzer).children.iter().for_each(|child| {
+                        if let Some(fn_call) = child.underlying(analyzer).fn_call {
+                            report.add_label(
+                                Label::new(LocStrSpan::new(
+                                    self.file_mapping,
+                                    fn_call
+                                        .underlying(analyzer)
+                                        .body
+                                        .as_ref()
+                                        .expect("No body")
+                                        .loc(),
+                                ))
+                                .with_message("Internal function call")
+                                .with_priority(-2)
+                                .with_order(-2)
+                                .with_color(Color::Fixed(140)),
+                            );
+                        }
+
+                        if let Some(ext_fn_call) = child.underlying(analyzer).ext_fn_call {
+                            report.add_label(
+                                Label::new(LocStrSpan::new(
+                                    self.file_mapping,
+                                    ext_fn_call
+                                        .underlying(analyzer)
+                                        .body
+                                        .as_ref()
+                                        .expect("No body")
+                                        .loc(),
+                                ))
+                                .with_message("External function call")
+                                .with_priority(-2)
+                                .with_order(-2)
+                                .with_color(Color::Fixed(75)),
+                            );
+                            if let Some(c) = ext_fn_call.contract(analyzer) {
+                                report.add_label(
+                                    Label::new(LocStrSpan::new(self.file_mapping, c.loc(analyzer)))
+                                        .with_message("External Contract")
+                                        .with_priority(-3)
+                                        .with_order(-3)
+                                        .with_color(Color::Fixed(8)),
+                                );
+                            }
+                        }
+
+                        child
+                            .return_nodes(analyzer)
+                            .into_iter()
+                            .for_each(|(loc, var)| {
+                                report.add_label(
+                                    Label::new(LocStrSpan::new(self.file_mapping, loc))
+                                        .with_message(
+                                            &format!(
+                                                "returns: \"{}\" ∈ {{{}, {}}}",
+                                                var.display_name(analyzer),
+                                                var.range(analyzer)
+                                                    .expect("return had no range")
+                                                    .range_min()
+                                                    .eval(analyzer)
+                                                    .to_range_string(analyzer)
+                                                    .s,
+                                                var.range(analyzer)
+                                                    .expect("return had no range")
+                                                    .range_max()
+                                                    .eval(analyzer)
+                                                    .to_range_string(analyzer)
+                                                    .s,
+                                            )
+                                            .fg(Color::Yellow),
+                                        )
+                                        .with_color(Color::Yellow),
+                                );
+                            })
+                    });
                     report.finish()
                 })
                 .collect::<Vec<Report<LocStrSpan>>>(),
@@ -644,17 +773,19 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         report_config: ReportConfig,
     ) -> FunctionVarsBoundAnalysis {
         println!("{:?}", ctx.terminal_child_list(self));
-        let analyses = ctx
+        let mut analyses = ctx
             .terminal_child_list(self)
             .iter()
             .map(|child| {
                 let mut parents = child.parent_list(self);
                 parents.reverse();
                 parents.push(*child);
-                parents
+                let children: Vec<_> = parents
                     .iter()
-                    .for_each(|parent| println!("{}", parent.path(self)));
+                    .flat_map(|p| p.returning_child_list(self))
+                    .collect();
                 println!("parents: {:?}", parents);
+                println!("children: {:?}", children);
                 let mut vars = ctx.vars(self);
                 vars.sort_by(|a, b| a.name(self).cmp(&b.name(self)));
                 vars.dedup_by(|a, b| a.name(self) == b.name(self));
@@ -663,7 +794,16 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     vars.iter()
                         .filter_map(|var| {
                             let name = var.name(self);
-                            if report_config.show_tmps && report_config.show_consts {
+                            let is_ret = var.is_return_node_in_any(&parents, self);
+                            // println!("var: {}-{}, is_ret: {}", name, var.display_name(self), is_ret);
+                            if is_ret {
+                                Some(self.bounds_for_var_in_family_tree(
+                                    file_mapping,
+                                    parents.clone(),
+                                    name,
+                                    report_config,
+                                ))
+                            } else if report_config.show_tmps && report_config.show_consts {
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,
                                     parents.clone(),

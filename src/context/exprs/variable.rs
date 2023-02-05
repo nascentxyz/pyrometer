@@ -1,7 +1,10 @@
 use crate::context::ContextBuilder;
+use crate::Concrete;
 use crate::ExprRet;
 use shared::analyzer::AnalyzerLike;
 use shared::context::*;
+use shared::range::elem_ty::Elem;
+use shared::range::Range;
 use shared::{Edge, Node};
 use solang_parser::pt::Identifier;
 
@@ -18,6 +21,7 @@ pub trait Variable: AnalyzerLike + Sized {
                 let (_pctx, cvar) = self.variable(ident, parent_ctx).expect_single();
                 match self.node(cvar) {
                     Node::ContextVar(_) => {
+                        let cvar = ContextVarNode::from(cvar).latest_version(self);
                         let mut ctx_cvar = self.advance_var_in_ctx(cvar.into(), ident.loc, ctx);
                         ctx_cvar.update_deps(ctx, self);
                         ExprRet::Single((ctx, ctx_cvar.0.into()))
@@ -26,8 +30,31 @@ pub trait Variable: AnalyzerLike + Sized {
                 }
             } else {
                 if let Some(idx) = self.user_types().get(&ident.name) {
-                    let var = ContextVar::maybe_from_user_ty(self, ident.loc, *idx)
-                        .expect("Could not create context variable from user type");
+                    let mut var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
+                        Some(v) => v,
+                        None => panic!(
+                            "Could not create context variable from user type: {:?}",
+                            self.node(*idx)
+                        ),
+                    };
+
+                    // We assume a storage variable is 0 to start with
+                    // TODO: check if there is an initializer that we should take into account
+                    if let Some(r) = var.fallback_range(self) {
+                        if var.storage.is_some() {
+                            match r.range_max() {
+                                Elem::Concrete(c) => {
+                                    if let Some(size) = c.val.int_size() {
+                                        var.set_range_max(
+                                            Elem::from(Concrete::Uint(size, 0.into())),
+                                            None,
+                                        )
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                     let new_cvarnode = self.add_node(Node::ContextVar(var));
                     self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
                     ExprRet::Single((ctx, new_cvarnode))

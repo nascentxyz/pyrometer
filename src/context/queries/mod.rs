@@ -77,7 +77,8 @@ impl ReportDisplay for StorageRangeReport {
             .collect::<Vec<_>>()
             .join(" ∧ ");
         format!(
-            "Found storage write that could lead to target value: \"{}\" ∈ {{{}, {}}}{}{} ",
+            "Found storage write that could lead to target value in ctx {}: \"{}\" ∈ {{{}, {}}}{}{} ",
+            self.analysis.ctx.path(analyzer),
             self.analysis.var_name,
             self.target
                 .range_min()
@@ -183,8 +184,8 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
             .expect("No function in contract with provided name");
         let ctx = FunctionNode::from(func).body_ctx(self);
 
-        for analysis in ctx
-            .terminal_child_list(self)
+        let terminals = ctx.terminal_child_list(self);
+        for analysis in terminals
             .iter()
             .map(|child| {
                 let mut parents = child.parent_list(self);
@@ -197,18 +198,17 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
                     report_config,
                 )
             })
-            .filter(|analysis| analysis.ctx.is_killed(self))
+            .filter(|analysis| terminals.contains(&analysis.ctx))
+            .filter(|analysis| !analysis.ctx.is_killed(self))
         {
-            if let Some(a) = analysis
-                .bound_changes
-                .iter()
-                .find(|(_, range)| range.contains(&target, self))
-            {
-                return Some(StorageRangeReport {
-                    target,
-                    write_loc: Some(a.0.clone()),
-                    analysis: analysis,
-                });
+            if let Some(last) = analysis.bound_changes.iter().last() {
+                if last.1.contains(&target, self) {
+                    return Some(StorageRangeReport {
+                        target,
+                        write_loc: Some(last.0.clone()),
+                        analysis: analysis,
+                    });
+                }
             }
         }
         return None;

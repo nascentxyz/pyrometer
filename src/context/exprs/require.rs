@@ -1,4 +1,6 @@
 use shared::context::*;
+use shared::nodes::VarType;
+use shared::nodes::{BuiltInNode, Builtin};
 use shared::range::elem::RangeElem;
 use shared::range::elem::RangeOp;
 use shared::range::elem_ty::Elem;
@@ -7,6 +9,7 @@ use shared::range::range_string::ToRangeString;
 use shared::range::Range;
 use shared::range::RangeEval;
 use shared::range::SolcRange;
+use shared::Edge;
 
 use crate::ExprRet;
 use ethers_core::types::I256;
@@ -261,8 +264,38 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 new_lhs_range.range_min().eval(self).to_range_string(self).s,
                 new_lhs_range.range_max().eval(self).to_range_string(self).s
             );
+
             new_lhs.set_range_min(self, new_lhs_range.range_min());
             new_lhs.set_range_max(self, new_lhs_range.range_max());
+
+            let tmp_var = ContextVar {
+                loc: Some(loc),
+                name: format!(
+                    "tmp{}({} {} {})",
+                    lhs_cvar.name(self),
+                    op.to_string(),
+                    rhs_cvar.name(self),
+                    ctx.new_tmp(self)
+                ),
+                display_name: format!(
+                    "({} {} {})",
+                    lhs_cvar.display_name(self),
+                    op.to_string(),
+                    rhs_cvar.display_name(self),
+                ),
+                storage: None,
+                is_tmp: true,
+                tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
+                ty: VarType::BuiltIn(
+                    BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                    SolcRange::from(Concrete::Bool(true)),
+                ),
+            };
+
+            let tmp_var = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+            self.add_edge(tmp_var, ctx, Edge::Context(ContextEdge::Variable));
+            tmp_var.set_range_min(self, new_lhs_range.range_min());
+            tmp_var.set_range_max(self, new_lhs_range.range_max());
 
             any_unsat |= new_lhs_range.unsat(self);
 
@@ -289,8 +322,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 return;
             }
 
-            ctx.add_ctx_dep(new_lhs, self);
             ctx.add_ctx_dep(new_rhs, self);
+            if matches!(op, RangeOp::Eq | RangeOp::Neq) {
+                ctx.add_ctx_dep(tmp_var, self);
+            } else {
+                ctx.add_ctx_dep(new_lhs, self);
+            }
         }
 
         if let Some(tmp) = lhs_cvar.tmp_of(self) {

@@ -161,21 +161,35 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                self.parse_source_unit(source_unit, file_no, parent);
+                let funcs = self.parse_source_unit(source_unit, file_no, parent);
+                funcs.into_iter().for_each(|func| {
+                    if let Some(body) = &func.underlying(self).body.clone() {
+                        self.parse_ctx_statement(body, false, Some(func));
+                    }
+                });
+
                 Some(parent)
             }
             Err(e) => panic!("FAIL to parse, {:?}", e),
         }
     }
 
-    pub fn parse_source_unit(&mut self, source_unit: SourceUnit, file_no: usize, parent: NodeIdx) {
+    pub fn parse_source_unit(
+        &mut self,
+        source_unit: SourceUnit,
+        file_no: usize,
+        parent: NodeIdx,
+    ) -> Vec<FunctionNode> {
         source_unit
             .0
             .iter()
             .enumerate()
-            .for_each(|(unit_part, source_unit_part)| {
-                self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent);
+            .flat_map(|(unit_part, source_unit_part)| {
+                let (_sup, funcs) =
+                    self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent);
+                funcs
             })
+            .collect()
     }
 
     pub fn parse_source_unit_part(
@@ -184,15 +198,19 @@ impl Analyzer {
         file_no: usize,
         unit_part: usize,
         parent: NodeIdx,
-    ) -> NodeIdx {
+    ) -> (NodeIdx, Vec<FunctionNode>) {
         use SourceUnitPart::*;
 
         let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
         self.add_edge(sup_node, parent, Edge::Part);
+
+        let mut func_nodes = vec![];
+
         match sup {
             ContractDefinition(def) => {
-                let node = self.parse_contract_def(&*def);
+                let (node, funcs) = self.parse_contract_def(&*def);
                 self.add_edge(node, sup_node, Edge::Contract);
+                func_nodes.extend(funcs);
             }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(&*def);
@@ -212,6 +230,7 @@ impl Analyzer {
             }
             FunctionDefinition(def) => {
                 let node = self.parse_func_def(&*def);
+                func_nodes.push(node);
                 self.add_edge(node, sup_node, Edge::Func);
             }
             TypeDefinition(def) => {
@@ -225,14 +244,17 @@ impl Analyzer {
             PragmaDirective(_, _, _) => {}
             ImportDirective(_) => todo!(),
         }
-        sup_node
+        (sup_node, func_nodes)
     }
 
-    pub fn parse_contract_def(&mut self, contract_def: &ContractDefinition) -> ContractNode {
+    pub fn parse_contract_def(
+        &mut self,
+        contract_def: &ContractDefinition,
+    ) -> (ContractNode, Vec<FunctionNode>) {
         use ContractPart::*;
 
         let con_node = ContractNode(self.add_node(Contract::from(contract_def.clone())).index());
-
+        let mut func_nodes = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
             StructDefinition(def) => {
                 let node = self.parse_struct_def(&*def);
@@ -252,6 +274,7 @@ impl Analyzer {
             }
             FunctionDefinition(def) => {
                 let node = self.parse_func_def(&*def);
+                func_nodes.push(node);
                 self.add_edge(node, con_node, Edge::Func);
             }
             TypeDefinition(def) => {
@@ -263,7 +286,9 @@ impl Analyzer {
             Using(_using) => todo!(),
             StraySemicolon(_loc) => todo!(),
         });
-        con_node
+        self.user_types
+            .insert(con_node.name(self), con_node.0.into());
+        (con_node, func_nodes)
     }
 
     pub fn parse_enum_def(&mut self, enum_def: &EnumDefinition) -> EnumNode {
@@ -321,7 +346,6 @@ impl Analyzer {
     pub fn parse_func_def(&mut self, func_def: &FunctionDefinition) -> FunctionNode {
         let func = Function::from(func_def.clone());
         let name = func.name.clone().expect("Struct was not named").name;
-        // TODO: check if we have an unresolved type by the same name
 
         let func_node: FunctionNode =
             if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
@@ -350,9 +374,6 @@ impl Analyzer {
         });
 
         // we delay the function body parsing to the end after parsing all sources
-        if let Some(body) = &func_def.body {
-            self.parse_ctx_statement(body, false, Some(func_node));
-        }
 
         func_node
     }

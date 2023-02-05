@@ -336,6 +336,31 @@ pub trait Cmp: AnalyzerLike + Sized {
                             _ => {}
                         }
                     }
+                    RangeOp::Neq => {
+                        // if all elems are equal we know its true
+                        // we dont know anything else
+                        let lhs_min = lhs_range.range_min().eval(self);
+                        let lhs_max = lhs_range.range_max().eval(self);
+                        let rhs_min = rhs_range.range_min().eval(self);
+                        let rhs_max = rhs_range.range_max().eval(self);
+                        match (
+                            // check lhs_min == lhs_max, ensures lhs is const
+                            lhs_min.range_ord(&lhs_max),
+                            // check lhs_min == rhs_min, checks if lhs == rhs
+                            lhs_min.range_ord(&rhs_min),
+                            // check rhs_min == rhs_max, ensures rhs is const
+                            rhs_min.range_ord(&rhs_max),
+                        ) {
+                            (
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                            ) => {
+                                return false.into();
+                            }
+                            _ => {}
+                        }
+                    }
                     e => unreachable!("Cmp with strange op: {:?}", e),
                 }
                 SolcRange::default_bool()

@@ -114,7 +114,10 @@ impl ContextVarNode {
     }
 
     pub fn is_const(&self, analyzer: &impl AnalyzerLike) -> bool {
-        self.underlying(analyzer).ty.is_const(analyzer)
+        let underlying = self.underlying(analyzer);
+        let is = !underlying.storage.is_some() && underlying.ty.is_const(analyzer);
+        // println!("is const: {}, {}", underlying.display_name, is);
+        is
     }
 
     pub fn is_symbolic(&self, analyzer: &impl AnalyzerLike) -> bool {
@@ -122,7 +125,21 @@ impl ContextVarNode {
     }
 
     pub fn is_tmp(&self, analyzer: &impl AnalyzerLike) -> bool {
-        self.underlying(analyzer).is_tmp()
+        let underlying = self.underlying(analyzer);
+        let is = underlying.is_tmp();
+        // println!("is tmp: {}, {}", underlying.display_name, is);
+        is
+    }
+
+    pub fn is_return_node(&self, analyzer: &impl AnalyzerLike) -> bool {
+        if let Some(ctx) = self.maybe_ctx(analyzer) {
+            return ctx.underlying(analyzer).ret.iter().any(|(_, node)| node.name(analyzer) == self.name(analyzer));
+        }
+        false
+    }
+
+    pub fn is_return_node_in_any(&self, ctxs: &[ContextNode], analyzer: &impl AnalyzerLike) -> bool {
+        ctxs.iter().any(|ctx| ctx.underlying(analyzer).ret.iter().any(|(_, node)| node.name(analyzer) == self.name(analyzer)))
     }
 
     pub fn tmp_of(&self, analyzer: &impl AnalyzerLike) -> Option<TmpConstruction> {
@@ -153,6 +170,18 @@ impl ContextVarNode {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
             .set_range_max(new_max, fallback)
+    }
+
+    pub fn try_set_range_min(&self, analyzer: &mut impl AnalyzerLike, new_min: Elem<Concrete>) -> bool {
+        let fallback = self.underlying(analyzer).fallback_range(analyzer);
+        self.underlying_mut(analyzer)
+            .try_set_range_min(new_min, fallback)
+    }
+
+    pub fn try_set_range_max(&self, analyzer: &mut impl AnalyzerLike, new_max: Elem<Concrete>) -> bool {
+        let fallback = self.underlying(analyzer).fallback_range(analyzer);
+        self.underlying_mut(analyzer)
+            .try_set_range_max(new_max, fallback)
     }
 
     pub fn latest_version<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Self {
@@ -312,13 +341,13 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(cn) => SolcRange::from(cn.underlying(analyzer).clone()),
-            e => panic!("wasnt builtin: {:?}", e),
+            _ => None,
         }
     }
 
     pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
-            VarType::BuiltIn(_bn, ref mut maybe_range) => {
+            VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_min(new_min);
                 } else {
@@ -332,9 +361,27 @@ impl ContextVar {
         }
     }
 
+    pub fn try_set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) -> bool {
+        match &mut self.ty {
+            VarType::BuiltIn(_, ref mut maybe_range) => {
+                if let Some(range) = maybe_range {
+                    range.set_range_min(new_min);
+                    true
+                } else {
+                    let mut fr = fallback_range.expect("No range and no fallback_range");
+                    fr.set_range_min(new_min);
+                    *maybe_range = Some(fr);
+                    true
+                }
+            }
+            VarType::Concrete(_) => { true }
+            _ => false,
+        }
+    }
+
     pub fn set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
-            VarType::BuiltIn(_bn, ref mut maybe_range) => {
+            VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_max(new_max);
                 } else {
@@ -345,6 +392,24 @@ impl ContextVar {
             }
             VarType::Concrete(_) => {}
             e => panic!("wasnt builtin or concrete: {:?}", e),
+        }
+    }
+
+    pub fn try_set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) -> bool {
+        match &mut self.ty {
+            VarType::BuiltIn(_bn, ref mut maybe_range) => {
+                if let Some(range) = maybe_range {
+                    range.set_range_max(new_max);
+                    true
+                } else {
+                    let mut fr = fallback_range.expect("No range and no fallback_range");
+                    fr.set_range_max(new_max);
+                    *maybe_range = Some(fr);
+                    true
+                }
+            }
+            VarType::Concrete(_) => { true }
+            _ => false,
         }
     }
 

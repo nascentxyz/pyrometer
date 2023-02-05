@@ -9,6 +9,7 @@ use std::collections::HashMap;
 pub fn builtin_fns() -> HashMap<String, Function> {
     let funcs = [
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -21,6 +22,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -33,6 +35,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -45,6 +48,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -57,6 +61,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -69,6 +74,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -81,6 +87,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -93,6 +100,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -105,6 +113,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -117,6 +126,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -129,6 +139,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -141,6 +152,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -153,6 +165,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -165,6 +178,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -177,6 +191,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -189,6 +204,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {
@@ -201,6 +217,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         },
         Function {
+            body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
             name: Some(Identifier {

@@ -1,3 +1,7 @@
+use crate::nodes::ContractNode;
+use crate::range::SolcRange;
+use crate::VarType;
+use solang_parser::pt::Statement;
 use crate::Edge;
 use crate::context::{ContextEdge, ContextNode};
 use petgraph::{Direction, visit::EdgeRef};
@@ -37,6 +41,25 @@ impl FunctionNode {
             .next()
             .expect("No context for function")
     }
+
+    pub fn params<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Vec<FunctionParamNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::FunctionParam == *edge.weight())
+            .map(|edge| FunctionParamNode::from(edge.source()))
+            .collect()
+    }
+
+    pub fn contract<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<ContractNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| Edge::Func == *edge.weight())
+            .map(|edge| ContractNode::from(edge.target()))
+            .take(1)
+            .next()
+    }
 }
 
 impl Into<NodeIdx> for FunctionNode {
@@ -58,6 +81,7 @@ pub struct Function {
     pub name: Option<Identifier>,
     pub name_loc: Loc,
     pub attributes: Vec<FunctionAttribute>,
+    pub body: Option<Statement>
 }
 
 impl Into<Node> for Function {
@@ -74,6 +98,7 @@ impl From<FunctionDefinition> for Function {
             name: func.name,
             name_loc: func.name_loc,
             attributes: func.attributes,
+            body: func.body,
         }
     }
 }
@@ -90,6 +115,31 @@ impl FunctionParamNode {
                 e
             ),
         }
+    }
+
+    pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
+        self.underlying(analyzer)
+            .name
+            .clone()
+            .expect("Unnamed function parameter")
+            .name
+    }
+
+    pub fn maybe_name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<String> {
+        Some(self.underlying(analyzer)
+            .name
+            .clone()?
+            .name)
+    }
+
+    pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<SolcRange> {
+        let ty_node = self.underlying(analyzer).ty;
+        let var_ty = VarType::try_from_idx(analyzer, ty_node)?;
+        var_ty.range(analyzer)
+    }
+
+    pub fn loc<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Loc {
+        self.underlying(analyzer).loc
     }
 }
 

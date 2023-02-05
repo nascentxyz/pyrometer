@@ -1,6 +1,7 @@
 use crate::ExprRet;
 use ethers_core::types::{Address, U256};
 use shared::context::*;
+use shared::Edge;
 use shared::{
     analyzer::AnalyzerLike,
     nodes::{Concrete, ConcreteNode},
@@ -30,7 +31,9 @@ pub trait Literal: AnalyzerLike + Sized {
         let concrete_node =
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(256, val))));
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
-        ExprRet::Single((ctx, self.add_node(ccvar)))
+        let node = self.add_node(ccvar);
+        self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        ExprRet::Single((ctx, node))
     }
 
     fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &String) -> ExprRet {
@@ -39,19 +42,25 @@ pub trait Literal: AnalyzerLike + Sized {
         let concrete_node =
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Address(addr))));
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
-        ExprRet::Single((ctx, self.add_node(ccvar)))
+        let node = self.add_node(ccvar);
+        self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        ExprRet::Single((ctx, node))
     }
 
     fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &String) -> ExprRet {
         let concrete_node =
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::String(s.to_string()))));
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
-        ExprRet::Single((ctx, self.add_node(ccvar)))
+        let node = self.add_node(ccvar);
+        self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        ExprRet::Single((ctx, node))
     }
 
     fn bool_literal(&mut self, ctx: ContextNode, loc: Loc, b: bool) -> ExprRet {
         let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(b))));
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
-        ExprRet::Single((ctx, self.add_node(ccvar)))
+        let node = self.add_node(ccvar);
+        self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        ExprRet::Single((ctx, node))
     }
 }

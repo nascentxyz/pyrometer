@@ -22,10 +22,11 @@ pub trait BinOp: AnalyzerLike + Sized {
     ) -> ExprRet {
         let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
         let rhs_paths = self.parse_ctx_expr(&rhs_expr, ctx);
+        println!("op exprs parsed");
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
-                let lhs_cvar = ContextVarNode::from(lhs);
-                let rhs_cvar = ContextVarNode::from(rhs);
+                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
                 let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
                 if lhs_ctx != rhs_ctx {
                     ExprRet::Multi(vec![
@@ -41,8 +42,8 @@ pub trait BinOp: AnalyzerLike + Sized {
                     .iter()
                     .map(|expr_ret| {
                         let (rhs_ctx, rhs) = expr_ret.expect_single();
-                        let lhs_cvar = ContextVarNode::from(lhs);
-                        let rhs_cvar = ContextVarNode::from(rhs);
+                        let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
+                        let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
                         let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
                         if lhs_ctx != rhs_ctx {
                             ExprRet::Multi(vec![
@@ -60,8 +61,8 @@ pub trait BinOp: AnalyzerLike + Sized {
                     .iter()
                     .map(|expr_ret| {
                         let (lhs_ctx, lhs) = expr_ret.expect_single();
-                        let lhs_cvar = ContextVarNode::from(lhs);
-                        let rhs_cvar = ContextVarNode::from(rhs);
+                        let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
+                        let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
                         let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
                         if lhs_ctx != rhs_ctx {
                             ExprRet::Multi(vec![
@@ -137,7 +138,7 @@ pub trait BinOp: AnalyzerLike + Sized {
             ContextVarNode::from(new_var)
         };
 
-        let mut lhs_range = if let Some(lhs_range) = new_lhs.range(self) {
+        let lhs_range = if let Some(lhs_range) = new_lhs.range(self) {
             lhs_range
         } else {
             rhs_cvar
@@ -146,7 +147,6 @@ pub trait BinOp: AnalyzerLike + Sized {
         };
 
         let (func, range_sides) = SolcRange::dyn_fn_from_op(op);
-        // lhs_range.update_deps(ctx, self);
         let new_range = func(lhs_range, rhs_cvar, range_sides, loc);
         new_lhs.set_range_min(self, new_range.range_min());
         new_lhs.set_range_max(self, new_range.range_max());
