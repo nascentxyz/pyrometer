@@ -731,9 +731,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
     fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
         for report in reports.into_iter() {
-            let mut st = std::io::BufWriter::new(Vec::new());
-            report.write((src.0.clone(), Source::from(src.1)), &mut st);
-            println!("{}", String::from_utf8(st.into_inner().unwrap()).unwrap());
+            report.print((src.0.clone(), Source::from(src.1))).unwrap();
         }
     }
 

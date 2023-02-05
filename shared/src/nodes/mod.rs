@@ -3,7 +3,6 @@ use crate::range::elem_ty::Elem;
 use crate::range::elem::RangeElem;
 use crate::range::SolcRange;
 use crate::range::Range;
-use crate::context::ContextNode;
 use crate::analyzer::AnalyzerLike;
 use crate::Node;
 use crate::NodeIdx;

@@ -3,7 +3,6 @@ use crate::context::ContextNode;
 use std::collections::BTreeMap;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem::RangeOp;
-use crate::range::elem_ty::RangeExpr;
 use crate::range::elem_ty::DynSide;
 use crate::context::ContextVarNode;
 use ethers_core::types::I256;

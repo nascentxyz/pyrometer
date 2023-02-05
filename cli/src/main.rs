@@ -4,9 +4,7 @@ use pyrometer::*;
 use shared::analyzer::GraphLike;
 use shared::analyzer::Search;
 
-
 use shared::nodes::FunctionNode;
-
 
 use shared::Edge;
 use std::fs;
