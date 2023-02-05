@@ -22,7 +22,6 @@ pub trait BinOp: AnalyzerLike + Sized {
     ) -> ExprRet {
         let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
         let rhs_paths = self.parse_ctx_expr(&rhs_expr, ctx);
-        println!("op exprs parsed");
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);

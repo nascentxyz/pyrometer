@@ -317,12 +317,6 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             .into_iter()
             .filter_map(|ctx| Some((ctx, ctx.var_by_name(self, &var_name)?)))
             .for_each(|(ctx, cvar)| {
-                println!(
-                    "ctx: {:?}, path: {}, var: {}",
-                    ctx,
-                    ctx.path(self),
-                    var_name
-                );
                 let analysis = self.bounds_for_var_node(
                     inherited.clone(),
                     file_mapping,
@@ -345,12 +339,6 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         report_config: ReportConfig,
         is_subctx: bool,
     ) -> Vec<(bool, BoundAnalysis)> {
-        println!(
-            "ctx: {:?}, path: {}, var: {}",
-            ctx,
-            ctx.path(self),
-            var_name
-        );
         let mut analysis = None;
         if let Some(cvar) = ctx.var_by_name(self, &var_name) {
             analysis = Some(self.bounds_for_var_node(
@@ -364,7 +352,6 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         }
 
         let forks = ctx.forks(self);
-        println!("forks: {:?}", forks);
 
         let mut sub_analyses = forks
             .iter()
@@ -424,10 +411,8 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
 
         let ctx = cvar.ctx(self);
         let func_span = if let Some(fn_call) = ctx.underlying(self).fn_call {
-            println!("had func span: {:?}, {}", fn_call, ctx.path(self));
             Some(LocStrSpan::new(&file_mapping, fn_call.underlying(self).loc))
         } else {
-            println!("had no func span, {}", ctx.path(self));
             Some(LocStrSpan::new(
                 &file_mapping,
                 ctx.underlying(self).parent_fn.underlying(self).loc,
@@ -622,7 +607,6 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                     ctx.return_nodes(analyzer)
                         .into_iter()
                         .for_each(|(loc, var)| {
-                            println!("context {} had return", ctx.path(analyzer));
                             report.add_label(
                                 Label::new(LocStrSpan::new(self.file_mapping, loc))
                                     .with_message(
@@ -772,8 +756,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         ctx: ContextNode,
         report_config: ReportConfig,
     ) -> FunctionVarsBoundAnalysis {
-        println!("{:?}", ctx.terminal_child_list(self));
-        let mut analyses = ctx
+        let analyses = ctx
             .terminal_child_list(self)
             .iter()
             .map(|child| {
@@ -784,8 +767,6 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     .iter()
                     .flat_map(|p| p.returning_child_list(self))
                     .collect();
-                println!("parents: {:?}", parents);
-                println!("children: {:?}", children);
                 let mut vars = ctx.vars(self);
                 vars.sort_by(|a, b| a.name(self).cmp(&b.name(self)));
                 vars.dedup_by(|a, b| a.name(self) == b.name(self));
@@ -795,7 +776,6 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                         .filter_map(|var| {
                             let name = var.name(self);
                             let is_ret = var.is_return_node_in_any(&parents, self);
-                            // println!("var: {}-{}, is_ret: {}", name, var.display_name(self), is_ret);
                             if is_ret {
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,

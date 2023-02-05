@@ -1,33 +1,35 @@
-use shared::analyzer::GraphLike;
-use shared::range::elem_ty::Elem;
-use shared::nodes::Concrete;
-use shared::range::SolcRange;
-use shared::nodes::FunctionNode;
-use shared::context::*;
-use shared::Edge;
-use shared::analyzer::Search;
 use clap::{ArgAction, Parser, ValueHint};
-use std::fs;
 use pyrometer::context::*;
 use pyrometer::*;
-
+use shared::analyzer::GraphLike;
+use shared::analyzer::Search;
+use shared::context::*;
+use shared::nodes::Concrete;
+use shared::nodes::FunctionNode;
+use shared::range::elem_ty::Elem;
+use shared::range::SolcRange;
+use shared::Edge;
+use std::fs;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[clap(value_hint = ValueHint::FilePath, value_name = "PATH")]
     pub path: String,
+    #[clap(long, short)]
+    pub funcs: Vec<String>,
     #[clap(long, short, verbatim_doc_comment, action = ArgAction::Count)]
     pub verbosity: u8,
+    #[clap(long, short, default_value = "false")]
+    pub dot: bool,
 }
 
 fn main() {
     let args = Args::parse();
     let path_str = args.path.clone().to_string();
     let verbosity = args.verbosity.clone();
-    println!("verbosity: {:?}", verbosity);
     let config = match verbosity {
-        0 =>  ReportConfig {
+        0 => ReportConfig {
             eval_bounds: true,
             simplify_bounds: false,
             show_tmps: false,
@@ -65,19 +67,29 @@ fn main() {
 
     let mut analyzer = Analyzer::default();
     let entry = analyzer.parse(&sol, 0).unwrap();
+
+    if args.dot {
+        println!("{}", analyzer.dot_str_no_tmps());
+    }
+
     let file_mapping = vec![(0usize, path_str.clone())].into_iter().collect();
     let funcs = analyzer.search_children(entry, &crate::Edge::Func);
     for func in funcs.into_iter() {
-        let ctx = FunctionNode::from(func).body_ctx(&analyzer);
-        println!("ctx: {}", ctx.path(&analyzer));
-        
-
-        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
-        analysis.print_reports((path_str.clone(), &sol), &analyzer);
-
+        if args.funcs.len() > 0 {
+            if args
+                .funcs
+                .contains(&FunctionNode::from(func).name(&analyzer))
+            {
+                let ctx = FunctionNode::from(func).body_ctx(&analyzer);
+                let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                analysis.print_reports((path_str.clone(), &sol), &analyzer);
+            }
+        } else {
+            let ctx = FunctionNode::from(func).body_ctx(&analyzer);
+            let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+            analysis.print_reports((path_str.clone(), &sol), &analyzer);
+        }
     }
-
-    println!("{}", analyzer.dot_str_no_tmps());
 
     // if let Some(write) = analyzer.func_query(
     //     entry,

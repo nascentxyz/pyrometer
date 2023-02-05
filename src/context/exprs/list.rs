@@ -15,7 +15,6 @@ pub trait List: AnalyzerLike + Sized {
             .filter_map(|(loc, input)| {
                 if let Some(input) = input {
                     if let Some(input_name) = &input.name {
-                        println!("input name: {}", input_name);
                         let (lhs_ctx, ty) = self.parse_ctx_expr(&input.ty, ctx).expect_single();
                         let ty = VarType::try_from_idx(self, ty).expect("Not a known type");
                         let var = ContextVar {
@@ -31,7 +30,6 @@ pub trait List: AnalyzerLike + Sized {
                         self.add_edge(input_node, lhs_ctx, Edge::Context(ContextEdge::Variable));
                         Some(ExprRet::Single((lhs_ctx, input_node)))
                     } else {
-                        println!("{:?}", input);
                         let (lhs_ctx, ty) = self.parse_ctx_expr(&input.ty, ctx).expect_single();
                         match self.node(ty) {
                             Node::ContextVar(_var) => {

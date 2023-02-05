@@ -258,11 +258,9 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         if forks.is_empty() {
                             let paths =
                                 self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into()));
-                            // println!("return paths: {:?}", paths);
                             match paths {
                                 ExprRet::CtxKilled => {}
                                 ExprRet::Single((ctx, expr)) => {
-                                    // println!("adding return: {:?}", ctx.path(self));
                                     self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
                                     ctx.add_return_node(*loc, expr.into(), self);
                                 }
@@ -471,7 +469,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
+        // println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
         match expr {
             Variable(ident) => self.variable(ident, ctx),
             // literals
@@ -562,8 +560,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
             Not(loc, expr) => self.not(*loc, expr, ctx),
             FunctionCall(loc, func_expr, input_exprs) => {
-                let (func_ctx, mut func_idx) = self.parse_ctx_expr(func_expr, ctx).expect_single();
-                println!("func call: {:?}", self.node(func_idx));
+                let (func_ctx, func_idx) = self.parse_ctx_expr(func_expr, ctx).expect_single();
                 match self.node(func_idx) {
                     Node::Function(underlying) => {
                         if let Some(func_name) = &underlying.name {
@@ -747,7 +744,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 let var = old_var.latest_version(self);
                 let underlying = var.underlying(self).clone();
                 if underlying.storage.is_some() {
-                    println!("here, {}", underlying.display_name);
                     if let Some(parent_var) = ctx.var_by_name(self, &underlying.name) {
                         let parent_var = parent_var.latest_version(self);
                         if let Some(r) = underlying.ty.range(self) {
@@ -758,25 +754,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                             );
                             new_parent_var.set_range_min(self, r.range_min());
                             new_parent_var.set_range_max(self, r.range_max());
-                            println!("set ranges: {:?}", r);
-                        } else {
-                            println!(
-                                "no range for var by name: {} in parent: {} child: {}",
-                                underlying.name,
-                                ctx.path(self),
-                                subctx.path(self)
-                            );
                         }
-                    } else {
-                        println!(
-                            "no var by name: {} in parent: {} child: {}",
-                            underlying.name,
-                            ctx.path(self),
-                            subctx.path(self)
-                        );
                     }
-                } else {
-                    println!("not here, {}", underlying.display_name);
                 }
             });
             // adjust the output type to match the return type of the function call
@@ -803,7 +782,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     ) -> ExprRet {
         let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
         let rhs_paths = self.parse_ctx_expr(&rhs_expr, ctx);
-        println!("assign exprs");
         self.match_assign_sides(loc, &lhs_paths, &rhs_paths, ctx)
     }
 
@@ -886,11 +864,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        println!(
-            "assign: {} {}",
-            lhs_cvar.display_name(self),
-            rhs_cvar.display_name(self)
-        );
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(
                 rhs_cvar.latest_version(self).into(),
