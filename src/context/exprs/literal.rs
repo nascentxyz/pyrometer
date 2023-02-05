@@ -17,12 +17,12 @@ pub trait Literal: AnalyzerLike + Sized {
         &mut self,
         ctx: ContextNode,
         loc: Loc,
-        integer: &String,
-        exponent: &String,
+        integer: &str,
+        exponent: &str,
     ) -> ExprRet {
-        let int = U256::from_dec_str(&integer).unwrap();
+        let int = U256::from_dec_str(integer).unwrap();
         let val = if !exponent.is_empty() {
-            let exp = U256::from_dec_str(&exponent).unwrap();
+            let exp = U256::from_dec_str(exponent).unwrap();
             int.pow(exp)
         } else {
             int
@@ -36,8 +36,8 @@ pub trait Literal: AnalyzerLike + Sized {
         ExprRet::Single((ctx, node))
     }
 
-    fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &String) -> ExprRet {
-        let addr = Address::from_str(&addr).unwrap();
+    fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &str) -> ExprRet {
+        let addr = Address::from_str(addr).unwrap();
 
         let concrete_node =
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Address(addr))));
@@ -47,7 +47,7 @@ pub trait Literal: AnalyzerLike + Sized {
         ExprRet::Single((ctx, node))
     }
 
-    fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &String) -> ExprRet {
+    fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> ExprRet {
         let concrete_node =
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::String(s.to_string()))));
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));

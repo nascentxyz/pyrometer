@@ -136,14 +136,14 @@ impl ReportDisplay for StorageRangeReport {
 
     fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
-        for report in reports.into_iter() {
+        for report in reports.iter() {
             report.print((src.0.clone(), Source::from(src.1))).unwrap();
         }
     }
 
     fn eprint_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
-        reports.into_iter().for_each(|report| {
+        reports.iter().for_each(|report| {
             report.eprint((src.0.clone(), Source::from(src.1))).unwrap();
         });
     }
@@ -151,10 +151,11 @@ impl ReportDisplay for StorageRangeReport {
 
 impl<T> StorageRangeQuery for T where T: BoundAnalyzer + Search + AnalyzerLike + Sized {}
 pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
-    fn func_query<'a>(
+    #[allow(clippy::too_many_arguments)]
+    fn func_query(
         &self,
         entry: NodeIdx,
-        file_mapping: &'a BTreeMap<usize, String>,
+        file_mapping: &'_ BTreeMap<usize, String>,
         report_config: ReportConfig,
         contract_name: String,
         func_name: String,
@@ -204,11 +205,11 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
                     return Some(StorageRangeReport {
                         target,
                         write_loc: Some(last.0.clone()),
-                        analysis: analysis,
+                        analysis,
                     });
                 }
             }
         }
-        return None;
+        None
     }
 }

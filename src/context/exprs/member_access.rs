@@ -38,11 +38,9 @@ pub trait MemberAccess: AnalyzerLike + Sized {
                         })
                         .take(1)
                         .next()
-                        .expect(&format!(
-                            "No field with name {:?} in struct: {:?}",
+                        .unwrap_or_else(|| panic!("No field with name {:?} in struct: {:?}",
                             ident.name,
-                            struct_node.name(self)
-                        ));
+                            struct_node.name(self)));
                     if let Some(field_cvar) =
                         ContextVar::maybe_new_from_field(self, loc, cvar, field.clone())
                     {
@@ -60,21 +58,15 @@ pub trait MemberAccess: AnalyzerLike + Sized {
                         .map(|edge| FunctionNode::from(edge.source()))
                         .collect::<Vec<FunctionNode>>()
                         .into_iter()
-                        .filter_map(|func_node| {
+                        .filter(|func_node| {
                             let func = func_node.underlying(self);
-                            if func.name.as_ref().expect("func wasnt named").name == ident.name {
-                                Some(func_node)
-                            } else {
-                                None
-                            }
+                            func.name.as_ref().expect("func wasnt named").name == ident.name
                         })
                         .take(1)
                         .next()
-                        .expect(&format!(
-                            "No function with name {:?} in contract: {:?}",
+                        .unwrap_or_else(|| panic!("No function with name {:?} in contract: {:?}",
                             ident.name,
-                            con_node.name(self)
-                        ));
+                            con_node.name(self)));
 
                     if let Some(func_cvar) =
                         ContextVar::maybe_from_user_ty(self, loc, func.0.into())

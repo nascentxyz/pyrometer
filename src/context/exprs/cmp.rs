@@ -18,7 +18,7 @@ use std::cmp::Ordering;
 impl<T> Cmp for T where T: AnalyzerLike + Sized {}
 pub trait Cmp: AnalyzerLike + Sized {
     fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> ExprRet {
-        let lhs = self.parse_ctx_expr(&lhs_expr, ctx);
+        let lhs = self.parse_ctx_expr(lhs_expr, ctx);
         self.not_inner(loc, lhs)
     }
 
@@ -45,7 +45,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                 ExprRet::Single((ctx, self.add_node(Node::ContextVar(out_var))))
             }
             ExprRet::Multi(f) => {
-                panic!("not: {:?}", f)
+                panic!("not: {f:?}")
             }
             ExprRet::Fork(world1, world2) => ExprRet::Fork(
                 Box::new(self.not_inner(loc, *world1)),
@@ -62,7 +62,7 @@ pub trait Cmp: AnalyzerLike + Sized {
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(&lhs_expr, ctx);
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx);
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
@@ -107,7 +107,7 @@ pub trait Cmp: AnalyzerLike + Sized {
             }
             (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
                 rhs_sides
-                    .into_iter()
+                    .iter()
                     .map(|expr_ret| self.cmp_inner(loc, l, op, expr_ret))
                     .collect(),
             ),
@@ -122,8 +122,8 @@ pub trait Cmp: AnalyzerLike + Sized {
                 if lhs_sides.len() == rhs_sides.len() {
                     ExprRet::Multi(
                         lhs_sides
-                            .into_iter()
-                            .zip(rhs_sides.into_iter())
+                            .iter()
+                            .zip(rhs_sides.iter())
                             .map(|(lhs_expr_ret, rhs_expr_ret)| {
                                 self.cmp_inner(loc, lhs_expr_ret, op, rhs_expr_ret)
                             })
@@ -132,7 +132,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                 } else {
                     ExprRet::Multi(
                         rhs_sides
-                            .into_iter()
+                            .iter()
                             .map(|rhs_expr_ret| self.cmp_inner(loc, lhs_paths, op, rhs_expr_ret))
                             .collect(),
                     )
@@ -212,11 +212,8 @@ pub trait Cmp: AnalyzerLike + Sized {
 
                         let lhs_max = lhs_range.range_max().eval(self);
                         let rhs_min = rhs_range.range_min().eval(self);
-                        match lhs_max.range_ord(&rhs_min) {
-                            Some(Ordering::Less) => {
-                                return true.into();
-                            }
-                            _ => {}
+                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
+                            return true.into();
                         }
 
                         // Similarly if lhs_min >= rhs_max, we know this cmp will evaluate to
@@ -238,11 +235,8 @@ pub trait Cmp: AnalyzerLike + Sized {
                         // true
                         let lhs_min = lhs_range.range_min().eval(self);
                         let rhs_max = rhs_range.range_max().eval(self);
-                        match lhs_min.range_ord(&rhs_max) {
-                            Some(Ordering::Greater) => {
-                                return true.into();
-                            }
-                            _ => {}
+                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
+                            return true.into();
                         }
 
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
@@ -278,11 +272,8 @@ pub trait Cmp: AnalyzerLike + Sized {
                         // false
                         let lhs_min = lhs_range.range_min().eval(self);
                         let rhs_max = rhs_range.range_max().eval(self);
-                        match lhs_min.range_ord(&rhs_max) {
-                            Some(Ordering::Greater) => {
-                                return false.into();
-                            }
-                            _ => {}
+                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
+                            return false.into();
                         }
                     }
                     RangeOp::Gte => {
@@ -304,11 +295,8 @@ pub trait Cmp: AnalyzerLike + Sized {
                         // false
                         let lhs_max = lhs_range.range_max().eval(self);
                         let rhs_min = rhs_range.range_min().eval(self);
-                        match lhs_max.range_ord(&rhs_min) {
-                            Some(Ordering::Less) => {
-                                return false.into();
-                            }
-                            _ => {}
+                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
+                            return false.into();
                         }
                     }
                     RangeOp::Eq => {
@@ -318,7 +306,11 @@ pub trait Cmp: AnalyzerLike + Sized {
                         let lhs_max = lhs_range.range_max().eval(self);
                         let rhs_min = rhs_range.range_min().eval(self);
                         let rhs_max = rhs_range.range_max().eval(self);
-                        match (
+                        if let (
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                            ) = (
                             // check lhs_min == lhs_max, ensures lhs is const
                             lhs_min.range_ord(&lhs_max),
                             // check lhs_min == rhs_min, checks if lhs == rhs
@@ -326,14 +318,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                             // check rhs_min == rhs_max, ensures rhs is const
                             rhs_min.range_ord(&rhs_max),
                         ) {
-                            (
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                            ) => {
-                                return true.into();
-                            }
-                            _ => {}
+                            return true.into();
                         }
                     }
                     RangeOp::Neq => {
@@ -343,7 +328,11 @@ pub trait Cmp: AnalyzerLike + Sized {
                         let lhs_max = lhs_range.range_max().eval(self);
                         let rhs_min = rhs_range.range_min().eval(self);
                         let rhs_max = rhs_range.range_max().eval(self);
-                        match (
+                        if let (
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                                Some(Ordering::Equal),
+                            ) = (
                             // check lhs_min == lhs_max, ensures lhs is const
                             lhs_min.range_ord(&lhs_max),
                             // check lhs_min == rhs_min, checks if lhs == rhs
@@ -351,14 +340,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                             // check rhs_min == rhs_max, ensures rhs is const
                             rhs_min.range_ord(&rhs_max),
                         ) {
-                            (
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                            ) => {
-                                return false.into();
-                            }
-                            _ => {}
+                            return false.into();
                         }
                     }
                     e => unreachable!("Cmp with strange op: {:?}", e),

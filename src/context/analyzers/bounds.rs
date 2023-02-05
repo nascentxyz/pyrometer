@@ -58,7 +58,7 @@ impl BoundAnalysis {
                 });
 
         self.sub_ctxs = vec![];
-        let entry = map.entry(self.ctx.clone()).or_default();
+        let entry = map.entry(self.ctx).or_default();
         *entry = self;
 
         map
@@ -73,7 +73,7 @@ impl BoundAnalysis {
             self.sub_ctxs
                 .into_iter()
                 .fold(BTreeMap::default(), |mut map, mut sub_analysis| {
-                    if self.var_def.1.is_some() && !sub_analysis.var_def.1.is_some() {
+                    if self.var_def.1.is_some() && sub_analysis.var_def.1.is_none() {
                         sub_analysis.var_def = self.var_def.clone();
                     }
                     sub_analysis
@@ -90,7 +90,7 @@ impl BoundAnalysis {
         // if we had no sub_ctxs, we add self to the map
         if children == 0 {
             self.sub_ctxs = vec![];
-            let entry = map.entry(self.ctx.clone()).or_default();
+            let entry = map.entry(self.ctx).or_default();
             *entry = self;
         }
 
@@ -114,7 +114,7 @@ impl BoundAnalysis {
         // if we had no sub_ctxs, we add self to the map
         if children == 0 {
             self.sub_ctxs = vec![];
-            let entry = map.entry(self.ctx.clone()).or_default();
+            let entry = map.entry(self.ctx).or_default();
             *entry = self;
         }
 
@@ -302,9 +302,9 @@ impl ReportDisplay for BoundAnalysis {
 
 impl<T> BoundAnalyzer for T where T: Search + AnalyzerLike + Sized {}
 pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
-    fn bounds_for_var_in_family_tree<'a>(
+    fn bounds_for_var_in_family_tree(
         &self,
-        file_mapping: &'a BTreeMap<usize, String>,
+        file_mapping: &'_ BTreeMap<usize, String>,
         ordered_ctxs: Vec<ContextNode>,
         var_name: String,
         report_config: ReportConfig,
@@ -327,10 +327,10 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         inherited.unwrap_or_default()
     }
 
-    fn bounds_for_var<'a>(
+    fn bounds_for_var(
         &self,
         inherited: Option<BoundAnalysis>,
-        file_mapping: &'a BTreeMap<usize, String>,
+        file_mapping: &'_ BTreeMap<usize, String>,
         ctx: ContextNode,
         var_name: String,
         report_config: ReportConfig,
@@ -395,10 +395,10 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
     }
 
     /// Analyzes the bounds for a variable up to the provided node
-    fn bounds_for_var_node<'a>(
+    fn bounds_for_var_node(
         &self,
         inherited: Option<BoundAnalysis>,
-        file_mapping: &'a BTreeMap<usize, String>,
+        file_mapping: &'_ BTreeMap<usize, String>,
         var_name: String,
         cvar: ContextVarNode,
         report_config: ReportConfig,
@@ -408,16 +408,16 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
 
         let ctx = cvar.ctx(self);
         let func_span = if let Some(fn_call) = ctx.underlying(self).fn_call {
-            Some(LocStrSpan::new(&file_mapping, fn_call.underlying(self).loc))
+            Some(LocStrSpan::new(file_mapping, fn_call.underlying(self).loc))
         } else {
             Some(LocStrSpan::new(
-                &file_mapping,
+                file_mapping,
                 ctx.underlying(self).parent_fn.underlying(self).loc,
             ))
         };
 
         let mut ba = if let Some(inherited) = inherited {
-            let mut new_ba = inherited.clone();
+            let mut new_ba = inherited;
             new_ba.ctx = ctx;
             new_ba.func_span = func_span;
             new_ba
@@ -428,7 +428,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 var_display_name: cvar.display_name(self),
                 func_span,
                 var_def: (
-                    LocStrSpan::new(&file_mapping, curr.loc(self)),
+                    LocStrSpan::new(file_mapping, curr.loc(self)),
                     if !is_subctx { curr.range(self) } else { None },
                 ),
                 bound_changes: vec![],
@@ -443,7 +443,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 if let Some(next_range) = next.range(self) {
                     if next_range != curr_range {
                         ba.bound_changes.push((
-                            LocStrSpan::new(&file_mapping, next.loc(self)),
+                            LocStrSpan::new(file_mapping, next.loc(self)),
                             next_range.clone(),
                         ));
                     }
@@ -459,7 +459,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             }
         }
 
-        return ba;
+        ba
     }
 }
 
@@ -607,7 +607,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                             report.add_label(
                                 Label::new(LocStrSpan::new(self.file_mapping, loc))
                                     .with_message(
-                                        &format!(
+                                        format!(
                                             "returns: \"{}\" ∈ {{{}, {}}}",
                                             var.display_name(analyzer),
                                             var.range(analyzer)
@@ -698,7 +698,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                 report.add_label(
                                     Label::new(LocStrSpan::new(self.file_mapping, loc))
                                         .with_message(
-                                            &format!(
+                                            format!(
                                                 "returns: \"{}\" ∈ {{{}, {}}}",
                                                 var.display_name(analyzer),
                                                 var.range(analyzer)
@@ -730,14 +730,14 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
 
     fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
-        for report in reports.into_iter() {
+        for report in reports.iter() {
             report.print((src.0.clone(), Source::from(src.1))).unwrap();
         }
     }
 
     fn eprint_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
-        reports.into_iter().for_each(|report| {
+        reports.iter().for_each(|report| {
             report.eprint((src.0.clone(), Source::from(src.1))).unwrap();
         });
     }
@@ -763,7 +763,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     .flat_map(|p| p.returning_child_list(self))
                     .collect();
                 let mut vars = ctx.vars(self);
-                vars.sort_by(|a, b| a.name(self).cmp(&b.name(self)));
+                vars.sort_by_key(|a| a.name(self));
                 vars.dedup_by(|a, b| a.name(self) == b.name(self));
                 (
                     *child,
@@ -771,35 +771,11 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                         .filter_map(|var| {
                             let name = var.name(self);
                             let is_ret = var.is_return_node_in_any(&parents, self);
-                            if is_ret {
-                                Some(self.bounds_for_var_in_family_tree(
-                                    file_mapping,
-                                    parents.clone(),
-                                    name,
-                                    report_config,
-                                ))
-                            } else if report_config.show_tmps && report_config.show_consts {
-                                Some(self.bounds_for_var_in_family_tree(
-                                    file_mapping,
-                                    parents.clone(),
-                                    name,
-                                    report_config,
-                                ))
-                            } else if report_config.show_tmps && !var.is_const(self) {
-                                Some(self.bounds_for_var_in_family_tree(
-                                    file_mapping,
-                                    parents.clone(),
-                                    name,
-                                    report_config,
-                                ))
-                            } else if report_config.show_consts && !var.is_tmp(self) {
-                                Some(self.bounds_for_var_in_family_tree(
-                                    file_mapping,
-                                    parents.clone(),
-                                    name,
-                                    report_config,
-                                ))
-                            } else if !var.is_tmp(self) && !var.is_const(self) {
+                            if is_ret
+                            | report_config.show_tmps && report_config.show_consts
+                            | report_config.show_tmps && !var.is_const(self) 
+                            | report_config.show_consts && !var.is_tmp(self)
+                            | !var.is_tmp(self) && !var.is_const(self) {
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,
                                     parents.clone(),
@@ -817,13 +793,9 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
 
         FunctionVarsBoundAnalysis {
             file_mapping,
-            ctx_loc: LocStrSpan::new(&file_mapping, ctx.underlying(self).loc),
+            ctx_loc: LocStrSpan::new(file_mapping, ctx.underlying(self).loc),
             ctx,
-            ctx_killed: if let Some(loc) = ctx.killed_loc(self) {
-                Some(LocStrSpan::new(&file_mapping, loc))
-            } else {
-                None
-            },
+            ctx_killed: ctx.killed_loc(self).map(|loc| LocStrSpan::new(file_mapping, loc)),
             vars_by_ctx: analyses,
             report_config,
         }

@@ -24,7 +24,7 @@ use solang_parser::pt::{Expression, Loc};
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
 pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     /// Handles a require expression
-    fn handle_require(&mut self, inputs: &Vec<Expression>, ctx: ContextNode) {
+    fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) {
         match inputs.get(0).expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
                 let lhs_paths = self.parse_ctx_expr(lhs, ctx);
@@ -180,7 +180,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
             }
             (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
-                rhs_sides.into_iter().for_each(|expr_ret| {
+                rhs_sides.iter().for_each(|expr_ret| {
                     self.handle_require_inner(loc, l, expr_ret, op, rhs_op, recursion_ops)
                 });
             }
@@ -192,7 +192,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    lhs_sides.into_iter().zip(rhs_sides.into_iter()).for_each(
+                    lhs_sides.iter().zip(rhs_sides.iter()).for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
                             self.handle_require_inner(
                                 loc,
@@ -205,7 +205,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         },
                     );
                 } else {
-                    rhs_sides.into_iter().for_each(|rhs_expr_ret| {
+                    rhs_sides.iter().for_each(|rhs_expr_ret| {
                         self.handle_require_inner(
                             loc,
                             lhs_paths,
@@ -237,6 +237,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
     /// Updates the range bounds for the variables passed into the require function. If the lefthand side is a temporary value,
     /// it will recursively update the range bounds for the underlying variable
+    #[allow(clippy::too_many_arguments)]
     fn require(
         &mut self,
         (lhs_cvar, new_lhs): (ContextVarNode, ContextVarNode),
@@ -303,7 +304,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             if !rhs_cvar.is_const(self) {
                 if let Some(mut rhs_range) = new_rhs.range(self) {
-                    println!("rhs range: {:?}", rhs_range);
+                    println!("rhs range: {rhs_range:?}");
                     rhs_range.update_deps(ctx, self);
                     let new_rhs_range = rhs_range_fn(rhs_range, new_rhs, range_sides, loc);
                     println!(
@@ -334,7 +335,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             if tmp.op.inverse().is_some() {
                 self.range_recursion(
                     tmp,
-                    lhs_cvar,
                     recursion_ops,
                     rhs_cvar,
                     ctx,
@@ -365,7 +365,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         new_underlying_lhs.set_range_min(
                             self,
                             Elem::Concrete(RangeConcrete {
-                                val: Concrete::min(&c.val).unwrap_or(c.val.clone()),
+                                val: Concrete::min(&c.val).unwrap_or_else(|| c.val.clone()),
                                 loc,
                             }),
                         );
@@ -387,7 +387,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     fn range_recursion(
         &mut self,
         tmp_construction: TmpConstruction,
-        new_lhs_core: ContextVarNode,
         (flip_op, no_flip_op): (RangeOp, RangeOp),
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
@@ -417,7 +416,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                     let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(no_flip_op);
                     let new_lhs_range =
-                        lhs_range_fn(lhs_range.clone(), adjusted_gt_rhs, range_sides, loc);
+                        lhs_range_fn(lhs_range, adjusted_gt_rhs, range_sides, loc);
 
                     new_underlying_lhs.set_range_min(self, new_lhs_range.range_min());
                     new_underlying_lhs.set_range_max(self, new_lhs_range.range_max());
@@ -430,7 +429,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     if let Some(tmp) = new_underlying_lhs.tmp_of(self) {
                         self.range_recursion(
                             tmp,
-                            new_lhs_core,
                             (flip_op, no_flip_op),
                             adjusted_gt_rhs,
                             ctx,
@@ -474,7 +472,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         );
                         (false, new_rhs)
                     }
-                    e => panic!("here {:?}", e),
+                    e => panic!("here {e:?}"),
                 };
 
                 let new_underlying_rhs = self.advance_var_in_ctx(rhs, loc, ctx);
@@ -482,10 +480,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                         let new_lhs_range = if needs_inverse {
                             let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(flip_op);
-                            lhs_range_fn(lhs_range.clone(), adjusted_gt_rhs, range_sides, loc)
+                            lhs_range_fn(lhs_range, adjusted_gt_rhs, range_sides, loc)
                         } else {
                             let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(no_flip_op);
-                            lhs_range_fn(lhs_range.clone(), adjusted_gt_rhs, range_sides, loc)
+                            lhs_range_fn(lhs_range, adjusted_gt_rhs, range_sides, loc)
                         };
 
                         new_underlying_rhs.set_range_min(self, new_lhs_range.range_min());
@@ -500,7 +498,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         if let Some(tmp) = new_underlying_rhs.tmp_of(self) {
                             self.range_recursion(
                                 tmp,
-                                new_lhs_core,
                                 (flip_op, no_flip_op),
                                 adjusted_gt_rhs,
                                 ctx,

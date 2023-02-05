@@ -9,7 +9,7 @@ impl<T> Array for T where T: AnalyzerLike + Sized {}
 pub trait Array: AnalyzerLike + Sized {
     /// Gets the array type
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> ExprRet {
-        let (ctx, inner_ty) = self.parse_ctx_expr(&ty_expr, ctx).expect_single();
+        let (ctx, inner_ty) = self.parse_ctx_expr(ty_expr, ctx).expect_single();
         if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
             let dyn_b = DynBuiltin::Array(var_type);
             if let Some(idx) = self.dyn_builtins().get(&dyn_b) {
@@ -32,8 +32,8 @@ pub trait Array: AnalyzerLike + Sized {
         index_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
-        let inner_tys = self.parse_ctx_expr(&ty_expr, ctx);
-        let index_tys = self.parse_ctx_expr(&index_expr, ctx);
+        let inner_tys = self.parse_ctx_expr(ty_expr, ctx);
+        let index_tys = self.parse_ctx_expr(index_expr, ctx);
         self.index_into_array_inner(loc, inner_tys, index_tys)
     }
 

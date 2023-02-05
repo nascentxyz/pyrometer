@@ -42,8 +42,8 @@ pub trait List: AnalyzerLike + Sized {
                                 let tmp_num = ctx.new_tmp(self);
                                 let new_lhs_underlying = ContextVar {
                                     loc: Some(*loc),
-                                    name: format!("tmp{}", tmp_num),
-                                    display_name: format!("tmp{}", tmp_num),
+                                    name: format!("tmp{tmp_num}"),
+                                    display_name: format!("tmp{tmp_num}"),
                                     storage: input.storage.clone(),
                                     is_tmp: true,
                                     tmp_of: None,

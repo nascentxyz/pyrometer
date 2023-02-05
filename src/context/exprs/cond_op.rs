@@ -139,8 +139,8 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             }
             e => todo!("Wasnt comparator: {:?}", e),
         };
-        println!("true fork if: {:?} {:?}", if_expr, true_fork_ctx);
-        self.handle_require(&vec![if_expr], true_fork_ctx)
+        println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
+        self.handle_require(&[if_expr], true_fork_ctx)
     }
 
     /// Creates the false_fork cvar (inverts the expression and sets the bounds assuming its false)
@@ -154,7 +154,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             Expression::Variable(ref _ident) => Expression::Not(loc, Box::new(if_expr)),
             e => todo!("Wasnt comparator: {:?}", e),
         };
-        println!("inverse if expr: {:?}", inv_if_expr);
-        self.handle_require(&vec![inv_if_expr], false_fork_ctx)
+        println!("inverse if expr: {inv_if_expr:?}");
+        self.handle_require(&[inv_if_expr], false_fork_ctx)
     }
 }

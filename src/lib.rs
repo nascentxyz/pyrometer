@@ -91,7 +91,7 @@ impl AnalyzerLike for Analyzer {
                     if let Some(idx) = self.builtins.get(&builtin) {
                         *idx
                     } else {
-                        let idx = self.add_node(Node::Builtin(builtin.clone()));
+                        let idx = self.add_node(Node::Builtin(builtin));
                         self.builtins.insert(builtin, idx);
                         idx
                     }
@@ -170,7 +170,7 @@ impl Analyzer {
 
                 Some(parent)
             }
-            Err(e) => panic!("FAIL to parse, {:?}", e),
+            Err(e) => panic!("FAIL to parse, {e:?}"),
         }
     }
 
@@ -208,33 +208,33 @@ impl Analyzer {
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs) = self.parse_contract_def(&*def);
+                let (node, funcs) = self.parse_contract_def(def);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
             }
             StructDefinition(def) => {
-                let node = self.parse_struct_def(&*def);
+                let node = self.parse_struct_def(def);
                 self.add_edge(node, sup_node, Edge::Struct);
             }
             EnumDefinition(def) => {
-                let node = self.parse_enum_def(&*def);
+                let node = self.parse_enum_def(def);
                 self.add_edge(node, sup_node, Edge::Enum);
             }
             ErrorDefinition(def) => {
-                let node = self.parse_err_def(&*def);
+                let node = self.parse_err_def(def);
                 self.add_edge(node, sup_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let node = self.parse_var_def(&*def, false);
+                let node = self.parse_var_def(def, false);
                 self.add_edge(node, sup_node, Edge::Var);
             }
             FunctionDefinition(def) => {
-                let node = self.parse_func_def(&*def);
+                let node = self.parse_func_def(def);
                 func_nodes.push(node);
                 self.add_edge(node, sup_node, Edge::Func);
             }
             TypeDefinition(def) => {
-                let node = self.parse_ty_def(&*def);
+                let node = self.parse_ty_def(def);
                 self.add_edge(node, sup_node, Edge::Ty);
             }
             EventDefinition(_def) => todo!(),
@@ -257,28 +257,28 @@ impl Analyzer {
         let mut func_nodes = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
             StructDefinition(def) => {
-                let node = self.parse_struct_def(&*def);
+                let node = self.parse_struct_def(def);
                 self.add_edge(node, con_node, Edge::Struct);
             }
             EnumDefinition(def) => {
-                let node = self.parse_enum_def(&*def);
+                let node = self.parse_enum_def(def);
                 self.add_edge(node, con_node, Edge::Enum);
             }
             ErrorDefinition(def) => {
-                let node = self.parse_err_def(&*def);
+                let node = self.parse_err_def(def);
                 self.add_edge(node, con_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let node = self.parse_var_def(&*def, true);
+                let node = self.parse_var_def(def, true);
                 self.add_edge(node, con_node, Edge::Var);
             }
             FunctionDefinition(def) => {
-                let node = self.parse_func_def(&*def);
+                let node = self.parse_func_def(def);
                 func_nodes.push(node);
                 self.add_edge(node, con_node, Edge::Func);
             }
             TypeDefinition(def) => {
-                let node = self.parse_ty_def(&*def);
+                let node = self.parse_ty_def(def);
                 self.add_edge(node, con_node, Edge::Ty);
             }
             EventDefinition(_def) => todo!(),
@@ -415,7 +415,7 @@ contract Storage {
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
-        let entry = analyzer.parse(&sol, 0).unwrap();
+        let entry = analyzer.parse(sol, 0).unwrap();
         let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
         println!("parse time: {:?}", t0.elapsed().as_nanos());
         println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
@@ -433,7 +433,7 @@ contract Storage {
 
             let analysis =
                 analyzer.bounds_for_var(None, &file_mapping, ctx, "a".to_string(), config, false);
-            println!("{:#?}", analysis);
+            println!("{analysis:#?}");
             // analysis.print_reports(("test.sol".to_string(), &sol), &analyzer);
         }
         println!("total analyze time: {:?}", t0.elapsed().as_nanos());
