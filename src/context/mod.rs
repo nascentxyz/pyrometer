@@ -1,8 +1,8 @@
 use shared::context::*;
-use shared::nodes::TypeNode::Func;
-use shared::range::elem::RangeElem;
+
+
 use shared::range::elem_ty::Dynamic;
-use shared::range::elem_ty::RangeConcrete;
+
 use shared::range::Range;
 use shared::range::{elem_ty::Elem, SolcRange};
 use solang_parser::pt::StorageLocation;
@@ -619,7 +619,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 // vec![func_idx]
                 ExprRet::Single((ctx, func_idx))
             }
-            New(loc, expr) => self.parse_ctx_expr(expr, ctx),
+            New(_loc, expr) => self.parse_ctx_expr(expr, ctx),
             e => todo!("{:?}", e),
         }
     }

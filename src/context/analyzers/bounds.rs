@@ -1,4 +1,3 @@
-use crate::LocSpan;
 use crate::LocStrSpan;
 use crate::{ReportConfig, ReportDisplay};
 use shared::range::elem::RangeElem;
@@ -11,8 +10,6 @@ use shared::{
     context::*,
 };
 use solang_parser::pt::CodeLocation;
-use solang_parser::pt::Loc;
-use std::collections::BTreeSet;
 
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
@@ -316,7 +313,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         ordered_ctxs
             .into_iter()
             .filter_map(|ctx| Some((ctx, ctx.var_by_name(self, &var_name)?)))
-            .for_each(|(ctx, cvar)| {
+            .for_each(|(_ctx, cvar)| {
                 let analysis = self.bounds_for_var_node(
                     inherited.clone(),
                     file_mapping,
@@ -763,7 +760,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                 let mut parents = child.parent_list(self);
                 parents.reverse();
                 parents.push(*child);
-                let children: Vec<_> = parents
+                let _children: Vec<_> = parents
                     .iter()
                     .flat_map(|p| p.returning_child_list(self))
                     .collect();

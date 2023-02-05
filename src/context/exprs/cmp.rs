@@ -162,7 +162,7 @@ pub trait Cmp: AnalyzerLike + Sized {
         }
     }
 
-    fn not_eval(&self, ctx: ContextNode, loc: Loc, lhs_cvar: ContextVarNode) -> SolcRange {
+    fn not_eval(&self, _ctx: ContextNode, loc: Loc, lhs_cvar: ContextVarNode) -> SolcRange {
         if let Some(lhs_range) = lhs_cvar.range(self) {
             let lhs_min = lhs_range.range_min();
 
@@ -198,7 +198,7 @@ pub trait Cmp: AnalyzerLike + Sized {
 
     fn range_eval(
         &self,
-        ctx: ContextNode,
+        _ctx: ContextNode,
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
         op: RangeOp,
