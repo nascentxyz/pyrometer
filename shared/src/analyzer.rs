@@ -1,12 +1,20 @@
+use crate::MsgNode;
+use crate::BlockNode;
+use crate::as_dot_str;
+use crate::context::ContextNode;
+use crate::nodes::FunctionNode;
+use crate::range::elem::RangeElem;
 use crate::context::ContextVarNode;
 use petgraph::visit::EdgeRef;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use crate::range::range_string::ToRangeString;
 use crate::{FunctionParam, DynBuiltin, Function, FunctionReturn, Builtin, Node, Edge, NodeIdx};
 
 use petgraph::dot::Dot;
 use petgraph::{graph::*, Directed, Direction};
 use std::collections::HashMap;
+
 
 pub trait AnalyzerLike: GraphLike {
     type Expr;
@@ -18,7 +26,7 @@ pub trait AnalyzerLike: GraphLike {
         if let Some(idx) = self.builtins().get(&builtin) {
             *idx
         } else {
-            let idx = self.add_node(Node::Builtin(builtin.clone()));
+            let idx = self.add_node(Node::Builtin(builtin));
             self.builtins_mut().insert(builtin, idx);
             idx
         }
@@ -28,6 +36,21 @@ pub trait AnalyzerLike: GraphLike {
     fn user_types(&self) -> &HashMap<String, NodeIdx>;
     fn user_types_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
     fn parse_expr(&mut self, expr: &Self::Expr) -> NodeIdx;
+    fn msg(&mut self) -> MsgNode;
+    fn block(&mut self) -> BlockNode;
+}
+
+struct G<'a> {
+    pub graph: &'a Graph<Node, Edge, Directed, usize>
+}
+impl GraphLike for G<'_> {
+    fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
+        panic!("Should call this")
+    }
+
+    fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
+        self.graph
+    }
 }
 
 pub trait GraphLike {
@@ -60,25 +83,111 @@ pub trait GraphLike {
             .add_edge(from_node.into(), to_node.into(), edge.into());
     }
 
-    fn dot_str(&self) -> String {
-        format!("{:?}", Dot::new(self.graph()))
-    }
-
-    fn dot_str_no_tmps(&self) -> String {
+    fn dot_str(&self) -> String where Self: std::marker::Sized, Self: AnalyzerLike {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
                 Node::ContextVar(cvar) => {
-                    if cvar.tmp_of.is_some() {
+                    if !cvar.is_symbolic {
                         None
                     } else {
-                        Some(node)
+                        Some(node.clone())
                     }
                 }
-                _ => Some(node),
+                _ => Some(node.clone()),
             },
-            |_idx, edge| Some(edge),
+            |_idx, edge| Some(*edge),
         );
-        format!("{:?}", Dot::new(&new_graph))
+        let mut dot_str = Vec::new();
+        let raw_start_str = r##"digraph G {
+    node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
+    edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
+    bgcolor="#1a1b26";"##;
+        dot_str.push(raw_start_str.to_string());
+        let nodes_and_edges_str = format!("{:?}", Dot::with_attr_getters(
+                &new_graph,
+                &[petgraph::dot::Config::GraphContentOnly, petgraph::dot::Config::NodeNoLabel, petgraph::dot::Config::EdgeNoLabel],
+                &|_graph, edge_ref| {
+                    match edge_ref.weight() {
+                        Edge::Context(edge) => format!("label = \"{:?}\"", edge),
+                        e => format!("label = \"{:?}\"", e)
+                    }
+                },
+                &|_graph, (idx, node_ref)| {
+                    let dot_str = match node_ref {
+                        Node::ContextVar(cvar) => {
+                            // we have to do this special because dynamic elements in ranges aren't guaranteed
+                            // to stick around
+                            let range_str = if let Some(r) = cvar.ty.range(self) {
+                                format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                            } else {
+                                "".to_string()
+                            };
+
+                            format!("{} -- {} -- range: {}, loc: {:?}", cvar.display_name, cvar.ty.as_string(self), range_str, cvar.loc)
+                        }
+                        _ => as_dot_str(idx, &G { graph: &new_graph })
+                    };
+                    format!("label = \"{}\", color = \"{}\"", dot_str.replace('\"', "\'"), node_ref.dot_str_color())
+                }
+            )
+        );
+        dot_str.push(nodes_and_edges_str);
+        let raw_end_str = r#"}"#;
+        dot_str.push(raw_end_str.to_string());
+        dot_str.join("\n")
+    }
+
+    fn dot_str_no_tmps(&self) -> String where Self: std::marker::Sized, Self: AnalyzerLike {
+        let new_graph = self.graph().filter_map(
+            |_idx, node| match node {
+                Node::ContextVar(cvar) => {
+                    println!("cvar: {} {}", cvar.display_name, cvar.is_symbolic);
+                    if !cvar.is_symbolic || cvar.tmp_of.is_some() {
+                        None
+                    } else {
+                        Some(node.clone())
+                    }
+                }
+                _ => Some(node.clone()),
+            },
+            |_idx, edge| Some(*edge),
+        );
+        let mut dot_str = Vec::new();
+        let raw_start_str = r##"digraph G {
+    node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
+    edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
+    bgcolor="#1a1b26";"##;
+        dot_str.push(raw_start_str.to_string());
+        let nodes_and_edges_str = format!("{:?}", Dot::with_attr_getters(
+                &new_graph,
+                &[petgraph::dot::Config::GraphContentOnly, petgraph::dot::Config::NodeNoLabel, petgraph::dot::Config::EdgeNoLabel],
+                &|_graph, edge_ref| {
+                    match edge_ref.weight() {
+                        Edge::Context(edge) => format!("label = \"{:?}\"", edge),
+                        e => format!("label = \"{:?}\"", e)
+                    }
+                },
+                &|_graph, (idx, node_ref)| {
+                    let inner = match node_ref {
+                        Node::ContextVar(cvar) => {
+                            let range_str = if let Some(r) = cvar.ty.range(self) {
+                                format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                            } else {
+                                "".to_string()
+                            };
+
+                            format!("{} -- {} -- range: {}", cvar.display_name, cvar.ty.as_string(self), range_str)
+                        }
+                        _ => as_dot_str(idx, &G { graph: &new_graph })
+                    };
+                    format!("label = \"{}\", color = \"{}\"", inner.replace('\"', "\'"), node_ref.dot_str_color())
+                }
+            )
+        );
+        dot_str.push(nodes_and_edges_str);
+        let raw_end_str = r#"}"#;
+        dot_str.push(raw_end_str.to_string());
+        dot_str.join("\n")
     }
 
     fn dot_str_no_tmps_for_ctx(&self, fork_name: String) -> String where Self: AnalyzerLike, Self: Sized {
@@ -88,13 +197,13 @@ pub trait GraphLike {
                     if ctx.path != fork_name {
                         None
                     } else {
-                        Some(node)
+                        Some(node.clone())
                     }
                 }
-                Node::ContextVar(_) => {
+                Node::ContextVar(cvar) => {
                     if let Some(ctx) = ContextVarNode::from(idx).maybe_ctx(self) {
-                        if ctx.underlying(self).path == fork_name {
-                            Some(node)
+                        if ctx.underlying(self).path == fork_name && !cvar.is_symbolic {
+                            Some(node.clone())
                         } else {
                             None
                         }
@@ -102,17 +211,52 @@ pub trait GraphLike {
                         None
                     }
                 }
-                _ => Some(node),
+                _ => Some(node.clone()),
             },
-            |_idx, edge| Some(edge),
+            |_idx, edge| Some(*edge),
         );
-        format!("{:?}", Dot::new(&new_graph))
+        let mut dot_str = Vec::new();
+        let raw_start_str = r##"digraph G {
+    node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
+    edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
+    bgcolor="#1a1b26";"##;
+        dot_str.push(raw_start_str.to_string());
+        let nodes_and_edges_str = format!("{:?}", Dot::with_attr_getters(
+                &new_graph,
+                &[petgraph::dot::Config::GraphContentOnly, petgraph::dot::Config::NodeNoLabel, petgraph::dot::Config::EdgeNoLabel],
+                &|_graph, edge_ref| {
+                    match edge_ref.weight() {
+                        Edge::Context(edge) => format!("label = \"{:?}\"", edge),
+                        e => format!("label = \"{:?}\"", e)
+                    }
+                },
+                &|_graph, (idx, node_ref)| {
+                    let inner = match node_ref {
+                        Node::ContextVar(cvar) => {
+                            let range_str = if let Some(r) = cvar.ty.range(self) {
+                                format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                            } else {
+                                "".to_string()
+                            };
+
+                            format!("{} -- {} -- range: {}", cvar.display_name, cvar.ty.as_string(self), range_str)
+                        }
+                        _ => as_dot_str(idx, &G { graph: &new_graph })
+                    };
+                    format!("label = \"{}\", color = \"{}\"", inner.replace('\"', "\'"), node_ref.dot_str_color())
+                }
+            )
+        );
+        dot_str.push(nodes_and_edges_str);
+        let raw_end_str = r#"}"#;
+        dot_str.push(raw_end_str.to_string());
+        dot_str.join("\n")
     }
 }
 
 
-impl<T> Search for T where T: AnalyzerLike {}
-pub trait Search: AnalyzerLike {
+impl<T> Search for T where T: GraphLike {}
+pub trait Search: GraphLike {
     fn search_for_ancestor(&self, start: NodeIdx, edge_ty: &Edge) -> Option<NodeIdx> {
         let edges = self.graph().edges_directed(start, Direction::Outgoing);
         if let Some(edge) = edges.clone().find(|edge| edge.weight() == edge_ty) {
@@ -190,4 +334,8 @@ pub trait Search: AnalyzerLike {
             Some(map)
         }
     }
+}
+
+pub trait AsDotStr {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String;
 }

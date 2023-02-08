@@ -1,7 +1,11 @@
+use crate::context::exprs::require::Require;
+use crate::context::exprs::member_access::MemberAccess;
+use petgraph::{Direction, visit::EdgeRef};
 use crate::ExprRet;
 use crate::{ContextBuilder, DynBuiltin, Edge, Node, VarType};
 use shared::analyzer::AnalyzerLike;
 use shared::context::*;
+use shared::range::elem::RangeOp;
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -46,25 +50,54 @@ pub trait Array: AnalyzerLike + Sized {
         match (inner_paths, index_paths) {
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (ExprRet::Single((lhs_ctx, inner_ty)), ExprRet::Single((_rhs_ctx, index_ty))) => {
-                let index_var = ContextVar {
-                    loc: Some(loc),
-                    name: ContextVarNode::from(index_ty).name(self),
-                    display_name: ContextVarNode::from(index_ty).display_name(self),
-                    storage: ContextVarNode::from(index_ty).storage(self).clone(),
-                    is_tmp: ContextVarNode::from(index_ty).is_tmp(self),
-                    tmp_of: None,
-                    ty: ContextVarNode::from(inner_ty)
-                        .ty(self)
-                        .array_underlying_ty(self),
-                };
+            (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) => {
+                let index = ContextVarNode::from(index);
+                let parent = ContextVarNode::from(parent).first_version(self);
+                let len_var = self.tmp_length(parent, ctx, loc);
+                let idx = self.advance_var_in_ctx(index, loc, ctx);
+                self.handle_require_inner(
+                    loc,
+                    &ExprRet::Single((ctx, idx.into())),
+                    &ExprRet::Single((ctx, len_var.into())),
+                    RangeOp::Lt,
+                    RangeOp::Gt,
+                    (RangeOp::Gte, RangeOp::Lte)
+                );
+                if let Some(idx_var) = self
+                        .graph()
+                        .edges_directed(parent.into(), Direction::Incoming)
+                        .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
+                        .map(|edge| ContextVarNode::from(edge.source()))
+                        .filter(|cvar| cvar.name(self) == format!("{}[{}]", parent.name(self), index.name(self)))
+                        .take(1)
+                        .next() {
 
-                let cvar_idx = self.add_node(Node::ContextVar(index_var));
-                self.add_edge(cvar_idx, inner_ty, Edge::Context(ContextEdge::IndexAccess));
+                    let idx_var = idx_var.latest_version(self);
+                    let new_idx = self.advance_var_in_ctx(
+                        idx_var,
+                        loc,
+                        ctx
+                    );
 
-                self.add_edge(index_ty, cvar_idx, Edge::Context(ContextEdge::Index));
+                    ExprRet::Single((ctx, new_idx.into()))
+                } else {
+                    let index_var = ContextVar {
+                        loc: Some(loc),
+                        name: format!("{}[{}]", parent.name(self), index.name(self)),
+                        display_name: format!("{}[{}]", parent.display_name(self), index.display_name(self)),
+                        storage: parent.storage(self).clone(),
+                        is_tmp: false,
+                        tmp_of: None,
+                        is_symbolic: true,
+                        ty: parent.ty(self).array_underlying_ty(self),
+                    };
 
-                ExprRet::Single((lhs_ctx, cvar_idx))
+                    let idx_node = self.add_node(Node::ContextVar(index_var));
+                    self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
+                    self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
+
+                    ExprRet::Single((ctx, idx_node))
+                }
             }
             _ => todo!("here"),
         }

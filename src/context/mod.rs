@@ -71,7 +71,6 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
     ) where
         Self: Sized,
     {
-        // println!("stmt: {:?}\n", stmt);
         if let Some(parent) = parent_ctx {
             match self.node(parent) {
                 Node::Context(_) => {
@@ -103,6 +102,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         Self: Sized,
     {
         use Statement::*;
+        // println!("stmt: {:?}", stmt);
         match stmt {
             Block {
                 loc,
@@ -343,13 +343,21 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
         match (lhs_paths, rhs_paths) {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::Single((rhs_ctx, rhs)))) => {
                 let name = var_decl.name.clone().expect("Variable wasn't named");
-                let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
+                let mut ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
+                if let VarType::Array(_, ref mut range) = ty { *range = Some(
+                    self.tmp_length(
+                        ContextVarNode::from(*rhs),
+                        *rhs_ctx,
+                        loc
+                    )
+                ) }
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
                     display_name: name.to_string(),
                     storage: var_decl.storage.clone(),
                     is_tmp: false,
+                    is_symbolic: true,
                     tmp_of: None,
                     ty,
                 };
@@ -368,6 +376,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     display_name: name.to_string(),
                     storage: var_decl.storage.clone(),
                     is_tmp: false,
+                    is_symbolic: true,
                     tmp_of: None,
                     ty,
                 };
@@ -466,7 +475,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        // println!("ctx: {}, {:?}\n", ctx.underlying(self).path, expr);
+        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             Variable(ident) => self.variable(ident, ctx),
             // literals
@@ -478,7 +487,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     .collect(),
             ),
             BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
+            HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b),
             // bin ops
+            Power(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Exp, false)
+            }
             Add(loc, lhs_expr, rhs_expr) => {
                 self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Add, false)
             }
@@ -523,6 +536,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             }
             ConditionalOperator(loc, if_expr, true_expr, false_expr) => {
                 self.cond_op_expr(*loc, if_expr, true_expr, false_expr, ctx)
+            }
+            BitwiseAnd(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, false)
+            }
+            Parenthesis(_loc, expr) => {
+                self.parse_ctx_expr(expr, ctx)
             }
             // assign
             Assign(loc, lhs_expr, rhs_expr) => self.assign_exprs(*loc, lhs_expr, rhs_expr, ctx),
@@ -603,6 +622,53 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     }
                     Node::Contract(_) => {
                         // TODO: figure out if we need to do anything
+                    }
+                    Node::DynBuiltin(DynBuiltin::Array(_)) => {
+                        // create a new list
+                        let (ctx, len_cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                        let ty = VarType::try_from_idx(self, func_idx);
+
+                        let new_arr = ContextVar {
+                            loc: Some(*loc),
+                            name: format!(
+                                "tmp_arr{}",
+                                ctx.new_tmp(self)
+                            ),
+                            display_name: "arr".to_string(),
+                            storage: None,
+                            is_tmp: true,
+                            is_symbolic: false,
+                            tmp_of: None,
+                            ty: ty.expect("No type for node"),
+                        };
+
+                        let arr = ContextVarNode::from(self.add_node(Node::ContextVar(new_arr)));
+
+                        let len_var = ContextVar {
+                            loc: Some(*loc),
+                            name: arr.name(self)
+                                + ".length",
+                            display_name: arr.display_name(self)
+                                + ".length",
+                            storage: None,
+                            is_tmp: true,
+                            tmp_of: None,
+                            is_symbolic: true,
+                            ty: ContextVarNode::from(len_cvar).underlying(self).ty.clone(),
+                        };
+
+                        let len_cvar = self.add_node(Node::ContextVar(len_var));
+                        self.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess));
+
+                        // update the length
+                        match arr.underlying_mut(self).ty {
+                            VarType::Array(_, ref mut r) => *r = Some(len_cvar.into()),
+                            _ => unreachable!()
+                        }
+
+                        return ExprRet::Single((ctx, arr.into()));
                     }
                     e => todo!("{:?}", e),
                 }
@@ -724,8 +790,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     (Some(r), Some(r2)) => {
                         let new_min = r.range_min().cast(r2.range_min());
                         let new_max = r.range_max().cast(r2.range_max());
-                        node.set_range_min(self, new_min);
-                        node.set_range_max(self, new_max);
+                        node.try_set_range_min(self, new_min);
+                        node.try_set_range_max(self, new_max);
+                    }
+                    (Some(_r), None) => {
+
                     }
                     (l, r) => todo!("{:?} {:?}", l, r),
                 }
@@ -752,6 +821,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                             new_parent_var.set_range_min(self, r.range_min());
                             new_parent_var.set_range_max(self, r.range_max());
                         }
+                    } else {
+                        todo!("storage was some, but not in parent: {}", underlying.name);
                     }
                 }
             });

@@ -1,3 +1,4 @@
+use crate::context::exprs::env::Env;
 use crate::context::ContextBuilder;
 use crate::Concrete;
 use crate::ExprRet;
@@ -69,6 +70,8 @@ pub trait Variable: AnalyzerLike + Sized {
                 self.add_edge(output_node, func_node, Edge::FunctionReturn);
             });
             ExprRet::Single((ctx, func_node))
+        } else if let Some(env) = self.env_variable(ident, ctx) {
+            env
         } else {
             let node = self.add_node(Node::Unresolved(ident.clone()));
             self.user_types_mut().insert(ident.name.clone(), node);

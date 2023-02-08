@@ -1,3 +1,4 @@
+use crate::GraphLike;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::RangeExpr;
@@ -33,13 +34,13 @@ impl RangeString {
 }
 
 pub trait ToRangeString {
-    fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString;
-    fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString;
+    fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString;
+    fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString;
 }
 
 
 impl ToRangeString for Elem<Concrete> {
-    fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+    fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
         	Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Dynamic(Dynamic{ idx, .. }) => {
@@ -53,7 +54,7 @@ impl ToRangeString for Elem<Concrete> {
         }
     }
 
-    fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+    fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Dynamic(Dynamic { idx, side: _, loc }) => {
@@ -71,11 +72,11 @@ impl ToRangeString for Elem<Concrete> {
 }
 
 impl ToRangeString for RangeExpr<Concrete> {
-    fn def_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+    fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
     	self.lhs.def_string(analyzer)
     }
 
-    fn to_range_string(&self, analyzer: &impl AnalyzerLike) -> RangeElemString {
+    fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
         let lhs_r_str = self.lhs.to_range_string(analyzer);
         let lhs_str = match *self.lhs {
             Elem::Expr(_) => {

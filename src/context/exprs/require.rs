@@ -250,24 +250,35 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) {
         let mut any_unsat = false;
         if let Some(mut lhs_range) = new_lhs.underlying(self).ty.range(self) {
-            println!(
-                "op {:?}, {}, lhs_cvar: {}, rhs_cvar: {}",
-                op,
-                ctx.path(self),
-                lhs_cvar.display_name(self),
-                rhs_cvar.display_name(self)
-            );
+            // println!(
+            //     "op {:?}, {}, lhs_cvar: {}, rhs_cvar: {}",
+            //     op,
+            //     ctx.path(self),
+            //     lhs_cvar.display_name(self),
+            //     rhs_cvar.display_name(self)
+            // );
             let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
             let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
-            println!(
-                "new lhs range: {} {}",
-                new_lhs_range.range_min().eval(self).to_range_string(self).s,
-                new_lhs_range.range_max().eval(self).to_range_string(self).s
-            );
 
-            new_lhs.set_range_min(self, new_lhs_range.range_min());
-            new_lhs.set_range_max(self, new_lhs_range.range_max());
+            let (rhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
+            if let Some(mut rhs_range) = new_rhs.range(self) {
+                rhs_range.update_deps(ctx, self);
+                let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, range_sides, loc);
+
+                if lhs_cvar.is_const(self) && !rhs_cvar.is_const(self){
+                    new_rhs.set_range_min(self, lhs_cvar.range(self).unwrap().range_min());
+                    new_rhs.set_range_max(self, lhs_cvar.range(self).unwrap().range_max());
+                } else if rhs_cvar.is_const(self) {
+                    new_lhs.set_range_min(self, rhs_cvar.range(self).unwrap().range_min());
+                    new_lhs.set_range_max(self, rhs_cvar.range(self).unwrap().range_max());
+                } else {
+                    // we know nothing about either
+                    // new_rhs.set_range_min(self, new_rhs_range.range_min());
+                    // new_rhs.set_range_max(self, new_rhs_range.range_max());
+                    // any_unsat |= new_rhs_range.unsat(self);
+                }
+            }
 
             let tmp_var = ContextVar {
                 loc: Some(loc),
@@ -287,6 +298,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 storage: None,
                 is_tmp: true,
                 tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
+                is_symbolic: lhs_cvar.is_symbolic(self) || rhs_cvar.is_symbolic(self),
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     SolcRange::from(Concrete::Bool(true)),
@@ -300,35 +312,13 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             any_unsat |= new_lhs_range.unsat(self);
 
-            let (rhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
-
-            if !rhs_cvar.is_const(self) {
-                if let Some(mut rhs_range) = new_rhs.range(self) {
-                    println!("rhs range: {rhs_range:?}");
-                    rhs_range.update_deps(ctx, self);
-                    let new_rhs_range = rhs_range_fn(rhs_range, new_rhs, range_sides, loc);
-                    println!(
-                        "new rhs range: {} {}",
-                        new_rhs_range.range_min().eval(self).to_range_string(self).s,
-                        new_rhs_range.range_max().eval(self).to_range_string(self).s
-                    );
-                    new_rhs.set_range_min(self, new_rhs_range.range_min());
-                    new_rhs.set_range_max(self, new_rhs_range.range_max());
-                    any_unsat |= new_rhs_range.unsat(self);
-                }
-            }
-
             if any_unsat {
                 ctx.kill(self, loc);
                 return;
             }
 
-            ctx.add_ctx_dep(new_rhs, self);
-            if matches!(op, RangeOp::Eq | RangeOp::Neq) {
-                ctx.add_ctx_dep(tmp_var, self);
-            } else {
-                ctx.add_ctx_dep(new_lhs, self);
-            }
+
+            ctx.add_ctx_dep(tmp_var, self);
         }
 
         if let Some(tmp) = lhs_cvar.tmp_of(self) {

@@ -3,7 +3,7 @@ use crate::range::Range;
 use std::ops::*;
 use crate::range::range_ops::*;
 use crate::context::ContextVarNode;
-use crate::{nodes::VarType, analyzer::AnalyzerLike};
+use crate::{nodes::VarType};
 use crate::{Concrete, NodeIdx};
 use crate::range::{elem::RangeOp, *};
 use solang_parser::pt::Loc;
@@ -38,7 +38,7 @@ impl Dynamic {
 }
 
 impl RangeElem<Concrete> for Dynamic {
-	fn eval(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn eval(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		let (idx, range_side) = (self.idx, self.side);
         let cvar = ContextVarNode::from(idx).underlying(analyzer);
         match &cvar.ty {
@@ -46,14 +46,14 @@ impl RangeElem<Concrete> for Dynamic {
                 if let Some(range) = maybe_range {
                     match range_side {
                         DynSide::Min => {
-                            range.range_min().clone().eval(analyzer)
+                            range.range_min().eval(analyzer)
                         }
                         DynSide::Max => {
-                            range.range_max().clone().eval(analyzer)
+                            range.range_max().eval(analyzer)
                         }
                     }
                 } else {
-                    Elem::Dynamic(self.clone())
+                    Elem::Dynamic(*self)
                 }
             }
             VarType::Concrete(concrete_node) => {
@@ -64,11 +64,11 @@ impl RangeElem<Concrete> for Dynamic {
             		}
             	)
             },
-            e => {println!("dynamic {:?}", e); Elem::Dynamic(self.clone())},
+            e => {println!("dynamic {:?}", e); Elem::Dynamic(*self)},
         }
 	}
 
-	fn simplify(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn simplify(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		let (idx, range_side) = (self.idx, self.side);
 		let var = ContextVarNode::from(idx);
 
@@ -79,14 +79,14 @@ impl RangeElem<Concrete> for Dynamic {
 	                if let Some(range) = maybe_range {
 	                    match range_side {
 	                        DynSide::Min => {
-	                            range.range_min().clone().eval(analyzer)
+	                            range.range_min().eval(analyzer)
 	                        }
 	                        DynSide::Max => {
-	                            range.range_max().clone().eval(analyzer)
+	                            range.range_max().eval(analyzer)
 	                        }
 	                    }
 	                } else {
-	                    Elem::Dynamic(self.clone())
+	                    Elem::Dynamic(*self)
 	                }
 	            }
 	            VarType::Concrete(concrete_node) => {
@@ -97,14 +97,14 @@ impl RangeElem<Concrete> for Dynamic {
 	            		}
 	            	)
 	            },
-	            _ => Elem::Dynamic(self.clone()),
+	            _ => Elem::Dynamic(*self),
 	        }
 	    } else {
-	    	Elem::Dynamic(self.clone())
+	    	Elem::Dynamic(*self)
 	    }
 	}
 
-    fn range_eq(&self, _other: &Self, _analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, _other: &Self, _analyzer: &impl GraphLike) -> bool {
     	todo!()
     }
 
@@ -121,6 +121,8 @@ impl RangeElem<Concrete> for Dynamic {
     		self.idx = NodeIdx::from(new.0);
     	}
     }
+
+	fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -130,17 +132,17 @@ pub struct RangeConcrete<T> {
 }
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
-	fn eval(&self, _analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn eval(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
 		Elem::Concrete(self.clone())
 	}
 
-	fn simplify(&self, _analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn simplify(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
 		Elem::Concrete(self.clone())
 	}
 
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
     	match (self.val.into_u256(), other.val.into_u256()) {
-    		(Some(self_val), Some(other_val)) => return self_val == other_val,
+    		(Some(self_val), Some(other_val)) => self_val == other_val,
     		_ => {
     			match (&self.val, &other.val) {
     				(Concrete::DynBytes(s), Concrete::DynBytes(o)) => s == o,
@@ -174,7 +176,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
 
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
     	match (self.val.into_u256(), other.val.into_u256()) {
-    		(Some(self_val), Some(other_val)) => return Some(self_val.cmp(&other_val)),
+    		(Some(self_val), Some(other_val)) => Some(self_val.cmp(&other_val)),
     		(Some(_), _) => {
     			match other.val {
     				Concrete::Int(_, _) => {
@@ -198,7 +200,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     		_ => {
     			match (&self.val, &other.val) {
     				// two negatives
-    				(Concrete::Int(_, s), Concrete::Int(_, o)) => Some(s.cmp(&o)),
+    				(Concrete::Int(_, s), Concrete::Int(_, o)) => Some(s.cmp(o)),
     				_ => None
 
     			}
@@ -210,6 +212,8 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     	vec![]
     }
     fn update_deps(&mut self, _mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {}
+
+    fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -230,15 +234,15 @@ impl<T> RangeExpr<T> {
 }
 
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
-	fn eval(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn eval(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		self.exec_op(analyzer)
 	}
 
-	fn simplify(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn simplify(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		self.simplify_exec_op(analyzer)
 	}
 
-    fn range_eq(&self, _other: &Self, _analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, _other: &Self, _analyzer: &impl GraphLike) -> bool {
     	todo!()
     }
 
@@ -255,6 +259,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
     	self.lhs.update_deps(mapping);
     	self.rhs.update_deps(mapping);
+    }
+
+    fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<Concrete>) {
+    	self.lhs.filter_recursion(node_idx, old.clone());
+    	self.rhs.filter_recursion(node_idx, old);
     }
 }
 
@@ -317,6 +326,15 @@ impl<T> Elem<T> {
         };
         Elem::Expr(expr)
     }
+
+    pub fn pow(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::Exp,
+            rhs: Box::new(other),
+        };
+        Elem::Expr(expr)
+    }
 }
 
 impl<T> From<Dynamic> for Elem<T> {
@@ -333,7 +351,7 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
 
 
 impl RangeElem<Concrete> for Elem<Concrete> {
-	fn eval(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn eval(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		use Elem::*;
 		match self {
 			Dynamic(dy) => dy.eval(analyzer),
@@ -343,7 +361,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 		}
 	}
 
-	fn simplify(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn simplify(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		use Elem::*;
 		match self {
 			Dynamic(dy) => dy.simplify(analyzer),
@@ -353,7 +371,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 		}
 	}
 
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
     	let lhs = self.eval(analyzer);
     	let rhs = other.eval(analyzer);
     	match (lhs, rhs) {
@@ -388,6 +406,18 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     		Self::Expr(expr) => expr.update_deps(mapping),
     		Self::Null => {},
     	}
+	}
+
+	fn filter_recursion(&mut self, node_idx: NodeIdx, old: Self) {
+		match self {
+    		Self::Dynamic(d) => {
+    			if d.idx == node_idx { *self = old }
+    		},
+    		Self::Concrete(_) => {},
+    		Self::Expr(expr) => expr.filter_recursion(node_idx, old),
+    		Self::Null => {},
+    	}
+    	println!("{:?}", self);
 	}
 }
 
@@ -483,14 +513,28 @@ impl Rem for Elem<Concrete> {
 }
 
 
+impl BitAnd for Elem<Concrete> {
+    type Output = Self;
+
+    fn bitand(self, other: Self) -> Self::Output {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::BitAnd,
+            rhs: Box::new(other),
+        };
+        Self::Expr(expr)
+    }
+}
+
+
 
 pub trait ExecOp<T> {
-	fn exec_op(&self, analyzer: &impl AnalyzerLike) -> Elem<T>;
-	fn simplify_exec_op(&self, analyzer: &impl AnalyzerLike) -> Elem<T>;
+	fn exec_op(&self, analyzer: &impl GraphLike) -> Elem<T>;
+	fn simplify_exec_op(&self, analyzer: &impl GraphLike) -> Elem<T>;
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
-	fn exec_op(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn exec_op(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		let lhs = self.lhs.eval(analyzer);
 		let rhs = self.rhs.eval(analyzer);
 		match self.op {
@@ -549,11 +593,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			RangeOp::Cast => {
 				lhs.range_cast(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
-			_ => todo!()
+			RangeOp::Exp => {
+				lhs.range_exp(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			_ => Elem::Expr(self.clone())
 		}
 	}
 
-	fn simplify_exec_op(&self, analyzer: &impl AnalyzerLike) -> Elem<Concrete> {
+	fn simplify_exec_op(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		let lhs = self.lhs.simplify(analyzer);
 		let rhs = self.rhs.simplify(analyzer);
 		match self.op {
@@ -612,7 +659,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			RangeOp::Cast => {
 				lhs.range_cast(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
-			_ => todo!()
+			RangeOp::Exp => {
+				lhs.range_exp(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			_ => Elem::Expr(self.clone())
 		}
 	}
 }

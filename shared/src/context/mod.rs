@@ -1,3 +1,4 @@
+use crate::GraphLike;
 use petgraph::{Direction, visit::EdgeRef};
 use crate::{Node, NodeIdx, Edge};
 use crate::analyzer::{AnalyzerLike, Search};
@@ -111,7 +112,7 @@ impl Context {
         };
 
         Context {
-            parent_fn: parent_ctx.underlying(analyzer).parent_fn.clone(),
+            parent_fn: parent_ctx.underlying(analyzer).parent_fn,
             parent_ctx: Some(parent_ctx),
             path: format!(
                 "{}.{}",
@@ -144,6 +145,10 @@ impl Context {
     pub fn add_child(&mut self, child_node: ContextNode) {
         self.children.push(child_node);
     }
+
+    pub fn as_string(&mut self) -> String {
+        "Context".to_string()
+    }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -151,41 +156,46 @@ impl Context {
 pub struct ContextNode(pub usize);
 impl ContextNode {
     /// The path of the underlying context
-    pub fn path(&self, analyzer: &impl AnalyzerLike) -> String {
+    pub fn path(&self, analyzer: &impl GraphLike) -> String {
         self.underlying(analyzer).path.clone()
     }
 
     /// *All* subcontexts (including subcontexts of subcontexts, recursively)
-    pub fn subcontexts(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<ContextNode> {
+    pub fn subcontexts(&self, analyzer: &(impl GraphLike + Search)) -> Vec<ContextNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext))
             .into_iter()
-            .map(|idx| ContextNode::from(idx))
+            .map(ContextNode::from)
             .collect()
     }
 
     /// Gets the associated function for the context
-    pub fn associated_fn(&self, analyzer: &(impl AnalyzerLike + Search)) -> FunctionNode {
+    pub fn associated_fn(&self, analyzer: &(impl GraphLike + Search)) -> FunctionNode {
         self.underlying(analyzer).parent_fn
     }
 
     /// Checks whether a function is external to the current context
-    pub fn is_fn_ext(&self, fn_node: FunctionNode, analyzer: &(impl AnalyzerLike + Search)) -> bool {
+    pub fn is_fn_ext(&self, fn_node: FunctionNode, analyzer: &(impl GraphLike + Search)) -> bool {
         match fn_node.contract(analyzer) {
             None => false,
             Some(fn_ctrt) => {
-                self.associated_fn(analyzer).contract(analyzer) != Some(fn_ctrt)        
+                if let Some(self_ctrt) = self.associated_fn(analyzer).contract(analyzer) {
+                    Some(self_ctrt) != Some(fn_ctrt)
+                    && !self_ctrt.underlying(analyzer).inherits.iter().any(|inherited| *inherited == fn_ctrt)    
+                } else {
+                    false
+                }
             }
         }
     }
 
     /// Gets the associated function name for the context
-    pub fn associated_fn_name(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+    pub fn associated_fn_name(&self, analyzer: &(impl GraphLike + Search)) -> String {
         self.underlying(analyzer).parent_fn.name(analyzer)
     }
 
     /// Gets a mutable reference to the underlying context in the graph
-    pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl AnalyzerLike) -> &'a mut Context {
+    pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut Context {
         match analyzer.node_mut(*self) {
             Node::Context(c) => c,
             e => panic!(
@@ -196,7 +206,7 @@ impl ContextNode {
     }
 
     /// Gets an immutable reference to the underlying context in the graph
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Context {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Context {
         match analyzer.node(*self) {
             Node::Context(c) => c,
             e => panic!(
@@ -207,7 +217,7 @@ impl ContextNode {
     }
 
     /// Gets a variable by name in the context
-    pub fn var_by_name(&self, analyzer: &impl AnalyzerLike, name: &str) -> Option<ContextVarNode> {
+    pub fn var_by_name(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
             .into_iter()
@@ -224,12 +234,35 @@ impl ContextNode {
             .next()
     }
 
+    pub fn var_by_name_or_recurse(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
+        if let Some(var) = analyzer
+            .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
+            .into_iter()
+            .filter_map(|cvar_node| {
+                let cvar_node = ContextVarNode::from(cvar_node);
+                let cvar = cvar_node.underlying(analyzer);
+                if cvar.name == name {
+                    Some(cvar_node)
+                } else {
+                    None
+                }
+            })
+            .take(1)
+            .next() {
+                Some(var)
+        } else if let Some(parent) = self.underlying(analyzer).parent_ctx {
+            parent.var_by_name_or_recurse(analyzer, name)
+        } else {
+            None
+        }
+    }
+
     /// Gets all variables associated with a context
     pub fn vars(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
             .into_iter()
-            .map(|idx| ContextVarNode::from(idx))
+            .map(ContextVarNode::from)
             .collect()
     }
 
@@ -243,7 +276,7 @@ impl ContextNode {
                     None
                 }
             })
-            .map(|idx| ContextVarNode::from(idx))
+            .map(ContextVarNode::from)
             .collect()
     }
 
@@ -253,11 +286,7 @@ impl ContextNode {
         analyzer: &impl AnalyzerLike,
         name: &str,
     ) -> Option<ContextVarNode> {
-        if let Some(var) = self.var_by_name(analyzer, name) {
-            Some(var.latest_version(analyzer))
-        } else {
-            None
-        }
+        self.var_by_name(analyzer, name).map(|var| var.latest_version(analyzer))
     }
 
     /// Reads the current temporary counter and increments the counter
@@ -399,11 +428,15 @@ impl ContextNode {
     pub fn return_nodes(&self, analyzer: &impl AnalyzerLike) -> Vec<(Loc, ContextVarNode)> {
         self.underlying(analyzer).ret.clone()
     }
+
+    pub fn as_string(&mut self) -> String {
+        "Context".to_string()
+    }
 }
 
-impl Into<NodeIdx> for ContextNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<ContextNode> for NodeIdx {
+    fn from(val: ContextNode) -> Self {
+        val.0.into()
     }
 }
 

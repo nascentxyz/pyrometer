@@ -1,11 +1,13 @@
-use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
+use crate::VarType;
+use crate::analyzer::AsDotStr;
+use crate::{analyzer::{GraphLike, AnalyzerLike}, Node, NodeIdx};
 use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition, Expression};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct VarNode(pub usize);
 
 impl VarNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Var {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Var {
         match analyzer.node(*self) {
             Node::Var(func) => func,
             e => panic!(
@@ -15,7 +17,7 @@ impl VarNode {
         }
     }
 
-    pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
+    pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
         self.underlying(analyzer)
             .name
             .clone()
@@ -24,9 +26,35 @@ impl VarNode {
     }
 }
 
-impl Into<NodeIdx> for VarNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl AsDotStr for VarNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let underlying = self.underlying(analyzer);
+        format!("{}{} {}",
+            if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
+                var_ty.as_dot_str(analyzer)
+            } else {
+                "".to_string()
+            },
+            underlying.attrs.iter().map(|attr| {
+                match attr {
+                    VariableAttribute::Visibility(vis) => format!(" {}", vis),
+                    VariableAttribute::Constant(_) => " constant".to_string(),
+                    VariableAttribute::Immutable(_) => " immutable".to_string(),
+                    VariableAttribute::Override(_, _) => " override".to_string(),
+                }
+            }).collect::<Vec<_>>().join(" "),
+            if let Some(name) = &underlying.name {
+                name.name.clone()
+            } else {
+                "".to_string()
+            }
+        )
+    }
+}
+
+impl From<VarNode> for NodeIdx {
+    fn from(val: VarNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -46,9 +74,9 @@ pub struct Var {
     pub in_contract: bool,
 }
 
-impl Into<Node> for Var {
-    fn into(self) -> Node {
-        Node::Var(self)
+impl From<Var> for Node {
+    fn from(val: Var) -> Self {
+        Node::Var(val)
     }
 }
 
@@ -63,11 +91,7 @@ impl Var {
             ty: analyzer.parse_expr(&var.ty),
             attrs: var.attrs,
             name: var.name,
-            initializer: if let Some(init) = var.initializer {
-                Some(analyzer.parse_expr(&init))
-            } else {
-                None
-            },
+            initializer: var.initializer.map(|init| analyzer.parse_expr(&init)),
             in_contract,
         }
     }

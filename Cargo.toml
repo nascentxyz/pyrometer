@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 petgraph = "0.6.2"
-solang-parser = "0.2.1"
+solang-parser = { version = "0.2.1", features = ["pt-serde"] }
 ethers-core = "*"
 ariadne = "0.1.5"
 shared = { path = "./shared" }

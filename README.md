@@ -1,13 +1,13 @@
+<img align="right" width="100" height="100" src="NascentLogo.png">
+
 # Pyrometer
 
 
-## Brought to you by
-
-<img width="100" height="100" src="NascentLogo.png">
 
 
 ## TODO
 
+- [ ] Support For/While loops
 - [ ] Support memory elements
     - [ ] Struct support
 - [ ] Support assembly
@@ -25,6 +25,8 @@
     - [ ] Symbolic storage write analyzer
     - [ ] Taint analyzer
     - [ ] Invariant analyzer
+    - [ ] Access control analysis
 - [ ] Queries
     - [ ] Storage write query
     - [ ] Code execution target query
+

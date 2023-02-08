@@ -36,6 +36,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                     storage: None,
                     is_tmp: true,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::Not, None)),
+                    is_symbolic: lhs_cvar.is_symbolic(self),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                         Some(range),
@@ -96,6 +97,7 @@ pub trait Cmp: AnalyzerLike + Sized {
                     ),
                     storage: None,
                     is_tmp: true,
+                    is_symbolic: ContextVarNode::from(*lhs).is_symbolic(self) || ContextVarNode::from(*rhs).is_symbolic(self),
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),

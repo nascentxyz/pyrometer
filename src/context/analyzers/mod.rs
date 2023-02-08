@@ -4,7 +4,7 @@ pub mod bounds;
 pub use bounds::*;
 
 use crate::AnalyzerLike;
-use ariadne::{Label, Report, ReportKind, Span};
+use ariadne::{Label, Report, ReportKind, Span, Cache};
 use shared::analyzer::Search;
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
@@ -151,6 +151,6 @@ pub trait ReportDisplay {
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String;
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>>;
     fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>>;
-    fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search));
-    fn eprint_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search));
+    fn print_reports(&self, src: &mut impl Cache<String> , analyzer: &(impl AnalyzerLike + Search));
+    fn eprint_reports(&self, src: &mut impl Cache<String> , analyzer: &(impl AnalyzerLike + Search));
 }

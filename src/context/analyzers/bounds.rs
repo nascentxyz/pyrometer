@@ -1,3 +1,4 @@
+use ariadne::Cache;
 use crate::LocStrSpan;
 use crate::{ReportConfig, ReportDisplay};
 use shared::range::elem::RangeElem;
@@ -9,7 +10,7 @@ use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
 };
-use solang_parser::pt::CodeLocation;
+use solang_parser::pt::{StorageLocation, CodeLocation};
 
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use std::collections::BTreeMap;
@@ -21,7 +22,7 @@ pub struct BoundAnalysis {
     pub var_display_name: String,
     pub var_def: (LocStrSpan, Option<SolcRange>),
     pub func_span: Option<LocStrSpan>,
-    pub storage: bool,
+    pub storage: Option<StorageLocation>,
     pub bound_changes: Vec<(LocStrSpan, SolcRange)>,
     pub report_config: ReportConfig,
     pub sub_ctxs: Vec<Self>,
@@ -38,7 +39,7 @@ impl Default for BoundAnalysis {
             bound_changes: Default::default(),
             report_config: Default::default(),
             sub_ctxs: Default::default(),
-            storage: false,
+            storage: None,
         }
     }
 }
@@ -136,41 +137,52 @@ impl ReportDisplay for BoundAnalysis {
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
         let mut labels = if self.report_config.show_initial_bounds {
             if let Some(init_range) = &self.var_def.1 {
+                let min = if self.report_config.eval_bounds {
+                    init_range
+                        .range_min()
+                        .eval(analyzer)
+                        .to_range_string(analyzer)
+                        .s
+                } else if self.report_config.simplify_bounds {
+                    init_range
+                        .range_min()
+                        .simplify(analyzer)
+                        .to_range_string(analyzer)
+                        .s
+                } else {
+                    init_range.range_min().to_range_string(analyzer).s
+                };
+                let max = if self.report_config.eval_bounds {
+                    init_range
+                        .range_max()
+                        .eval(analyzer)
+                        .to_range_string(analyzer)
+                        .s
+                } else if self.report_config.simplify_bounds {
+                    init_range
+                        .range_max()
+                        .simplify(analyzer)
+                        .to_range_string(analyzer)
+                        .s
+                } else {
+                    init_range.range_max().to_range_string(analyzer).s
+                };
+                let r_str = if min == max {
+                    format!(" == {}", min)
+                } else {
+                    format!(" ∈ [ {}, {} ]", min, max)
+                };
                 vec![Label::new(self.var_def.0.clone())
                     .with_message(format!(
-                        "{}\"{}\" ∈ {{{}, {}}}{}",
-                        if self.storage { "storage var " } else { "" },
+                        "{}\"{}\"{}{}",
+                        match self.storage {
+                            Some(StorageLocation::Memory(..)) => "Memory var ",
+                            Some(StorageLocation::Storage(..)) => "Storage var ",
+                            Some(StorageLocation::Calldata(..)) => "Calldata var ",
+                            None => ""
+                        },
                         self.var_display_name,
-                        if self.report_config.eval_bounds {
-                            init_range
-                                .range_min()
-                                .eval(analyzer)
-                                .to_range_string(analyzer)
-                                .s
-                        } else if self.report_config.simplify_bounds {
-                            init_range
-                                .range_min()
-                                .simplify(analyzer)
-                                .to_range_string(analyzer)
-                                .s
-                        } else {
-                            init_range.range_min().to_range_string(analyzer).s
-                        },
-                        if self.report_config.eval_bounds {
-                            init_range
-                                .range_max()
-                                .eval(analyzer)
-                                .to_range_string(analyzer)
-                                .s
-                        } else if self.report_config.simplify_bounds {
-                            init_range
-                                .range_max()
-                                .simplify(analyzer)
-                                .to_range_string(analyzer)
-                                .s
-                        } else {
-                            init_range.range_max().to_range_string(analyzer).s
-                        },
+                        r_str,
                         if init_range.unsat(analyzer) {
                             " - unsatisfiable range, unreachable".fg(Color::Red)
                         } else {
@@ -230,11 +242,19 @@ impl ReportDisplay for BoundAnalysis {
 
                     let label = Label::new(bound_change.0.clone())
                         .with_message(format!(
-                            "{}\"{}\" ∈ {{{}, {}}} {}",
-                            if self.storage { "storage var " } else { "" },
+                            "{}\"{}\"{} {}",
+                            match self.storage {
+                                Some(StorageLocation::Memory(..)) => "Memory var ",
+                                Some(StorageLocation::Storage(..)) => "Storage var ",
+                                Some(StorageLocation::Calldata(..)) => "Calldata var ",
+                                None => ""
+                            },
                             self.var_display_name,
-                            min,
-                            max,
+                            if min == max {
+                                format!(" == {}", min)
+                            } else {
+                                format!(" ∈ [ {}, {} ]", min, max)
+                            },
                             if bound_change.1.unsat(analyzer) {
                                 "- unsatisfiable range, unreachable".fg(Color::Red)
                             } else {
@@ -243,10 +263,11 @@ impl ReportDisplay for BoundAnalysis {
                         ))
                         .with_order(i as i32);
 
-                    if !self.storage {
-                        label.with_color(Color::Cyan)
-                    } else {
-                        label.with_color(Color::Green)
+                    match self.storage {
+                        Some(StorageLocation::Memory(..)) => label.with_color(Color::Blue),
+                        Some(StorageLocation::Storage(..)) => label.with_color(Color::Green),
+                        Some(StorageLocation::Calldata(..)) => label.with_color(Color::White),
+                        None => label.with_color(Color::Cyan)
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -285,17 +306,17 @@ impl ReportDisplay for BoundAnalysis {
         reports
     }
 
-    fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
-            report.print((src.0.clone(), Source::from(src.1))).unwrap();
+            report.print(&mut src).unwrap();
         });
     }
 
-    fn eprint_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
-            report.eprint((src.0.clone(), Source::from(src.1))).unwrap();
+            report.eprint(&mut src).unwrap();
         });
     }
 }
@@ -434,7 +455,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 bound_changes: vec![],
                 report_config,
                 sub_ctxs: vec![],
-                storage: curr.underlying(self).storage.is_some(),
+                storage: curr.underlying(self).storage.clone(),
             }
         };
 
@@ -557,13 +578,20 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     .to_range_string(analyzer)
                                     .s
                             };
-
-                            Some(format!(
-                                "\"{}\" ∈ {{{}, {}}}",
-                                cvar.display_name(analyzer),
-                                min,
-                                max,
-                            ))
+                            if min == max {
+                                Some(format!(
+                                    "\"{}\" == {}",
+                                    cvar.display_name(analyzer),
+                                    min,
+                                ))
+                            } else {
+                                Some(format!(
+                                    "\"{}\" ∈ [ {}, {} ]",
+                                    cvar.display_name(analyzer),
+                                    min,
+                                    max,
+                                ))
+                            }
                         })
                         .collect::<Vec<_>>()
                         .join(" ∧ ");
@@ -608,7 +636,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                 Label::new(LocStrSpan::new(self.file_mapping, loc))
                                     .with_message(
                                         format!(
-                                            "returns: \"{}\" ∈ {{{}, {}}}",
+                                            "returns: \"{}\" ∈ [ {}, {} ]",
                                             var.display_name(analyzer),
                                             var.range(analyzer)
                                                 .expect("return had no range")
@@ -699,7 +727,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     Label::new(LocStrSpan::new(self.file_mapping, loc))
                                         .with_message(
                                             format!(
-                                                "returns: \"{}\" ∈ {{{}, {}}}",
+                                                "returns: \"{}\" ∈ [ {}, {} ]",
                                                 var.display_name(analyzer),
                                                 var.range(analyzer)
                                                     .expect("return had no range")
@@ -728,17 +756,17 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
         reports
     }
 
-    fn print_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
-            report.print((src.0.clone(), Source::from(src.1))).unwrap();
+            report.print(&mut src).unwrap();
         }
     }
 
-    fn eprint_reports(&self, src: (String, &str), analyzer: &(impl AnalyzerLike + Search)) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
-            report.eprint((src.0.clone(), Source::from(src.1))).unwrap();
+            report.eprint(&mut src).unwrap();
         });
     }
 }

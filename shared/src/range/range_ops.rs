@@ -12,7 +12,7 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
     fn range_add(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or(other.val.int_size().unwrap_or(256));
+                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
                 let max = if size == 256 {
                     U256::MAX
                 } else {
@@ -164,7 +164,7 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
     fn range_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or(other.val.int_size().unwrap_or(256));
+                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
                 let max = if size == 256 {
                     U256::MAX
                 } else {
@@ -219,6 +219,69 @@ impl RangeMul<Concrete> for Elem<Concrete> {
 	}
 }
 
+
+pub trait RangeExp<T, Rhs = Self> {
+    fn range_exp(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+impl RangeExp<Concrete> for RangeConcrete<Concrete> {
+    fn range_exp(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self.val.into_u256(), other.val.into_u256()) {
+            (Some(lhs_val), Some(rhs_val)) => {
+                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
+                let max = if size == 256 {
+                    U256::MAX
+                } else {
+                    U256::from(2).pow(U256::from(size)) - 1
+                };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: self.val.u256_as_original(lhs_val.pow(rhs_val).min(max)),
+                    loc: self.loc
+                }))
+            }
+            _ => {
+                match (&self.val, &other.val) {
+                    (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v))
+                    | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
+                        let max = if *lhs_size == 256 {
+                            I256::MAX
+                        } else {
+                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
+                        };
+                        let min = max * I256::from(-1i32);
+                        Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*lhs_size, neg_v.pow(val.as_u32()).max(min)),
+                            loc: self.loc
+                        }))
+                    }
+                    (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
+                        let max = if *lhs_size == 256 {
+                            I256::MAX
+                        } else {
+                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
+                        };
+                        Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*lhs_size, l.pow(r.as_u32()).min(max)),
+                            loc: self.loc
+                        }))
+                    }
+                    _ => None
+                }
+            }
+        }
+    }
+}
+
+impl RangeExp<Concrete> for Elem<Concrete> {
+    fn range_exp(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_mul(b),
+            (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => Some(Elem::from(Concrete::from(U256::from(1)))),
+            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(other.clone()),
+            _ => None
+        }
+    }
+}
 pub trait RangeDiv<T, Rhs = Self> {
     fn range_div(&self, other: &Rhs) -> Option<Elem<T>>;
 }
@@ -624,40 +687,40 @@ impl RangeOrd<Concrete> for RangeConcrete<Concrete> {
 impl RangeOrd<Concrete> for Elem<Concrete> {
 	fn range_ord_eq(&self, other: &Self) -> Option<Elem<Concrete>> {
     	match (self, other) {
-    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_ord_eq(&b),
+    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_ord_eq(b),
     		_ => None,
     	}
     }
     fn range_neq(&self, other: &Self) -> Option<Elem<Concrete>> {
     	match (self, other) {
-    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_neq(&b),
+    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_neq(b),
     		_ => None,
     	}
     }
     fn range_gt(&self, other: &Self) -> Option<Elem<Concrete>> {
     	match (self, other) {
-    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_gt(&b),
+    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_gt(b),
     		_ => None,
     	}
     }
 
     fn range_lt(&self, other: &Self) -> Option<Elem<Concrete>> {
     	match (self, other) {
-    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_lt(&b),
+    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_lt(b),
     		_ => None,
     	}
     }
 
     fn range_gte(&self, other: &Self) -> Option<Elem<Concrete>> {
     	match (self, other) {
-    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_gte(&b),
+    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_gte(b),
     		_ => None,
     	}
     }
 
     fn range_lte(&self, other: &Self) -> Option<Elem<Concrete>> {
     	match (self, other) {
-    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_lte(&b),
+    		(Elem::Concrete(a), Elem::Concrete(b)) => a.range_lte(b),
     		_ => None,
     	}
     }
@@ -672,7 +735,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
     fn range_shl(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or(other.val.int_size().unwrap_or(256));
+                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
                 let max = if size == 256 {
                     U256::MAX
                 } else {

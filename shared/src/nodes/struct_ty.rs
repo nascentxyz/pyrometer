@@ -1,5 +1,10 @@
+use crate::GraphLike;
+use petgraph::{Direction, visit::EdgeRef};
+use crate::analyzer::AsDotStr;
+use crate::VarType;
 use crate::analyzer::AnalyzerLike;
 use crate::Node;
+use crate::Edge;
 use crate::NodeIdx;
 use solang_parser::pt::{Identifier, Loc, StructDefinition, VariableDeclaration, Expression};
 
@@ -7,24 +12,60 @@ use solang_parser::pt::{Identifier, Loc, StructDefinition, VariableDeclaration, 
 pub struct StructNode(pub usize);
 
 impl StructNode {
-    pub fn loc(&self, analyzer: &impl AnalyzerLike) -> Loc {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Struct {
+        match analyzer.node(*self) {
+            Node::Struct(st) => st,
+            e => panic!(
+                "Node type confusion: expected node to be Struct but it was: {:?}",
+                e
+            ),
+        }
+    }
+
+    pub fn loc(&self, analyzer: &impl GraphLike) -> Loc {
         Struct::maybe_from_node(analyzer.node(*self).clone())
             .expect("Node wasnt struct")
             .loc
     }
 
-    pub fn name(&self, analyzer: &impl AnalyzerLike) -> String {
+    pub fn name(&self, analyzer: &impl GraphLike) -> String {
         Struct::maybe_from_node(analyzer.node(*self).clone())
             .expect("Node wasnt struct")
             .name
             .expect("Struct wasn't named")
             .to_string()
     }
+
+    pub fn fields(&self, analyzer: &impl GraphLike) -> Vec<FieldNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Field == *edge.weight())
+            .map(|edge| FieldNode::from(edge.source()))
+            .collect()
+    }
 }
 
-impl Into<NodeIdx> for StructNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+
+impl AsDotStr for StructNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let underlying = self.underlying(analyzer);
+        format!("struct {} {{ {} }}",
+            if let Some(name) = &underlying.name {
+                name.name.clone()
+            } else {
+                "".to_string()
+            },
+            self.fields(analyzer).iter().map(|field_node| {
+                field_node.as_dot_str(analyzer)
+            }).collect::<Vec<_>>().join("; ")
+        )
+    }
+}
+
+impl From<StructNode> for NodeIdx {
+    fn from(val: StructNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -49,9 +90,9 @@ impl Struct {
     }
 }
 
-impl Into<Node> for Struct {
-    fn into(self) -> Node {
-        Node::Struct(self)
+impl From<Struct> for Node {
+    fn from(val: Struct) -> Self {
+        Node::Struct(val)
     }
 }
 
@@ -68,7 +109,7 @@ impl From<StructDefinition> for Struct {
 pub struct FieldNode(pub usize);
 
 impl FieldNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Field {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Field {
         match analyzer.node(*self) {
             Node::Field(field) => field,
             e => panic!(
@@ -79,15 +120,33 @@ impl FieldNode {
     }
 }
 
+impl AsDotStr for FieldNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let underlying = self.underlying(analyzer);
+        format!("{} {}",
+            if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
+                var_ty.as_dot_str(analyzer)
+            } else {
+                "".to_string()
+            },
+            if let Some(name) = &underlying.name {
+                name.name.clone()
+            } else {
+                "".to_string()
+            }
+        )
+    }
+}
+
 impl From<NodeIdx> for FieldNode {
     fn from(idx: NodeIdx) -> Self {
         FieldNode(idx.index())
     }
 }
 
-impl Into<NodeIdx> for FieldNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<FieldNode> for NodeIdx {
+    fn from(val: FieldNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -98,9 +157,9 @@ pub struct Field {
     pub name: Option<Identifier>,
 }
 
-impl Into<Node> for Field {
-    fn into(self) -> Node {
-        Node::Field(self)
+impl From<Field> for Node {
+    fn from(val: Field) -> Self {
+        Node::Field(val)
     }
 }
 

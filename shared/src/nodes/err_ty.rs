@@ -1,8 +1,33 @@
-use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
+use crate::AnalyzerLike;
+use crate::AsDotStr;
+use crate::{analyzer::GraphLike, Node, NodeIdx};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Identifier, Loc, Expression};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ErrorNode(pub usize);
+impl ErrorNode {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Error {
+        match analyzer.node(*self) {
+            Node::Error(err) => err,
+            e => panic!(
+                "Node type confusion: expected node to be Var but it was: {:?}",
+                e
+            ),
+        }
+    }
+}
+impl AsDotStr for ErrorNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let underlying = self.underlying(analyzer);
+        format!("error {}",
+            if let Some(name) = &underlying.name {
+                name.name.clone()
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
 
 impl Into<NodeIdx> for ErrorNode {
     fn into(self) -> NodeIdx {

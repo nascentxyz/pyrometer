@@ -1,3 +1,5 @@
+use crate::NodeIdx;
+use crate::GraphLike;
 use std::collections::BTreeMap;
 use crate::context::ContextVarNode;
 use crate::range::elem_ty::RangeExpr;
@@ -25,6 +27,8 @@ pub enum RangeOp {
     And,
     Where,
     Cast,
+    BitAnd,
+    Exp,
 }
 
 
@@ -57,6 +61,7 @@ impl ToString for RangeOp {
             Shl => "<<".to_string(),
             Shr => ">>".to_string(),
             Mod => "%".to_string(),
+            Exp => "**".to_string(),
             Min => "min".to_string(),
             Max => "max".to_string(),
             Lt => "<".to_string(),
@@ -69,21 +74,23 @@ impl ToString for RangeOp {
             And => "&".to_string(),
             Where => "where".to_string(),
             Cast => "cast".to_string(),
+            BitAnd => "&".to_string(),
         }
     }
 }
 
 
 pub trait RangeElem<T> {
-	fn eval(&self, analyzer: &impl AnalyzerLike) -> Elem<T>;
-    fn simplify(&self, analyzer: &impl AnalyzerLike) -> Elem<T>;
-    fn range_eq(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
+	fn eval(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn simplify(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool;
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
     fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp) -> Elem<T> where Self: Sized {
         Elem::Expr(RangeExpr::new(lhs, op, rhs))
     }
     fn dependent_on(&self) -> Vec<ContextVarNode>;
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<T>);
 }
 
 

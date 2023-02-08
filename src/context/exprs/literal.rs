@@ -36,6 +36,22 @@ pub trait Literal: AnalyzerLike + Sized {
         ExprRet::Single((ctx, node))
     }
 
+    fn hex_num_literal(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        integer: &str,
+    ) -> ExprRet {
+        let val = U256::from_str_radix(integer, 16).unwrap();
+
+        let concrete_node =
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(256, val))));
+        let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
+        let node = self.add_node(ccvar);
+        self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        ExprRet::Single((ctx, node))
+    }
+
     fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &str) -> ExprRet {
         let addr = Address::from_str(addr).unwrap();
 

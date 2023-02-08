@@ -1,3 +1,4 @@
+use crate::analyzer::AsDotStr;
 use crate::nodes::ContractNode;
 use crate::range::SolcRange;
 use crate::VarType;
@@ -5,7 +6,7 @@ use solang_parser::pt::Statement;
 use crate::Edge;
 use crate::context::{ContextEdge, ContextNode};
 use petgraph::{Direction, visit::EdgeRef};
-use crate::{analyzer::AnalyzerLike, Node, NodeIdx};
+use crate::{analyzer::{GraphLike, AnalyzerLike}, Node, NodeIdx};
 use solang_parser::pt::{
     FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation, Expression
 };
@@ -13,7 +14,7 @@ use solang_parser::pt::{
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionNode(pub usize);
 impl FunctionNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Function {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Function {
         match analyzer.node(*self) {
             Node::Function(func) => func,
             e => panic!(
@@ -23,15 +24,20 @@ impl FunctionNode {
         }
     }
 
-    pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
-        self.underlying(analyzer)
-            .name
-            .clone()
-            .expect("Unnamed function")
-            .name
+    pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
+        match self.underlying(analyzer).ty {
+            FunctionTy::Constructor
+            | FunctionTy::Receive
+            | FunctionTy::Fallback => "".to_string(),
+            _ => self.underlying(analyzer)
+                .name
+                .clone()
+                .expect("Unnamed function")
+                .name
+        }
     }
 
-    pub fn body_ctx<'a>(&self, analyzer: &'a impl AnalyzerLike) -> ContextNode {
+    pub fn body_ctx(&self, analyzer: &'_ impl GraphLike) -> ContextNode {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -42,7 +48,7 @@ impl FunctionNode {
             .expect("No context for function")
     }
 
-    pub fn params<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Vec<FunctionParamNode> {
+    pub fn params(&self, analyzer: &'_ impl GraphLike) -> Vec<FunctionParamNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -51,7 +57,7 @@ impl FunctionNode {
             .collect()
     }
 
-    pub fn contract<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<ContractNode> {
+    pub fn contract(&self, analyzer: &'_ impl GraphLike) -> Option<ContractNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Outgoing)
@@ -62,9 +68,29 @@ impl FunctionNode {
     }
 }
 
-impl Into<NodeIdx> for FunctionNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl AsDotStr for FunctionNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let inputs = self.params(analyzer).iter().map(|param_node: &FunctionParamNode| {
+            param_node.as_dot_str(analyzer)
+        }).collect::<Vec<_>>().join(", ");
+
+        let attrs = self.underlying(analyzer).attributes.iter().map(|attr| {
+            match attr {
+                FunctionAttribute::Mutability(inner) => format!("{}", inner),
+                FunctionAttribute::Visibility(inner) => format!("{}", inner),
+                FunctionAttribute::Virtual(_) => "virtual".to_string(),
+                FunctionAttribute::Immutable(_) => "immutable".to_string(),
+                FunctionAttribute::Override(_, _) => "override".to_string(),
+                _ => "".to_string()
+            }
+        }).collect::<Vec<_>>().join(" ");
+        format!("{} {}({}) {}", self.underlying(analyzer).ty, self.name(analyzer), inputs, attrs)
+    }
+}
+
+impl From<FunctionNode> for NodeIdx {
+    fn from(val: FunctionNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -84,9 +110,9 @@ pub struct Function {
     pub body: Option<Statement>
 }
 
-impl Into<Node> for Function {
-    fn into(self) -> Node {
-        Node::Function(self)
+impl From<Function> for Node {
+    fn from(val: Function) -> Self {
+        Node::Function(val)
     }
 }
 
@@ -106,8 +132,27 @@ impl From<FunctionDefinition> for Function {
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionParamNode(pub usize);
 
+impl AsDotStr for FunctionParamNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).ty).expect("Non-typeable as type");
+        format!("{}{}{}",
+            var_ty.as_dot_str(analyzer),
+            if let Some(stor) = &self.underlying(analyzer).storage {
+                format!(" {} ", stor)
+            } else {
+                "".to_string()
+            },
+            if let Some(name) = self.maybe_name(analyzer) {
+                name.to_string()
+            } else {
+                "".to_string()
+            }
+        )
+    }
+}
+
 impl FunctionParamNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a FunctionParam {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a FunctionParam {
         match analyzer.node(*self) {
             Node::FunctionParam(param) => param,
             e => panic!(
@@ -117,7 +162,7 @@ impl FunctionParamNode {
         }
     }
 
-    pub fn name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> String {
+    pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
         self.underlying(analyzer)
             .name
             .clone()
@@ -125,27 +170,27 @@ impl FunctionParamNode {
             .name
     }
 
-    pub fn maybe_name<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<String> {
+    pub fn maybe_name(&self, analyzer: &'_ impl GraphLike) -> Option<String> {
         Some(self.underlying(analyzer)
             .name
             .clone()?
             .name)
     }
 
-    pub fn range<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Option<SolcRange> {
+    pub fn range(&self, analyzer: &'_ impl GraphLike) -> Option<SolcRange> {
         let ty_node = self.underlying(analyzer).ty;
         let var_ty = VarType::try_from_idx(analyzer, ty_node)?;
         var_ty.range(analyzer)
     }
 
-    pub fn loc<'a>(&self, analyzer: &'a impl AnalyzerLike) -> Loc {
+    pub fn loc(&self, analyzer: &'_ impl GraphLike) -> Loc {
         self.underlying(analyzer).loc
     }
 }
 
-impl Into<NodeIdx> for FunctionParamNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<FunctionParamNode> for NodeIdx {
+    fn from(val: FunctionParamNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -163,9 +208,9 @@ pub struct FunctionParam {
     pub name: Option<Identifier>,
 }
 
-impl Into<Node> for FunctionParam {
-    fn into(self) -> Node {
-        Node::FunctionParam(self)
+impl From<FunctionParam> for Node {
+    fn from(val: FunctionParam) -> Self {
+        Node::FunctionParam(val)
     }
 }
 
@@ -183,8 +228,27 @@ impl FunctionParam {
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionReturnNode(pub usize);
 
+impl AsDotStr for FunctionReturnNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).ty).expect("Non-typeable as type");
+        format!("{}{}{}",
+            var_ty.as_dot_str(analyzer),
+            if let Some(stor) = &self.underlying(analyzer).storage {
+                format!(" {} ", stor)
+            } else {
+                "".to_string()
+            },
+            if let Some(name) = self.maybe_name(analyzer) {
+                name.to_string()
+            } else {
+                "".to_string()
+            }
+        )
+    }
+}
+
 impl FunctionReturnNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a FunctionReturn {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a FunctionReturn {
         match analyzer.node(*self) {
             Node::FunctionReturn(ret) => ret,
             e => panic!(
@@ -193,11 +257,18 @@ impl FunctionReturnNode {
             ),
         }
     }
+
+    pub fn maybe_name(&self, analyzer: &'_ impl GraphLike) -> Option<String> {
+        Some(self.underlying(analyzer)
+            .name
+            .clone()?
+            .name)
+    }
 }
 
-impl Into<NodeIdx> for FunctionReturnNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<FunctionReturnNode> for NodeIdx {
+    fn from(val: FunctionReturnNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -207,9 +278,9 @@ impl From<NodeIdx> for FunctionReturnNode {
     }
 }
 
-impl Into<Node> for FunctionReturn {
-    fn into(self) -> Node {
-        Node::FunctionReturn(self)
+impl From<FunctionReturn> for Node {
+    fn from(val: FunctionReturn) -> Self {
+        Node::FunctionReturn(val)
     }
 }
 

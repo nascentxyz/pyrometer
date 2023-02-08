@@ -125,6 +125,7 @@ pub trait BinOp: AnalyzerLike + Sized {
                 ),
                 storage: None,
                 is_tmp: true,
+                is_symbolic: lhs_cvar.is_symbolic(self) || rhs_cvar.is_symbolic(self),
                 tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                 ty: lhs_cvar.underlying(self).ty.clone(),
             };

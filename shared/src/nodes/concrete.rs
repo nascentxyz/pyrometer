@@ -1,12 +1,12 @@
 use crate::Builtin;
-use crate::{Node, NodeIdx, analyzer::AnalyzerLike};
+use crate::{Node, NodeIdx, analyzer::{GraphLike, AnalyzerLike}};
 use ethers_core::types::{U256, I256, H256, Address};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ConcreteNode(pub usize);
 
 impl ConcreteNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl AnalyzerLike) -> &'a Concrete {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Concrete {
         match analyzer.node(*self) {
             Node::Concrete(c) => c,
             e => panic!(
@@ -23,9 +23,9 @@ impl From<NodeIdx> for ConcreteNode {
     }
 }
 
-impl Into<NodeIdx> for ConcreteNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<ConcreteNode> for NodeIdx {
+    fn from(val: ConcreteNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -44,6 +44,51 @@ pub enum Concrete {
 impl From<U256> for Concrete {
     fn from(u: U256) -> Self {
         Concrete::Uint(256, u)
+    }
+}
+
+impl From<Vec<u8>> for Concrete {
+    fn from(u: Vec<u8>) -> Self {
+        Concrete::DynBytes(u)
+    }
+}
+
+impl From<H256> for Concrete {
+    fn from(u: H256) -> Self {
+        Concrete::Bytes(32, u)
+    }
+}
+
+impl<const N: usize> From<[u8; N]> for Concrete {
+    fn from(u: [u8; N]) -> Self {
+        assert!(N <= 32);
+        let mut h = H256::default();
+        h.assign_from_slice(&u[..]);
+        Concrete::Bytes(N.try_into().unwrap(), h)
+    }
+}
+
+impl From<Address> for Concrete {
+    fn from(u: Address) -> Self {
+        Concrete::Address(u)
+    }
+}
+
+impl From<bool> for Concrete {
+    fn from(u: bool) -> Self {
+        Concrete::Bool(u)
+    }
+}
+
+impl From<String> for Concrete {
+    fn from(u: String) -> Self {
+        Concrete::String(u)
+    }
+}
+
+impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
+    fn from(u: Vec<T>) -> Self {
+        Concrete::Array(u.into_iter().map(|t| t.into()).collect())
     }
 }
 
@@ -358,9 +403,9 @@ impl Concrete {
             Concrete::Uint(_, val) => {
                 let cutoff = U256::from(2).pow(U256::from(32));
                 if val < &cutoff {
-                    return val.to_string();
+                    val.to_string()
                 } else {
-                    for size in 8..=255 {
+                    for size in 32..=255 {
                         let pow2 = U256::from(2).pow(U256::from(size));
                         if val < &pow2 {
                             let diff = pow2 - val;
@@ -399,7 +444,7 @@ impl Concrete {
 
                 if val > &I256::from(0) {
                     let val = val.into_sign_and_abs().1;
-                    format!("{}", Concrete::Uint(*size, val).as_human_string())
+                    Concrete::Uint(*size, val).as_human_string()
                 } else {
                     let val = val.into_sign_and_abs().1;
                     format!("-1 * {}", Concrete::Uint(*size, val).as_human_string())
@@ -408,7 +453,7 @@ impl Concrete {
             Concrete::Bytes(_, b) => format!("0x{:x}", b),
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
-            Concrete::Address(a) => a.to_string(),
+            Concrete::Address(a) => format!("{:?}", a),
             _ => todo!("concrete as string"),
         }
     }

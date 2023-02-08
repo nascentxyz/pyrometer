@@ -1,33 +1,67 @@
 pragma solidity 0.8.17;
 
+
+
 contract Storage {
-    uint256 public c;
-    uint256 public d;
 
-    function b5(uint128 x) public returns (uint256) {
-        (c, d) = b4();
-        d += b3(x);
-        return d;
+    // struct A {
+    //     uint256 c;
+    //     uint256 d;
+    // }
+
+    // A public a;
+
+    uint256 a;
+    address owner;
+    constructor() {
+        owner = msg.sender;
     }
 
-    function b4() internal returns (uint256, uint256) {
-        return (10, 20);
+    fallback() returns (uint256) {
+        return 1;
     }
 
-    function b3(uint256 y) internal returns (uint256) {
-        d += 10;
-        return y + 1;
+    receive() returns (uint256) {
+        return 1;
     }
+
+    function set_a(uint256 b) public {
+        require(msg.sender == owner);
+        a = b;
+    }
+
+    // function b5(A memory x) public returns (uint256) {
+    //     require(msg.sender == owner);
+    //     (a.c, a.d) = b4();
+    //     x.d += 10;
+    //     x.d += b3(a.c);
+    //     return x.d;
+    // }
+
+    // function b6(uint256[] memory x) public returns (uint256[] memory) {
+    //     require(x.length > 3);
+    //     x[6] += 10;
+    //     x[6] += 10;
+    //     return x;
+    // }
+
+    // function b4() internal returns (uint256, uint256) {
+    //     return (10, 20);
+    // }
+
+    // function b3(uint256 y) internal returns (uint256) {
+    //     a.d += 10;
+    //     return y + 1;
+    // }
 }
 
-contract S {
-    function run() public returns (uint256) {
-        Storage s = new Storage();
-        uint256 a = s.b5(10);
-        uint256 a = s.b5(10);
-        return a;
-    }
-}
+// contract S {
+//     function run() public returns (uint256) {
+//         Storage s = new Storage();
+//         uint256 a = s.b5(10);
+//         return a;
+//     }
+// }
 
 // contract Baz {
 

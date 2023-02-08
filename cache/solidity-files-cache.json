@@ -12,8 +12,8 @@
   },
   "files": {
     "test.sol": {
-      "lastModificationDate": 1675392398687,
-      "contentHash": "8484a81bca62a1bb077d1f51ce79576c",
+      "lastModificationDate": 1675884363665,
+      "contentHash": "83ab90e693f67431825b3eef0014ec95",
       "sourceName": "test.sol",
       "solcConfig": {
         "settings": {

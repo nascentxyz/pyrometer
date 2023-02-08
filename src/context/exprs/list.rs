@@ -23,6 +23,7 @@ pub trait List: AnalyzerLike + Sized {
                             display_name: input_name.to_string(),
                             storage: input.storage.clone(),
                             is_tmp: false,
+                            is_symbolic: false,
                             tmp_of: None,
                             ty,
                         };
@@ -46,6 +47,7 @@ pub trait List: AnalyzerLike + Sized {
                                     display_name: format!("tmp{tmp_num}"),
                                     storage: input.storage.clone(),
                                     is_tmp: true,
+                                    is_symbolic: false,
                                     tmp_of: None,
                                     ty,
                                 };

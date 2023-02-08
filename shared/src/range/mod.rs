@@ -1,3 +1,7 @@
+use crate::NodeIdx;
+use crate::GraphLike;
+use crate::range::range_string::ToRangeString;
+use crate::analyzer::AsDotStr;
 use ethers_core::types::Address;
 use crate::context::ContextNode;
 use std::collections::BTreeMap;
@@ -25,6 +29,15 @@ pub mod range_string;
 pub struct SolcRange {
     pub min: Elem<Concrete>,
     pub max: Elem<Concrete>,
+}
+
+impl AsDotStr for SolcRange {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        format!("[{}, {}]",
+            self.min.eval(analyzer).to_range_string(analyzer).s,
+            self.max.eval(analyzer).to_range_string(analyzer).s
+        )
+    }
 }
 
 impl From<bool> for SolcRange {
@@ -243,6 +256,14 @@ impl SolcRange {
                 &Self::neq_dyn,
                 (DynSide::Min, DynSide::Max),
             ),
+            RangeOp::Exp => (
+                &Self::exp_dyn,
+                (DynSide::Min, DynSide::Max),
+            ),
+            RangeOp::BitAnd => (
+                &Self::bit_and_dyn,
+                (DynSide::Min, DynSide::Max),
+            ),
             e => unreachable!("Comparator operations shouldn't exist in a range: {:?}", e),
         }
     }
@@ -280,6 +301,30 @@ impl SolcRange {
         Self {
             min: self.min * Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
             max: self.max * Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+        }
+    }
+
+    pub fn exp_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynSide, DynSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min.pow(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
+            max: self.max.pow(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+        }
+    }
+
+    pub fn bit_and_dyn(
+        self,
+        other: ContextVarNode,
+        range_sides: (DynSide, DynSide),
+        loc: Loc,
+    ) -> Self {
+        Self {
+            min: self.min & Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
+            max: self.max & Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
         }
     }
 
@@ -415,6 +460,12 @@ impl Range<Concrete> for SolcRange {
     fn set_range_max(&mut self, new: Self::ElemTy) {
         self.max = new;
     }
+    fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy) {
+        self.min.filter_recursion(self_idx, old);
+    }
+    fn filter_max_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy) {
+        self.max.filter_recursion(self_idx, old);
+    }
 }
 
 pub trait Range<T> {
@@ -423,20 +474,22 @@ pub trait Range<T> {
     fn range_max(&self) -> Self::ElemTy;
     fn set_range_min(&mut self, new: Self::ElemTy);
     fn set_range_max(&mut self, new: Self::ElemTy);
+    fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
+    fn filter_max_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
     fn dependent_on(&self) -> Vec<ContextVarNode> {
         let mut deps = self.range_min().dependent_on();
         deps.extend(self.range_max().dependent_on());
         deps
     }
 
-    fn update_deps(&mut self, ctx: ContextNode, analyzer: &impl AnalyzerLike) {
+    fn update_deps(&mut self, ctx: ContextNode, analyzer: &impl GraphLike) {
         let deps = self.dependent_on();
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps.into_iter().map(|dep| {
             (dep, dep.latest_version_in_ctx(ctx, analyzer))
         }).collect();
 
-        let mut min = self.range_min().clone();
-        let mut max = self.range_max().clone();
+        let mut min = self.range_min();
+        let mut max = self.range_max();
         min.update_deps(&mapping);
         max.update_deps(&mapping);
         self.set_range_min(min);
@@ -454,34 +507,22 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     fn sat(&self, analyzer: &impl AnalyzerLike) -> bool {
-        match self
+        matches!(self
             .range_min()
             .eval(analyzer)
-            .range_ord(&self.range_max().eval(analyzer))
-        {
-            None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => true,
-            _ => false,
-        }
+            .range_ord(&self.range_max().eval(analyzer)), None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal))
     }
 
     fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
-        let min_contains = match self
+        let min_contains = matches!(self
             .range_min()
             .eval(analyzer)
-            .range_ord(&other.range_min().eval(analyzer))
-        {
-            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal) => true,
-            _ => false,
-        };
+            .range_ord(&other.range_min().eval(analyzer)), Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal));
 
-        let max_contains = match self
+        let max_contains = matches!(self
             .range_max()
             .eval(analyzer)
-            .range_ord(&other.range_max().eval(analyzer))
-        {
-            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal) => true,
-            _ => false,
-        };
+            .range_ord(&other.range_max().eval(analyzer)), Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal));
 
         min_contains && max_contains
     }

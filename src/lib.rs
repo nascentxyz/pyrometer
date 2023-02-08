@@ -1,3 +1,5 @@
+use ethers_core::types::Address;
+use solang_parser::pt::Import;
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
@@ -6,9 +8,9 @@ use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
     FunctionDefinition, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
-    VariableDefinition,
+    VariableDefinition, FunctionTy
 };
-use std::collections::HashMap;
+use std::{fs, collections::HashMap};
 
 use petgraph::{graph::*, Directed};
 
@@ -20,6 +22,10 @@ use context::*;
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
+    pub remappings: HashMap<String, String>,
+    pub file_no: usize,
+    pub msg: MsgNode,
+    pub block: BlockNode,
     pub graph: Graph<Node, Edge, Directed, usize>,
     pub builtins: HashMap<Builtin, NodeIdx>,
     pub dyn_builtins: HashMap<DynBuiltin, NodeIdx>,
@@ -31,6 +37,10 @@ pub struct Analyzer {
 impl Default for Analyzer {
     fn default() -> Self {
         let mut a = Self {
+            remappings: Default::default(),
+            file_no: 0,
+            msg: MsgNode(0),
+            block: BlockNode(0),
             graph: Default::default(),
             builtins: Default::default(),
             dyn_builtins: Default::default(),
@@ -39,6 +49,14 @@ impl Default for Analyzer {
             builtin_fn_inputs: Default::default(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
+
+        let mut msg = Msg::default();
+        // msg.sender = Some(Address::random());
+        let block = Block::default();
+        let msg = a.graph.add_node(Node::Msg(msg)).into();
+        let block = a.graph.add_node(Node::Block(block)).into();
+        a.msg = msg;
+        a.block = block;
         a
     }
 }
@@ -55,6 +73,14 @@ impl GraphLike for Analyzer {
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
+    fn msg(&mut self) -> MsgNode {
+        self.msg
+    }
+
+    fn block(&mut self) -> BlockNode {
+        self.block
+    }
+
     fn builtin_fns(&self) -> &HashMap<String, Function> {
         &self.builtin_fns
     }
@@ -84,7 +110,7 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        // println!("{:?}", expr);
+        println!("top level expr: {:?}", expr);
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone()) {
@@ -157,18 +183,20 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
-    pub fn parse(&mut self, src: &str, file_no: usize) -> Option<NodeIdx> {
+    pub fn parse(&mut self, src: &str) -> (Option<NodeIdx>, Vec<(Option<NodeIdx>, String, String, usize)>) {
+        let file_no = self.file_no;
+        let mut imported = vec![];
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                let funcs = self.parse_source_unit(source_unit, file_no, parent);
+                let funcs = self.parse_source_unit(source_unit, file_no, parent, &mut imported);
                 funcs.into_iter().for_each(|func| {
                     if let Some(body) = &func.underlying(self).body.clone() {
                         self.parse_ctx_statement(body, false, Some(func));
                     }
                 });
 
-                Some(parent)
+                (Some(parent), imported)
             }
             Err(e) => panic!("FAIL to parse, {e:?}"),
         }
@@ -179,17 +207,20 @@ impl Analyzer {
         source_unit: SourceUnit,
         file_no: usize,
         parent: NodeIdx,
+        imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
     ) -> Vec<FunctionNode> {
+        
+        let mut all_funcs = vec![];
         source_unit
             .0
             .iter()
             .enumerate()
-            .flat_map(|(unit_part, source_unit_part)| {
+            .for_each(|(unit_part, source_unit_part)| {
                 let (_sup, funcs) =
-                    self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent);
-                funcs
-            })
-            .collect()
+                    self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent, imported);
+                all_funcs.extend(funcs);
+            });
+        all_funcs
     }
 
     pub fn parse_source_unit_part(
@@ -198,6 +229,7 @@ impl Analyzer {
         file_no: usize,
         unit_part: usize,
         parent: NodeIdx,
+        imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
     ) -> (NodeIdx, Vec<FunctionNode>) {
         use SourceUnitPart::*;
 
@@ -208,7 +240,7 @@ impl Analyzer {
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs) = self.parse_contract_def(def);
+                let (node, funcs) = self.parse_contract_def(def, &imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
             }
@@ -229,7 +261,7 @@ impl Analyzer {
                 self.add_edge(node, sup_node, Edge::Var);
             }
             FunctionDefinition(def) => {
-                let node = self.parse_func_def(def);
+                let node = self.parse_func_def(def, None);
                 func_nodes.push(node);
                 self.add_edge(node, sup_node, Edge::Func);
             }
@@ -242,18 +274,49 @@ impl Analyzer {
             Using(_using) => todo!(),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(_) => todo!(),
+            ImportDirective(import) => imported.extend(self.parse_import(import)),
         }
         (sup_node, func_nodes)
+    }
+
+    pub fn parse_import(&mut self, import: &Import) -> Vec<(Option<NodeIdx>, String, String, usize)> {
+        match import {
+            Import::Plain(path, _) => {
+                println!("path: {:?}", path);
+                let sol = fs::read_to_string(path.string.clone()).expect("Could not find file for dependency");
+                self.file_no += 1;
+                let file_no = self.file_no;
+                let (maybe_entry, mut inner_sources) = self.parse(&sol);
+                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                inner_sources
+            }
+            Import::Rename(path, elems, _) => {
+                println!("path: {:?}, elems: {:?}", path, elems);
+                let sol = fs::read_to_string(path.string.clone()).expect("Could not find file for dependency");
+                self.file_no += 1;
+                let file_no = self.file_no;
+                let (maybe_entry, mut inner_sources) = self.parse(&sol);
+                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                inner_sources
+            }
+            e => todo!("import {:?}", e)
+        }
     }
 
     pub fn parse_contract_def(
         &mut self,
         contract_def: &ContractDefinition,
+        imports: &[(Option<NodeIdx>, String, String, usize)],
     ) -> (ContractNode, Vec<FunctionNode>) {
         use ContractPart::*;
 
-        let con_node = ContractNode(self.add_node(Contract::from(contract_def.clone())).index());
+        let contract = Contract::from_w_imports(contract_def.clone(), imports, self);
+        let inherits = contract.inherits.clone();
+        let con_node = ContractNode(self.add_node(contract).index());
+        inherits.iter().for_each(|contract_node| {
+            self.add_edge(*contract_node, con_node, Edge::InheritedContract);
+        });
+
         let mut func_nodes = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
             StructDefinition(def) => {
@@ -273,9 +336,8 @@ impl Analyzer {
                 self.add_edge(node, con_node, Edge::Var);
             }
             FunctionDefinition(def) => {
-                let node = self.parse_func_def(def);
+                let node = self.parse_func_def(def, Some(con_node));
                 func_nodes.push(node);
-                self.add_edge(node, con_node, Edge::Func);
             }
             TypeDefinition(def) => {
                 let node = self.parse_ty_def(def);
@@ -293,7 +355,7 @@ impl Analyzer {
 
     pub fn parse_enum_def(&mut self, enum_def: &EnumDefinition) -> EnumNode {
         let enu = Enum::from(enum_def.clone());
-        let name = enu.name.clone().expect("Struct was not named").name;
+        let name = enu.name.clone().expect("Enum was not named").name;
 
         // check if we have an unresolved type by the same name
         let enu_node: EnumNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
@@ -343,10 +405,82 @@ impl Analyzer {
         err_node
     }
 
-    pub fn parse_func_def(&mut self, func_def: &FunctionDefinition) -> FunctionNode {
+    pub fn parse_func_def(&mut self, func_def: &FunctionDefinition, con_node: Option<ContractNode>) -> FunctionNode {
+        println!("{:?}", func_def);
         let func = Function::from(func_def.clone());
-        let name = func.name.clone().expect("Struct was not named").name;
 
+        match func.ty {
+            FunctionTy::Constructor => {
+                let node = self.add_node(func);
+                let func_node = node.into();
+
+                func_def.params.iter().for_each(|(_loc, input)| {
+                    if let Some(input) = input {
+                        let param = FunctionParam::new(self, input.clone());
+                        let input_node = self.add_node(param);
+                        self.add_edge(input_node, node, Edge::FunctionParam);
+                    }
+                });
+
+
+                if let Some(con_node) = con_node {
+                    self.add_edge(node, con_node, Edge::Constructor);
+                }
+                func_node
+            }
+            FunctionTy::Fallback => {
+                let node = self.add_node(func);
+                let func_node = node.into();
+                func_def.params.iter().for_each(|(_loc, input)| {
+                    if let Some(input) = input {
+                        let param = FunctionParam::new(self, input.clone());
+                        let input_node = self.add_node(param);
+                        self.add_edge(input_node, node, Edge::FunctionParam);
+                    }
+                });
+                func_def.returns.iter().for_each(|(_loc, output)| {
+                    if let Some(output) = output {
+                        let ret = FunctionReturn::new(self, output.clone());
+                        let output_node = self.add_node(ret);
+                        self.add_edge(output_node, func_node, Edge::FunctionReturn);
+                    }
+                });
+
+                if let Some(con_node) = con_node {
+                    self.add_edge(node, con_node, Edge::FallbackFunc);
+                }
+
+                func_node
+            }
+            FunctionTy::Receive => {
+                // receive function cannot have input/output
+                let node = self.add_node(func);
+                if let Some(con_node) = con_node {
+                    self.add_edge(node, con_node, Edge::ReceiveFunc);
+                }
+                FunctionNode::from(node)
+            }
+            FunctionTy::Function => {
+                let fn_node = self.named_fn_internal(func, func_def);
+                if let Some(con_node) = con_node {
+                    self.add_edge(NodeIdx::from(fn_node), con_node, Edge::Func);
+                }
+                fn_node
+            }
+            FunctionTy::Modifier => {
+                let fn_node = self.named_fn_internal(func, func_def);
+                if let Some(con_node) = con_node {
+                    self.add_edge(NodeIdx::from(fn_node), con_node, Edge::Modifier);
+                }
+                fn_node
+            }
+        }
+
+        // we delay the function body parsing to the end after parsing all sources
+    }
+
+    fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
+        let name = func.name.as_ref().expect("Function was not named").name.clone();
         let func_node: FunctionNode =
             if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
                 let unresolved = self.node_mut(user_ty_node);
@@ -354,7 +488,7 @@ impl Analyzer {
                 user_ty_node.into()
             } else {
                 let node = self.add_node(func);
-                self.user_types.insert(name, node);
+                self.user_types.insert(name.to_string(), node);
                 node.into()
             };
 
@@ -372,8 +506,6 @@ impl Analyzer {
                 self.add_edge(output_node, func_node, Edge::FunctionReturn);
             }
         });
-
-        // we delay the function body parsing to the end after parsing all sources
 
         func_node
     }
@@ -415,7 +547,8 @@ contract Storage {
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
-        let entry = analyzer.parse(sol, 0).unwrap();
+        let (maybe_entry, sources) = analyzer.parse(sol);
+        let entry = maybe_entry.unwrap();
         let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
         println!("parse time: {:?}", t0.elapsed().as_nanos());
         println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
