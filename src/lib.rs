@@ -110,7 +110,7 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        println!("top level expr: {:?}", expr);
+        // println!("top level expr: {:?}", expr);
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone()) {
@@ -282,7 +282,7 @@ impl Analyzer {
     pub fn parse_import(&mut self, import: &Import) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(path, _) => {
-                println!("path: {:?}", path);
+                // println!("path: {:?}", path);
                 let sol = fs::read_to_string(path.string.clone()).expect("Could not find file for dependency");
                 self.file_no += 1;
                 let file_no = self.file_no;
@@ -291,7 +291,7 @@ impl Analyzer {
                 inner_sources
             }
             Import::Rename(path, elems, _) => {
-                println!("path: {:?}, elems: {:?}", path, elems);
+                // println!("path: {:?}, elems: {:?}", path, elems);
                 let sol = fs::read_to_string(path.string.clone()).expect("Could not find file for dependency");
                 self.file_no += 1;
                 let file_no = self.file_no;
@@ -406,7 +406,6 @@ impl Analyzer {
     }
 
     pub fn parse_func_def(&mut self, func_def: &FunctionDefinition, con_node: Option<ContractNode>) -> FunctionNode {
-        println!("{:?}", func_def);
         let func = Function::from(func_def.clone());
 
         match func.ty {

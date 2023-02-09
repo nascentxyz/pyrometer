@@ -459,17 +459,21 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             }
         };
 
-        if let Some(mut curr_range) = curr.range(self) {
+        if let Some(curr_range) = curr.range(self) {
+            let mut cr_min = curr_range.range_min().eval(self);
+            let mut cr_max = curr_range.range_max().eval(self);
             while let Some(next) = curr.next_version(self) {
                 if let Some(next_range) = next.range(self) {
-                    if next_range != curr_range {
+                    let nr_min = next_range.range_min().eval(self);
+                    let nr_max = next_range.range_max().eval(self);
+                    if nr_min != cr_min || nr_max != cr_max {
+                        cr_min = nr_min;
+                        cr_max = nr_max;
                         ba.bound_changes.push((
                             LocStrSpan::new(file_mapping, next.loc(self)),
                             next_range.clone(),
                         ));
                     }
-
-                    curr_range = next_range;
                 }
 
                 if next == cvar {

@@ -1,3 +1,4 @@
+use crate::FunctionNode;
 use crate::AsDotStr;
 use crate::analyzer::Search;
 use crate::analyzer::{GraphLike, AnalyzerLike};
@@ -44,6 +45,13 @@ impl ContractNode {
 
     pub fn loc(&self, analyzer: &'_ impl GraphLike) -> Loc {
         self.underlying(analyzer).loc
+    }
+
+    pub fn funcs(&self, analyzer: &'_ (impl GraphLike + Search)) -> Vec<FunctionNode> {
+        analyzer.search_children(self.0.into(), &Edge::Func)
+        .into_iter()
+        .map(FunctionNode::from)
+        .collect()
     }
 }
 

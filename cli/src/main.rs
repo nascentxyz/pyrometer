@@ -1,3 +1,4 @@
+use pyrometer::context::access_query::AccessStorageWriteQuery;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 use pyrometer::context::*;
@@ -25,6 +26,8 @@ struct Args {
     pub dot: bool,
     #[clap(long, short)]
     pub eval: Option<bool>,
+    #[clap(long, short)]
+    pub access_query: Vec<String>,
 }
 
 fn main() {
@@ -110,15 +113,15 @@ fn main() {
         }
     }
 
-    // if let Some(write) = analyzer.func_query(
-    //     entry,
-    //     &file_mapping,
-    //     config,
-    //     "Storage".to_string(),
-    //     "b5".to_string(),
-    //     "c".to_string(),
-    //     SolcRange::from(Concrete::Uint(256, 16.into())).unwrap(),
-    // ) {
-    //     write.print_reports((path_str.clone(), &sol), &analyzer);
-    // }
+    args.access_query.iter().for_each(|query| {
+        let split: Vec<&str> = query.split('.').collect();
+        analyzer.access_query(
+            entry,
+            &file_mapping,
+            config,
+            split[0].to_string(),
+            split[1].to_string(),
+        );
+    });
+    
 }

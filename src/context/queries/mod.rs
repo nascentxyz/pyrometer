@@ -1,6 +1,6 @@
 use ariadne::Cache;
 use crate::analyzers::*;
-use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
+use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Span};
 use shared::analyzer::*;
 use shared::nodes::ContractNode;
 use shared::nodes::FunctionNode;
@@ -11,6 +11,8 @@ use shared::range::RangeEval;
 use shared::range::SolcRange;
 use shared::NodeIdx;
 use std::collections::BTreeMap;
+
+pub mod access_query;
 
 #[derive(Debug, Clone)]
 pub struct StorageRangeReport {

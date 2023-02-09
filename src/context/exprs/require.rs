@@ -261,11 +261,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             lhs_range.update_deps(ctx, self);
             let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
 
-            let (rhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
+            // let (_rhs_range_fn, _range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
             if let Some(mut rhs_range) = new_rhs.range(self) {
                 rhs_range.update_deps(ctx, self);
-                let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, range_sides, loc);
-
                 if lhs_cvar.is_const(self) && !rhs_cvar.is_const(self){
                     new_rhs.set_range_min(self, lhs_cvar.range(self).unwrap().range_min());
                     new_rhs.set_range_max(self, lhs_cvar.range(self).unwrap().range_max());
