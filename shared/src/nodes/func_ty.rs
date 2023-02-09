@@ -143,7 +143,7 @@ impl AsDotStr for FunctionParamNode {
                 "".to_string()
             },
             if let Some(name) = self.maybe_name(analyzer) {
-                name.to_string()
+                name
             } else {
                 "".to_string()
             }

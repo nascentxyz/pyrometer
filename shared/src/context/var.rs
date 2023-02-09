@@ -12,7 +12,7 @@ use crate::Concrete;
 use crate::range::elem_ty::Elem;
 use crate::range::SolcRange;
 use crate::{
-    analyzer::{AnalyzerLike, Search},
+    analyzer::{Search},
     context::ContextNode,
     range::elem::RangeOp,
     nodes::ConcreteNode, ContextEdge, Edge, Field, FunctionParam, FunctionReturn, Node,

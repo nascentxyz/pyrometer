@@ -1,6 +1,5 @@
 use shared::context::*;
 
-
 use shared::range::elem_ty::Dynamic;
 
 use shared::range::Range;
@@ -279,8 +278,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                             }
                         } else {
                             forks.into_iter().for_each(|parent| {
-                                let paths =
-                                    self.parse_ctx_expr(ret_expr, parent);
+                                let paths = self.parse_ctx_expr(ret_expr, parent);
                                 match paths {
                                     ExprRet::CtxKilled => {}
                                     ExprRet::Single((ctx, expr)) => {
@@ -344,13 +342,9 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::Single((rhs_ctx, rhs)))) => {
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let mut ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                if let VarType::Array(_, ref mut range) = ty { *range = Some(
-                    self.tmp_length(
-                        ContextVarNode::from(*rhs),
-                        *rhs_ctx,
-                        loc
-                    )
-                ) }
+                if let VarType::Array(_, ref mut range) = ty {
+                    *range = Some(self.tmp_length(ContextVarNode::from(*rhs), *rhs_ctx, loc))
+                }
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
@@ -540,9 +534,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
             BitwiseAnd(loc, lhs_expr, rhs_expr) => {
                 self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, false)
             }
-            Parenthesis(_loc, expr) => {
-                self.parse_ctx_expr(expr, ctx)
-            }
+            Parenthesis(_loc, expr) => self.parse_ctx_expr(expr, ctx),
             // assign
             Assign(loc, lhs_expr, rhs_expr) => self.assign_exprs(*loc, lhs_expr, rhs_expr, ctx),
             List(loc, params) => self.list(ctx, *loc, params),
@@ -625,15 +617,13 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     }
                     Node::DynBuiltin(DynBuiltin::Array(_)) => {
                         // create a new list
-                        let (ctx, len_cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                        let (ctx, len_cvar) =
+                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
                         let ty = VarType::try_from_idx(self, func_idx);
 
                         let new_arr = ContextVar {
                             loc: Some(*loc),
-                            name: format!(
-                                "tmp_arr{}",
-                                ctx.new_tmp(self)
-                            ),
+                            name: format!("tmp_arr{}", ctx.new_tmp(self)),
                             display_name: "arr".to_string(),
                             storage: None,
                             is_tmp: true,
@@ -646,10 +636,8 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
                         let len_var = ContextVar {
                             loc: Some(*loc),
-                            name: arr.name(self)
-                                + ".length",
-                            display_name: arr.display_name(self)
-                                + ".length",
+                            name: arr.name(self) + ".length",
+                            display_name: arr.display_name(self) + ".length",
                             storage: None,
                             is_tmp: true,
                             tmp_of: None,
@@ -665,7 +653,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         // update the length
                         match arr.underlying_mut(self).ty {
                             VarType::Array(_, ref mut r) => *r = Some(len_cvar.into()),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         }
 
                         return ExprRet::Single((ctx, arr.into()));
@@ -793,9 +781,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                         node.try_set_range_min(self, new_min);
                         node.try_set_range_max(self, new_max);
                     }
-                    (Some(_r), None) => {
-
-                    }
+                    (Some(_r), None) => {}
                     (l, r) => todo!("{:?} {:?}", l, r),
                 }
                 self.add_edge(node, subctx, Edge::Context(ContextEdge::Variable));

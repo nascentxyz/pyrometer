@@ -6,7 +6,7 @@ use crate::range::elem::RangeOp;
 use crate::context::ContextVarNode;
 use crate::Concrete;
 use crate::range::Elem;
-use crate::analyzer::AnalyzerLike;
+
 use solang_parser::pt::Loc;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -59,10 +59,7 @@ impl ToRangeString for Elem<Concrete> {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Dynamic(Dynamic { idx, side: _, loc }) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = format!(
-                    "{}",
-                    as_var.display_name(analyzer),
-                );
+                let name = as_var.display_name(analyzer).to_string();
                 RangeElemString::new(name, *loc)
             }
             Elem::Expr(expr) => expr.to_range_string(analyzer),

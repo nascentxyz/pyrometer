@@ -29,9 +29,9 @@ impl AsDotStr for ErrorNode {
     }
 }
 
-impl Into<NodeIdx> for ErrorNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<ErrorNode> for NodeIdx {
+    fn from(val: ErrorNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -47,9 +47,9 @@ pub struct Error {
     pub name: Option<Identifier>,
 }
 
-impl Into<Node> for Error {
-    fn into(self) -> Node {
-        Node::Error(self)
+impl From<Error> for Node {
+    fn from(val: Error) -> Self {
+        Node::Error(val)
     }
 }
 
@@ -71,9 +71,9 @@ impl From<NodeIdx> for ErrorParamNode {
     }
 }
 
-impl Into<NodeIdx> for ErrorParamNode {
-    fn into(self) -> NodeIdx {
-        self.0.into()
+impl From<ErrorParamNode> for NodeIdx {
+    fn from(val: ErrorParamNode) -> Self {
+        val.0.into()
     }
 }
 
@@ -84,9 +84,9 @@ pub struct ErrorParam {
     pub name: Option<Identifier>,
 }
 
-impl Into<Node> for ErrorParam {
-    fn into(self) -> Node {
-        Node::ErrorParam(self)
+impl From<ErrorParam> for Node {
+    fn from(val: ErrorParam) -> Self {
+        Node::ErrorParam(val)
     }
 }
 

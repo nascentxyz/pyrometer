@@ -97,7 +97,8 @@ pub trait Cmp: AnalyzerLike + Sized {
                     ),
                     storage: None,
                     is_tmp: true,
-                    is_symbolic: ContextVarNode::from(*lhs).is_symbolic(self) || ContextVarNode::from(*rhs).is_symbolic(self),
+                    is_symbolic: ContextVarNode::from(*lhs).is_symbolic(self)
+                        || ContextVarNode::from(*rhs).is_symbolic(self),
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
@@ -309,10 +310,10 @@ pub trait Cmp: AnalyzerLike + Sized {
                         let rhs_min = rhs_range.range_min().eval(self);
                         let rhs_max = rhs_range.range_max().eval(self);
                         if let (
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                            ) = (
+                            Some(Ordering::Equal),
+                            Some(Ordering::Equal),
+                            Some(Ordering::Equal),
+                        ) = (
                             // check lhs_min == lhs_max, ensures lhs is const
                             lhs_min.range_ord(&lhs_max),
                             // check lhs_min == rhs_min, checks if lhs == rhs
@@ -331,10 +332,10 @@ pub trait Cmp: AnalyzerLike + Sized {
                         let rhs_min = rhs_range.range_min().eval(self);
                         let rhs_max = rhs_range.range_max().eval(self);
                         if let (
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                                Some(Ordering::Equal),
-                            ) = (
+                            Some(Ordering::Equal),
+                            Some(Ordering::Equal),
+                            Some(Ordering::Equal),
+                        ) = (
                             // check lhs_min == lhs_max, ensures lhs is const
                             lhs_min.range_ord(&lhs_max),
                             // check lhs_min == rhs_min, checks if lhs == rhs

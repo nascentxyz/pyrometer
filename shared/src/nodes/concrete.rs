@@ -1,5 +1,5 @@
 use crate::Builtin;
-use crate::{Node, NodeIdx, analyzer::{GraphLike, AnalyzerLike}};
+use crate::{Node, NodeIdx, analyzer::{GraphLike}};
 use ethers_core::types::{U256, I256, H256, Address};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

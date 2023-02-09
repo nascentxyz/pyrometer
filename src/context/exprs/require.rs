@@ -5,7 +5,6 @@ use shared::range::elem::RangeElem;
 use shared::range::elem::RangeOp;
 use shared::range::elem_ty::Elem;
 use shared::range::elem_ty::RangeConcrete;
-use shared::range::range_string::ToRangeString;
 use shared::range::Range;
 use shared::range::RangeEval;
 use shared::range::SolcRange;
@@ -245,7 +244,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
-        rhs_op: RangeOp,
+        _rhs_op: RangeOp,
         recursion_ops: (RangeOp, RangeOp),
     ) {
         let mut any_unsat = false;
@@ -264,7 +263,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             // let (_rhs_range_fn, _range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
             if let Some(mut rhs_range) = new_rhs.range(self) {
                 rhs_range.update_deps(ctx, self);
-                if lhs_cvar.is_const(self) && !rhs_cvar.is_const(self){
+                if lhs_cvar.is_const(self) && !rhs_cvar.is_const(self) {
                     new_rhs.set_range_min(self, lhs_cvar.range(self).unwrap().range_min());
                     new_rhs.set_range_max(self, lhs_cvar.range(self).unwrap().range_max());
                 } else if rhs_cvar.is_const(self) {
@@ -315,20 +314,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 return;
             }
 
-
             ctx.add_ctx_dep(tmp_var, self);
         }
 
         if let Some(tmp) = lhs_cvar.tmp_of(self) {
             if tmp.op.inverse().is_some() {
-                self.range_recursion(
-                    tmp,
-                    recursion_ops,
-                    rhs_cvar,
-                    ctx,
-                    loc,
-                    &mut any_unsat,
-                )
+                self.range_recursion(tmp, recursion_ops, rhs_cvar, ctx, loc, &mut any_unsat)
             } else {
                 self.uninvertable_range_recursion(tmp, lhs_cvar, rhs_cvar, loc, ctx);
                 // println!("did not recurse as it was not reversable: {:?}", tmp);
@@ -403,8 +394,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             if let Some(lhs_range) = new_underlying_lhs.underlying(self).ty.range(self) {
                 if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                     let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(no_flip_op);
-                    let new_lhs_range =
-                        lhs_range_fn(lhs_range, adjusted_gt_rhs, range_sides, loc);
+                    let new_lhs_range = lhs_range_fn(lhs_range, adjusted_gt_rhs, range_sides, loc);
 
                     new_underlying_lhs.set_range_min(self, new_lhs_range.range_min());
                     new_underlying_lhs.set_range_max(self, new_lhs_range.range_max());

@@ -6,7 +6,6 @@ use shared::range::Range;
 use shared::range::SolcRange;
 use shared::{analyzer::AnalyzerLike, Edge, Node};
 
-
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BinOp for T where T: AnalyzerLike + Sized {}

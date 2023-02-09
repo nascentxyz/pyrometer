@@ -43,10 +43,7 @@ pub trait Variable: AnalyzerLike + Sized {
                 if var.storage.is_some() {
                     if let Elem::Concrete(c) = r.range_max() {
                         if let Some(size) = c.val.int_size() {
-                            var.set_range_max(
-                                Elem::from(Concrete::Uint(size, 0.into())),
-                                None,
-                            )
+                            var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
                         }
                     }
                 }

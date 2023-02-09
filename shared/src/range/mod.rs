@@ -530,7 +530,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     #[test]
     fn it_works() {

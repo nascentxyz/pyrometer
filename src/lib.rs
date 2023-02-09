@@ -1,16 +1,15 @@
-use ethers_core::types::Address;
-use solang_parser::pt::Import;
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
+use solang_parser::pt::Import;
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
-    FunctionDefinition, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
-    VariableDefinition, FunctionTy
+    FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
+    VariableDefinition,
 };
-use std::{fs, collections::HashMap};
+use std::{collections::HashMap, fs};
 
 use petgraph::{graph::*, Directed};
 
@@ -50,7 +49,7 @@ impl Default for Analyzer {
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
-        let mut msg = Msg::default();
+        let msg = Msg::default();
         // msg.sender = Some(Address::random());
         let block = Block::default();
         let msg = a.graph.add_node(Node::Msg(msg)).into();
@@ -183,7 +182,13 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
-    pub fn parse(&mut self, src: &str) -> (Option<NodeIdx>, Vec<(Option<NodeIdx>, String, String, usize)>) {
+    pub fn parse(
+        &mut self,
+        src: &str,
+    ) -> (
+        Option<NodeIdx>,
+        Vec<(Option<NodeIdx>, String, String, usize)>,
+    ) {
         let file_no = self.file_no;
         let mut imported = vec![];
         match solang_parser::parse(src, file_no) {
@@ -209,15 +214,19 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
     ) -> Vec<FunctionNode> {
-        
         let mut all_funcs = vec![];
         source_unit
             .0
             .iter()
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
-                let (_sup, funcs) =
-                    self.parse_source_unit_part(source_unit_part, file_no, unit_part, parent, imported);
+                let (_sup, funcs) = self.parse_source_unit_part(
+                    source_unit_part,
+                    file_no,
+                    unit_part,
+                    parent,
+                    imported,
+                );
                 all_funcs.extend(funcs);
             });
         all_funcs
@@ -279,27 +288,32 @@ impl Analyzer {
         (sup_node, func_nodes)
     }
 
-    pub fn parse_import(&mut self, import: &Import) -> Vec<(Option<NodeIdx>, String, String, usize)> {
+    pub fn parse_import(
+        &mut self,
+        import: &Import,
+    ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(path, _) => {
                 // println!("path: {:?}", path);
-                let sol = fs::read_to_string(path.string.clone()).expect("Could not find file for dependency");
+                let sol = fs::read_to_string(path.string.clone())
+                    .expect("Could not find file for dependency");
                 self.file_no += 1;
                 let file_no = self.file_no;
                 let (maybe_entry, mut inner_sources) = self.parse(&sol);
                 inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
                 inner_sources
             }
-            Import::Rename(path, elems, _) => {
+            Import::Rename(path, _elems, _) => {
                 // println!("path: {:?}, elems: {:?}", path, elems);
-                let sol = fs::read_to_string(path.string.clone()).expect("Could not find file for dependency");
+                let sol = fs::read_to_string(path.string.clone())
+                    .expect("Could not find file for dependency");
                 self.file_no += 1;
                 let file_no = self.file_no;
                 let (maybe_entry, mut inner_sources) = self.parse(&sol);
                 inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
                 inner_sources
             }
-            e => todo!("import {:?}", e)
+            e => todo!("import {:?}", e),
         }
     }
 
@@ -405,7 +419,11 @@ impl Analyzer {
         err_node
     }
 
-    pub fn parse_func_def(&mut self, func_def: &FunctionDefinition, con_node: Option<ContractNode>) -> FunctionNode {
+    pub fn parse_func_def(
+        &mut self,
+        func_def: &FunctionDefinition,
+        con_node: Option<ContractNode>,
+    ) -> FunctionNode {
         let func = Function::from(func_def.clone());
 
         match func.ty {
@@ -420,7 +438,6 @@ impl Analyzer {
                         self.add_edge(input_node, node, Edge::FunctionParam);
                     }
                 });
-
 
                 if let Some(con_node) = con_node {
                     self.add_edge(node, con_node, Edge::Constructor);
@@ -479,7 +496,12 @@ impl Analyzer {
     }
 
     fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
-        let name = func.name.as_ref().expect("Function was not named").name.clone();
+        let name = func
+            .name
+            .as_ref()
+            .expect("Function was not named")
+            .name
+            .clone();
         let func_node: FunctionNode =
             if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
                 let unresolved = self.node_mut(user_ty_node);
@@ -546,7 +568,7 @@ contract Storage {
 }"###;
         let mut analyzer = Analyzer::default();
         let t0 = std::time::Instant::now();
-        let (maybe_entry, sources) = analyzer.parse(sol);
+        let (maybe_entry, _sources) = analyzer.parse(sol);
         let entry = maybe_entry.unwrap();
         let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
         println!("parse time: {:?}", t0.elapsed().as_nanos());

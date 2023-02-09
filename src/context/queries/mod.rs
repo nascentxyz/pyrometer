@@ -1,5 +1,5 @@
-use ariadne::Cache;
 use crate::analyzers::*;
+use ariadne::Cache;
 use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Span};
 use shared::analyzer::*;
 use shared::nodes::ContractNode;
@@ -137,14 +137,22 @@ impl ReportDisplay for StorageRangeReport {
         reports
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut src).unwrap();
         }
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn eprint_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();

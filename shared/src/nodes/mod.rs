@@ -1,7 +1,6 @@
 use crate::GraphLike;
 use crate::analyzer::AsDotStr;
 use crate::context::ContextVarNode;
-use crate::range::elem_ty::RangeConcrete;
 use crate::range::elem_ty::Elem;
 use crate::range::elem::RangeElem;
 use crate::range::SolcRange;
@@ -9,10 +8,7 @@ use crate::range::Range;
 use crate::analyzer::AnalyzerLike;
 use crate::Node;
 use crate::NodeIdx;
-
-use solang_parser::pt::Loc;
 use solang_parser::pt::Type;
-use ethers_core::types::U256;
 
 mod contract_ty;
 pub use contract_ty::*;

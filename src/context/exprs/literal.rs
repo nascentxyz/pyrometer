@@ -36,12 +36,7 @@ pub trait Literal: AnalyzerLike + Sized {
         ExprRet::Single((ctx, node))
     }
 
-    fn hex_num_literal(
-        &mut self,
-        ctx: ContextNode,
-        loc: Loc,
-        integer: &str,
-    ) -> ExprRet {
+    fn hex_num_literal(&mut self, ctx: ContextNode, loc: Loc, integer: &str) -> ExprRet {
         let val = U256::from_str_radix(integer, 16).unwrap();
 
         let concrete_node =

@@ -1,8 +1,8 @@
-use crate::context::exprs::require::Require;
 use crate::context::exprs::member_access::MemberAccess;
-use petgraph::{Direction, visit::EdgeRef};
+use crate::context::exprs::require::Require;
 use crate::ExprRet;
 use crate::{ContextBuilder, DynBuiltin, Edge, Node, VarType};
+use petgraph::{visit::EdgeRef, Direction};
 use shared::analyzer::AnalyzerLike;
 use shared::context::*;
 use shared::range::elem::RangeOp;
@@ -61,30 +61,32 @@ pub trait Array: AnalyzerLike + Sized {
                     &ExprRet::Single((ctx, len_var.into())),
                     RangeOp::Lt,
                     RangeOp::Gt,
-                    (RangeOp::Gte, RangeOp::Lte)
+                    (RangeOp::Gte, RangeOp::Lte),
                 );
                 if let Some(idx_var) = self
-                        .graph()
-                        .edges_directed(parent.into(), Direction::Incoming)
-                        .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
-                        .map(|edge| ContextVarNode::from(edge.source()))
-                        .filter(|cvar| cvar.name(self) == format!("{}[{}]", parent.name(self), index.name(self)))
-                        .take(1)
-                        .next() {
-
+                    .graph()
+                    .edges_directed(parent.into(), Direction::Incoming)
+                    .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
+                    .map(|edge| ContextVarNode::from(edge.source()))
+                    .filter(|cvar| {
+                        cvar.name(self) == format!("{}[{}]", parent.name(self), index.name(self))
+                    })
+                    .take(1)
+                    .next()
+                {
                     let idx_var = idx_var.latest_version(self);
-                    let new_idx = self.advance_var_in_ctx(
-                        idx_var,
-                        loc,
-                        ctx
-                    );
+                    let new_idx = self.advance_var_in_ctx(idx_var, loc, ctx);
 
                     ExprRet::Single((ctx, new_idx.into()))
                 } else {
                     let index_var = ContextVar {
                         loc: Some(loc),
                         name: format!("{}[{}]", parent.name(self), index.name(self)),
-                        display_name: format!("{}[{}]", parent.display_name(self), index.display_name(self)),
+                        display_name: format!(
+                            "{}[{}]",
+                            parent.display_name(self),
+                            index.display_name(self)
+                        ),
                         storage: parent.storage(self).clone(),
                         is_tmp: false,
                         tmp_of: None,

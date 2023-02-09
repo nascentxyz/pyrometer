@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use crate::context::ContextVarNode;
 use crate::range::elem_ty::RangeExpr;
 use crate::range::elem_ty::Elem;
-use crate::analyzer::AnalyzerLike;
+
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum RangeOp {

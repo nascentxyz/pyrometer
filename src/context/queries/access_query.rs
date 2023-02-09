@@ -1,15 +1,14 @@
-use shared::context::ContextNode;
-use ariadne::Cache;
 use crate::analyzers::*;
-use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
+use ariadne::Cache;
+use ariadne::{Color, Label, Report, ReportKind};
 use shared::analyzer::*;
+use shared::context::ContextNode;
 use shared::nodes::ContractNode;
-use shared::nodes::FunctionNode;
+
 use shared::range::elem::RangeElem;
 use shared::range::range_string::ToRangeString;
 use shared::range::Range;
-use shared::range::RangeEval;
-use shared::range::SolcRange;
+
 use shared::NodeIdx;
 use std::collections::BTreeMap;
 
@@ -23,28 +22,30 @@ impl ReportDisplay for AccessStorageWriteReport {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Storage Write Query", Color::Green)
     }
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+    fn msg(&self, _analyzer: &(impl AnalyzerLike + Search)) -> String {
         "".to_string()
-        
     }
 
     fn labels(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
         vec![]
-        
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
-            report.print(&mut src).unwrap();
+            report.print(&mut *src).unwrap();
         }
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn eprint_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -99,18 +100,15 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                 if analysis.bound_changes.len() < 2 {
                     if let Some(init) = analysis.var_def.1 {
                         if init.range_min().eval(self)
-                            == analysis.bound_changes[0].1
-                                .range_min()
-                                .eval(self)
-                        && init.range_max().eval(self)
-                            == analysis.bound_changes[0].1
-                                .range_max()
-                                .eval(self) {
+                            == analysis.bound_changes[0].1.range_min().eval(self)
+                            && init.range_max().eval(self)
+                                == analysis.bound_changes[0].1.range_max().eval(self)
+                        {
                             continue;
                         }
-                    }    
+                    }
                 }
-                
+
                 write_ctxs.push(analysis.ctx);
             }
         }
@@ -136,10 +134,7 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                                 .to_range_string(self)
                                 .s
                         } else {
-                            cvar.range(self)?
-                                .range_min()
-                                .to_range_string(self)
-                                .s
+                            cvar.range(self)?.range_min().to_range_string(self).s
                         };
 
                         let max = if report_config.eval_bounds {
@@ -155,17 +150,10 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                                 .to_range_string(self)
                                 .s
                         } else {
-                            cvar.range(self)?
-                                .range_max()
-                                .to_range_string(self)
-                                .s
+                            cvar.range(self)?.range_max().to_range_string(self).s
                         };
                         if min == max {
-                            Some(format!(
-                                "\"{}\" == {}",
-                                cvar.display_name(self),
-                                min,
-                            ))
+                            Some(format!("\"{}\" == {}", cvar.display_name(self), min,))
                         } else {
                             Some(format!(
                                 "\"{}\" ∈ [ {}, {} ]",
@@ -179,12 +167,20 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                     .join(" ∧ ");
 
                 if bounds_string.is_empty() {
-                    println!("Unrestricted write access of storage var \"{}\" via: function \"{}\"", storage_var_name, ctx.associated_fn_name(self));
+                    println!(
+                        "Unrestricted write access of storage var \"{}\" via: function \"{}\"",
+                        storage_var_name,
+                        ctx.associated_fn_name(self)
+                    );
                 } else {
-                    println!("Write access of storage var \"{}\" via: function \"{}\" if {}", storage_var_name, ctx.associated_fn_name(self), bounds_string);
+                    println!(
+                        "Write access of storage var \"{}\" via: function \"{}\" if {}",
+                        storage_var_name,
+                        ctx.associated_fn_name(self),
+                        bounds_string
+                    );
                 }
             });
         }
-        
     }
 }

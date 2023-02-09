@@ -1,6 +1,6 @@
-use ariadne::Cache;
 use crate::LocStrSpan;
 use crate::{ReportConfig, ReportDisplay};
+use ariadne::Cache;
 use shared::range::elem::RangeElem;
 use shared::range::range_string::*;
 use shared::range::Range;
@@ -10,9 +10,9 @@ use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
 };
-use solang_parser::pt::{StorageLocation, CodeLocation};
+use solang_parser::pt::{CodeLocation, StorageLocation};
 
-use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
+use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Span};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -179,7 +179,7 @@ impl ReportDisplay for BoundAnalysis {
                             Some(StorageLocation::Memory(..)) => "Memory var ",
                             Some(StorageLocation::Storage(..)) => "Storage var ",
                             Some(StorageLocation::Calldata(..)) => "Calldata var ",
-                            None => ""
+                            None => "",
                         },
                         self.var_display_name,
                         r_str,
@@ -247,7 +247,7 @@ impl ReportDisplay for BoundAnalysis {
                                 Some(StorageLocation::Memory(..)) => "Memory var ",
                                 Some(StorageLocation::Storage(..)) => "Storage var ",
                                 Some(StorageLocation::Calldata(..)) => "Calldata var ",
-                                None => ""
+                                None => "",
                             },
                             self.var_display_name,
                             if min == max {
@@ -267,7 +267,7 @@ impl ReportDisplay for BoundAnalysis {
                         Some(StorageLocation::Memory(..)) => label.with_color(Color::Blue),
                         Some(StorageLocation::Storage(..)) => label.with_color(Color::Green),
                         Some(StorageLocation::Calldata(..)) => label.with_color(Color::White),
-                        None => label.with_color(Color::Cyan)
+                        None => label.with_color(Color::Cyan),
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -306,14 +306,22 @@ impl ReportDisplay for BoundAnalysis {
         reports
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
             report.print(&mut src).unwrap();
         });
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn eprint_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -583,11 +591,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     .s
                             };
                             if min == max {
-                                Some(format!(
-                                    "\"{}\" == {}",
-                                    cvar.display_name(analyzer),
-                                    min,
-                                ))
+                                Some(format!("\"{}\" == {}", cvar.display_name(analyzer), min,))
                             } else {
                                 Some(format!(
                                     "\"{}\" ∈ [ {}, {} ]",
@@ -760,14 +764,22 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
         reports
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut src).unwrap();
         }
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn eprint_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -803,11 +815,12 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                         .filter_map(|var| {
                             let name = var.name(self);
                             let is_ret = var.is_return_node_in_any(&parents, self);
-                            if is_ret
-                            | report_config.show_tmps && report_config.show_consts
-                            | report_config.show_tmps && !var.is_const(self) 
-                            | report_config.show_consts && !var.is_tmp(self)
-                            | !var.is_tmp(self) && !var.is_const(self) {
+                            if is_ret | report_config.show_tmps
+                                && report_config.show_consts | report_config.show_tmps
+                                && !var.is_const(self) | report_config.show_consts
+                                && !var.is_tmp(self) | !var.is_tmp(self)
+                                && !var.is_const(self)
+                            {
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,
                                     parents.clone(),
@@ -827,7 +840,9 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             file_mapping,
             ctx_loc: LocStrSpan::new(file_mapping, ctx.underlying(self).loc),
             ctx,
-            ctx_killed: ctx.killed_loc(self).map(|loc| LocStrSpan::new(file_mapping, loc)),
+            ctx_killed: ctx
+                .killed_loc(self)
+                .map(|loc| LocStrSpan::new(file_mapping, loc)),
             vars_by_ctx: analyses,
             report_config,
         }

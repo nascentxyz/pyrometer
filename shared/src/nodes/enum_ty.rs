@@ -1,5 +1,5 @@
 use crate::AsDotStr;
-use crate::analyzer::{GraphLike, AnalyzerLike};
+use crate::analyzer::{GraphLike};
 use crate::Node;
 use crate::NodeIdx;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
@@ -16,7 +16,7 @@ impl AsDotStr for EnumNode {
             } else {
                 "".to_string()
             },
-            "...".to_string()
+            "..."
         )
     }
 }
