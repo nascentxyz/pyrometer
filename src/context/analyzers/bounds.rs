@@ -168,9 +168,9 @@ impl ReportDisplay for BoundAnalysis {
                     init_range.range_max().to_range_string(analyzer).s
                 };
                 let r_str = if min == max {
-                    format!(" == {}", min)
+                    format!(" == {min}")
                 } else {
-                    format!(" ∈ [ {}, {} ]", min, max)
+                    format!(" ∈ [ {min}, {max} ]")
                 };
                 vec![Label::new(self.var_def.0.clone())
                     .with_message(format!(
@@ -251,9 +251,9 @@ impl ReportDisplay for BoundAnalysis {
                             },
                             self.var_display_name,
                             if min == max {
-                                format!(" == {}", min)
+                                format!(" == {min}")
                             } else {
-                                format!(" ∈ [ {}, {} ]", min, max)
+                                format!(" ∈ [ {min}, {max} ]")
                             },
                             if bound_change.1.unsat(analyzer) {
                                 "- unsatisfiable range, unreachable".fg(Color::Red)

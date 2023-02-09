@@ -249,7 +249,7 @@ impl Analyzer {
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs) = self.parse_contract_def(def, &imported);
+                let (node, funcs) = self.parse_contract_def(def, imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
             }

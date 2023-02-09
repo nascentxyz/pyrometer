@@ -247,7 +247,7 @@ pub trait MemberAccess: AnalyzerLike + Sized {
                                 return ExprRet::Single((ctx, cvar));
                             }
                         }
-                        e => panic!("unknown msg attribute: {:?}", e),
+                        e => panic!("unknown msg attribute: {e:?}"),
                     };
 
                     let mut var = ContextVar::new_from_concrete(loc, node, self);

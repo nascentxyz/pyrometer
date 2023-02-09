@@ -114,7 +114,7 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
         }
 
         if write_ctxs.is_empty() {
-            println!("No write access for storage var \"{}\"", storage_var_name);
+            println!("No write access for storage var \"{storage_var_name}\"");
         } else {
             write_ctxs.iter().for_each(|ctx| {
                 let bounds_string = ctx
