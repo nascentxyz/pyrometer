@@ -1,7 +1,5 @@
-pub mod array;
-pub use array::*;
 pub mod bounds;
-pub use bounds::*;
+use bounds::*;
 
 use crate::AnalyzerLike;
 use ariadne::{Cache, Label, Report, ReportKind, Span};
@@ -10,11 +8,11 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 pub trait ContextAnalyzer:
-    AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer + ArrayAccessAnalyzer
+    AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 impl<T> ContextAnalyzer for T where
-    T: AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer + ArrayAccessAnalyzer
+    T: AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 

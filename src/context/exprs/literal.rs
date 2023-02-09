@@ -1,12 +1,12 @@
 use crate::ExprRet;
-use ethers_core::types::{Address, U256};
-use shared::context::*;
-use shared::Edge;
 use shared::{
     analyzer::AnalyzerLike,
+    context::*,
     nodes::{Concrete, ConcreteNode},
-    Node,
+    Edge, Node,
 };
+
+use ethers_core::types::{Address, U256};
 use solang_parser::pt::Loc;
 use std::str::FromStr;
 

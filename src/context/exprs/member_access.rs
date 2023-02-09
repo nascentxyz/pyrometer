@@ -1,13 +1,13 @@
-use crate::context::exprs::variable::Variable;
-use crate::NodeIdx;
-use crate::{ContextBuilder, ExprRet};
-use petgraph::{visit::EdgeRef, Direction};
-use shared::analyzer::AnalyzerLike;
-use shared::context::*;
-use shared::nodes::*;
-use shared::range::SolcRange;
-use shared::{Edge, Node};
+use crate::{context::exprs::variable::Variable, ContextBuilder, ExprRet, NodeIdx};
+use shared::{
+    analyzer::AnalyzerLike,
+    context::*,
+    nodes::*,
+    range::SolcRange,
+    {Edge, Node},
+};
 
+use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike + Sized {}

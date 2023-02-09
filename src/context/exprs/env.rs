@@ -1,6 +1,5 @@
-use crate::context::ContextNode;
-use crate::AnalyzerLike;
-use crate::ExprRet;
+use crate::{context::ContextNode, AnalyzerLike, ExprRet};
+
 use solang_parser::pt::Identifier;
 
 impl<T> Env for T where T: AnalyzerLike + Sized {}

@@ -1,12 +1,14 @@
-use crate::context::exprs::env::Env;
-use crate::context::ContextBuilder;
-use crate::Concrete;
-use crate::ExprRet;
-use shared::analyzer::AnalyzerLike;
-use shared::context::*;
-use shared::range::elem_ty::Elem;
-use shared::range::Range;
-use shared::{Edge, Node};
+use crate::{
+    context::{exprs::env::Env, ContextBuilder},
+    Concrete, ExprRet,
+};
+use shared::{
+    analyzer::AnalyzerLike,
+    context::*,
+    range::{elem_ty::Elem, Range},
+    Edge, Node,
+};
+
 use solang_parser::pt::Identifier;
 
 impl<T> Variable for T where T: AnalyzerLike + Sized {}

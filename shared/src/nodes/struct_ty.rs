@@ -29,9 +29,9 @@ impl StructNode {
     }
 
     pub fn name(&self, analyzer: &impl GraphLike) -> String {
-        Struct::maybe_from_node(analyzer.node(*self).clone())
-            .expect("Node wasnt struct")
+        self.underlying(analyzer)
             .name
+            .as_ref()
             .expect("Struct wasn't named")
             .to_string()
     }
@@ -117,6 +117,14 @@ impl FieldNode {
                 e
             ),
         }
+    }
+
+    pub fn name(&self, analyzer: &impl GraphLike) -> String {
+        self.underlying(analyzer)
+            .name
+            .as_ref()
+            .expect("Struct wasn't named")
+            .to_string()
     }
 }
 

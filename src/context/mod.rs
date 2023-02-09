@@ -19,9 +19,7 @@ pub mod exprs;
 use exprs::*;
 
 pub mod analyzers;
-pub use analyzers::*;
 pub mod queries;
-pub use queries::*;
 
 #[derive(Debug, Clone)]
 pub enum ExprRet {

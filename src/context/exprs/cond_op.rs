@@ -1,11 +1,7 @@
-use crate::ExprRet;
-use shared::context::*;
-use shared::{Edge, Node, NodeIdx};
+use crate::{exprs::Require, AnalyzerLike, ContextBuilder, ExprRet};
+use shared::{context::*, Edge, Node, NodeIdx};
+
 use solang_parser::pt::CodeLocation;
-
-use crate::AnalyzerLike;
-use crate::{exprs::Require, ContextBuilder};
-
 use solang_parser::pt::{Expression, Loc, Statement};
 
 impl<T> CondOp for T where T: AnalyzerLike + Require + Sized {}

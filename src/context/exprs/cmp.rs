@@ -1,16 +1,15 @@
-use shared::range::elem_ty::Elem;
-use shared::range::elem_ty::RangeConcrete;
-use shared::range::elem_ty::RangeExpr;
-use shared::range::SolcRange;
-
-use crate::ContextBuilder;
-use crate::ExprRet;
-use shared::analyzer::AnalyzerLike;
-use shared::context::*;
-use shared::nodes::*;
-use shared::range::Range;
-use shared::range::{elem::RangeElem, elem::RangeOp};
-use shared::Node;
+use crate::{ContextBuilder, ExprRet};
+use shared::{
+    analyzer::AnalyzerLike,
+    context::*,
+    nodes::*,
+    range::{
+        elem::{RangeElem, RangeOp},
+        elem_ty::{Elem, RangeConcrete, RangeExpr},
+        Range, SolcRange,
+    },
+    Node,
+};
 
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;

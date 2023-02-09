@@ -3,7 +3,15 @@ pragma solidity 0.8.17;
 
 
 contract Storage {
-    uint256 a;
+
+    struct A {
+        uint256 c;
+        uint256 d;
+    }
+
+    A public a;
+
+    uint256 c;
     address owner;
     constructor() {
         owner = msg.sender;
@@ -18,12 +26,33 @@ contract Storage {
     }
 
     function set_a(uint256 b) public {
-        require(msg.sender == owner);
-        a = b;
+        // require(msg.sender == owner);
+        c = b;
     }
 
-    function add_a(uint256 b) public {
-        a += b;
+    function b5(A memory x) public returns (uint256) {
+        require(msg.sender == owner);
+        (a.c, a.d) = b4();
+        x.d += 10;
+        x.d += b3(a.c);
+        return x.d;
+    }
+
+    function b6(uint256[] memory x) public returns (uint256[] memory) {
+        require(x.length > 3);
+        x[6] += 10;
+        x[6] += 10;
+        c += 10;
+        return x;
+    }
+
+    function b4() internal returns (uint256, uint256) {
+        return (10, 20);
+    }
+
+    function b3(uint256 y) internal returns (uint256) {
+        a.d += 10;
+        return y + 1;
     }
 }
 

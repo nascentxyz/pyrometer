@@ -1,6 +1,6 @@
+use pyrometer::context::queries::storage_write::AccessStorageWriteQuery;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
-use pyrometer::context::access_query::AccessStorageWriteQuery;
 use pyrometer::context::*;
 use pyrometer::*;
 use shared::analyzer::GraphLike;
@@ -121,6 +121,7 @@ fn main() {
             config,
             split[0].to_string(),
             split[1].to_string(),
-        );
+        ).print_reports(&mut source_map, &analyzer);
+        println!();
     });
 }

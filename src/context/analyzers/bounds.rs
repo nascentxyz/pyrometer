@@ -1,18 +1,12 @@
-use crate::LocStrSpan;
-use crate::{ReportConfig, ReportDisplay};
-use ariadne::Cache;
-use shared::range::elem::RangeElem;
-use shared::range::range_string::*;
-use shared::range::Range;
-use shared::range::RangeEval;
-use shared::range::SolcRange;
+use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
 use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
+    range::{elem::RangeElem, range_string::*, Range, RangeEval, SolcRange},
 };
-use solang_parser::pt::{CodeLocation, StorageLocation};
 
-use ariadne::{Color, Config, Fmt, Label, Report, ReportKind, Span};
+use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
+use solang_parser::pt::{CodeLocation, StorageLocation};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]

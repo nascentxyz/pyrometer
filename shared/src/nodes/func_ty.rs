@@ -8,7 +8,7 @@ use crate::context::{ContextEdge, ContextNode};
 use petgraph::{Direction, visit::EdgeRef};
 use crate::{analyzer::{GraphLike, AnalyzerLike}, Node, NodeIdx};
 use solang_parser::pt::{
-    FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation, Expression
+    Visibility, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc, Parameter, StorageLocation, Expression
 };
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -65,6 +65,15 @@ impl FunctionNode {
             .map(|edge| ContractNode::from(edge.target()))
             .take(1)
             .next()
+    }
+
+    pub fn is_public_or_ext(&self, analyzer: &'_ impl GraphLike) -> bool {
+        self.underlying(analyzer).attributes.iter().any(|attr| {
+            matches!(attr,
+                FunctionAttribute::Visibility(Visibility::Public(_))
+                | FunctionAttribute::Visibility(Visibility::External(_))
+            )
+        })
     }
 }
 

@@ -1,11 +1,8 @@
-use crate::context::exprs::member_access::MemberAccess;
-use crate::context::exprs::require::Require;
-use crate::ExprRet;
-use crate::{ContextBuilder, DynBuiltin, Edge, Node, VarType};
-use petgraph::{visit::EdgeRef, Direction};
-use shared::analyzer::AnalyzerLike;
-use shared::context::*;
-use shared::range::elem::RangeOp;
+use crate::{
+    context::exprs::{member_access::MemberAccess, require::Require},
+    ContextBuilder, DynBuiltin, Edge, ExprRet, Node, VarType,
+};
+use shared::{analyzer::AnalyzerLike, context::*, range::elem::RangeOp};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -63,25 +60,16 @@ pub trait Array: AnalyzerLike + Sized {
                     RangeOp::Gt,
                     (RangeOp::Gte, RangeOp::Lte),
                 );
-                if let Some(idx_var) = self
-                    .graph()
-                    .edges_directed(parent.into(), Direction::Incoming)
-                    .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
-                    .map(|edge| ContextVarNode::from(edge.source()))
-                    .filter(|cvar| {
-                        cvar.name(self) == format!("{}[{}]", parent.name(self), index.name(self))
-                    })
-                    .take(1)
-                    .next()
-                {
-                    let idx_var = idx_var.latest_version(self);
-                    let new_idx = self.advance_var_in_ctx(idx_var, loc, ctx);
 
-                    ExprRet::Single((ctx, new_idx.into()))
+                let name = format!("{}[{}]", parent.name(self), index.name(self));
+                if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name) {
+                    let index_var = index_var.latest_version(self);
+                    let index_var = self.advance_var_in_ctx(index_var, loc, ctx);
+                    ExprRet::Single((ctx, index_var.into()))
                 } else {
                     let index_var = ContextVar {
                         loc: Some(loc),
-                        name: format!("{}[{}]", parent.name(self), index.name(self)),
+                        name: name.clone(),
                         display_name: format!(
                             "{}[{}]",
                             parent.display_name(self),

@@ -1,23 +1,19 @@
-use shared::context::*;
-use shared::nodes::VarType;
-use shared::nodes::{BuiltInNode, Builtin};
-use shared::range::elem::RangeElem;
-use shared::range::elem::RangeOp;
-use shared::range::elem_ty::Elem;
-use shared::range::elem_ty::RangeConcrete;
-use shared::range::Range;
-use shared::range::RangeEval;
-use shared::range::SolcRange;
-use shared::Edge;
-
-use crate::ExprRet;
-use ethers_core::types::I256;
-
 use crate::{
     exprs::{BinOp, Variable},
-    AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, Node,
+    AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ExprRet, Node,
+};
+use shared::{
+    context::*,
+    nodes::{BuiltInNode, Builtin, VarType},
+    range::{
+        elem::{RangeElem, RangeOp},
+        elem_ty::{Elem, RangeConcrete},
+        Range, RangeEval, SolcRange,
+    },
+    Edge,
 };
 
+use ethers_core::types::I256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
@@ -244,7 +240,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
-        _rhs_op: RangeOp,
+        rhs_op: RangeOp,
         recursion_ops: (RangeOp, RangeOp),
     ) {
         let mut any_unsat = false;
@@ -260,21 +256,29 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             lhs_range.update_deps(ctx, self);
             let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
 
-            // let (_rhs_range_fn, _range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
+            // println!("new lhs range: {:#?}", new_lhs_range);
+
             if let Some(mut rhs_range) = new_rhs.range(self) {
                 rhs_range.update_deps(ctx, self);
                 if lhs_cvar.is_const(self) && !rhs_cvar.is_const(self) {
-                    new_rhs.set_range_min(self, lhs_cvar.range(self).unwrap().range_min());
-                    new_rhs.set_range_max(self, lhs_cvar.range(self).unwrap().range_max());
+                    // println!("knew lhs");
+                    let (rhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
+                    let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, range_sides, loc);
+                    new_rhs.set_range_min(self, new_rhs_range.range_min()); //lhs_cvar.range(self).unwrap().range_min());
+                    new_rhs.set_range_max(self, new_rhs_range.range_max()); //lhs_cvar.range(self).unwrap().range_max());
                 } else if rhs_cvar.is_const(self) {
-                    new_lhs.set_range_min(self, rhs_cvar.range(self).unwrap().range_min());
-                    new_lhs.set_range_max(self, rhs_cvar.range(self).unwrap().range_max());
+                    // println!("knew rhs");
+                    new_lhs.set_range_min(self, new_lhs_range.range_min()); //rhs_cvar.range(self).unwrap().range_min());
+                    new_lhs.set_range_max(self, new_lhs_range.range_max()); //rhs_cvar.range(self).unwrap().range_max());
                 } else {
                     // we know nothing about either
+                    // println!("didnt know either");
                     // new_rhs.set_range_min(self, new_rhs_range.range_min());
                     // new_rhs.set_range_max(self, new_rhs_range.range_max());
                     // any_unsat |= new_rhs_range.unsat(self);
                 }
+            } else {
+                todo!("here");
             }
 
             let tmp_var = ContextVar {
@@ -308,7 +312,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             tmp_var.set_range_max(self, new_lhs_range.range_max());
 
             any_unsat |= new_lhs_range.unsat(self);
-
             if any_unsat {
                 ctx.kill(self, loc);
                 return;

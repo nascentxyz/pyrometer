@@ -1,10 +1,10 @@
-use crate::context::ContextBuilder;
-use crate::ExprRet;
-use shared::context::*;
-use shared::range::elem::RangeOp;
-use shared::range::Range;
-use shared::range::SolcRange;
-use shared::{analyzer::AnalyzerLike, Edge, Node};
+use crate::{context::ContextBuilder, ExprRet};
+use shared::{
+    analyzer::AnalyzerLike,
+    context::*,
+    range::{elem::RangeOp, Range, SolcRange},
+    Edge, Node,
+};
 
 use solang_parser::pt::{Expression, Loc};
 
