@@ -8,12 +8,13 @@ use shared::{
     range::{elem_ty::Elem, Range},
     Edge, Node,
 };
+use solang_parser::pt::Expression;
 
 use solang_parser::pt::Identifier;
 
-impl<T> Variable for T where T: AnalyzerLike + Sized {}
+impl<T> Variable for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 
-pub trait Variable: AnalyzerLike + Sized {
+pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
     fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> ExprRet {
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
             let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);

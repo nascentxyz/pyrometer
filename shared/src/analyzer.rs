@@ -26,7 +26,7 @@ pub trait AnalyzerLike: GraphLike {
         if let Some(idx) = self.builtins().get(&builtin) {
             *idx
         } else {
-            let idx = self.add_node(Node::Builtin(builtin));
+            let idx = self.add_node(Node::Builtin(builtin.clone()));
             self.builtins_mut().insert(builtin, idx);
             idx
         }
@@ -141,7 +141,6 @@ pub trait GraphLike {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
                 Node::ContextVar(cvar) => {
-                    println!("cvar: {} {}", cvar.display_name, cvar.is_symbolic);
                     if !cvar.is_symbolic || cvar.tmp_of.is_some() {
                         None
                     } else {

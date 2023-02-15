@@ -58,7 +58,7 @@ pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
         ContextVar(_) => ContextVarNode::from(idx).as_dot_str(analyzer),
         ContextFork => "Context Fork".to_string(),
         FunctionCall => "Function Call".to_string(),
-        Builtin(bi) => bi.as_string(),
+        Builtin(bi) => bi.as_string(analyzer),
         DynBuiltin(dbi) => dbi.as_string(analyzer),
         VarType(v_ty) => v_ty.as_dot_str(analyzer), 
         Contract(_c) => ContractNode::from(idx).as_dot_str(analyzer),

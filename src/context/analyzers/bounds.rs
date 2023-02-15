@@ -38,6 +38,9 @@ impl Default for BoundAnalysis {
     }
 }
 
+static MIN_COLOR: Color = Color::Fixed(111);
+static MAX_COLOR: Color = Color::Fixed(106);
+
 impl BoundAnalysis {
     pub fn flatten_by_ctx(mut self) -> BTreeMap<ContextNode, BoundAnalysis> {
         let mut map =
@@ -162,9 +165,9 @@ impl ReportDisplay for BoundAnalysis {
                     init_range.range_max().to_range_string(analyzer).s
                 };
                 let r_str = if min == max {
-                    format!(" == {min}")
+                    format!(" == {}", min.fg(MAX_COLOR))
                 } else {
-                    format!(" ∈ [ {min}, {max} ]")
+                    format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR),)
                 };
                 vec![Label::new(self.var_def.0.clone())
                     .with_message(format!(
@@ -245,9 +248,9 @@ impl ReportDisplay for BoundAnalysis {
                             },
                             self.var_display_name,
                             if min == max {
-                                format!(" == {min}")
+                                format!(" == {}", min.fg(MAX_COLOR))
                             } else {
-                                format!(" ∈ [ {min}, {max} ]")
+                                format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR),)
                             },
                             if bound_change.1.unsat(analyzer) {
                                 "- unsatisfiable range, unreachable".fg(Color::Red)
@@ -585,18 +588,18 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     .s
                             };
                             if min == max {
-                                Some(format!("\"{}\" == {}", cvar.display_name(analyzer), min,))
+                                Some(format!("\"{} == {}\"", cvar.display_name(analyzer), min))
                             } else {
                                 Some(format!(
                                     "\"{}\" ∈ [ {}, {} ]",
                                     cvar.display_name(analyzer),
-                                    min,
-                                    max,
+                                    min.fg(MIN_COLOR),
+                                    max.fg(MAX_COLOR),
                                 ))
                             }
                         })
                         .collect::<Vec<_>>()
-                        .join(" ∧ ");
+                        .join(" && ");
                     let mut report = Report::build(
                         self.report_kind(),
                         self.ctx_loc.source(),
@@ -634,29 +637,31 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                     ctx.return_nodes(analyzer)
                         .into_iter()
                         .for_each(|(loc, var)| {
-                            report.add_label(
-                                Label::new(LocStrSpan::new(self.file_mapping, loc))
-                                    .with_message(
-                                        format!(
-                                            "returns: \"{}\" ∈ [ {}, {} ]",
-                                            var.display_name(analyzer),
-                                            var.range(analyzer)
-                                                .expect("return had no range")
-                                                .range_min()
-                                                .eval(analyzer)
-                                                .to_range_string(analyzer)
-                                                .s,
-                                            var.range(analyzer)
-                                                .expect("return had no range")
-                                                .range_max()
-                                                .eval(analyzer)
-                                                .to_range_string(analyzer)
-                                                .s,
+                            if let Some(range) = var.range(analyzer) {
+                                report.add_label(
+                                    Label::new(LocStrSpan::new(self.file_mapping, loc))
+                                        .with_message(
+                                            format!(
+                                                "returns: \"{}\" ∈ [ {}, {} ]",
+                                                var.display_name(analyzer),
+                                                range
+                                                    .range_min()
+                                                    .eval(analyzer)
+                                                    .to_range_string(analyzer)
+                                                    .s
+                                                    .fg(MIN_COLOR),
+                                                range
+                                                    .range_max()
+                                                    .eval(analyzer)
+                                                    .to_range_string(analyzer)
+                                                    .s
+                                                    .fg(MAX_COLOR),
+                                            )
+                                            .fg(Color::Yellow),
                                         )
-                                        .fg(Color::Yellow),
-                                    )
-                                    .with_color(Color::Yellow),
-                            );
+                                        .with_color(Color::Yellow),
+                                );
+                            }
                         });
 
                     report.add_label(
@@ -725,29 +730,31 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                             .return_nodes(analyzer)
                             .into_iter()
                             .for_each(|(loc, var)| {
-                                report.add_label(
-                                    Label::new(LocStrSpan::new(self.file_mapping, loc))
-                                        .with_message(
-                                            format!(
-                                                "returns: \"{}\" ∈ [ {}, {} ]",
-                                                var.display_name(analyzer),
-                                                var.range(analyzer)
-                                                    .expect("return had no range")
-                                                    .range_min()
-                                                    .eval(analyzer)
-                                                    .to_range_string(analyzer)
-                                                    .s,
-                                                var.range(analyzer)
-                                                    .expect("return had no range")
-                                                    .range_max()
-                                                    .eval(analyzer)
-                                                    .to_range_string(analyzer)
-                                                    .s,
+                                if let Some(range) = var.range(analyzer) {
+                                    report.add_label(
+                                        Label::new(LocStrSpan::new(self.file_mapping, loc))
+                                            .with_message(
+                                                format!(
+                                                    "returns: \"{}\" ∈ [ {}, {} ]",
+                                                    var.display_name(analyzer),
+                                                    range
+                                                        .range_min()
+                                                        .eval(analyzer)
+                                                        .to_range_string(analyzer)
+                                                        .s
+                                                        .fg(MIN_COLOR),
+                                                    range
+                                                        .range_max()
+                                                        .eval(analyzer)
+                                                        .to_range_string(analyzer)
+                                                        .s
+                                                        .fg(MAX_COLOR),
+                                                )
+                                                .fg(Color::Yellow),
                                             )
-                                            .fg(Color::Yellow),
-                                        )
-                                        .with_color(Color::Yellow),
-                                );
+                                            .with_color(Color::Yellow),
+                                    );
+                                }
                             })
                     });
                     report.finish()

@@ -10,8 +10,8 @@ use shared::{
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-impl<T> MemberAccess for T where T: AnalyzerLike + Sized {}
-pub trait MemberAccess: AnalyzerLike + Sized {
+impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
+pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
     /// Gets the array type
     fn member_access(
         &mut self,

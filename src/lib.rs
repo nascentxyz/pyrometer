@@ -109,14 +109,14 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        // println!("top level expr: {:?}", expr);
+        println!("top level expr: {:?}", expr);
         match expr {
             Type(_loc, ty) => {
-                if let Some(builtin) = Builtin::try_from_ty(ty.clone()) {
+                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
                     if let Some(idx) = self.builtins.get(&builtin) {
                         *idx
                     } else {
-                        let idx = self.add_node(Node::Builtin(builtin));
+                        let idx = self.add_node(Node::Builtin(builtin.clone()));
                         self.builtins.insert(builtin, idx);
                         idx
                     }
@@ -547,6 +547,8 @@ impl Analyzer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analyzers::ReportConfig;
+    use crate::context::analyzers::bounds::BoundAnalyzer;
     use shared::context::{ContextEdge, ContextNode};
 
     #[test]

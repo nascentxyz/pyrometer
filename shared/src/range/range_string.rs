@@ -102,7 +102,7 @@ impl ToRangeString for RangeExpr<Concrete> {
             match self.rhs.eval(analyzer) {
                 Elem::Concrete(c) => {
                     RangeElemString::new(
-                        format!("{}({})", c.val.as_builtin().as_string(), lhs_str.s),
+                        format!("{}({})", c.val.as_builtin().as_string(analyzer), lhs_str.s),
                         lhs_str.loc,
                     )
                 }

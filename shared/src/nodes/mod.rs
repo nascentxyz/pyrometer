@@ -1,3 +1,4 @@
+use solang_parser::pt::Expression;
 use crate::GraphLike;
 use crate::analyzer::AsDotStr;
 use crate::context::ContextVarNode;
@@ -188,14 +189,14 @@ impl VarType {
             VarType::User(ty_node) => ty_node.as_string(analyzer),
             VarType::BuiltIn(bn, _) => {
                 match analyzer.node(*bn) {
-                    Node::Builtin(bi) => bi.as_string(),
+                    Node::Builtin(bi) => bi.as_string(analyzer),
                     _ => unreachable!()
                 }
             },
             VarType::Array(dbn, _) => dbn.as_string(analyzer),
             VarType::Mapping(dbn) => dbn.as_string(analyzer),
             VarType::Concrete(c) => {
-                c.underlying(analyzer).as_builtin().as_string()
+                c.underlying(analyzer).as_builtin().as_string(analyzer)
             },
         }
     }
@@ -263,7 +264,7 @@ impl From<BuiltInNode> for NodeIdx {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Builtin {
     Address,
     AddressPayable,
@@ -275,10 +276,11 @@ pub enum Builtin {
     Bytes(u8),
     Rational,
     DynamicBytes,
+    Func(Vec<VarType>, Vec<VarType>),
 }
 
 impl Builtin {
-    pub fn try_from_ty(ty: Type) -> Option<Builtin> {
+    pub fn try_from_ty(ty: Type, analyzer: &mut impl AnalyzerLike<Expr = Expression>) -> Option<Builtin> {
         use Type::*;
         match ty {
             Address => Some(Builtin::Address),
@@ -291,6 +293,20 @@ impl Builtin {
             Bytes(size) => Some(Builtin::Bytes(size)),
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
+            Function { params, attributes: _, returns } => {
+                let inputs = params.iter().filter_map(|(_, param)| param.as_ref()).map(|param| {
+                    analyzer.parse_expr(&param.ty)
+                }).collect::<Vec<_>>();
+                let inputs = inputs.iter().map(|idx| VarType::try_from_idx(analyzer, *idx).expect("Couldn't parse param")).collect::<Vec<_>>();
+                let mut outputs = vec![];
+                if let Some((params, _attrs)) = returns {
+                    let tmp_outputs = params.iter().filter_map(|(_, param)| param.as_ref()).map(|param| {
+                        analyzer.parse_expr(&param.ty)
+                    }).collect::<Vec<_>>();
+                    outputs = tmp_outputs.iter().map(|idx| VarType::try_from_idx(analyzer, *idx).expect("Couldn't parse output param")).collect::<Vec<_>>();
+                }
+                Some(Builtin::Func(inputs, outputs))
+            }
             _ => None,
         }
     }
@@ -303,7 +319,7 @@ impl Builtin {
         }
     }
 
-    pub fn as_string(&self) -> String {
+    pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
         use Builtin::*;
         match self {
             Address => "address".to_string(),
@@ -316,6 +332,8 @@ impl Builtin {
             Bytes(size) => format!("bytes{}", size),
             Rational => "rational".to_string(),
             DynamicBytes => "bytes".to_string(),
+            Func(inputs, outputs) => format!("function({}) returns ({})",
+                inputs.iter().map(|input| input.as_string(analyzer)).collect::<Vec<_>>().join(", "), outputs.iter().map(|output| output.as_string(analyzer)).collect::<Vec<_>>().join(", "))
         }
     }
 }

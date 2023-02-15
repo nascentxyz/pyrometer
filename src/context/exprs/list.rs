@@ -1,13 +1,14 @@
 use crate::{context::ContextBuilder, ExprRet};
 use shared::{analyzer::AnalyzerLike, context::*, nodes::*, Edge, Node};
+use solang_parser::pt::Expression;
 
 use solang_parser::pt::ParameterList;
 
 use solang_parser::pt::Loc;
 
-impl<T> List for T where T: AnalyzerLike + Sized {}
+impl<T> List for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 
-pub trait List: AnalyzerLike + Sized {
+pub trait List: AnalyzerLike<Expr = Expression> + Sized {
     fn list(&mut self, ctx: ContextNode, _loc: Loc, params: &ParameterList) -> ExprRet {
         let rets = params
             .iter()

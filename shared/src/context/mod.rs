@@ -1,3 +1,4 @@
+use crate::ContractNode;
 use crate::GraphLike;
 use petgraph::{Direction, visit::EdgeRef};
 use crate::{Node, NodeIdx, Edge};
@@ -167,6 +168,11 @@ impl ContextNode {
             .into_iter()
             .map(ContextNode::from)
             .collect()
+    }
+
+    /// Gets the associated function for the context
+    pub fn associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> ContractNode {
+        self.associated_fn(analyzer).contract(analyzer).expect("No associated contract for context")
     }
 
     /// Gets the associated function for the context

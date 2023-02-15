@@ -8,8 +8,8 @@ use shared::{
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> BinOp for T where T: AnalyzerLike + Sized {}
-pub trait BinOp: AnalyzerLike + Sized {
+impl<T> BinOp for T where T: AnalyzerLike<Expr = Expression> + Sized {}
+pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
     fn op_expr(
         &mut self,
         loc: Loc,

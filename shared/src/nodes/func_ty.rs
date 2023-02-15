@@ -62,7 +62,9 @@ impl FunctionNode {
             .graph()
             .edges_directed(self.0.into(), Direction::Outgoing)
             .filter(|edge| Edge::Func == *edge.weight())
-            .map(|edge| ContractNode::from(edge.target()))
+            .map(|edge| edge.target())
+            .filter(|node| matches!(analyzer.node(*node), Node::Contract(_)))
+            .map(ContractNode::from)
             .take(1)
             .next()
     }
@@ -225,6 +227,7 @@ impl From<FunctionParam> for Node {
 
 impl FunctionParam {
     pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, param: Parameter) -> Self {
+        println!("func param: {:?}", param.name);
         FunctionParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),
@@ -248,7 +251,7 @@ impl AsDotStr for FunctionReturnNode {
                 "".to_string()
             },
             if let Some(name) = self.maybe_name(analyzer) {
-                name.to_string()
+                name
             } else {
                 "".to_string()
             }

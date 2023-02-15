@@ -14,8 +14,8 @@ use shared::{
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;
 
-impl<T> Cmp for T where T: AnalyzerLike + Sized {}
-pub trait Cmp: AnalyzerLike + Sized {
+impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression> + Sized {}
+pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
     fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> ExprRet {
         let lhs = self.parse_ctx_expr(lhs_expr, ctx);
         self.not_inner(loc, lhs)

@@ -33,6 +33,13 @@ impl ExprRet {
     pub fn expect_single(&self) -> (ContextNode, NodeIdx) {
         match self {
             ExprRet::Single(inner) => *inner,
+            m @ ExprRet::Multi(inner) => {
+                if inner.len() == 1 {
+                    inner[0].expect_single()
+                } else {
+                    panic!("Expected a single return got: {m:?}")
+                }
+            }
             e => panic!("Expected a single return got: {e:?}"),
         }
     }
@@ -57,9 +64,9 @@ impl ExprRet {
     }
 }
 
-impl<T> ContextBuilder for T where T: AnalyzerLike + Sized + ExprParser {}
+impl<T> ContextBuilder for T where T: AnalyzerLike<Expr = Expression> + Sized + ExprParser {}
 
-pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
+pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
     fn parse_ctx_statement(
         &mut self,
         stmt: &Statement,
@@ -542,11 +549,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 self.index_into_array(*loc, ty_expr, index_expr, ctx)
             }
             Type(_loc, ty) => {
-                if let Some(builtin) = Builtin::try_from_ty(ty.clone()) {
+                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
                     if let Some(idx) = self.builtins().get(&builtin) {
                         ExprRet::Single((ctx, *idx))
                     } else {
-                        let idx = self.add_node(Node::Builtin(builtin));
+                        let idx = self.add_node(Node::Builtin(builtin.clone()));
                         self.builtins_mut().insert(builtin, idx);
                         ExprRet::Single((ctx, idx))
                     }
@@ -566,7 +573,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
             Not(loc, expr) => self.not(*loc, expr, ctx),
             FunctionCall(loc, func_expr, input_exprs) => {
-                let (func_ctx, func_idx) = self.parse_ctx_expr(func_expr, ctx).expect_single();
+                let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
+                    ExprRet::Single((ctx, idx)) => (ctx, idx),
+                    m @ ExprRet::Multi(_) => m.expect_single(),
+                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                    e => panic!("got fork: {:?}", e),
+                };
                 match self.node(func_idx) {
                     Node::Function(underlying) => {
                         if let Some(func_name) = &underlying.name {
@@ -581,7 +593,7 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                     }
                     Node::Builtin(ty) => {
                         // it is a cast
-                        let ty = *ty;
+                        let ty = ty.clone();
                         let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
 
                         let new_var = self.advance_var_in_ctx(cvar.into(), *loc, ctx);
@@ -669,6 +681,12 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
                 ExprRet::Single((ctx, func_idx))
             }
             New(_loc, expr) => self.parse_ctx_expr(expr, ctx),
+            This(loc) => {
+                let var = ContextVar::new_from_contract(*loc, ctx.associated_contract(self), self);
+                let cvar = self.add_node(Node::ContextVar(var));
+                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                ExprRet::Single((ctx, cvar))
+            }
             e => todo!("{:?}", e),
         }
     }
@@ -772,15 +790,11 @@ pub trait ContextBuilder: AnalyzerLike + Sized + ExprParser {
 
                 let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
 
-                match (node.range(self), param.range(self)) {
-                    (Some(r), Some(r2)) => {
-                        let new_min = r.range_min().cast(r2.range_min());
-                        let new_max = r.range_max().cast(r2.range_max());
-                        node.try_set_range_min(self, new_min);
-                        node.try_set_range_max(self, new_max);
-                    }
-                    (Some(_r), None) => {}
-                    (l, r) => todo!("{:?} {:?}", l, r),
+                if let (Some(r), Some(r2)) = (node.range(self), param.range(self)) {
+                    let new_min = r.range_min().cast(r2.range_min());
+                    let new_max = r.range_max().cast(r2.range_max());
+                    node.try_set_range_min(self, new_min);
+                    node.try_set_range_max(self, new_max);
                 }
                 self.add_edge(node, subctx, Edge::Context(ContextEdge::Variable));
             }

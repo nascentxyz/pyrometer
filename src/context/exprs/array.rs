@@ -6,8 +6,8 @@ use shared::{analyzer::AnalyzerLike, context::*, range::elem::RangeOp};
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> Array for T where T: AnalyzerLike + Sized {}
-pub trait Array: AnalyzerLike + Sized {
+impl<T> Array for T where T: AnalyzerLike<Expr = Expression> + Sized {}
+pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
     /// Gets the array type
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> ExprRet {
         let (ctx, inner_ty) = self.parse_ctx_expr(ty_expr, ctx).expect_single();

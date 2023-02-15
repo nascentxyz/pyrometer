@@ -264,6 +264,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     // println!("knew lhs");
                     let (rhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
                     let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, range_sides, loc);
+                    // println!("new rhs range: {:#?}", new_rhs_range);
                     new_rhs.set_range_min(self, new_rhs_range.range_min()); //lhs_cvar.range(self).unwrap().range_min());
                     new_rhs.set_range_max(self, new_rhs_range.range_max()); //lhs_cvar.range(self).unwrap().range_max());
                 } else if rhs_cvar.is_const(self) {
@@ -308,8 +309,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             let tmp_var = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
             self.add_edge(tmp_var, ctx, Edge::Context(ContextEdge::Variable));
-            tmp_var.set_range_min(self, new_lhs_range.range_min());
-            tmp_var.set_range_max(self, new_lhs_range.range_max());
 
             any_unsat |= new_lhs_range.unsat(self);
             if any_unsat {

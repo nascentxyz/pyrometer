@@ -4,8 +4,8 @@ use shared::{context::*, Edge, Node, NodeIdx};
 use solang_parser::pt::CodeLocation;
 use solang_parser::pt::{Expression, Loc, Statement};
 
-impl<T> CondOp for T where T: AnalyzerLike + Require + Sized {}
-pub trait CondOp: AnalyzerLike + Require + Sized {
+impl<T> CondOp for T where T: AnalyzerLike<Expr = Expression> + Require + Sized {}
+pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
     fn cond_op_stmt(
         &mut self,
         loc: Loc,
@@ -135,7 +135,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             }
             e => todo!("Wasnt comparator: {:?}", e),
         };
-        println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
+        // println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
         self.handle_require(&[if_expr], true_fork_ctx)
     }
 
@@ -150,7 +150,7 @@ pub trait CondOp: AnalyzerLike + Require + Sized {
             Expression::Variable(ref _ident) => Expression::Not(loc, Box::new(if_expr)),
             e => todo!("Wasnt comparator: {:?}", e),
         };
-        println!("inverse if expr: {inv_if_expr:?}");
+        // println!("inverse if expr: {inv_if_expr:?}");
         self.handle_require(&[inv_if_expr], false_fork_ctx)
     }
 }

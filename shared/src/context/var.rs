@@ -1,3 +1,5 @@
+use crate::ContractNode;
+use crate::TypeNode;
 use crate::BuiltInNode;
 use crate::GraphLike;
 use crate::range::range_string::ToRangeString;
@@ -341,6 +343,23 @@ impl ContextVar {
         }
     }
 
+    pub fn new_from_contract(
+        loc: Loc,
+        contract_node: ContractNode,
+        analyzer: &impl GraphLike,
+    ) -> Self {
+        ContextVar {
+            loc: Some(loc),
+            name: contract_node.name(analyzer),
+            display_name: contract_node.name(analyzer),
+            storage: None,
+            is_tmp: false,
+            tmp_of: None,
+            is_symbolic: true,
+            ty: VarType::User(TypeNode::Contract(contract_node)),
+        }
+    }
+
     pub fn new_from_builtin(
         loc: Loc,
         bn_node: BuiltInNode,
@@ -348,8 +367,8 @@ impl ContextVar {
     ) -> Self {
         ContextVar {
             loc: Some(loc),
-            name: bn_node.underlying(analyzer).as_string(),
-            display_name: bn_node.underlying(analyzer).as_string(),
+            name: bn_node.underlying(analyzer).as_string(analyzer),
+            display_name: bn_node.underlying(analyzer).as_string(analyzer),
             storage: None,
             is_tmp: true,
             tmp_of: None,

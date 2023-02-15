@@ -1,17 +1,24 @@
-use pyrometer::context::queries::storage_write::AccessStorageWriteQuery;
+use std::process::Command;
+use std::io::Write;
+use crate::analyzers::ReportConfig;
+use pyrometer::{
+    Analyzer,
+    context::{
+        *,
+        queries::storage_write::AccessStorageWriteQuery,
+        analyzers::{ReportDisplay, bounds::FunctionVarsBoundAnalyzer},
+    },
+};
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
-use pyrometer::context::*;
-use pyrometer::*;
-use shared::analyzer::GraphLike;
-use shared::analyzer::Search;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
+use shared::{nodes::ContractNode, analyzer::{GraphLike, Search}};
+use std::collections::{BTreeMap, HashMap};
 
 use shared::nodes::FunctionNode;
 
 use shared::Edge;
 use std::fs;
+use std::env::temp_dir;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -19,11 +26,15 @@ struct Args {
     #[clap(value_hint = ValueHint::FilePath, value_name = "PATH")]
     pub path: String,
     #[clap(long, short)]
+    pub contracts: Vec<String>,
+    #[clap(long, short)]
     pub funcs: Vec<String>,
     #[clap(long, short, verbatim_doc_comment, action = ArgAction::Count)]
     pub verbosity: u8,
     #[clap(long, short, default_value = "false")]
     pub dot: bool,
+    #[clap(long, short, default_value = "false")]
+    pub open_dot: bool,
     #[clap(long, short)]
     pub eval: Option<bool>,
     #[clap(long, short)]
@@ -69,10 +80,16 @@ fn main() {
         },
     };
 
+
+
+
+
     let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
 
     let mut analyzer = Analyzer::default();
+    let mut t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) = analyzer.parse(&sol);
+    let parse_time = t0.elapsed().as_millis();
     all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
 
@@ -95,22 +112,48 @@ fn main() {
         println!("{}", analyzer.dot_str_no_tmps());
     }
 
-    let funcs = analyzer.search_children(entry, &crate::Edge::Func);
-    for func in funcs.into_iter() {
-        if !args.funcs.is_empty() {
-            if args
-                .funcs
-                .contains(&FunctionNode::from(func).name(&analyzer))
-            {
+    let all_contracts = analyzer.search_children(entry, &Edge::Contract).into_iter().map(ContractNode::from).collect::<Vec<_>>();
+    let t1 = std::time::Instant::now();
+    if args.contracts.is_empty() {
+        // println!("no specified contracts");
+        let funcs = analyzer.search_children(entry, &Edge::Func);
+        for func in funcs.into_iter() {
+            if !args.funcs.is_empty() {
+                if args
+                    .funcs
+                    .contains(&FunctionNode::from(func).name(&analyzer))
+                {
+                    let ctx = FunctionNode::from(func).body_ctx(&analyzer);
+                    let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                    analysis.print_reports(&mut source_map, &analyzer);
+                }
+            } else {
                 let ctx = FunctionNode::from(func).body_ctx(&analyzer);
                 let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
                 analysis.print_reports(&mut source_map, &analyzer);
             }
-        } else {
-            let ctx = FunctionNode::from(func).body_ctx(&analyzer);
-            let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
-            analysis.print_reports(&mut source_map, &analyzer);
         }
+    } else {
+        // println!("specified contracts: {:?}", all_contracts);
+        all_contracts.iter().filter(|contract| args.contracts.contains(&contract.name(&analyzer))).for_each(|contract| {
+            let funcs = contract.funcs(&analyzer);
+            for func in funcs.into_iter() {
+                if !args.funcs.is_empty() {
+                    if args
+                        .funcs
+                        .contains(&func.name(&analyzer))
+                    {
+                        let ctx = func.body_ctx(&analyzer);
+                        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                        analysis.print_reports(&mut source_map, &analyzer);
+                    }
+                } else {
+                    let ctx = func.body_ctx(&analyzer);
+                    let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                    analysis.print_reports(&mut source_map, &analyzer);
+                }
+            }
+        });
     }
 
     args.access_query.iter().for_each(|query| {
@@ -124,4 +167,28 @@ fn main() {
         ).print_reports(&mut source_map, &analyzer);
         println!();
     });
+
+    println!("parse time: {:?}ms", parse_time);
+    println!("analyzer time: {:?}ms", t1.elapsed().as_millis());
+    println!("total time: {:?}ms", t0.elapsed().as_millis());
+
+    if args.open_dot {
+        let mut dir = temp_dir();
+        let file_name = "dot.dot";
+        dir.push(file_name);
+     
+        let mut file = fs::File::create(dir.clone()).unwrap();
+        file.write_all(analyzer.dot_str_no_tmps().as_bytes()).unwrap();
+        Command::new("dot")
+            .arg("-Tjpeg")
+            .arg(dir)
+            .arg("-o")
+            .arg("dot.jpeg")
+            .output()
+            .expect("failed to execute process");
+        Command::new("open")
+            .arg("dot.jpeg")
+            .output()
+            .expect("failed to execute process");
+    }
 }
