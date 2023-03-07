@@ -33,12 +33,8 @@ impl ExprRet {
     pub fn expect_single(&self) -> (ContextNode, NodeIdx) {
         match self {
             ExprRet::Single(inner) => *inner,
-            m @ ExprRet::Multi(inner) => {
-                if inner.len() == 1 {
-                    inner[0].expect_single()
-                } else {
-                    panic!("Expected a single return got: {m:?}")
-                }
+            ExprRet::Multi(inner) if inner.len() == 1 => {
+                inner[0].expect_single()
             }
             e => panic!("Expected a single return got: {e:?}"),
         }
@@ -224,12 +220,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     });
                 }
             }
-            Assembly {
-                loc: _,
-                dialect: _,
-                flags: _,
-                block: _yul_block,
-            } => {}
             Args(_loc, _args) => {}
             If(loc, if_expr, true_expr, maybe_false_expr) => {
                 let ctx = ContextNode::from(parent_ctx.expect("Dangling if statement").into());
@@ -242,16 +232,32 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     })
                 }
             }
-            While(_loc, _cond, _body) => {}
+            While(_loc, _cond, _body) => {
+                todo!("while")
+            }
             Expression(_loc, expr) => {
                 if let Some(parent) = parent_ctx {
                     let _paths = self.parse_ctx_expr(expr, ContextNode::from(parent.into()));
                 }
             }
-            For(_loc, _maybe_for_start, _maybe_for_middle, _maybe_for_end, _maybe_for_body) => {}
-            DoWhile(_loc, _while_stmt, _while_expr) => {}
-            Continue(_loc) => {}
-            Break(_loc) => {}
+            For(_loc, _maybe_for_start, _maybe_for_middle, _maybe_for_end, _maybe_for_body) => {
+                todo!("for");
+            }
+            DoWhile(_loc, _while_stmt, _while_expr) => {
+                todo!("do while");
+            }
+            Continue(_loc) => {
+                todo!("continue")
+            }
+            Break(_loc) => {
+                todo!("break")
+            }
+            Assembly {
+                loc: _,
+                dialect: _,
+                flags: _,
+                block: _yul_block,
+            } => { todo!("assembly not supported") }
             Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
@@ -259,58 +265,38 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         if forks.is_empty() {
                             let paths =
                                 self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into()));
-                            match paths {
-                                ExprRet::CtxKilled => {}
-                                ExprRet::Single((ctx, expr)) => {
-                                    self.add_edge(expr, ctx, Edge::Context(ContextEdge::Return));
-                                    ctx.add_return_node(*loc, expr.into(), self);
-                                }
-                                ExprRet::Multi(rets) => {
-                                    rets.into_iter().for_each(|expr_ret| {
-                                        let (ctx, expr) = expr_ret.expect_single();
-                                        self.add_edge(
-                                            expr,
-                                            ctx,
-                                            Edge::Context(ContextEdge::Return),
-                                        );
-                                        // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
-                                        ctx.add_return_node(*loc, expr.into(), self);
-                                    });
-                                }
-                                ExprRet::Fork(_world1, _world2) => {
-                                    todo!("here")
-                                }
-                            }
+                            self.return_match(loc, &paths);
                         } else {
                             forks.into_iter().for_each(|parent| {
                                 let paths = self.parse_ctx_expr(ret_expr, parent);
-                                match paths {
-                                    ExprRet::CtxKilled => {}
-                                    ExprRet::Single((ctx, expr)) => {
-                                        self.add_edge(
-                                            expr,
-                                            ctx,
-                                            Edge::Context(ContextEdge::Return),
-                                        );
-                                        // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
-                                        ctx.add_return_node(*loc, expr.into(), self);
-                                    }
-                                    ExprRet::Multi(rets) => {
-                                        rets.into_iter().for_each(|expr_ret| {
-                                            let (ctx, expr) = expr_ret.expect_single();
-                                            self.add_edge(
-                                                expr,
-                                                ctx,
-                                                Edge::Context(ContextEdge::Return),
-                                            );
-                                            // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
-                                            ctx.add_return_node(*loc, expr.into(), self);
-                                        });
-                                    }
-                                    ExprRet::Fork(_world1, _world2) => {
-                                        todo!("here")
-                                    }
-                                }
+                                self.return_match(loc, &paths);
+                                // match paths {
+                                //     ExprRet::CtxKilled => {}
+                                //     ExprRet::Single((ctx, expr)) => {
+                                //         self.add_edge(
+                                //             expr,
+                                //             ctx,
+                                //             Edge::Context(ContextEdge::Return),
+                                //         );
+                                //         // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
+                                //         ctx.add_return_node(*loc, expr.into(), self);
+                                //     }
+                                //     ExprRet::Multi(rets) => {
+                                //         rets.into_iter().for_each(|expr_ret| {
+                                //             let (ctx, expr) = expr_ret.expect_single();
+                                //             self.add_edge(
+                                //                 expr,
+                                //                 ctx,
+                                //                 Edge::Context(ContextEdge::Return),
+                                //             );
+                                //             // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
+                                //             ctx.add_return_node(*loc, expr.into(), self);
+                                //         });
+                                //     }
+                                //     ExprRet::Fork(_world1, _world2) => {
+                                //         todo!("here")
+                                //     }
+                                // }
                             });
                         }
                     }
@@ -333,6 +319,32 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             Emit(_loc, _emit_expr) => {}
             Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
             Error(_loc) => {}
+        }
+    }
+
+    fn return_match(&mut self, loc: &Loc, paths: &ExprRet) {
+        match paths {
+            ExprRet::CtxKilled => {}
+            ExprRet::Single((ctx, expr)) => {
+                self.add_edge(*expr, *ctx, Edge::Context(ContextEdge::Return));
+                ctx.add_return_node(*loc, ContextVarNode(expr.index()), self);
+            }
+            ExprRet::Multi(rets) => {
+                rets.iter().for_each(|expr_ret| {
+                    let (ctx, expr) = expr_ret.expect_single();
+                    self.add_edge(
+                        expr,
+                        ctx,
+                        Edge::Context(ContextEdge::Return),
+                    );
+                    // self.add_edge(expr, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.add_return_node(*loc, expr.into(), self);
+                });
+            }
+            ExprRet::Fork(world1, world2) => {
+                self.return_match(loc, world1);
+                self.return_match(loc, world2);
+            }
         }
     }
 
@@ -474,11 +486,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
+        println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
-            Variable(ident) => self.variable(ident, ctx),
             // literals
-            NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp),
+            NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, false),
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
             StringLiteral(lits) => ExprRet::Multi(
                 lits.iter()
@@ -486,8 +497,17 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     .collect(),
             ),
             BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
-            HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b),
-            // bin ops
+            HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b, false),
+            HexLiteral(hexes) => self.hex_literals(ctx, hexes),
+            RationalNumberLiteral(_, _, _, _) => todo!("Rational literal"),
+            UnaryMinus(_loc, expr) => match &**expr {
+                NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, true),
+                HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b, true),    
+                e => todo!("UnaryMinus unexpected rhs: {e:?}")
+            },
+            UnaryPlus(_loc, e) => todo!("UnaryPlus unexpected rhs: {e:?}"),
+
+            // Binary ops
             Power(loc, lhs_expr, rhs_expr) => {
                 self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Exp, false)
             }
@@ -536,10 +556,28 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             ConditionalOperator(loc, if_expr, true_expr, false_expr) => {
                 self.cond_op_expr(*loc, if_expr, true_expr, false_expr, ctx)
             }
+
+            // Bitwise ops
             BitwiseAnd(loc, lhs_expr, rhs_expr) => {
                 self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, false)
             }
-            Parenthesis(_loc, expr) => self.parse_ctx_expr(expr, ctx),
+            AssignAnd(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, true)
+            },
+            BitwiseXor(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitXor, false)
+            }
+            AssignXor(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitXor, true)
+            },
+            BitwiseOr(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, false)
+            }
+            AssignOr(loc, lhs_expr, rhs_expr) => {
+                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, true)
+            },
+            Complement(_loc, _expr) => todo!("Complement"),
+
             // assign
             Assign(loc, lhs_expr, rhs_expr) => self.assign_exprs(*loc, lhs_expr, rhs_expr, ctx),
             List(loc, params) => self.list(ctx, *loc, params),
@@ -548,30 +586,25 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             ArraySubscript(loc, ty_expr, Some(index_expr)) => {
                 self.index_into_array(*loc, ty_expr, index_expr, ctx)
             }
-            Type(_loc, ty) => {
-                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
-                    if let Some(idx) = self.builtins().get(&builtin) {
-                        ExprRet::Single((ctx, *idx))
-                    } else {
-                        let idx = self.add_node(Node::Builtin(builtin.clone()));
-                        self.builtins_mut().insert(builtin, idx);
-                        ExprRet::Single((ctx, idx))
-                    }
-                } else {
-                    todo!("??")
-                }
-            }
-            MemberAccess(loc, member_expr, ident) => {
-                self.member_access(*loc, member_expr, ident, ctx)
-            }
-            // // comparator
+            ArraySlice(_loc, _lhs_expr, _maybe_middle_expr, _maybe_rhs) => todo!("Array slice"),
+            ArrayLiteral(_, _) => todo!("Array literal"),
+            
+            // Comparator
             Equal(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Eq, rhs, ctx),
+            NotEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Neq, rhs, ctx),
             Less(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Lt, rhs, ctx),
             More(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Gt, rhs, ctx),
             LessEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Lte, rhs, ctx),
             MoreEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Gte, rhs, ctx),
-
+            
+            // Logical
             Not(loc, expr) => self.not(*loc, expr, ctx),
+            And(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::And, rhs, ctx),
+            Or(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx),
+
+            // Function calls
+            FunctionCallBlock(_loc, _func_expr, _input_exprs) => todo!("Function call block"),
+            NamedFunctionCall(_loc, _func_expr, _input_exprs) => todo!("Named function call"),
             FunctionCall(loc, func_expr, input_exprs) => {
                 let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
                     ExprRet::Single((ctx, idx)) => (ctx, idx),
@@ -587,6 +620,18 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                                     self.handle_require(input_exprs, ctx);
                                     return ExprRet::Multi(vec![]);
                                 }
+                                "type" => {
+                                    return ExprRet::Single(self.parse_ctx_expr(&input_exprs[0], ctx).expect_single())
+                                }
+                                "ecrecover" => {
+                                    input_exprs.iter().for_each(|expr| {
+                                        // we want to parse even though we dont need the variables here
+                                        let _ = self.parse_ctx_expr(expr, ctx);    
+                                    });
+                                    let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(Builtin::Address).into(), self);
+                                    let cvar = self.add_node(Node::ContextVar(var));
+                                    return ExprRet::Single((ctx, cvar));
+                                }
                                 e => todo!("builtin function: {:?}", e),
                             }
                         }
@@ -596,7 +641,13 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         let ty = ty.clone();
                         let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
 
-                        let new_var = self.advance_var_in_ctx(cvar.into(), *loc, ctx);
+                        let new_var = ContextVarNode::from(cvar).as_cast_tmp(
+                            *loc,
+                            ctx,
+                            ty.clone(),
+                            self,
+                        );
+
                         new_var.underlying_mut(self).ty =
                             VarType::try_from_idx(self, func_idx).expect("");
 
@@ -606,6 +657,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                                 SolcRange::try_from_builtin(&ty).expect("No default range");
                             new_var.set_range_min(self, r.range_min().cast(curr_range.range_min()));
                             new_var.set_range_max(self, r.range_max().cast(curr_range.range_max()));
+                        } else {
+                            todo!("unable to cast?")
                         }
                         return ExprRet::Single((ctx, new_var.into()));
                     }
@@ -676,10 +729,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     .map(|expr| self.parse_ctx_expr(expr, ctx))
                     .collect();
 
-                // todo!("func call")
-                // vec![func_idx]
                 ExprRet::Single((ctx, func_idx))
             }
+            // member
             New(_loc, expr) => self.parse_ctx_expr(expr, ctx),
             This(loc) => {
                 let var = ContextVar::new_from_contract(*loc, ctx.associated_contract(self), self);
@@ -687,7 +739,35 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                 ExprRet::Single((ctx, cvar))
             }
-            e => todo!("{:?}", e),
+            MemberAccess(loc, member_expr, ident) => {
+                self.member_access(*loc, member_expr, ident, ctx)
+            }
+
+            Delete(_loc, _expr) => todo!("Delete"),
+
+            // de/increment stuff
+            PreIncrement(_loc, _expr) => todo!("Preincrement"),
+            PostIncrement(_loc, _expr) => todo!("Post increment"),
+            PreDecrement(_loc, _expr) => todo!("Predecrement"),
+            PostDecrement(_loc, _expr) => todo!("Post decrement"),
+            
+            // Misc.
+            Variable(ident) => self.variable(ident, ctx),
+            Type(_loc, ty) => {
+                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
+                    if let Some(idx) = self.builtins().get(&builtin) {
+                        ExprRet::Single((ctx, *idx))
+                    } else {
+                        let idx = self.add_node(Node::Builtin(builtin.clone()));
+                        self.builtins_mut().insert(builtin, idx);
+                        ExprRet::Single((ctx, idx))
+                    }
+                } else {
+                    todo!("??")
+                }
+            }
+            Parenthesis(_loc, expr) => self.parse_ctx_expr(expr, ctx),
+            Unit(_, _, _) => todo!("Unit"),
         }
     }
 
@@ -801,6 +881,13 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         });
 
         if let Some(body) = func_node.underlying(self).body.clone() {
+            // add return nodes into the subctx
+            func_node.returns(self).iter().for_each(|ret| {
+                if let Some(var) = ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).clone()) {
+                    let cvar = self.add_node(Node::ContextVar(var));
+                    self.add_edge(cvar, subctx, Edge::Context(ContextEdge::Variable));    
+                }
+            });
             self.parse_ctx_statement(&body, false, Some(subctx));
             // adjust any storage variables
             let vars = subctx.vars(self);
@@ -835,7 +922,12 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     .collect(),
             )
         } else {
-            todo!("no function body")
+            ExprRet::Multi(func_node.returns(self).iter().filter_map(|ret| {
+                let underlying = ret.underlying(self);
+                let var = ContextVar::maybe_new_from_func_ret(self, underlying.clone())?;
+                let node = self.add_node(Node::ContextVar(var));
+                Some(ExprRet::Single((ctx, node)))
+            }).collect())
         }
     }
 

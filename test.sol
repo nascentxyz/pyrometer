@@ -1,56 +1,76 @@
-pragma solidity 0.8.17;
+// pragma solidity 0.8.17;
+
+// contract Storage {
+
+    // function for_loop() public {
+
+    //     uint256 a;
+    //     for (uint256 i; i < 10; i++) {
+    //         a += 1;
+    //     }
+    // }
+
+    // function div_test(uint256 x, uint256 y) public {
+    //     x / y;
+    // }
+// }
+    // struct A {
+    //     uint256 c;
+    //     uint256 d;
+    // }
+
+    // A public a;
+
+    // uint256 c;
+    // address owner;
+    // constructor() {
+    //     owner = msg.sender;
+    // }
+
+    // function set_c(uint256 b) public {
+    //     require(msg.sender == owner);
+    //     c = b;
+    // }
+
+    // function b5(A memory x) public returns (uint256) {
+    //     require(msg.sender == owner);
+    //     (a.c, a.d) = b4();
+    //     x.d += 10;
+    //     x.d += b3(a.c);
+    //     return x.d;
+    // }
+
+    // function b6(uint256[] memory x) public returns (uint256[] memory) {
+    //     require(x.length > 3);
+    //     x[6] += 10;
+    //     x[6] += 10;
+    //     c += 10;
+    //     return x;
+    // }
+
+    // function b4() internal returns (uint256, uint256) {
+    //     return (10, 20);
+    // }
+
+    // function b3(uint256 y) internal returns (uint256) {
+    //     a.d += 10;
+    //     return y + 1;
+    // }
+// }
+
+// contract RangeDemo {
+//     function ranges() public {
+//         bytes32 a;
+//         bytes16 b;
+//         uint256 c;
+//         uint128 d;
+//         address e;
+//     }
+// }
 
 
-
-contract Storage {
-
-    struct A {
-        uint256 c;
-        uint256 d;
-    }
-
-    A public a;
-
-    uint256 c;
-    address owner;
-    constructor() {
-        owner = msg.sender;
-    }
-
-    function set_c(uint256 b) public {
-        require(msg.sender == owner);
-        c = b;
-    }
-
-    function b5(A memory x) public returns (uint256) {
-        require(msg.sender == owner);
-        (a.c, a.d) = b4();
-        x.d += 10;
-        x.d += b3(a.c);
-        return x.d;
-    }
-
-    function b6(uint256[] memory x) public returns (uint256[] memory) {
-        require(x.length > 3);
-        x[6] += 10;
-        x[6] += 10;
-        c += 10;
-        return x;
-    }
-
-    function b4() internal returns (uint256, uint256) {
-        return (10, 20);
-    }
-
-    function b3(uint256 y) internal returns (uint256) {
-        a.d += 10;
-        return y + 1;
-    }
-}
-
-contract S {
-    uint256 myVar;
-    function run(uint256 x, uint256 y, uint256 z) public returns (uint256) {
+contract MathBoi {
+    function hmmm(uint256 x, uint256 y, uint256 z) public returns (uint256) {
         require(y >= 1);
         require(x < 1000000);
         require(y < 1000000);
@@ -67,13 +87,30 @@ contract S {
 
         require(c >= 1);
 
-        myVar = a * b / c;
-        return myVar;
+        return a * b / c;
+    }
+}
+
+
+contract AccessControl {
+    address owner;
+    uint256 myVerySecureVariable;
+
+    function setVar(uint256 muchSafe) public {
+        require(msg.sender == owner);
+        myVerySecureVariable = muchSafe;
+    }
+
+    function muchSneak(uint256 muchSneak) public {
+        innerSneak(muchSneak);
+    }
+
+    function innerSneak(uint256 muchSneak) internal {
+        myVerySecureVariable = muchSneak;
     }
 }
 
 contract Baz {
-
     bool private state1;
     bool private state2;
     bool private state3;

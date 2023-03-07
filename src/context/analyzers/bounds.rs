@@ -659,7 +659,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                             )
                                             .fg(Color::Yellow),
                                         )
-                                        .with_color(Color::Yellow),
+                                        .with_color(Color::Yellow)
+                                        .with_order(3),
                                 );
                             }
                         });
@@ -700,21 +701,21 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         }
 
                         if let Some(ext_fn_call) = child.underlying(analyzer).ext_fn_call {
-                            report.add_label(
-                                Label::new(LocStrSpan::new(
-                                    self.file_mapping,
-                                    ext_fn_call
+                            if let Some(body) = &ext_fn_call
                                         .underlying(analyzer)
-                                        .body
-                                        .as_ref()
-                                        .expect("No body")
-                                        .loc(),
-                                ))
-                                .with_message("External function call")
-                                .with_priority(-2)
-                                .with_order(-2)
-                                .with_color(Color::Fixed(75)),
-                            );
+                                        .body {
+                                report.add_label(
+                                    Label::new(LocStrSpan::new(
+                                        self.file_mapping,
+                                        body.loc(),
+                                    ))
+                                    .with_message("External function call")
+                                    .with_priority(-2)
+                                    .with_order(-2)
+                                    .with_color(Color::Fixed(75)),
+                                );
+                            }
+                            
                             if let Some(c) = ext_fn_call.contract(analyzer) {
                                 report.add_label(
                                     Label::new(LocStrSpan::new(self.file_mapping, c.loc(analyzer)))
@@ -752,7 +753,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                                 )
                                                 .fg(Color::Yellow),
                                             )
-                                            .with_color(Color::Yellow),
+                                            .with_color(Color::Yellow)
+                                            .with_order(3),
                                     );
                                 }
                             })
@@ -815,6 +817,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     vars.iter()
                         .filter_map(|var| {
                             let name = var.name(self);
+                            
                             let is_ret = var.is_return_node_in_any(&parents, self);
                             if is_ret | report_config.show_tmps
                                 && report_config.show_consts | report_config.show_tmps
@@ -822,6 +825,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                                 && !var.is_tmp(self) | !var.is_tmp(self)
                                 && !var.is_const(self)
                             {
+                                // println!("var: {}", name);
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,
                                     parents.clone(),

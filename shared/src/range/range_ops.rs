@@ -5,6 +5,7 @@ use crate::Concrete;
 use crate::range::RangeConcrete;
 
 pub trait RangeAdd<T, Rhs = Self> {
+    /// Perform addition between two range elements
     fn range_add(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -72,6 +73,7 @@ impl RangeAdd<Concrete> for Elem<Concrete> {
 }
 
 pub trait RangeSub<T, Rhs = Self> {
+    /// Perform subtraction between two range elements
     fn range_sub(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -157,6 +159,7 @@ impl RangeSub<Concrete> for Elem<Concrete> {
 
 
 pub trait RangeMul<T, Rhs = Self> {
+    /// Perform multiplication between two range elements
     fn range_mul(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -221,6 +224,7 @@ impl RangeMul<Concrete> for Elem<Concrete> {
 
 
 pub trait RangeExp<T, Rhs = Self> {
+    /// Perform exponentiation between two range elements
     fn range_exp(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -234,8 +238,8 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
                 } else {
                     U256::from(2).pow(U256::from(size)) - 1
                 };
-                Some(Elem::Concrete(RangeConcrete {
-                    val: self.val.u256_as_original(lhs_val.pow(rhs_val).min(max)),
+                lhs_val.checked_pow(rhs_val).map(|powed| Elem::Concrete(RangeConcrete {
+                    val: self.val.u256_as_original(powed & max),
                     loc: self.loc
                 }))
             }
@@ -261,7 +265,7 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
                             I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
                         };
                         Some(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*lhs_size, l.pow(r.as_u32()).min(max)),
+                            val: Concrete::Int(*lhs_size, l.pow(r.as_u32()) & max),
                             loc: self.loc
                         }))
                     }
@@ -275,7 +279,7 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
 impl RangeExp<Concrete> for Elem<Concrete> {
     fn range_exp(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_mul(b),
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_exp(b),
             (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => Some(Elem::from(Concrete::from(U256::from(1)))),
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(other.clone()),
             _ => None
@@ -283,6 +287,7 @@ impl RangeExp<Concrete> for Elem<Concrete> {
     }
 }
 pub trait RangeDiv<T, Rhs = Self> {
+    /// Perform division between two range elements
     fn range_div(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -332,6 +337,7 @@ impl RangeDiv<Concrete> for Elem<Concrete> {
 }
 
 pub trait RangeMod<T, Rhs = Self> {
+    /// Perform modulo between two range elements
     fn range_mod(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -381,6 +387,7 @@ impl RangeMod<Concrete> for Elem<Concrete> {
 }
 
 pub trait RangeMin<T, Rhs = Self> {
+    /// Take the minimum of two range elements
     fn range_min(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -431,6 +438,7 @@ impl RangeMin<Concrete> for Elem<Concrete> {
 
 
 pub trait RangeMax<T, Rhs = Self> {
+    /// Take the maximum of two range elements
     fn range_max(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -480,11 +488,17 @@ impl RangeMax<Concrete> for Elem<Concrete> {
 }
 
 pub trait RangeOrd<T, Rhs = Self> {
+    /// Perform a logical equality test
 	fn range_ord_eq(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a logical inequality test
 	fn range_neq(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a logical greater than test
     fn range_gt(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a logical less than test
     fn range_lt(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a logical greater than or equal test
     fn range_gte(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a logical less than or equal test
     fn range_lte(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -727,7 +741,9 @@ impl RangeOrd<Concrete> for Elem<Concrete> {
 }
 
 pub trait RangeShift<T, Rhs = Self> {
+    /// Perform a bitwise shift left
     fn range_shl(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a bitwise shift right
     fn range_shr(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -742,7 +758,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                     U256::from(2).pow(U256::from(size)) - 1
                 };
                 Some(Elem::Concrete(RangeConcrete {
-                    val: self.val.u256_as_original((lhs_val << rhs_val).min(max)),
+                    val: self.val.u256_as_original((lhs_val << rhs_val) & max),
                     loc: self.loc
                 }))
             }
@@ -768,7 +784,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                             I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
                         };
                         Some(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*lhs_size, (*l << *r).min(max)),
+                            val: Concrete::Int(*lhs_size, (*l << *r) & max),
                             loc: self.loc
                         }))
                     }
@@ -829,8 +845,12 @@ impl RangeShift<Concrete> for Elem<Concrete> {
 }
 
 pub trait RangeUnary<T, Rhs = Self> {
+    /// Perform a logical NOT
     fn range_not(&self) -> Option<Elem<T>>;
+    /// Perform a logical AND
     fn range_and(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a logical OR
+    fn range_or(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
 impl RangeUnary<Concrete> for RangeConcrete<Concrete> {
@@ -852,6 +872,18 @@ impl RangeUnary<Concrete> for RangeConcrete<Concrete> {
             _ => None
         }
     }
+
+    fn range_or(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (&self.val, &other.val) {
+            (Concrete::Bool(a), Concrete::Bool(b)) => {
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bool(*a || *b),
+                    loc: self.loc
+                }))
+            }
+            _ => None
+        }
+    }
 }
 
 impl RangeUnary<Concrete> for Elem<Concrete> {
@@ -867,9 +899,16 @@ impl RangeUnary<Concrete> for Elem<Concrete> {
     		_ => None
     	}
 	}
+    fn range_or(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_or(b),
+            _ => None
+        }
+    }
 }
 
 pub trait RangeCast<T, Rhs = Self> {
+    /// Perform a cast on an element to the type of the right hand side
     fn range_cast(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
@@ -886,6 +925,98 @@ impl RangeCast<Concrete> for Elem<Concrete> {
     fn range_cast(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_cast(b),
+            _ => None
+        }
+    }
+}
+
+pub trait RangeBitwise<T, Rhs = Self> {
+    /// Perform a bitwise AND
+    fn range_bit_and(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a bitwise OR
+    fn range_bit_or(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a bitwise XOR
+    fn range_bit_xor(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
+    fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (&self.val, &other.val) {
+            (Concrete::Uint(s, a), Concrete::Uint(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Uint(*size, *a & *b),
+                    loc: self.loc
+                }))
+            }
+            (Concrete::Int(s, a), Concrete::Int(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Int(*size, *a & *b),
+                    loc: self.loc
+                }))
+            }
+            _ => None
+        }
+    }
+
+    fn range_bit_or(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (&self.val, &other.val) {
+            (Concrete::Uint(s, a), Concrete::Uint(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Uint(*size, *a | *b),
+                    loc: self.loc
+                }))
+            }
+            (Concrete::Int(s, a), Concrete::Int(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Int(*size, *a | *b),
+                    loc: self.loc
+                }))
+            }
+            _ => None
+        }
+    }
+
+    fn range_bit_xor(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (&self.val, &other.val) {
+            (Concrete::Uint(s, a), Concrete::Uint(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Uint(*size, *a ^ *b),
+                    loc: self.loc
+                }))
+            }
+            (Concrete::Int(s, a), Concrete::Int(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Int(*size, *a ^ *b),
+                    loc: self.loc
+                }))
+            }
+            _ => None
+        }
+    }
+}
+
+impl RangeBitwise<Concrete> for Elem<Concrete> {
+    fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_bit_and(b),
+            _ => None
+        }
+    }
+    fn range_bit_or(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_bit_or(b),
+            _ => None
+        }
+    }
+    fn range_bit_xor(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_bit_xor(b),
             _ => None
         }
     }

@@ -9,6 +9,7 @@ use crate::range::Elem;
 
 use solang_parser::pt::Loc;
 
+/// A range element string consisting of a string and a location
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RangeElemString {
     pub s: String,
@@ -16,11 +17,13 @@ pub struct RangeElemString {
 }
 
 impl RangeElemString {
+    /// Creates a new range element string from a string and a location
     pub fn new(s: String, loc: Loc) -> Self {
         Self { s, loc }
     }
 }
 
+/// A range string consisting of stringified range elements
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct RangeString {
     pub min: RangeElemString,
@@ -28,13 +31,17 @@ pub struct RangeString {
 }
 
 impl RangeString {
+    /// Creates a new range string from a min and max [`RangeElemString`]
     pub fn new(min: RangeElemString, max: RangeElemString) -> Self {
         Self { min, max }
     }
 }
 
+/// String related functions for ranges
 pub trait ToRangeString {
+    /// Gets the definition string of the range element
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString;
+    /// Converts a range to a human string
     fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString;
 }
 
@@ -59,7 +66,7 @@ impl ToRangeString for Elem<Concrete> {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Dynamic(Dynamic { idx, side: _, loc }) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.display_name(analyzer).to_string();
+                let name = as_var.display_name(analyzer);
                 RangeElemString::new(name, *loc)
             }
             Elem::Expr(expr) => expr.to_range_string(analyzer),

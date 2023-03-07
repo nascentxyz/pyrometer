@@ -14,6 +14,32 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             ty: FunctionTy::Function,
             name: Some(Identifier {
                 loc: Loc::Builtin,
+                name: "ecrecover".to_string(),
+            }),
+            name_loc: Loc::Builtin,
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        },
+        Function {
+            body: None,
+            loc: Loc::Builtin,
+            ty: FunctionTy::Function,
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "type".to_string(),
+            }),
+            name_loc: Loc::Builtin,
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        },
+        Function {
+            body: None,
+            loc: Loc::Builtin,
+            ty: FunctionTy::Function,
+            name: Some(Identifier {
+                loc: Loc::Builtin,
                 name: "assert".to_string(),
             }),
             name_loc: Loc::Builtin,
@@ -240,6 +266,46 @@ pub fn builtin_fns_inputs(
     analyzer: &mut impl AnalyzerLike,
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
+        (
+            "ecrecover",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(8)),
+                    storage: None,
+                    name: None,
+                }
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Address),
+                storage: None,
+                name: None,
+            }],
+        ),
+        (
+            "type",
+            vec![],
+            vec![],
+        ),
         (
             "assert",
             vec![FunctionParam {

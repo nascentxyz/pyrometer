@@ -10,7 +10,7 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
             "msg" => Some(ExprRet::Single((ctx, self.msg().into()))),
             "block" => Some(ExprRet::Single((ctx, self.block().into()))),
             "abi" => todo!("abi"),
-            e => todo!("{:?}", e),
+            e => { println!("{:?}", e); None },
         }
     }
 

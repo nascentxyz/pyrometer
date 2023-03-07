@@ -21,7 +21,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                 ExprRet::Single((ctx, idx))
             }
         } else {
-            todo!("???")
+            panic!("Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.")
         }
     }
 
@@ -89,7 +89,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                     ExprRet::Single((ctx, idx_node))
                 }
             }
-            _ => todo!("here"),
+            e => panic!("Expected single expr evaluation of index expression, but was: {:?}. This is a bug. Please report it at github.com/nascentxyz/pyrometer.", e),
         }
     }
 }

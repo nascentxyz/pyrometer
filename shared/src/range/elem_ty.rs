@@ -9,6 +9,7 @@ use crate::range::{elem::RangeOp, *};
 use solang_parser::pt::Loc;
 
 
+/// Enumeration of the dynamic element's minimum or maximum
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum DynSide {
 	Min,
@@ -24,10 +25,14 @@ impl ToString for DynSide {
     }
 }
 
+/// A dynamic range element value
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Dynamic {
+	/// Index of the node that is referenced
 	pub idx: NodeIdx,
+	/// Whether to use the dynamic element's minimum or maximum
 	pub side: DynSide,
+	/// Sourcecode location
 	pub loc: Loc,
 }
 
@@ -125,6 +130,7 @@ impl RangeElem<Concrete> for Dynamic {
 	fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 }
 
+/// A concrete value for a range element
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeConcrete<T> {
 	pub val: T,
@@ -216,6 +222,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 }
 
+/// A range expression composed of other range [`Elem`]
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeExpr<T> {
 	pub lhs: Box<Elem<T>>,
@@ -224,6 +231,7 @@ pub struct RangeExpr<T> {
 }
 
 impl<T> RangeExpr<T> {
+	/// Creates a new range expression given a left hand side range [`Elem`], a [`RangeOp`], and a a right hand side range [`Elem`].
 	pub fn new(lhs: Elem<T>, op: RangeOp, rhs: Elem<T>) -> RangeExpr<T> {
 		RangeExpr {
             lhs: Box::new(lhs),
@@ -267,11 +275,16 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
 }
 
+/// A core range element.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Elem<T> {
+	/// A range element that is a reference to another node
 	Dynamic(Dynamic),
+	/// A concrete range element of type `T`. e.g.: some number like `10`
 	Concrete(RangeConcrete<T>),
+	/// A range element that is an expression composed of other range elements
 	Expr(RangeExpr<T>),
+	/// A null range element useful in range expressions that dont have a rhs
 	Null,
 }
 
@@ -282,6 +295,7 @@ impl From<Concrete> for Elem<Concrete> {
 }
 
 impl<T> Elem<T> {
+	/// Creates a new range element that is a cast from one type to another
 	pub fn cast(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -291,6 +305,7 @@ impl<T> Elem<T> {
         Elem::Expr(expr)
     }
 
+    /// Creates a new range element that is the minimum of two range elements
 	pub fn min(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -300,6 +315,7 @@ impl<T> Elem<T> {
         Elem::Expr(expr)
     }
 
+    /// Creates a new range element that is the maximum of two range elements
     pub fn max(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -309,6 +325,7 @@ impl<T> Elem<T> {
         Elem::Expr(expr)
     }
 
+    /// Creates a new range element that is a boolean of equality of two range elements
     pub fn eq(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -318,6 +335,7 @@ impl<T> Elem<T> {
         Elem::Expr(expr)
     }
 
+    /// Creates a new range element that is a boolean of inequality of two range elements
     pub fn neq(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -327,6 +345,7 @@ impl<T> Elem<T> {
         Elem::Expr(expr)
     }
 
+	/// Creates a new range element that is one range element to the power of another
     pub fn pow(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
@@ -399,6 +418,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     		Self::Null => vec![]
     	}
     }
+
 	fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
 		match self {
     		Self::Dynamic(d) => d.update_deps(mapping),
@@ -526,10 +546,35 @@ impl BitAnd for Elem<Concrete> {
     }
 }
 
+impl Elem<Concrete> {
+	/// Creates a logical AND of two range elements
+    pub fn and(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::And,
+            rhs: Box::new(other),
+        };
+        Self::Expr(expr)
+    }
+
+    /// Creates a logical OR of two range elements
+    pub fn or(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::Or,
+            rhs: Box::new(other),
+        };
+        Self::Expr(expr)
+    }
+}
 
 
+/// For execution of operations to be performed on range expressions
 pub trait ExecOp<T> {
+	/// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
+	/// and right-hand-side
 	fn exec_op(&self, analyzer: &impl GraphLike) -> Elem<T>;
+	/// Attempts to simplify an expression (i.e. just apply constant folding)
 	fn simplify_exec_op(&self, analyzer: &impl GraphLike) -> Elem<T>;
 }
 
@@ -550,9 +595,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			RangeOp::Div => {
 				lhs.range_div(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
-			RangeOp::Mod => {
-				lhs.range_mod(&rhs).unwrap_or(Elem::Expr(self.clone()))
-			}
+			// RangeOp::Mod => {
+			// 	lhs.range_mod(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			// }
 			RangeOp::Min => {
 				lhs.range_min(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
@@ -595,6 +640,15 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			}
 			RangeOp::Exp => {
 				lhs.range_exp(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::BitAnd => {
+				lhs.range_bit_and(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::BitOr => {
+				lhs.range_bit_and(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::BitXor => {
+				lhs.range_bit_and(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			_ => Elem::Expr(self.clone())
 		}
@@ -616,9 +670,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			RangeOp::Div => {
 				lhs.range_div(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
-			RangeOp::Mod => {
-				lhs.range_mod(&rhs).unwrap_or(Elem::Expr(self.clone()))
-			}
+			// RangeOp::Mod => {
+			// 	lhs.range_mod(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			// }
 			RangeOp::Min => {
 				lhs.range_min(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
@@ -661,6 +715,15 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 			}
 			RangeOp::Exp => {
 				lhs.range_exp(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::BitAnd => {
+				lhs.range_bit_and(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::BitOr => {
+				lhs.range_bit_or(&rhs).unwrap_or(Elem::Expr(self.clone()))
+			}
+			RangeOp::BitXor => {
+				lhs.range_bit_xor(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			_ => Elem::Expr(self.clone())
 		}

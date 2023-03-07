@@ -48,12 +48,31 @@ impl FunctionNode {
             .expect("No context for function")
     }
 
+    pub fn maybe_body_ctx(&self, analyzer: &'_ impl GraphLike) -> Option<ContextNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Context(ContextEdge::Context) == *edge.weight())
+            .map(|edge| ContextNode::from(edge.source()))
+            .take(1)
+            .next()
+    }
+
     pub fn params(&self, analyzer: &'_ impl GraphLike) -> Vec<FunctionParamNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| Edge::FunctionParam == *edge.weight())
             .map(|edge| FunctionParamNode::from(edge.source()))
+            .collect()
+    }
+
+    pub fn returns(&self, analyzer: &'_ impl GraphLike) -> Vec<FunctionReturnNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::FunctionReturn == *edge.weight())
+            .map(|edge| FunctionReturnNode::from(edge.source()))
             .collect()
     }
 
@@ -227,7 +246,7 @@ impl From<FunctionParam> for Node {
 
 impl FunctionParam {
     pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, param: Parameter) -> Self {
-        println!("func param: {:?}", param.name);
+        // println!("func param: {:?}", param.name);
         FunctionParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

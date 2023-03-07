@@ -109,7 +109,7 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        println!("top level expr: {:?}", expr);
+        // println!("top level expr: {:?}", expr);
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
@@ -303,8 +303,8 @@ impl Analyzer {
                 inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
                 inner_sources
             }
-            Import::Rename(path, _elems, _) => {
-                // println!("path: {:?}, elems: {:?}", path, elems);
+            Import::Rename(path, elems, _) => {
+                println!("path: {:?}, elems: {:?}, curr: {:?}", path, elems, std::env::current_dir());
                 let sol = fs::read_to_string(path.string.clone())
                     .expect("Could not find file for dependency");
                 self.file_no += 1;
@@ -357,7 +357,7 @@ impl Analyzer {
                 let node = self.parse_ty_def(def);
                 self.add_edge(node, con_node, Edge::Ty);
             }
-            EventDefinition(_def) => todo!(),
+            EventDefinition(_def) => {},
             Annotation(_anno) => todo!(),
             Using(_using) => todo!(),
             StraySemicolon(_loc) => todo!(),

@@ -1,3 +1,6 @@
+use pyrometer::context::queries::storage_write::StorageRangeQuery;
+use shared::range::SolcRange;
+use shared::nodes::Concrete;
 use std::process::Command;
 use std::io::Write;
 use crate::analyzers::ReportConfig;
@@ -38,7 +41,12 @@ struct Args {
     #[clap(long, short)]
     pub eval: Option<bool>,
     #[clap(long, short)]
+    pub show_inits: Option<bool>,
+    #[clap(long, short)]
     pub access_query: Vec<String>,
+    #[clap(long, short)]
+    pub write_query: Vec<String>,
+
 }
 
 fn main() {
@@ -52,7 +60,7 @@ fn main() {
             show_tmps: false,
             show_consts: false,
             show_subctxs: true,
-            show_initial_bounds: false,
+            show_initial_bounds: args.show_inits.unwrap_or(false),
         },
         1 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -60,7 +68,7 @@ fn main() {
             show_tmps: false,
             show_consts: false,
             show_subctxs: true,
-            show_initial_bounds: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
         },
         2 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -68,7 +76,7 @@ fn main() {
             show_tmps: false,
             show_consts: true,
             show_subctxs: true,
-            show_initial_bounds: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
         },
         _ => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -76,13 +84,9 @@ fn main() {
             show_tmps: true,
             show_consts: true,
             show_subctxs: true,
-            show_initial_bounds: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
         },
     };
-
-
-
-
 
     let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
 
@@ -115,7 +119,6 @@ fn main() {
     let all_contracts = analyzer.search_children(entry, &Edge::Contract).into_iter().map(ContractNode::from).collect::<Vec<_>>();
     let t1 = std::time::Instant::now();
     if args.contracts.is_empty() {
-        // println!("no specified contracts");
         let funcs = analyzer.search_children(entry, &Edge::Func);
         for func in funcs.into_iter() {
             if !args.funcs.is_empty() {
@@ -123,14 +126,15 @@ fn main() {
                     .funcs
                     .contains(&FunctionNode::from(func).name(&analyzer))
                 {
-                    let ctx = FunctionNode::from(func).body_ctx(&analyzer);
-                    let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
-                    analysis.print_reports(&mut source_map, &analyzer);
+                    if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+                        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                        analysis.print_reports(&mut source_map, &analyzer);  
+                    }
+                    
                 }
-            } else {
-                let ctx = FunctionNode::from(func).body_ctx(&analyzer);
+            } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
                 let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
-                analysis.print_reports(&mut source_map, &analyzer);
+                analysis.print_reports(&mut source_map, &analyzer);   
             }
         }
     } else {
@@ -165,6 +169,15 @@ fn main() {
             split[0].to_string(),
             split[1].to_string(),
         ).print_reports(&mut source_map, &analyzer);
+        println!();
+    });
+
+    args.write_query.iter().for_each(|query| {
+        let split: Vec<&str> = query.split('.').collect();
+        println!("{:?}", split);
+        if let Some(report) = analyzer.func_query(entry, &file_mapping, config, split[0].to_string(), split[1].to_string(), split[2].to_string(), SolcRange { min: Concrete::Bool(true).into(), max: Concrete::Bool(true).into()}) {
+            report.print_reports(&mut source_map, &analyzer);
+        }
         println!();
     });
 

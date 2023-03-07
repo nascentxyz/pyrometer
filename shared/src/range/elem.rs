@@ -5,34 +5,62 @@ use crate::context::ContextVarNode;
 use crate::range::elem_ty::RangeExpr;
 use crate::range::elem_ty::Elem;
 
-
+/// An operation to be performed on a range element
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum RangeOp {
+    /// Addition
     Add,
+    /// Multiplication
     Mul,
+    /// Subtraction
     Sub,
+    /// Division
     Div,
+    /// Modulos
     Mod,
+    /// Minimum
     Min,
+    /// Maximum
     Max,
+    /// Less than
     Lt,
+    /// Less than or equal
     Lte,
+    /// Geater than
     Gt,
+    /// Greater than or equal
     Gte,
+    /// Equal
     Eq,
+    /// Not Equal
     Neq,
+    /// Bitwise Not
     Not,
+    /// Bitwise shift left
     Shl,
+    /// Bitwise shift right
     Shr,
+    /// Logical AND
     And,
+    /// Logical OR
+    Or,
+    /// Catch-all requirement statement
     Where,
+    /// Cast from one type to another
     Cast,
+    /// Bitwise AND
     BitAnd,
+    /// Bitwise OR
+    BitOr,
+    /// Bitwise XOR
+    BitXor,
+    /// Exponentiation
     Exp,
 }
 
 
 impl RangeOp {
+    /// Attempts to return the inverse range operation (e.g.: `RangeOp::Add => RangeOp::Sub`)
     pub fn inverse(self) -> Option<Self> {
         use RangeOp::*;
         match self {
@@ -71,25 +99,49 @@ impl ToString for RangeOp {
             Eq => "==".to_string(),
             Neq => "!=".to_string(),
             Not => "!".to_string(),
-            And => "&".to_string(),
+            And => "&&".to_string(),
+            Or => "||".to_string(),
             Where => "where".to_string(),
             Cast => "cast".to_string(),
             BitAnd => "&".to_string(),
+            BitOr => "|".to_string(),
+            BitXor => "^".to_string(),
         }
     }
 }
 
 
 pub trait RangeElem<T> {
+    /// Tries to evaluate a range element down to a concrete or maximally simplified expression
 	fn eval(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    /// Tries to simplify (i.e.: leaves symbolic/dynamic values as they are)
     fn simplify(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    /// Checks if two range elements are equal
     fn range_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool;
+    /// Tries to compare the ordering of two range elements
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
+    /// Constructs a range `Elem::Expr` given a lhs, rhs, and operation ([`RangeOp`]).
     fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp) -> Elem<T> where Self: Sized {
         Elem::Expr(RangeExpr::new(lhs, op, rhs))
     }
+    /// Traverses the range expression and finds all nodes that are dynamically pointed to
+    /// and returns it in a vector.
     fn dependent_on(&self) -> Vec<ContextVarNode>;
+    /// Traverses the range expression and updates stale pointers from older versions
+    /// of a variable to a newer version.
+    ///
+    /// e.g.: `uint256 z = x + 100`, followed by `require(x < 100)`. Initially,
+    /// without the `require` statement, `z`'s max is `2**256 - 1`, but with
+    /// the introduction of the `require` statement, we do a little backtracking
+    /// and can update `z`'s max to be `200`.
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>);
+    /// Attempts to replace range elements that form a cyclic dependency by replacing
+    /// it with a new node. Ideally no cyclic dependencies occur in ranges as of now
+    /// but in theory it can make sense.
+    ///
+    /// e.g.: take the basic expression `x + y`, in normal checked solidity math
+    /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
+    /// cyclic dependency.
     fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<T>);
 }
 

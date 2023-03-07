@@ -11,3 +11,4 @@ solang-parser = { version = "0.2.1", features = ["pt-serde"] }
 ethers-core = "*"
 ariadne = "0.1.5"
 shared = { path = "./shared" }
+hex = "0.4.3"

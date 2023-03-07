@@ -78,7 +78,36 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
-                let range = self.range_eval(*ctx, lhs_cvar, rhs_cvar, op);
+                let range = {
+                    let lhs_range = lhs_cvar.range(self).expect("Variable didnt have a range");
+                    let rhs_range = rhs_cvar.range(self).expect("Rhs didnt have a range");
+                    let rhs_min = Elem::Expr(RangeExpr {
+                        lhs: Box::new(rhs_range.min.clone()),
+                        op,
+                        rhs: Box::new(rhs_range.max.clone()),
+                    });
+
+                    let min = Elem::Expr(RangeExpr {
+                        lhs: Box::new(lhs_range.min),
+                        op,
+                        rhs: Box::new(rhs_min),
+                    });
+
+                    let rhs_max = Elem::Expr(RangeExpr {
+                        lhs: Box::new(rhs_range.min),
+                        op,
+                        rhs: Box::new(rhs_range.max),
+                    });
+
+                    let max = Elem::Expr(RangeExpr {
+                        lhs: Box::new(lhs_range.max),
+                        op,
+                        rhs: Box::new(rhs_max),
+                    });
+
+                    SolcRange { min, max }
+                };
+
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(

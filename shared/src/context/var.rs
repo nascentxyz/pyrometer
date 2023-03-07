@@ -1,3 +1,5 @@
+use crate::AnalyzerLike;
+use crate::Builtin;
 use crate::ContractNode;
 use crate::TypeNode;
 use crate::BuiltInNode;
@@ -127,6 +129,14 @@ impl ContextVarNode {
 
     pub fn range(&self, analyzer: &'_ impl GraphLike) -> Option<SolcRange> {
         self.underlying(analyzer).ty.range(analyzer)
+    }
+
+    pub fn range_min(&self, analyzer: &'_ impl GraphLike) -> Option<Elem<Concrete>> {
+        Some(self.range(analyzer)?.range_min())
+    }
+
+    pub fn range_max(&self, analyzer: &'_ impl GraphLike) -> Option<Elem<Concrete>> {
+        Some(self.range(analyzer)?.range_max())
     }
 
     pub fn is_const(&self, analyzer: &impl GraphLike) -> bool {
@@ -290,6 +300,17 @@ impl ContextVarNode {
     pub fn is_concrete(&self, analyzer: &impl GraphLike) -> bool {
         matches!(self.underlying(analyzer).ty, VarType::Concrete(_))
     }
+
+    pub fn as_cast_tmp(
+        &self,
+        loc: Loc,
+        ctx: ContextNode,
+        cast_ty: Builtin,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        let new_underlying = self.underlying(analyzer).clone().as_cast_tmp(loc, ctx, cast_ty, analyzer);
+        analyzer.add_node(Node::ContextVar(new_underlying)).into()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -341,6 +362,20 @@ impl ContextVar {
             is_symbolic: false,
             ty: VarType::Concrete(concrete_node),
         }
+    }
+
+    pub fn as_cast_tmp(
+        &self,
+        loc: Loc,
+        ctx: ContextNode,
+        cast_ty: Builtin,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        let mut new_tmp = self.clone();
+        new_tmp.loc = Some(loc);
+        new_tmp.is_tmp = true;
+        new_tmp.name = format!("tmp{}_{}({}({}))", self.name, ctx.new_tmp(analyzer), cast_ty.as_string(analyzer), self.name);
+        new_tmp
     }
 
     pub fn new_from_contract(

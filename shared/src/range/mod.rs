@@ -1,3 +1,4 @@
+use ethers_core::types::H256;
 use crate::NodeIdx;
 use crate::GraphLike;
 use crate::range::range_string::ToRangeString;
@@ -126,6 +127,16 @@ impl SolcRange {
                     min: Elem::Concrete(RangeConcrete { val: Concrete::Address(Address::from_slice(&[0x00; 20])), loc: Loc::Implicit }),
                     max: Elem::Concrete(RangeConcrete {
                         val: Concrete::Address(Address::from_slice(&[0xff; 20])),
+                        loc: Loc::Implicit,
+                    }),
+                })
+            },
+            Builtin::Bytes(size) => {
+                let v: Vec<_> = (0..32u8).map(|i| if i < *size { 0xff } else { 0x00 }).collect();
+                Some(SolcRange {
+                    min: Elem::Concrete(RangeConcrete { val: Concrete::Bytes(*size, H256::from_slice(&[0x00; 32])), loc: Loc::Implicit }),
+                    max: Elem::Concrete(RangeConcrete {
+                        val: Concrete::Bytes(*size, H256::from_slice(&v[..])),
                         loc: Loc::Implicit,
                     }),
                 })
@@ -264,6 +275,14 @@ impl SolcRange {
                 &Self::bit_and_dyn,
                 (DynSide::Min, DynSide::Max),
             ),
+            // RangeOp::And => (
+            //     &Self::and_dyn,
+            //     (DynSide::Min, DynSide::Max),
+            // ),
+            // RangeOp::Or => (
+            //     &Self::or_dyn,
+            //     (DynSide::Min, DynSide::Max),
+            // ),
             e => unreachable!("Comparator operations shouldn't exist in a range: {:?}", e),
         }
     }
@@ -335,8 +354,8 @@ impl SolcRange {
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min / Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max / Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
+            max: self.max / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
         }
     }
 
@@ -371,8 +390,8 @@ impl SolcRange {
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min.clone().min(self.min % Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
-            max: Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)).min(self.max % Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+            min: Elem::from(Concrete::from(U256::zero())),
+            max: Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)) - Elem::from(Concrete::from(U256::from(1)))
         }
     }
 

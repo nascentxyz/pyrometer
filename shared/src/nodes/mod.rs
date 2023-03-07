@@ -1,3 +1,4 @@
+//! Solidity and EVM specific representations as nodes in the graph
 use solang_parser::pt::Expression;
 use crate::GraphLike;
 use crate::analyzer::AsDotStr;

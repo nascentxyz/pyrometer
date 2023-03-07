@@ -2,10 +2,12 @@ use crate::Builtin;
 use crate::{Node, NodeIdx, analyzer::{GraphLike}};
 use ethers_core::types::{U256, I256, H256, Address};
 
+/// An index in the graph that references a [`Concrete`] node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ConcreteNode(pub usize);
 
 impl ConcreteNode {
+    /// Gets the underlying node data for the [`Concrete`]
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Concrete {
         match analyzer.node(*self) {
             Node::Concrete(c) => c,
@@ -29,21 +31,37 @@ impl From<ConcreteNode> for NodeIdx {
     }
 }
 
+/// EVM/Solidity basic concrete types
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Concrete {
+    /// An unsigned integer, in the form of (bits, value) 
     Uint(u16, U256),
+    /// A signed integer, in the form of (bits, value)
     Int(u16, I256),
+    /// An fixed length bytes, in the form of (bytes, value)
     Bytes(u8, H256),
+    /// A 20 byte address
     Address(Address),
+    /// A boolean
     Bool(bool),
+    /// A vector of bytes
     DynBytes(Vec<u8>),
+    /// A string, (TODO: solidity doesn't enforce utf-8 encoding like rust. Likely this type
+    /// should be modeled with a `Vec<u8>` instead.)
     String(String),
+    /// An array of concrete values
     Array(Vec<Concrete>),
 }
 
 impl From<U256> for Concrete {
     fn from(u: U256) -> Self {
         Concrete::Uint(256, u)
+    }
+}
+
+impl From<I256> for Concrete {
+    fn from(u: I256) -> Self {
+        Concrete::Int(256, u)
     }
 }
 
@@ -94,6 +112,10 @@ impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
 
 
 impl Concrete {
+    /// Convert a U256 back into it's original type. This is used mostly
+    /// for range calculations to improve ergonomics. Basically
+    /// the EVM only operates on U256 words, so most of this should
+    /// be fine.
     pub fn u256_as_original(&self, uint: U256) -> Self {
         match self {
             Concrete::Uint(size, _) => Concrete::Uint(*size, uint),
@@ -109,14 +131,16 @@ impl Concrete {
                 Concrete::Address(Address::from_slice(&bytes[12..]))
             },
             Concrete::Bool(_) => if uint > U256::zero() { Concrete::Bool(true) } else { Concrete::Bool(false) },
-            _ => todo!("here"),
+            e => todo!("Unsupported: {e:?}"),
         }
     }
 
+    /// Cast from one concrete variant given another concrete variant
     pub fn cast_from(self, other: &Self) -> Option<Self> {
         self.cast(other.as_builtin())
     }
 
+    /// Cast the concrete to another type as denoted by a [`Builtin`].
     pub fn cast(self, builtin: Builtin) -> Option<Self> {
         match self {
             Concrete::Uint(_, val) => {
@@ -132,7 +156,11 @@ impl Concrete {
                         } else {
                             U256::from(2).pow(size.into()) - 1
                         };
-                        Some(Concrete::Uint(size, val & mask))
+                        if val < mask {
+                            Some(Concrete::Uint(size, val))    
+                        } else {
+                            Some(Concrete::Uint(size, mask))
+                        }
                     }
                     Builtin::Int(size) => {
                         let mask = if size == 256 {
@@ -141,7 +169,12 @@ impl Concrete {
                         } else {
                             U256::from(2).pow(size.into()) - 1
                         };
-                        Some(Concrete::Int(size, I256::from_raw(val & mask)))
+
+                        if val < mask {
+                            Some(Concrete::Int(size, I256::from_raw(val)))
+                        } else {
+                            Some(Concrete::Int(size, I256::from_raw(mask)))
+                        }
                     }
                     Builtin::Bytes(size) => {
                         let mask = if size == 32 {
@@ -170,15 +203,30 @@ impl Concrete {
                         } else {
                             U256::from(2).pow(size.into()) - 1
                         };
-                        Some(Concrete::Uint(size, val.into_raw() & mask))
+
+                        let (_sign, abs) = val.into_sign_and_abs();
+
+                        if val.signum() <= 0.into() {
+                            Some(Concrete::Uint(size, U256::zero()))
+                        } else if abs < mask {
+                            Some(Concrete::Uint(size, abs))
+                        } else {
+                            Some(Concrete::Uint(size, mask))
+                        }
                     }
                     Builtin::Int(size) => {
                         let mask = if size == 256 {
-                            U256::MAX
+                            U256::MAX / 2
                         } else {
-                            U256::from(2).pow(size.into()) - 1
+                            U256::from(2).pow((size - 1).into()) - 1
                         };
-                        Some(Concrete::Int(size, I256::from_raw(val.into_raw() & mask)))
+
+                        let (sign, abs) = val.into_sign_and_abs();
+                        if abs < mask {
+                            Some(Concrete::Int(size, val))
+                        } else {
+                            Some(Concrete::Int(size, I256::checked_from_sign_and_abs(sign, mask).unwrap())) 
+                        }
                     }
                     Builtin::Bytes(size) => {
                         let mask = if size == 32 {
@@ -217,15 +265,8 @@ impl Concrete {
                         Some(Concrete::Int(size, I256::from_raw(val & mask)))
                     }
                     Builtin::Bytes(size) => {
-                        let mask = if size == 32 {
-                            U256::MAX
-                        } else {
-                            U256::from(2).pow((size as u16 * 8).into()) - 1
-                        };
-
                         let mut h = H256::default();
-                        let val = U256::from_big_endian(b.as_bytes());
-                        (val & mask).to_big_endian(h.as_mut());
+                        (0..size).for_each(|i| h.0[i as usize] = b.0[i as usize]);
                         Some(Concrete::Bytes(size, h))
                     }
                     _ => None
@@ -271,6 +312,7 @@ impl Concrete {
         }
     }
 
+    /// Converts a concrete into a [`Builtin`].
     pub fn as_builtin(&self) -> Builtin {
         match self {
             Concrete::Uint(size, _) => {
@@ -294,6 +336,7 @@ impl Concrete {
         }
     }
 
+    /// Converts a concrete into a `U256`.
     pub fn into_u256(&self) -> Option<U256> {
         match self {
             Concrete::Uint(_, val) => Some(*val),
@@ -305,6 +348,7 @@ impl Concrete {
         }
     }
 
+    /// Gets the default max for a given concrete variant.
     pub fn max(&self) -> Option<Self> {
         match self {
             Concrete::Uint(size, _) => {
@@ -339,6 +383,7 @@ impl Concrete {
         }
     }
 
+    /// Gets the default min for a given concrete variant.
     pub fn min(&self) -> Option<Self> {
         match self {
             Concrete::Uint(size, _) => {
@@ -363,6 +408,7 @@ impl Concrete {
         }
     }
 
+    /// Gets the size of some concrete type
     pub fn int_size(&self) -> Option<u16> {
         match self {
             Concrete::Uint(size, _) => Some(*size),
@@ -372,6 +418,7 @@ impl Concrete {
         }
     }
 
+    /// If its `Concrete::Uint`, gets the value
     pub fn uint_val(&self) -> Option<U256> {
         match self {
             Concrete::Uint(_, val) => Some(*val),
@@ -379,6 +426,7 @@ impl Concrete {
         }
     }
 
+    /// If its `Concrete::Int`, gets the value
     pub fn int_val(&self) -> Option<I256> {
         match self {
             Concrete::Int(_, val) => Some(*val),
@@ -386,6 +434,7 @@ impl Concrete {
         }
     }
 
+    /// Converts to a string
     pub fn as_string(&self) -> String {
         match self {
             Concrete::Uint(_, val) => val.to_string(),
@@ -394,10 +443,12 @@ impl Concrete {
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
             Concrete::Address(a) => a.to_string(),
-            _ => todo!("concrete as string"),
+            e => todo!("Concrete as string {e:?}"),
         }
     }
 
+    /// Converts to a human readable string. For integers, this means trying to find a 
+    /// power of 2 that is close to the value.
     pub fn as_human_string(&self) -> String {
         match self {
             Concrete::Uint(_, val) => {
@@ -454,7 +505,7 @@ impl Concrete {
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
             Concrete::Address(a) => format!("{:?}", a),
-            _ => todo!("concrete as string"),
+            e => todo!("Concrete as string: {e:?}"),
         }
     }
 }

@@ -7,6 +7,8 @@ use crate::NodeIdx;
 use crate::Edge;
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
 
+
+/// An index in the graph that references a [`Contract`] node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ContractNode(pub usize);
 
@@ -25,6 +27,7 @@ impl AsDotStr for ContractNode {
 }
 
 impl ContractNode {
+    /// Gets the underlying node data for the [`Contract`]
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Contract {
         match analyzer.node(*self) {
             Node::Contract(func) => func,
@@ -35,6 +38,7 @@ impl ContractNode {
         }
     }
 
+    /// Gets the name from the underlying node data for the [`Contract`]
     pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
         self.underlying(analyzer)
             .name
@@ -43,10 +47,12 @@ impl ContractNode {
             .name
     }
 
+    /// Gets the sourcecode location from the underlying node data for the [`Contract`]
     pub fn loc(&self, analyzer: &'_ impl GraphLike) -> Loc {
         self.underlying(analyzer).loc
     }
 
+    /// Gets all associated functions from the underlying node data for the [`Contract`]
     pub fn funcs(&self, analyzer: &'_ (impl GraphLike + Search)) -> Vec<FunctionNode> {
         analyzer.search_children(self.0.into(), &Edge::Func)
         .into_iter()
@@ -67,11 +73,16 @@ impl From<NodeIdx> for ContractNode {
     }
 }
 
+/// A solidity contract representation
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Contract {
+    /// Sourcecode location
     pub loc: Loc,
+    /// The type of contract
     pub ty: ContractTy,
+    /// An optional name in the form of an identifier (`(Loc, String)`)
     pub name: Option<Identifier>,
+    /// A list of contracts that this contract inherits (TODO: inheritance linearization)
     pub inherits: Vec<ContractNode>,
 }
 
@@ -82,6 +93,7 @@ impl From<Contract> for Node {
 }
 
 impl Contract {
+    /// Constructs a new contract from a `ContractDefinition` with imports
     pub fn from_w_imports(
         con: ContractDefinition,
         imports: &[(Option<NodeIdx>, String, String, usize)],

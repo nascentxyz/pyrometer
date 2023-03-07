@@ -124,6 +124,8 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
     fn true_fork_if_cvar(&mut self, loc: Loc, if_expr: Expression, true_fork_ctx: ContextNode) {
         let if_expr = match if_expr {
             Expression::Equal(_loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
+            Expression::And(_loc, lhs, rhs) => Expression::And(loc, lhs, rhs),
+            Expression::NotEqual(_loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
             Expression::Less(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
             Expression::More(_loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
             Expression::MoreEqual(_loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
@@ -143,6 +145,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
     fn false_fork_if_cvar(&mut self, loc: Loc, if_expr: Expression, false_fork_ctx: ContextNode) {
         let inv_if_expr = match if_expr {
             Expression::Equal(_loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
+            Expression::NotEqual(_loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
             Expression::Less(_loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
             Expression::More(_loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
             Expression::MoreEqual(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),

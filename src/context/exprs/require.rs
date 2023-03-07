@@ -1,3 +1,4 @@
+use crate::context::exprs::cmp::Cmp;
 use crate::{
     exprs::{BinOp, Variable},
     AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ExprRet, Node,
@@ -7,7 +8,7 @@ use shared::{
     nodes::{BuiltInNode, Builtin, VarType},
     range::{
         elem::{RangeElem, RangeOp},
-        elem_ty::{Elem, RangeConcrete},
+        elem_ty::{Elem, RangeConcrete, Dynamic, DynSide},
         Range, RangeEval, SolcRange,
     },
     Edge,
@@ -128,6 +129,59 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (RangeOp::Neq, RangeOp::Eq),
                 );
             }
+            Expression::And(loc, lhs, rhs) => {
+                // println!("was not in require");
+                let lhs_paths = self.cmp(
+                    *loc,
+                    lhs,
+                    RangeOp::Or,
+                    rhs,
+                    ctx
+                );
+                let cnode =
+                    ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
+                let tmp_true =
+                    Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, cnode, self));
+                let node = self.add_node(tmp_true);
+                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                let rhs_paths =
+                    ExprRet::Single((ctx, node));
+                
+                self.handle_require_inner(
+                    *loc,
+                    &lhs_paths,
+                    &rhs_paths,
+                    RangeOp::Eq,
+                    RangeOp::Neq,
+                    (RangeOp::Neq, RangeOp::Eq),
+                );
+            }
+            Expression::Or(loc, lhs, rhs) => {
+                // println!("was not in require");
+                let lhs_paths = self.cmp(
+                    *loc,
+                    lhs,
+                    RangeOp::Or,
+                    rhs,
+                    ctx
+                );
+                let cnode =
+                    ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
+                let tmp_true =
+                    Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, cnode, self));
+                let node = self.add_node(tmp_true);
+                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                let rhs_paths =
+                    ExprRet::Single((ctx, node));
+                self.handle_require_inner(
+                    *loc,
+                    &lhs_paths,
+                    &rhs_paths,
+                    RangeOp::Eq,
+                    RangeOp::Neq,
+                    (RangeOp::Neq, RangeOp::Eq),
+                );
+            }
             e => unreachable!("Require expr with noncomparator: {:?}", e),
         }
     }
@@ -152,8 +206,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx);
 
                 self.require(
-                    (lhs_cvar, new_lhs),
-                    (rhs_cvar, new_rhs),
+                    new_lhs,
+                    new_rhs,
                     *lhs_ctx,
                     loc,
                     op,
@@ -164,8 +218,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *rhs_ctx);
                     let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *rhs_ctx);
                     self.require(
-                        (lhs_cvar, new_lhs),
-                        (rhs_cvar, new_rhs),
+                        new_lhs,
+                        new_rhs,
                         *rhs_ctx,
                         loc,
                         op,
@@ -235,42 +289,59 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     #[allow(clippy::too_many_arguments)]
     fn require(
         &mut self,
-        (lhs_cvar, new_lhs): (ContextVarNode, ContextVarNode),
-        (rhs_cvar, new_rhs): (ContextVarNode, ContextVarNode),
+        new_lhs: ContextVarNode,
+        new_rhs: ContextVarNode,
         ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         rhs_op: RangeOp,
         recursion_ops: (RangeOp, RangeOp),
-    ) {
+    ) -> Option<ContextVarNode> {
         let mut any_unsat = false;
+        let mut tmp_cvar = None;
         if let Some(mut lhs_range) = new_lhs.underlying(self).ty.range(self) {
             // println!(
             //     "op {:?}, {}, lhs_cvar: {}, rhs_cvar: {}",
             //     op,
             //     ctx.path(self),
-            //     lhs_cvar.display_name(self),
-            //     rhs_cvar.display_name(self)
+            //     new_lhs.display_name(self),
+            //     new_rhs.display_name(self)
             // );
             let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
             let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
 
-            // println!("new lhs range: {:#?}", new_lhs_range);
+            // println!("new lhs range: {:#?}", new_lhs_range.min.eval(self).to_range_string(self));
+            // println!("new lhs range: {:#?}", new_lhs_range.max.eval(self).to_range_string(self));
 
             if let Some(mut rhs_range) = new_rhs.range(self) {
                 rhs_range.update_deps(ctx, self);
-                if lhs_cvar.is_const(self) && !rhs_cvar.is_const(self) {
+                if new_lhs.is_const(self) && !new_rhs.is_const(self) {
                     // println!("knew lhs");
                     let (rhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(rhs_op);
                     let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, range_sides, loc);
                     // println!("new rhs range: {:#?}", new_rhs_range);
                     new_rhs.set_range_min(self, new_rhs_range.range_min()); //lhs_cvar.range(self).unwrap().range_min());
                     new_rhs.set_range_max(self, new_rhs_range.range_max()); //lhs_cvar.range(self).unwrap().range_max());
-                } else if rhs_cvar.is_const(self) {
-                    // println!("knew rhs");
-                    new_lhs.set_range_min(self, new_lhs_range.range_min()); //rhs_cvar.range(self).unwrap().range_min());
-                    new_lhs.set_range_max(self, new_lhs_range.range_max()); //rhs_cvar.range(self).unwrap().range_max());
+                } else if new_rhs.is_const(self) {
+                    // println!("knew rhs, {:#?}", new_rhs.underlying(self));
+                    if matches!(op, RangeOp::Eq) {
+                        let min = Elem::Dynamic(Dynamic::new(
+                                new_rhs.latest_version(self).into(),
+                                DynSide::Min,
+                                loc,
+                        ));
+                        let max = Elem::Dynamic(Dynamic::new(
+                            new_rhs.latest_version(self).into(),
+                            DynSide::Max,
+                            loc,
+                        ));
+                        new_lhs.set_range_min(self, min);
+                        new_lhs.set_range_max(self, max);
+                    } else {
+                        new_lhs.set_range_min(self, new_lhs_range.range_min()); //rhs_cvar.range(self).unwrap().range_min());
+                        new_lhs.set_range_max(self, new_lhs_range.range_max()); //rhs_cvar.range(self).unwrap().range_max());
+                    }
                 } else {
                     // we know nothing about either
                     // println!("didnt know either");
@@ -286,47 +357,52 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 loc: Some(loc),
                 name: format!(
                     "tmp{}({} {} {})",
-                    lhs_cvar.name(self),
+                    ctx.new_tmp(self),
+                    new_lhs.name(self),
                     op.to_string(),
-                    rhs_cvar.name(self),
-                    ctx.new_tmp(self)
+                    new_rhs.name(self),
                 ),
                 display_name: format!(
                     "({} {} {})",
-                    lhs_cvar.display_name(self),
+                    new_lhs.display_name(self),
                     op.to_string(),
-                    rhs_cvar.display_name(self),
+                    new_rhs.display_name(self),
                 ),
                 storage: None,
                 is_tmp: true,
-                tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
-                is_symbolic: lhs_cvar.is_symbolic(self) || rhs_cvar.is_symbolic(self),
+                tmp_of: Some(TmpConstruction::new(new_lhs, op, Some(new_rhs))),
+                is_symbolic: new_lhs.is_symbolic(self) || new_rhs.is_symbolic(self),
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     SolcRange::from(Concrete::Bool(true)),
                 ),
             };
 
-            let tmp_var = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-            self.add_edge(tmp_var, ctx, Edge::Context(ContextEdge::Variable));
+            let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+
+            tmp_cvar = Some(cvar);
 
             any_unsat |= new_lhs_range.unsat(self);
             if any_unsat {
                 ctx.kill(self, loc);
-                return;
+                return None;
             }
 
-            ctx.add_ctx_dep(tmp_var, self);
+            ctx.add_ctx_dep(cvar, self);
         }
 
-        if let Some(tmp) = lhs_cvar.tmp_of(self) {
+        if let Some(tmp) = new_lhs.tmp_of(self) {
             if tmp.op.inverse().is_some() {
-                self.range_recursion(tmp, recursion_ops, rhs_cvar, ctx, loc, &mut any_unsat)
+                println!("range recursion: {:?}", tmp);
+                self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)
             } else {
-                self.uninvertable_range_recursion(tmp, lhs_cvar, rhs_cvar, loc, ctx);
+                self.uninvertable_range_recursion(tmp, new_lhs, new_rhs, loc, ctx);
                 // println!("did not recurse as it was not reversable: {:?}", tmp);
             }
         }
+
+        tmp_cvar
     }
 
     fn uninvertable_range_recursion(
@@ -339,7 +415,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) {
         if !tmp_construction.lhs.is_const(self) {
             // widen to maximum range :(
-            let new_underlying_lhs = self.advance_var_in_ctx(tmp_construction.lhs, loc, ctx);
+            let new_underlying_lhs = self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx);
             if let Some(lhs_range) = tmp_construction.lhs.range(self) {
                 match lhs_range.range_min().eval(self) {
                     Elem::Concrete(c) => {
@@ -392,7 +468,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 .expect_single()
                 .1,
             );
-            let new_underlying_lhs = self.advance_var_in_ctx(tmp_construction.lhs, loc, ctx);
+            let new_underlying_lhs = self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx);
             if let Some(lhs_range) = new_underlying_lhs.underlying(self).ty.range(self) {
                 if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                     let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(no_flip_op);

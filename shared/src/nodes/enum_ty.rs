@@ -4,6 +4,8 @@ use crate::Node;
 use crate::NodeIdx;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 
+
+/// An index in the graph that references a [`Enum`] node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct EnumNode(pub usize);
 
@@ -22,6 +24,7 @@ impl AsDotStr for EnumNode {
 }
 
 impl EnumNode {
+    /// Gets the underlying node data for the [`Enum`]
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Enum {
         match analyzer.node(*self) {
             Node::Enum(e) => e,
@@ -32,6 +35,7 @@ impl EnumNode {
         }
     }
 
+    /// Gets the name of the enum from the underlying node data for the [`Enum`]
     pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
         self.underlying(analyzer)
             .name
@@ -40,6 +44,7 @@ impl EnumNode {
             .name
     }
 }
+
 impl From<EnumNode> for NodeIdx {
     fn from(val: EnumNode) -> Self {
         val.0.into()
@@ -52,6 +57,7 @@ impl From<NodeIdx> for EnumNode {
     }
 }
 
+/// A solidity enum representation
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Enum {
     pub loc: Loc,
