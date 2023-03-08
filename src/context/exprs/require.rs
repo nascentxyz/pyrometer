@@ -309,8 +309,25 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             // );
             let (lhs_range_fn, range_sides) = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
-            let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
+            let mut new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, range_sides, loc);
 
+            if matches!(op, RangeOp::Neq) {
+                println!("here!");
+                let exclusion_range = SolcRange {
+                    min: Elem::Dynamic(Dynamic::new(
+                            new_rhs.latest_version(self).into(),
+                            DynSide::Min,
+                            loc,
+                    )),
+                    max: Elem::Dynamic(Dynamic::new(
+                        new_rhs.latest_version(self).into(),
+                        DynSide::Max,
+                        loc,
+                    )),
+                    exclusions: vec![],
+                };
+                lhs_range.exclusions.push(exclusion_range);
+            }
             // println!("new lhs range: {:#?}", new_lhs_range.min.eval(self).to_range_string(self));
             // println!("new lhs range: {:#?}", new_lhs_range.max.eval(self).to_range_string(self));
 
@@ -338,9 +355,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         ));
                         new_lhs.set_range_min(self, min);
                         new_lhs.set_range_max(self, max);
-                    } else {
+                    } else if !matches!(op, RangeOp::Neq) {
                         new_lhs.set_range_min(self, new_lhs_range.range_min()); //rhs_cvar.range(self).unwrap().range_min());
                         new_lhs.set_range_max(self, new_lhs_range.range_max()); //rhs_cvar.range(self).unwrap().range_max());
+                    } else {
+                        new_lhs.set_range_exclusions(self, lhs_range.exclusions);
                     }
                 } else {
                     // we know nothing about either

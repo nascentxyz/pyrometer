@@ -198,16 +198,16 @@ contract Cast {
 		return round_trip;
 	}
 
-	function u_int_addr(uint160 x) public {
-		address x_addr = address(x);
+	function u_int_addr(uint160 x) public returns (address) {
+		return address(x);
 	}
 
-	function addr_uint(address x) public {
-		uint160 x_addr = uint160(x);
+	function addr_uint(address x) public returns (uint160) {
+		return uint160(x);
 	}
 
 	function addr_uint_conc() public return (address) {
-		// address round_trip = u_int_addr(addr_uint(address(1337)));
-		// return round_trip;
+		address round_trip = u_int_addr(addr_uint(address(1337)));
+		return round_trip;
 	}
 }

@@ -657,8 +657,16 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                                 SolcRange::try_from_builtin(&ty).expect("No default range");
                             new_var.set_range_min(self, r.range_min().cast(curr_range.range_min()));
                             new_var.set_range_max(self, r.range_max().cast(curr_range.range_max()));
+                            // cast the range exclusions - TODO: verify this is correct
+                            let mut exclusions = r.range_exclusions();
+                            exclusions.iter_mut().for_each(|range| {
+                                range.set_range_min(range.range_min().cast(curr_range.range_min()));
+                                range.set_range_max(range.range_max().cast(curr_range.range_max()));
+                            });
+                            new_var.set_range_exclusions(self, exclusions);
                         } else {
-                            todo!("unable to cast?")
+
+                            // todo!("unable to cast: {:?}, {ty:?}", self.node(cvar))
                         }
                         return ExprRet::Single((ctx, new_var.into()));
                     }
@@ -875,6 +883,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     let new_max = r.range_max().cast(r2.range_max());
                     node.try_set_range_min(self, new_min);
                     node.try_set_range_max(self, new_max);
+                    println!("trying to set exclusions: {:?}", r.exclusions);
+
+                    println!("{:?}", node.try_set_range_exclusions(self, r.exclusions));
                 }
                 self.add_edge(node, subctx, Edge::Context(ContextEdge::Variable));
             }
@@ -905,6 +916,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                             );
                             new_parent_var.set_range_min(self, r.range_min());
                             new_parent_var.set_range_max(self, r.range_max());
+                            new_parent_var.set_range_exclusions(self, r.range_exclusions());
                         }
                     } else {
                         todo!("storage was some, but not in parent: {}", underlying.name);
@@ -1037,6 +1049,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
         let _ = new_lhs.try_set_range_min(self, new_lower_bound);
         let _ = new_lhs.try_set_range_max(self, new_upper_bound);
+        println!("assigning {} = {}", lhs_cvar.display_name(self), rhs_cvar.display_name(self));
+        if let Some(rhs_range) = rhs_cvar.range(self) {
+            new_lhs.try_set_range_exclusions(self, rhs_range.exclusions);    
+        }
 
         ExprRet::Single((ctx, new_lhs.into()))
     }

@@ -4,6 +4,11 @@ contract Require {
 		require(x == 101);
 	}
 
+	function u_int256_neq(uint256 x) public {
+		require(x > 100);
+		require(x != 101);
+	}
+
 	function u_int128(uint128 x) public {
 		require(x > 100);
 		require(x == 101);
@@ -18,8 +23,16 @@ contract Require {
 		require(x == address(100));
 	}
 
+	function a_ddress_neq(address x) public {
+		require(x != address(100));
+	}
+
 	function b_ytes32(bytes32 x) public {
 		require(x == bytes32(hex"1337"));
+	}
+
+	function b_ytes32_neq(bytes32 x) public {
+		require(x != bytes32(hex"1337"));
 	}
 
 	function b_ytes16(bytes16 x) public {

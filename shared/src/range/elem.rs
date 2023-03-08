@@ -34,7 +34,7 @@ pub enum RangeOp {
     Eq,
     /// Not Equal
     Neq,
-    /// Bitwise Not
+    /// Logical Not
     Not,
     /// Bitwise shift left
     Shl,
@@ -112,6 +112,10 @@ impl ToString for RangeOp {
 
 
 pub trait RangeElem<T> {
+    /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
+    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
+    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression
 	fn eval(&self, analyzer: &impl GraphLike) -> Elem<T>;
     /// Tries to simplify (i.e.: leaves symbolic/dynamic values as they are)

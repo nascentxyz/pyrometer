@@ -175,7 +175,7 @@ fn main() {
     args.write_query.iter().for_each(|query| {
         let split: Vec<&str> = query.split('.').collect();
         println!("{:?}", split);
-        if let Some(report) = analyzer.func_query(entry, &file_mapping, config, split[0].to_string(), split[1].to_string(), split[2].to_string(), SolcRange { min: Concrete::Bool(true).into(), max: Concrete::Bool(true).into()}) {
+        if let Some(report) = analyzer.func_query(entry, &file_mapping, config, split[0].to_string(), split[1].to_string(), split[2].to_string(), SolcRange { min: Concrete::Bool(true).into(), max: Concrete::Bool(true).into(), exclusions: vec![] }) {
             report.print_reports(&mut source_map, &analyzer);
         }
         println!();

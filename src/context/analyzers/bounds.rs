@@ -164,6 +164,51 @@ impl ReportDisplay for BoundAnalysis {
                 } else {
                     init_range.range_max().to_range_string(analyzer).s
                 };
+
+                let range_excl = init_range.range_exclusions();
+                let mut range_excl_str = range_excl.iter().map(|range| {
+                    let min = if self.report_config.eval_bounds {
+                        range
+                            .range_min()
+                            .eval(analyzer)
+                            .to_range_string(analyzer)
+                            .s
+                    } else if self.report_config.simplify_bounds {
+                        range
+                            .range_min()
+                            .simplify(analyzer)
+                            .to_range_string(analyzer)
+                            .s
+                    } else {
+                        range.range_min().to_range_string(analyzer).s
+                    };
+
+                    let max = if self.report_config.eval_bounds {
+                        range.range_max()
+                            .eval(analyzer)
+                            .to_range_string(analyzer)
+                            .s
+                    } else if self.report_config.simplify_bounds {
+                        range.range_max()
+                            .simplify(analyzer)
+                            .to_range_string(analyzer)
+                            .s
+                    } else {
+                        range.range_max().to_range_string(analyzer).s
+                    };
+
+                    if min == max {
+                        min
+                    } else {
+                        format!("[ {}, {} ]", min, max)
+                    }
+                }).collect::<Vec<_>>().join(", ");
+                range_excl_str = if !range_excl_str.is_empty() {
+                    format!("&& ∉ {{{}}}", range_excl_str).fg(Color::Red).to_string()
+                } else {
+                    "".to_string().fg(Color::Red).to_string()
+                };
+
                 let r_str = if min == max {
                     format!(" == {}", min.fg(MAX_COLOR))
                 } else {
@@ -171,7 +216,7 @@ impl ReportDisplay for BoundAnalysis {
                 };
                 vec![Label::new(self.var_def.0.clone())
                     .with_message(format!(
-                        "{}\"{}\"{}{}",
+                        "{}\"{}\"{}{}{}",
                         match self.storage {
                             Some(StorageLocation::Memory(..)) => "Memory var ",
                             Some(StorageLocation::Storage(..)) => "Storage var ",
@@ -180,6 +225,7 @@ impl ReportDisplay for BoundAnalysis {
                         },
                         self.var_display_name,
                         r_str,
+                        range_excl_str,
                         if init_range.unsat(analyzer) {
                             " - unsatisfiable range, unreachable".fg(Color::Red)
                         } else {
@@ -237,9 +283,53 @@ impl ReportDisplay for BoundAnalysis {
                         bound_change.1.range_max().to_range_string(analyzer).s
                     };
 
+                    let range_excl = bound_change.1.range_exclusions();
+                    let mut range_excl_str = range_excl.iter().map(|range| {
+                        let min = if self.report_config.eval_bounds {
+                            range
+                                .range_min()
+                                .eval(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else if self.report_config.simplify_bounds {
+                            range
+                                .range_min()
+                                .simplify(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else {
+                            range.range_min().to_range_string(analyzer).s
+                        };
+
+                        let max = if self.report_config.eval_bounds {
+                            range.range_max()
+                                .eval(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else if self.report_config.simplify_bounds {
+                            range.range_max()
+                                .simplify(analyzer)
+                                .to_range_string(analyzer)
+                                .s
+                        } else {
+                            range.range_max().to_range_string(analyzer).s
+                        };
+
+                        if min == max {
+                            min
+                        } else {
+                            format!("[ {}, {} ]", min, max)
+                        }
+                    }).collect::<Vec<_>>().join(", ");
+                    range_excl_str = if !range_excl_str.is_empty() {
+                        format!("&& ∉ {{{}}}", range_excl_str).fg(Color::Red).to_string()
+                    } else {
+                        "".to_string().fg(Color::Red).to_string()
+                    };
+
                     let label = Label::new(bound_change.0.clone())
                         .with_message(format!(
-                            "{}\"{}\"{} {}",
+                            "{}\"{}\"{} {}{}",
                             match self.storage {
                                 Some(StorageLocation::Memory(..)) => "Memory var ",
                                 Some(StorageLocation::Storage(..)) => "Storage var ",
@@ -256,7 +346,8 @@ impl ReportDisplay for BoundAnalysis {
                                 "- unsatisfiable range, unreachable".fg(Color::Red)
                             } else {
                                 "".fg(Color::Red)
-                            }
+                            },
+                            range_excl_str
                         ))
                         .with_order(i as i32);
 
@@ -471,14 +562,14 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 if let Some(next_range) = next.range(self) {
                     let nr_min = next_range.range_min().eval(self);
                     let nr_max = next_range.range_max().eval(self);
-                    if nr_min != cr_min || nr_max != cr_max {
+                    // if nr_min != cr_min || nr_max != cr_max || curr_range.exclusions.len() != next_range.exclusions.len() {
                         cr_min = nr_min;
                         cr_max = nr_max;
                         ba.bound_changes.push((
                             LocStrSpan::new(file_mapping, next.loc(self)),
                             next_range.clone(),
                         ));
-                    }
+                    // }
                 }
 
                 if next == cvar {

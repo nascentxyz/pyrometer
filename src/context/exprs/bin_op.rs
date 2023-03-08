@@ -1,8 +1,4 @@
-use shared::nodes::{Builtin, BuiltInNode};
-use shared::nodes::VarType;
-
-use ethers_core::types::U256;
-use shared::nodes::Concrete;
+use ethers_core::types::{I256, U256};
 use crate::{context::ContextBuilder, ExprRet};
 use shared::{
     analyzer::AnalyzerLike,
@@ -18,6 +14,7 @@ use shared::{
         SolcRange,
         Range,
     },
+    nodes::{Concrete, Builtin, BuiltInNode, VarType},
     Edge, Node,
 };
 
@@ -153,24 +150,18 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
             match op {
                 RangeOp::Div | RangeOp::Mod => {
                     let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
-                    // the new min is max(1, rhs.min)
-                    let min = Elem::max(
-                        tmp_rhs.range_min(self).expect("No range minimum?"),
-                        Elem::from(Concrete::from(U256::from(1)))
-                    );
-
                     let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                     let zero_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, zero_node.into(), self)));
 
                     let tmp_var = ContextVar {
                         loc: Some(loc),
                         name: format!(
-                            "tmp{}({} > 0)",
+                            "tmp{}({} != 0)",
                             ctx.new_tmp(self),
                             tmp_rhs.name(self),
                         ),
                         display_name: format!(
-                            "({} > 0)",
+                            "({} != 0)",
                             tmp_rhs.display_name(self),
                         ),
                         storage: None,
@@ -186,8 +177,22 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                     let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
                     ctx.add_ctx_dep(cvar, self);
 
-                    tmp_rhs.set_range_min(self, min);
-                    new_rhs = tmp_rhs;
+                    let range = tmp_rhs.range(self).expect("No range?");
+                    if range.min_is_negative(self) {
+                        let mut range_excls = range.range_exclusions();
+                        let excl = Elem::from(Concrete::from(I256::zero()));
+                        range_excls.push(SolcRange { min: excl.clone(), max: excl, exclusions: vec![] });
+                        tmp_rhs.set_range_exclusions(self, range_excls);
+                    } else {
+                        // the new min is max(1, rhs.min)
+                        let min = Elem::max(
+                            tmp_rhs.range_min(self).expect("No range minimum?"),
+                            Elem::from(Concrete::from(U256::from(1)))
+                        );
+
+                        tmp_rhs.set_range_min(self, min);
+                        new_rhs = tmp_rhs;
+                    }
                 }
                 RangeOp::Sub => {
                     let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
@@ -334,7 +339,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         if matches!(op, RangeOp::Exp) {
             if let (Some(old_lhs_range), Some(rhs_range)) = (lhs_cvar.range(self), new_rhs.range(self)) {
                 let zero = Elem::from(Concrete::from(U256::zero()));
-                let zero_range = SolcRange { min: zero.clone(), max: zero.clone() };
+                let zero_range = SolcRange { min: zero.clone(), max: zero.clone(), exclusions: vec![] };
                 // We have to check if the the lhs and the right hand side contain the zero range.
                 // If they both do, we have to set the minimum to zero due to 0**0 = 1, but 0**x = 0.
                 // This is technically a slight widening of the interval and could be improved.

@@ -198,6 +198,12 @@ impl ContextVarNode {
             .set_range_max(new_max, fallback)
     }
 
+    pub fn set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<SolcRange>) {
+        let fallback = self.underlying(analyzer).fallback_range(analyzer);
+        self.underlying_mut(analyzer)
+            .set_range_exclusions(new_exclusions, fallback);
+    }
+
     pub fn try_set_range_min(&self, analyzer: &mut impl GraphLike, new_min: Elem<Concrete>) -> bool {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
@@ -208,6 +214,12 @@ impl ContextVarNode {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
             .try_set_range_max(new_max, fallback)
+    }
+
+    pub fn try_set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<SolcRange>) -> bool {
+        let fallback = self.underlying(analyzer).fallback_range(analyzer);
+        self.underlying_mut(analyzer)
+            .try_set_range_exclusions(new_exclusions, fallback)
     }
 
     pub fn latest_version(&self, analyzer: &'_ impl GraphLike) -> Self {
@@ -478,6 +490,22 @@ impl ContextVar {
         }
     }
 
+    pub fn set_range_exclusions(&mut self, new_exclusions: Vec<SolcRange>, fallback_range: Option<SolcRange>) {
+        match &mut self.ty {
+            VarType::BuiltIn(_, ref mut maybe_range) => {
+                if let Some(range) = maybe_range {
+                    range.set_range_exclusions(new_exclusions);
+                } else {
+                    let mut fr = fallback_range.expect("No range and no fallback_range");
+                    fr.set_range_exclusions(new_exclusions);
+                    *maybe_range = Some(fr);
+                }
+            }
+            VarType::Concrete(_) => {}
+            e => panic!("wasnt builtin or concrete: {:?}", e),
+        }
+    }
+
     pub fn try_set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) -> bool {
         match &mut self.ty {
             VarType::BuiltIn(_bn, ref mut maybe_range) => {
@@ -487,6 +515,24 @@ impl ContextVar {
                 } else {
                     let mut fr = fallback_range.expect("No range and no fallback_range");
                     fr.set_range_max(new_max);
+                    *maybe_range = Some(fr);
+                    true
+                }
+            }
+            VarType::Concrete(_) => { true }
+            _ => false,
+        }
+    }
+
+    pub fn try_set_range_exclusions(&mut self, new_exclusions: Vec<SolcRange>, fallback_range: Option<SolcRange>) -> bool {
+        match &mut self.ty {
+            VarType::BuiltIn(_bn, ref mut maybe_range) => {
+                if let Some(range) = maybe_range {
+                    range.set_range_exclusions(new_exclusions);
+                    true
+                } else {
+                    let mut fr = fallback_range.expect("No range and no fallback_range");
+                    fr.set_range_exclusions(new_exclusions);
                     *maybe_range = Some(fr);
                     true
                 }

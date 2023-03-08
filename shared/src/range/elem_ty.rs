@@ -128,6 +128,12 @@ impl RangeElem<Concrete> for Dynamic {
     }
 
 	fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
+	fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::Dynamic(self.clone())
+	}
+	fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::Dynamic(self.clone())
+	}
 }
 
 /// A concrete value for a range element
@@ -220,6 +226,13 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn update_deps(&mut self, _mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {}
 
     fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
+
+    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::Concrete(self.clone())
+	}
+	fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::Concrete(self.clone())
+	}
 }
 
 /// A range expression composed of other range [`Elem`]
@@ -273,6 +286,13 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     	self.lhs.filter_recursion(node_idx, old.clone());
     	self.rhs.filter_recursion(node_idx, old);
     }
+
+    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::Dynamic(self.clone())
+	}
+	fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::Dynamic(self.clone())
+	}
 }
 
 /// A core range element.
@@ -368,6 +388,17 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
 	}
 }
 
+
+impl Elem<Concrete> {
+	pub fn is_negative(&self, analyzer: &impl GraphLike) -> bool {
+		match self {
+			Elem::Concrete(RangeConcrete { val: Concrete::Int(_, val), ..}) if val < &I256::zero() => true,
+			Elem::Dynamic(dy) => dy.eval(analyzer).is_negative(analyzer),
+			Elem::Expr(expr) => expr.eval(analyzer).is_negative(analyzer),
+			_ => false,
+		}
+    }
+}
 
 impl RangeElem<Concrete> for Elem<Concrete> {
 	fn eval(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
@@ -573,15 +604,15 @@ impl Elem<Concrete> {
 pub trait ExecOp<T> {
 	/// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
 	/// and right-hand-side
-	fn exec_op(&self, analyzer: &impl GraphLike) -> Elem<T>;
+	fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<T>;
 	/// Attempts to simplify an expression (i.e. just apply constant folding)
-	fn simplify_exec_op(&self, analyzer: &impl GraphLike) -> Elem<T>;
+	fn simplify_exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<T>;
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
-	fn exec_op(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+	fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<Concrete> {
 		let lhs = self.lhs.eval(analyzer);
-		let rhs = self.rhs.eval(analyzer);
+		let mut rhs = self.rhs.eval(analyzer);
 		match self.op {
 			RangeOp::Add => {
 				lhs.range_add(&rhs).unwrap_or(Elem::Expr(self.clone()))
@@ -593,6 +624,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 				lhs.range_mul(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			RangeOp::Div => {
+				// if the value is negative, we need to actually use the minimum for the div instead of the max
+				rhs = self.adjust_sidedness(&lhs, analyzer);
 				lhs.range_div(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			// RangeOp::Mod => {
@@ -626,6 +659,17 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 				lhs.range_shl(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			RangeOp::Shr => {
+				// if the value is negative, we need to actually use the minimum for the shr instead of the max
+				match lhs {
+					Elem::Concrete(RangeConcrete { val: Concrete::Int(_, val), .. }) if val < I256::from(0) => {
+						if let Elem::Dynamic(d) = *self.rhs {
+							let mut dclone = d;
+							dclone.side = DynSide::Min;
+							rhs = dclone.eval(analyzer);
+						}
+					}
+					_ => {}
+				}
 				lhs.range_shr(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			}
 			RangeOp::And => {

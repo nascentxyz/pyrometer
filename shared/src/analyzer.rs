@@ -118,7 +118,8 @@ pub trait GraphLike {
                             // we have to do this special because dynamic elements in ranges aren't guaranteed
                             // to stick around
                             let range_str = if let Some(r) = cvar.ty.range(self) {
-                                format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                                r.as_dot_str(self)
+                                // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
                             } else {
                                 "".to_string()
                             };
@@ -170,7 +171,8 @@ pub trait GraphLike {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
                             let range_str = if let Some(r) = cvar.ty.range(self) {
-                                format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                                r.as_dot_str(self)
+                                // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
                             } else {
                                 "".to_string()
                             };
