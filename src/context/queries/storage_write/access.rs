@@ -116,10 +116,10 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                     // filter spurious bound changes
                     if analysis.bound_changes.len() < 2 {
                         if let Some(init) = analysis.var_def.1 {
-                            if init.range_min().eval(self)
-                                == analysis.bound_changes[0].1.range_min().eval(self)
-                                && init.range_max().eval(self)
-                                    == analysis.bound_changes[0].1.range_max().eval(self)
+                            if init.evaled_range_min(self)
+                                == analysis.bound_changes[0].1.evaled_range_min(self)
+                                && init.evaled_range_max(self)
+                                    == analysis.bound_changes[0].1.evaled_range_max(self)
                             {
                                 continue;
                             }
@@ -145,34 +145,30 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                         .filter_map(|(_name, cvar)| {
                             let min = if report_config.eval_bounds {
                                 cvar.range(self)?
-                                    .range_min()
-                                    .eval(self)
-                                    .to_range_string(self)
+                                    .evaled_range_min(self)
+                                    .to_range_string(false, self)
                                     .s
                             } else if report_config.simplify_bounds {
                                 cvar.range(self)?
-                                    .range_min()
-                                    .simplify(self)
-                                    .to_range_string(self)
+                                    .simplified_range_min(self)
+                                    .to_range_string(false, self)
                                     .s
                             } else {
-                                cvar.range(self)?.range_min().to_range_string(self).s
+                                cvar.range(self)?.range_min().to_range_string(false, self).s
                             };
 
                             let max = if report_config.eval_bounds {
                                 cvar.range(self)?
-                                    .range_max()
-                                    .eval(self)
-                                    .to_range_string(self)
+                                    .evaled_range_max(self)
+                                    .to_range_string(true, self)
                                     .s
                             } else if report_config.simplify_bounds {
                                 cvar.range(self)?
-                                    .range_max()
-                                    .simplify(self)
-                                    .to_range_string(self)
+                                    .simplified_range_max(self)
+                                    .to_range_string(true, self)
                                     .s
                             } else {
-                                cvar.range(self)?.range_max().to_range_string(self).s
+                                cvar.range(self)?.range_max().to_range_string(true, self).s
                             };
                             if min == max {
                                 Some(format!("\"{}\" == {}", cvar.display_name(self), min,))

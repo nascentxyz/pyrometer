@@ -195,10 +195,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
 
     fn not_eval(&self, _ctx: ContextNode, loc: Loc, lhs_cvar: ContextVarNode) -> SolcRange {
         if let Some(lhs_range) = lhs_cvar.range(self) {
-            let lhs_min = lhs_range.range_min();
+            let lhs_min = lhs_range.evaled_range_min(self);
 
             // invert
-            if lhs_min.range_eq(&lhs_range.range_max(), self) {
+            if lhs_min.range_eq(&lhs_range.evaled_range_max(self)) {
                 let val = Elem::Expr(RangeExpr {
                     lhs: Box::new(lhs_min),
                     op: RangeOp::Not,
@@ -243,16 +243,16 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // true
 
-                        let lhs_max = lhs_range.range_max().eval(self);
-                        let rhs_min = rhs_range.range_min().eval(self);
+                        let lhs_max = lhs_range.evaled_range_max(self);
+                        let rhs_min = rhs_range.evaled_range_min(self);
                         if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
                             return true.into();
                         }
 
                         // Similarly if lhs_min >= rhs_max, we know this cmp will evaluate to
                         // false
-                        let lhs_min = lhs_range.range_min().eval(self);
-                        let rhs_max = rhs_range.range_max().eval(self);
+                        let lhs_min = lhs_range.evaled_range_min(self);
+                        let rhs_max = rhs_range.evaled_range_max(self);
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
                                 return false.into();
@@ -266,16 +266,16 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Gt => {
                         // if lhs_min > rhs_max, we know this cmp will evaluate to
                         // true
-                        let lhs_min = lhs_range.range_min().eval(self);
-                        let rhs_max = rhs_range.range_max().eval(self);
+                        let lhs_min = lhs_range.evaled_range_min(self);
+                        let rhs_max = rhs_range.evaled_range_max(self);
                         if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
                             return true.into();
                         }
 
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
                         // false
-                        let lhs_max = lhs_range.range_max().eval(self);
-                        let rhs_min = rhs_range.range_min().eval(self);
+                        let lhs_max = lhs_range.evaled_range_max(self);
+                        let rhs_min = rhs_range.evaled_range_min(self);
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
                                 return false.into();
@@ -289,8 +289,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Lte => {
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
                         // true
-                        let lhs_max = lhs_range.range_max().eval(self);
-                        let rhs_min = rhs_range.range_min().eval(self);
+                        let lhs_max = lhs_range.evaled_range_max(self);
+                        let rhs_min = rhs_range.evaled_range_min(self);
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
                                 return true.into();
@@ -303,8 +303,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
 
                         // Similarly if lhs_min > rhs_max, we know this cmp will evaluate to
                         // false
-                        let lhs_min = lhs_range.range_min().eval(self);
-                        let rhs_max = rhs_range.range_max().eval(self);
+                        let lhs_min = lhs_range.evaled_range_min(self);
+                        let rhs_max = rhs_range.evaled_range_max(self);
                         if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
                             return false.into();
                         }
@@ -312,8 +312,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Gte => {
                         // if lhs_min >= rhs_max, we know this cmp will evaluate to
                         // true
-                        let lhs_min = lhs_range.range_min().eval(self);
-                        let rhs_max = rhs_range.range_max().eval(self);
+                        let lhs_min = lhs_range.evaled_range_min(self);
+                        let rhs_max = rhs_range.evaled_range_max(self);
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
                                 return true.into();
@@ -326,8 +326,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
 
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // false
-                        let lhs_max = lhs_range.range_max().eval(self);
-                        let rhs_min = rhs_range.range_min().eval(self);
+                        let lhs_max = lhs_range.evaled_range_max(self);
+                        let rhs_min = rhs_range.evaled_range_min(self);
                         if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
                             return false.into();
                         }
@@ -335,10 +335,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Eq => {
                         // if all elems are equal we know its true
                         // we dont know anything else
-                        let lhs_min = lhs_range.range_min().eval(self);
-                        let lhs_max = lhs_range.range_max().eval(self);
-                        let rhs_min = rhs_range.range_min().eval(self);
-                        let rhs_max = rhs_range.range_max().eval(self);
+                        let lhs_min = lhs_range.evaled_range_min(self);
+                        let lhs_max = lhs_range.evaled_range_max(self);
+                        let rhs_min = rhs_range.evaled_range_min(self);
+                        let rhs_max = rhs_range.evaled_range_max(self);
                         if let (
                             Some(Ordering::Equal),
                             Some(Ordering::Equal),
@@ -357,10 +357,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Neq => {
                         // if all elems are equal we know its true
                         // we dont know anything else
-                        let lhs_min = lhs_range.range_min().eval(self);
-                        let lhs_max = lhs_range.range_max().eval(self);
-                        let rhs_min = rhs_range.range_min().eval(self);
-                        let rhs_max = rhs_range.range_max().eval(self);
+                        let lhs_min = lhs_range.evaled_range_min(self);
+                        let lhs_max = lhs_range.evaled_range_max(self);
+                        let rhs_min = rhs_range.evaled_range_min(self);
+                        let rhs_max = rhs_range.evaled_range_max(self);
                         if let (
                             Some(Ordering::Equal),
                             Some(Ordering::Equal),

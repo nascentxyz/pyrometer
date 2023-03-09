@@ -167,14 +167,10 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
     fn range_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
-                let max = if size == 256 {
-                    U256::MAX
-                } else {
-                    U256::from(2).pow(U256::from(size)) - 1
-                };
+                let max = Concrete::max(&self.val).unwrap();
+                let res = lhs_val.saturating_mul(rhs_val).min(max.into_u256().unwrap());
                 Some(Elem::Concrete(RangeConcrete {
-                    val: self.val.u256_as_original(lhs_val.saturating_mul(rhs_val).min(max)),
+                    val: self.val.u256_as_original(res),
                     loc: self.loc
                 }))
             }

@@ -1,9 +1,8 @@
+use crate::range::Range;
 use crate::MsgNode;
 use crate::BlockNode;
 use crate::as_dot_str;
 
-
-use crate::range::elem::RangeElem;
 use crate::context::ContextVarNode;
 use petgraph::visit::EdgeRef;
 use std::collections::BTreeMap;
@@ -235,7 +234,7 @@ pub trait GraphLike {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
                             let range_str = if let Some(r) = cvar.ty.range(self) {
-                                format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                                format!("[{}, {}]", r.evaled_range_min(self).to_range_string(false, self).s, r.evaled_range_max(self).to_range_string(true, self).s)
                             } else {
                                 "".to_string()
                             };

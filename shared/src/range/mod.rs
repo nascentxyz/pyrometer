@@ -8,7 +8,6 @@ use crate::context::ContextNode;
 use std::collections::BTreeMap;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem::RangeOp;
-use crate::range::elem_ty::DynSide;
 use crate::context::ContextVarNode;
 use ethers_core::types::I256;
 use ethers_core::types::U256;
@@ -37,8 +36,8 @@ impl AsDotStr for SolcRange {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         // println!("here: {}", self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", "));
         format!("[{}, {}] excluding: [{}]",
-            self.min.eval(analyzer).to_range_string(analyzer).s,
-            self.max.eval(analyzer).to_range_string(analyzer).s,
+            self.evaled_range_min(analyzer).to_range_string(false, analyzer).s,
+            self.evaled_range_max(analyzer).to_range_string(true, analyzer).s,
             self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", ")
         )
     }
@@ -58,7 +57,7 @@ impl From<bool> for SolcRange {
 
 impl SolcRange {
     pub fn min_is_negative(&self, analyzer: &impl GraphLike) -> bool {
-        self.min.is_negative(analyzer)
+        self.min.is_negative(false, analyzer)
     }
 
     pub fn default_bool() -> Self {
@@ -164,14 +163,13 @@ impl SolcRange {
 
     pub fn lte_dyn(self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: self.min,
             max: self
                 .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+                .min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
@@ -179,13 +177,12 @@ impl SolcRange {
     pub fn gte_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: self
                 .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
+                .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             max: self.max,
             exclusions: self.exclusions,
         }
@@ -194,14 +191,13 @@ impl SolcRange {
     pub fn lt_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: self.min,
             max: self
                 .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)) - Elem::Concrete(RangeConcrete { val: U256::from(1).into(), loc: Loc::Implicit } )),
+                .min(Elem::Dynamic(Dynamic::new(other.into(), loc)) - Elem::Concrete(RangeConcrete { val: U256::from(1).into(), loc: Loc::Implicit } )),
             exclusions: self.exclusions,
         }
     }
@@ -209,13 +205,12 @@ impl SolcRange {
     pub fn gt_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: self
                 .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)) + Elem::Concrete(RangeConcrete { val: U256::from(1).into(), loc: Loc::Implicit } )),
+                .max(Elem::Dynamic(Dynamic::new(other.into(), loc)) + Elem::Concrete(RangeConcrete { val: U256::from(1).into(), loc: Loc::Implicit } )),
             max: self.max,
             exclusions: self.exclusions,
         }
@@ -223,79 +218,27 @@ impl SolcRange {
 
     pub fn dyn_fn_from_op(
         op: RangeOp,
-    ) -> (
-        &'static dyn Fn(SolcRange, ContextVarNode, (DynSide, DynSide), Loc) -> SolcRange,
-        (DynSide, DynSide),
-    ) {
+    ) -> 
+        &'static dyn Fn(SolcRange, ContextVarNode, Loc) -> SolcRange
+    {
         match op {
-            RangeOp::Add => (
-                &Self::add_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Sub => (
-                &Self::sub_dyn,
-                (DynSide::Max, DynSide::Min),
-            ),
-            RangeOp::Mul => (
-                &Self::mul_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Div => (
-                &Self::div_dyn,
-                (DynSide::Max, DynSide::Min),
-            ),
-            RangeOp::Shr => (
-                &Self::shr_dyn,
-                (DynSide::Max, DynSide::Min),
-            ),
-            RangeOp::Shl => (
-                &Self::shl_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Mod => (
-                &Self::mod_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Min => (
-                &Self::min_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Max => (
-                &Self::max_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Lt => (
-                &Self::lt_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Lte => (
-                &Self::lte_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Gt => (
-                &Self::gt_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Gte => (
-                &Self::gte_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Eq => (
-                &Self::eq_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Neq => (
-                &Self::neq_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::Exp => (
-                &Self::exp_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
-            RangeOp::BitAnd => (
-                &Self::bit_and_dyn,
-                (DynSide::Min, DynSide::Max),
-            ),
+            RangeOp::Add => &Self::add_dyn,
+            RangeOp::Sub => &Self::sub_dyn,
+            RangeOp::Mul => &Self::mul_dyn,
+            RangeOp::Div => &Self::div_dyn,
+            RangeOp::Shr => &Self::shr_dyn,
+            RangeOp::Shl => &Self::shl_dyn,
+            RangeOp::Mod => &Self::mod_dyn,
+            RangeOp::Min => &Self::min_dyn,
+            RangeOp::Max => &Self::max_dyn,
+            RangeOp::Lt => &Self::lt_dyn,
+            RangeOp::Lte => &Self::lte_dyn,
+            RangeOp::Gt => &Self::gt_dyn,
+            RangeOp::Gte => &Self::gte_dyn,
+            RangeOp::Eq => &Self::eq_dyn,
+            RangeOp::Neq => &Self::neq_dyn,
+            RangeOp::Exp => &Self::exp_dyn,
+            RangeOp::BitAnd => &Self::bit_and_dyn,
             // RangeOp::And => (
             //     &Self::and_dyn,
             //     (DynSide::Min, DynSide::Max),
@@ -311,12 +254,11 @@ impl SolcRange {
     pub fn add_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min + Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max + Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min + Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max + Elem::Dynamic(Dynamic::new(other.into(), loc)),
             exclusions: self.exclusions,
         }
     }
@@ -324,12 +266,11 @@ impl SolcRange {
     pub fn sub_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min - Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max - Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min - Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max - Elem::Dynamic(Dynamic::new(other.into(), loc)),
             exclusions: self.exclusions,
         }
     }
@@ -337,12 +278,11 @@ impl SolcRange {
     pub fn mul_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min * Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max * Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min * Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max * Elem::Dynamic(Dynamic::new(other.into(), loc)),
             exclusions: self.exclusions,
         }
     }
@@ -350,12 +290,11 @@ impl SolcRange {
     pub fn exp_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min.pow(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
-            max: self.max.pow(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+            min: self.min.pow(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            max: self.max.pow(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
@@ -363,12 +302,11 @@ impl SolcRange {
     pub fn bit_and_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min & Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max & Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min & Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max & Elem::Dynamic(Dynamic::new(other.into(), loc)),
             exclusions: self.exclusions,
         }
     }
@@ -376,12 +314,11 @@ impl SolcRange {
     pub fn div_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
-            max: self.max / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+            min: self.min / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            max: self.max / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
@@ -389,12 +326,11 @@ impl SolcRange {
     pub fn shl_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min << Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max << Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min << Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max << Elem::Dynamic(Dynamic::new(other.into(), loc)),
             exclusions: self.exclusions,
         }
     }
@@ -402,12 +338,11 @@ impl SolcRange {
     pub fn shr_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
-            min: self.min >> Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)),
-            max: self.max >> Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)),
+            min: self.min >> Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max >> Elem::Dynamic(Dynamic::new(other.into(), loc)),
             exclusions: self.exclusions,
         }
     }
@@ -415,12 +350,11 @@ impl SolcRange {
     pub fn mod_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: Elem::from(Concrete::from(U256::zero())),
-            max: Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)) - Elem::from(Concrete::from(U256::from(1))),
+            max: Elem::Dynamic(Dynamic::new(other.into(), loc)) - Elem::from(Concrete::from(U256::from(1))),
             exclusions: self.exclusions,
         }
     }
@@ -428,16 +362,15 @@ impl SolcRange {
     pub fn min_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: self
                 .min
-                .min(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
+                .min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             max: self
                 .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+                .min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
@@ -445,16 +378,15 @@ impl SolcRange {
     pub fn max_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         Self {
             min: self
                 .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc))),
+                .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             max: self
                 .max
-                .max(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc))),
+                .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
@@ -462,15 +394,14 @@ impl SolcRange {
     pub fn eq_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         let min = self
                 .min
-                .eq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)));
+                .eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         let max = self
                 .max
-                .eq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)));
+                .eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         Self {
             min: min.clone().max(max.clone()),
             max: min.max(max),
@@ -481,15 +412,14 @@ impl SolcRange {
     pub fn neq_dyn(
         self,
         other: ContextVarNode,
-        range_sides: (DynSide, DynSide),
         loc: Loc,
     ) -> Self {
         let min = self
                 .min
-                .neq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.0, loc)));
+                .neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         let max = self
                 .max
-                .neq(Elem::Dynamic(Dynamic::new(other.into(), range_sides.1, loc)));
+                .neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         Self {
             min: min.clone().max(max.clone()),
             max: min.max(max),
@@ -507,6 +437,20 @@ impl Range<Concrete> for SolcRange {
     fn range_max(&self) -> Self::ElemTy {
         self.max.clone()
     }
+    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+        self.range_min().minimize(analyzer)
+    }
+    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+        self.range_max().maximize(analyzer)
+    }
+
+    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+        self.range_min().simplify_minimize(analyzer)
+    }
+    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+        self.range_max().simplify_maximize(analyzer)
+    }
+
     fn range_exclusions(&self) -> Vec<Self> {
         self.exclusions.clone()
     }
@@ -529,6 +473,10 @@ impl Range<Concrete> for SolcRange {
 
 pub trait Range<T> {
     type ElemTy: RangeElem<T> + Clone;
+    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
+    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
+    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
+    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
     fn range_min(&self) -> Self::ElemTy;
     fn range_max(&self) -> Self::ElemTy;
     fn range_exclusions(&self) -> Vec<Self> where Self: std::marker::Sized;
@@ -569,21 +517,18 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     fn sat(&self, analyzer: &impl AnalyzerLike) -> bool {
         matches!(self
-            .range_min()
-            .eval(analyzer)
-            .range_ord(&self.range_max().eval(analyzer)), None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal))
+            .evaled_range_min(analyzer)
+            .range_ord(&self.evaled_range_max(analyzer)), None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal))
     }
 
     fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
         let min_contains = matches!(self
-            .range_min()
-            .eval(analyzer)
-            .range_ord(&other.range_min().eval(analyzer)), Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal));
+            .evaled_range_min(analyzer)
+            .range_ord(&other.evaled_range_min(analyzer)), Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal));
 
         let max_contains = matches!(self
-            .range_max()
-            .eval(analyzer)
-            .range_ord(&other.range_max().eval(analyzer)), Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal));
+            .evaled_range_max(analyzer)
+            .range_ord(&other.evaled_range_max(analyzer)), Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal));
 
         min_contains && max_contains
     }

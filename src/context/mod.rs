@@ -10,7 +10,7 @@ use solang_parser::pt::VariableDeclaration;
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
 use shared::{
-    analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, range::elem_ty::DynSide, Edge, Node,
+    analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, Edge, Node,
     NodeIdx,
 };
 use solang_parser::pt::{Expression, Loc, Statement};
@@ -486,7 +486,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
+        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, false),
@@ -883,9 +883,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     let new_max = r.range_max().cast(r2.range_max());
                     node.try_set_range_min(self, new_min);
                     node.try_set_range_max(self, new_max);
-                    println!("trying to set exclusions: {:?}", r.exclusions);
-
-                    println!("{:?}", node.try_set_range_exclusions(self, r.exclusions));
+                    // println!("trying to set exclusions: {:?}", r.exclusions);
+                    // println!("{:?}",);
+                    node.try_set_range_exclusions(self, r.exclusions);
+                    
                 }
                 self.add_edge(node, subctx, Edge::Context(ContextEdge::Variable));
             }
@@ -1036,12 +1037,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(
                 rhs_cvar.latest_version(self).into(),
-                DynSide::Min,
                 loc,
             )),
             Elem::Dynamic(Dynamic::new(
                 rhs_cvar.latest_version(self).into(),
-                DynSide::Max,
                 loc,
             )),
         );
@@ -1049,7 +1048,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
         let _ = new_lhs.try_set_range_min(self, new_lower_bound);
         let _ = new_lhs.try_set_range_max(self, new_upper_bound);
-        println!("assigning {} = {}", lhs_cvar.display_name(self), rhs_cvar.display_name(self));
         if let Some(rhs_range) = rhs_cvar.range(self) {
             new_lhs.try_set_range_exclusions(self, rhs_range.exclusions);    
         }

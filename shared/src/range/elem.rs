@@ -116,12 +116,12 @@ pub trait RangeElem<T> {
     fn maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
     fn minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
-    /// Tries to evaluate a range element down to a concrete or maximally simplified expression
-	fn eval(&self, analyzer: &impl GraphLike) -> Elem<T>;
-    /// Tries to simplify (i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
+    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
+    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
     /// Checks if two range elements are equal
-    fn range_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool;
+    fn range_eq(&self, other: &Self) -> bool;
     /// Tries to compare the ordering of two range elements
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
     /// Constructs a range `Elem::Expr` given a lhs, rhs, and operation ([`RangeOp`]).

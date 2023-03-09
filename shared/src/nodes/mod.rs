@@ -153,7 +153,7 @@ impl VarType {
             Self::User(TypeNode::Func(_)) => false,
             _ => {
                 if let Some(range) = self.range(analyzer) {
-                    range.range_min().range_eq(&range.range_max(), analyzer)
+                    range.evaled_range_min(analyzer).range_eq(&range.evaled_range_max(analyzer))
                 } else {
                     false
                 }
@@ -170,8 +170,8 @@ impl VarType {
 
     pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
         self.range(analyzer).map(|range| (
-                range.range_min().eval(analyzer),
-                range.range_max().eval(analyzer),
+                range.evaled_range_min(analyzer),
+                range.evaled_range_max(analyzer),
             ))
     }
 

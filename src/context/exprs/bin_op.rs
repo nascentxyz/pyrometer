@@ -7,7 +7,6 @@ use shared::{
         elem::RangeOp,
         RangeEval,
         elem_ty::{
-            DynSide,
             Dynamic,
             Elem
         },
@@ -199,7 +198,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                     // the new min is max(lhs.min, rhs.min)
                     let min = Elem::max(
                         tmp_lhs.range_min(self).expect("No range minimum?"),
-                        Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Min, loc))
+                        Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))
                     );
                     tmp_lhs.set_range_min(self, min);
 
@@ -235,7 +234,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                     // the new max is min(lhs.max, (2**256 - rhs.min))
                     let max = Elem::min(
                         tmp_lhs.range_max(self).expect("No range max?"),
-                        Elem::from(Concrete::from(U256::MAX)) - Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Min, loc))
+                        Elem::from(Concrete::from(U256::MAX)) - Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))
                     );
 
                     tmp_lhs.set_range_max(self, max);
@@ -280,7 +279,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                         tmp_lhs.range_max(self).expect("No range max?"),
                         Elem::from(Concrete::from(U256::MAX)) / Elem::max(
                             Elem::from(Concrete::from(U256::from(1))),
-                            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), DynSide::Min, loc))
+                            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))
                         )
                     );
 
@@ -329,8 +328,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 .expect("Neither lhs nor rhs had a usable range")
         };
 
-        let (func, range_sides) = SolcRange::dyn_fn_from_op(op);
-        let new_range = func(lhs_range, new_rhs, range_sides, loc);
+        let func = SolcRange::dyn_fn_from_op(op);
+        let new_range = func(lhs_range, new_rhs, loc);
         new_lhs.set_range_min(self, new_range.range_min());
         new_lhs.set_range_max(self, new_range.range_max());
 

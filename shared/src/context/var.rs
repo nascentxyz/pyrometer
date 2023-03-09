@@ -5,11 +5,9 @@ use crate::TypeNode;
 use crate::BuiltInNode;
 use crate::GraphLike;
 use crate::range::range_string::ToRangeString;
-use crate::range::elem::RangeElem;
 use crate::AsDotStr;
 use crate::nodes::DynBuiltInNode;
 use crate::range::elem_ty::Dynamic;
-use crate::range::elem_ty::DynSide;
 use crate::range::elem_ty::RangeConcrete;
 use crate::range::Range;
 use crate::Concrete;
@@ -34,7 +32,7 @@ impl AsDotStr for ContextVarNode {
         let underlying = self.underlying(analyzer);
 
         let range_str = if let Some(r) = underlying.ty.range(analyzer) {
-            format!("[{}, {}]", r.min.eval(analyzer).to_range_string(analyzer).s, r.max.eval(analyzer).to_range_string(analyzer).s)
+            format!("[{}, {}]", r.evaled_range_min(analyzer).to_range_string(false, analyzer).s, r.evaled_range_max(analyzer).to_range_string(true, analyzer).s)
         } else {
             "".to_string()
         };
@@ -175,14 +173,13 @@ impl ContextVarNode {
     pub fn as_range_elem(
         &self,
         analyzer: &impl GraphLike,
-        range_side: DynSide,
         loc: Loc,
     ) -> Elem<Concrete> {
         match self.underlying(analyzer).ty {
             VarType::Concrete(c) => {
                 Elem::Concrete(RangeConcrete { val: c.underlying(analyzer).clone(), loc })
             }
-            _ => Elem::Dynamic(Dynamic { idx: self.0.into(), side: range_side, loc }),
+            _ => Elem::Dynamic(Dynamic { idx: self.0.into(), loc }),
         }
     }
 

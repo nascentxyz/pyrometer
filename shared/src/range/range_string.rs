@@ -1,3 +1,4 @@
+use crate::range::SolcRange;
 use crate::GraphLike;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
@@ -42,9 +43,23 @@ pub trait ToRangeString {
     /// Gets the definition string of the range element
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString;
     /// Converts a range to a human string
-    fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString;
+    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString;
 }
 
+
+impl ToRangeString for SolcRange {
+    fn def_string(&self, _analyzer: &impl GraphLike) -> RangeElemString {
+        todo!()
+    }
+
+    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
+        if maximize {
+            self.max.to_range_string(true, analyzer)
+        } else {
+            self.min.to_range_string(false, analyzer)
+        }
+    }
+}
 
 impl ToRangeString for Elem<Concrete> {
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
@@ -61,15 +76,15 @@ impl ToRangeString for Elem<Concrete> {
         }
     }
 
-    fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
+    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
-            Elem::Dynamic(Dynamic { idx, side: _, loc }) => {
+            Elem::Dynamic(Dynamic { idx, loc }) => {
                 let as_var = ContextVarNode::from(*idx);
                 let name = as_var.display_name(analyzer);
                 RangeElemString::new(name, *loc)
             }
-            Elem::Expr(expr) => expr.to_range_string(analyzer),
+            Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
             Elem::Null => RangeElemString::new("".to_string(), Loc::Implicit)
         }
     }
@@ -80,8 +95,8 @@ impl ToRangeString for RangeExpr<Concrete> {
     	self.lhs.def_string(analyzer)
     }
 
-    fn to_range_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
-        let lhs_r_str = self.lhs.to_range_string(analyzer);
+    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
+        let lhs_r_str = self.lhs.to_range_string(maximize, analyzer);
         let lhs_str = match *self.lhs {
             Elem::Expr(_) => {
                 let new_str = format!("({})", lhs_r_str.s);
@@ -90,7 +105,7 @@ impl ToRangeString for RangeExpr<Concrete> {
             _ => lhs_r_str,
         };
 
-        let rhs_r_str = self.rhs.to_range_string(analyzer);
+        let rhs_r_str = self.rhs.to_range_string(maximize, analyzer);
 
         let rhs_str = match *self.rhs {
             Elem::Expr(_) => {
@@ -106,7 +121,13 @@ impl ToRangeString for RangeExpr<Concrete> {
                 lhs_str.loc,
             )
         } else if matches!(self.op, RangeOp::Cast) {
-            match self.rhs.eval(analyzer) {
+            let rhs = if maximize {
+                self.rhs.maximize(analyzer)
+            } else {
+                self.rhs.minimize(analyzer)
+            };
+
+            match rhs {
                 Elem::Concrete(c) => {
                     RangeElemString::new(
                         format!("{}({})", c.val.as_builtin().as_string(analyzer), lhs_str.s),

@@ -361,7 +361,7 @@ impl Concrete {
             },
             Concrete::Int(size, _) => {
                 let max: I256 =
-                    I256::from_raw(U256::from(1u8) << U256::from(*size - 1)) - 1.into();
+                    I256::from_raw((U256::from(1u8) << U256::from(*size - 1)) - U256::from(1));
                 Some(Concrete::Int(*size, max))
             },
             Concrete::Bytes(size, _) => {
