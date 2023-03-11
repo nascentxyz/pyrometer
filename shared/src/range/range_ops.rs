@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+use ethers_core::types::H256;
+use crate::range::RangeDyn;
 use crate::range::Elem;
 use ethers_core::types::I256;
 use ethers_core::types::U256;
-use crate::Concrete;
+use crate::{Builtin, Concrete};
 use crate::range::RangeConcrete;
 
 pub trait RangeAdd<T, Rhs = Self> {
@@ -13,14 +16,9 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
     fn range_add(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
-                let max = if size == 256 {
-                    U256::MAX
-                } else {
-                    U256::from(2).pow(U256::from(size)) - 1
-                };
+                let max = Concrete::max(&self.val).unwrap().into_u256().unwrap();
                 Some(Elem::Concrete(RangeConcrete {
-                    val: Concrete::Uint(size, lhs_val.saturating_add(rhs_val).min(max)).cast_from(&self.val).expect("bad cast"),
+                    val: self.val.u256_as_original(lhs_val.saturating_add(rhs_val).min(max)),
                     loc: self.loc
                 }))
             }
@@ -228,40 +226,26 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
     fn range_exp(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
-                let max = if size == 256 {
-                    U256::MAX
+                let max = Concrete::max(&self.val).unwrap();
+                if let Some(num) = lhs_val.checked_pow(rhs_val) {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: self.val.u256_as_original(num.min(max.into_u256().unwrap())),
+                        loc: self.loc
+                    }))
                 } else {
-                    U256::from(2).pow(U256::from(size)) - 1
-                };
-                lhs_val.checked_pow(rhs_val).map(|powed| Elem::Concrete(RangeConcrete {
-                    val: self.val.u256_as_original(powed & max),
-                    loc: self.loc
-                }))
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: self.val.u256_as_original(max.into_u256().unwrap()),
+                        loc: self.loc
+                    }))
+                }
             }
             _ => {
                 match (&self.val, &other.val) {
                     (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v))
                     | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
-                        let max = if *lhs_size == 256 {
-                            I256::MAX
-                        } else {
-                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
-                        };
-                        let min = max * I256::from(-1i32);
+                        let min = I256::from(-1i32) * I256::from_raw(Concrete::min(&self.val).unwrap().into_u256().unwrap());
                         Some(Elem::Concrete(RangeConcrete {
                             val: Concrete::Int(*lhs_size, neg_v.pow(val.as_u32()).max(min)),
-                            loc: self.loc
-                        }))
-                    }
-                    (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                        let max = if *lhs_size == 256 {
-                            I256::MAX
-                        } else {
-                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
-                        };
-                        Some(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*lhs_size, l.pow(r.as_u32()) & max),
                             loc: self.loc
                         }))
                     }
@@ -747,12 +731,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
     fn range_shl(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let size = self.val.int_size().unwrap_or_else(|| other.val.int_size().unwrap_or(256));
-                let max = if size == 256 {
-                    U256::MAX
-                } else {
-                    U256::from(2).pow(U256::from(size)) - 1
-                };
+                let max = Concrete::max(&self.val).unwrap().into_u256().unwrap();
                 Some(Elem::Concrete(RangeConcrete {
                     val: self.val.u256_as_original(lhs_val.saturating_mul(rhs_val.saturating_mul(2.into())).min(max)),
                     loc: self.loc
@@ -781,7 +760,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
     fn range_shr(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                println!("shr: lhs: {lhs_val:?}, rhs: {rhs_val:?}");
+                // println!("shr: lhs: {lhs_val:?}, rhs: {rhs_val:?}");
                 if rhs_val == U256::zero() {
                     Some(Elem::Concrete(self.clone()))
                 } else {
@@ -806,8 +785,16 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                                 I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - 1.into()
                             };
                             let min = max * I256::from(-1i32);
+                            let (abs, is_min) = neg_v.overflowing_abs();
+                            let raw_abs = if is_min {
+                                (U256::from(1u8) << U256::from(255)) - U256::from(1)
+                            } else {
+                                abs.into_raw()    
+                            };
+                            
+                            let shr_val = I256::from(-1i32) * I256::from_raw(raw_abs >> val);
                             Some(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Int(*lhs_size, *neg_v >> I256::from_raw(*val).max(min)),
+                                val: Concrete::Int(*lhs_size, shr_val.max(min)),
                                 loc: self.loc
                             })) 
                         }
@@ -911,11 +898,101 @@ impl RangeCast<Concrete> for RangeConcrete<Concrete> {
     }
 }
 
+impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
+    fn range_cast(&self, other: &Box<RangeDyn<Concrete>>) -> Option<Elem<Concrete>> {
+        match (self.val.clone(), other.val.iter().take(1).next()) {
+            (Concrete::Bytes(_, val),  Some((_, Elem::Concrete(Self { val: Concrete::Bytes(..), ..})))) 
+            | (Concrete::Bytes(_, val), None) => {
+                let mut existing = other.val.clone();
+                let new = val.0.iter().enumerate().map(|(i, v)| {
+                    let idx = Elem::from(Concrete::from(U256::from(i)));
+                    let mut bytes = [0x00; 32];
+                    bytes[0] = *v;
+                    let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                    (idx, v)
+                }).collect::<BTreeMap<_,_>>();
+                existing.extend(new);
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: other.len.clone(),
+                    val: existing,
+                    loc: other.loc
+                })))
+            }
+            (Concrete::DynBytes(val), Some((_, Elem::Concrete(Self { val: Concrete::Bytes(..), ..}))))
+            | (Concrete::DynBytes(val), None) => {
+                let mut existing = other.val.clone();
+                let new = val.iter().enumerate().map(|(i, v)| {
+                    let idx = Elem::from(Concrete::from(U256::from(i)));
+                    let mut bytes = [0x00; 32];
+                    bytes[0] = *v;
+                    let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                    (idx, v)
+                }).collect::<BTreeMap<_,_>>();
+                existing.extend(new);
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: other.len.clone(),
+                    val: existing,
+                    loc: other.loc
+                })))
+            }
+            e => panic!("here00: {e:?}"),
+        }
+    }
+}
+
+impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
+    fn range_cast(&self, other: &Self) -> Option<Elem<Concrete>> {
+        let val: Option<(_, &Elem<Concrete>)> = self.val.iter().take(1).next();
+        let o_val: Option<(_, &Elem<Concrete>)> = other.val.iter().take(1).next();
+        match (val, o_val) {
+            (
+                Some((_, &Elem::Concrete(RangeConcrete { val: Concrete::Bytes(..), ..}))),
+                Some((_, &Elem::Concrete(RangeConcrete { val: Concrete::Bytes(..), ..})))
+            ) => {
+                let mut existing = other.val.clone();
+                existing.extend(self.val.clone());
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: other.len.clone(),
+                    val: existing,
+                    loc: other.loc
+                })))
+            }
+            (
+                Some((_, Elem::Concrete(RangeConcrete { val: Concrete::Uint(..), ..}))),
+                Some((_, Elem::Concrete(RangeConcrete { val: Concrete::Uint(..), ..})))
+            ) => {
+                let mut existing = other.val.clone();
+                existing.extend(self.val.clone());
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: other.len.clone(),
+                    val: existing,
+                    loc: other.loc
+                })))
+            }
+            (
+                Some((_, Elem::Concrete(RangeConcrete { val: Concrete::Int(..), ..}))),
+                Some((_, Elem::Concrete(RangeConcrete { val: Concrete::Int(..), ..})))
+            ) => {
+                let mut existing = other.val.clone();
+                existing.extend(self.val.clone());
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: other.len.clone(),
+                    val: existing,
+                    loc: other.loc
+                })))
+            }
+            e => panic!("here0: {e:?}"),
+        }
+    }
+}
+
 impl RangeCast<Concrete> for Elem<Concrete> {
     fn range_cast(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_cast(b),
-            _ => None
+            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
+            (Elem::Concrete(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
+            e => panic!("here: {e:?}"),
         }
     }
 }

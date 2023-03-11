@@ -170,9 +170,28 @@ impl ContextNode {
             .collect()
     }
 
-    /// Gets the associated function for the context
+    /// Gets the associated contract for the function for the context
     pub fn associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> ContractNode {
         self.associated_fn(analyzer).contract(analyzer).expect("No associated contract for context")
+    }
+
+    /// Tries to get the associated function for the context
+    pub fn maybe_associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> Option<ContractNode> {
+        self.associated_fn(analyzer).contract(analyzer)
+    }
+
+    pub fn associated_source(&self, analyzer: &impl GraphLike) -> Option<NodeIdx> {
+        analyzer.search_for_ancestor(self.0.into(), &Edge::Part)
+    }
+
+    /// Gets all visible functions
+    pub fn visible_funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+        // TODO: filter privates
+        if let Some(source) = self.associated_source(analyzer) {
+            analyzer.search_children(source, &Edge::Func).into_iter().map(FunctionNode::from).collect::<Vec<_>>()
+        } else {
+            vec![]
+        }
     }
 
     /// Gets the associated function for the context

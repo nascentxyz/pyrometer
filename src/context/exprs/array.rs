@@ -1,6 +1,6 @@
 use crate::{
     context::exprs::{member_access::MemberAccess, require::Require},
-    ContextBuilder, DynBuiltin, Edge, ExprRet, Node, VarType,
+    ContextBuilder, Builtin, Edge, ExprRet, Node, VarType,
 };
 use shared::{analyzer::AnalyzerLike, context::*, range::elem::RangeOp};
 
@@ -12,12 +12,12 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> ExprRet {
         let (ctx, inner_ty) = self.parse_ctx_expr(ty_expr, ctx).expect_single();
         if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-            let dyn_b = DynBuiltin::Array(var_type);
-            if let Some(idx) = self.dyn_builtins().get(&dyn_b) {
+            let dyn_b = Builtin::Array(var_type);
+            if let Some(idx) = self.builtins().get(&dyn_b) {
                 ExprRet::Single((ctx, *idx))
             } else {
-                let idx = self.add_node(Node::DynBuiltin(dyn_b.clone()));
-                self.dyn_builtins_mut().insert(dyn_b, idx);
+                let idx = self.add_node(Node::Builtin(dyn_b.clone()));
+                self.builtins_mut().insert(dyn_b, idx);
                 ExprRet::Single((ctx, idx))
             }
         } else {
@@ -44,10 +44,11 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
         inner_paths: ExprRet,
         index_paths: ExprRet,
     ) -> ExprRet {
+        println!("index into array");
         match (inner_paths, index_paths) {
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) => {
+            (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) | (ExprRet::Single((ctx, parent)), ExprRet::SingleLiteral((_rhs_ctx, index))) => {
                 let index = ContextVarNode::from(index);
                 let parent = ContextVarNode::from(parent).first_version(self);
                 let len_var = self.tmp_length(parent, ctx, loc);
@@ -79,12 +80,13 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,
-                        ty: parent.ty(self).array_underlying_ty(self),
+                        ty: parent.ty(self).clone().array_underlying_ty(self),
                     };
 
                     let idx_node = self.add_node(Node::ContextVar(index_var));
                     self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
                     self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
+                    self.add_edge(index, idx_node, Edge::Context(ContextEdge::Index));
 
                     ExprRet::Single((ctx, idx_node))
                 }

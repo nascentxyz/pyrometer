@@ -1,4 +1,9 @@
 contract Require {
+	function u_int256_y(uint256 x, uint256 y) public {
+		require(x > 100);
+		require(y != x);
+	}
+
 	function u_int256(uint256 x) public {
 		require(x > 100);
 		require(x == 101);
@@ -33,6 +38,10 @@ contract Require {
 
 	function b_ytes32_neq(bytes32 x) public {
 		require(x != bytes32(hex"1337"));
+	}
+
+	function b_ytes32_neq(bytes32 x) public {
+		require(x != bytes32(hex"00"));
 	}
 
 	function b_ytes16(bytes16 x) public {

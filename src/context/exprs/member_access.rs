@@ -1,3 +1,6 @@
+use shared::range::elem_ty::Elem;
+use shared::range::Range;
+use shared::range::elem_ty::Dynamic;
 use crate::{context::exprs::variable::Variable, ContextBuilder, ExprRet, NodeIdx};
 use shared::{
     analyzer::AnalyzerLike,
@@ -78,36 +81,31 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
                 VarType::User(TypeNode::Contract(con_node)) => {
                     // we can only access functions via this pattern
-                    let func = self
-                        .graph()
-                        .edges_directed(con_node.0.into(), Direction::Incoming)
-                        .filter(|edge| *edge.weight() == Edge::Func)
-                        .map(|edge| FunctionNode::from(edge.source()))
-                        .collect::<Vec<FunctionNode>>()
+                    println!("{:?}", con_node.funcs(self).iter().map(|func| func.name(self)).collect::<Vec<_>>());
+                    let funcs = con_node
+                        .funcs(self)
                         .into_iter()
                         .filter(|func_node| {
-                            let func = func_node.underlying(self);
-                            func.name.as_ref().expect("func wasnt named").name == ident.name
+                            func_node.name(self).starts_with(&format!("{}(", &ident.name))
                         })
-                        .take(1)
-                        .next()
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "No function with name {:?} in contract: {:?}",
-                                ident.name,
-                                con_node.name(self)
-                            )
-                        });
-
-                    if let Some(func_cvar) =
-                        ContextVar::maybe_from_user_ty(self, loc, func.0.into())
+                        .collect::<Vec<_>>();
+                    if funcs.is_empty() {
+                        panic!(
+                            "No function with name {:?} in contract: {:?}",
+                            ident.name,
+                            con_node.name(self)
+                        )
+                    } else if funcs.len() > 1 {
+                        panic!("Function lookup not unique")
+                    } else if let Some(func_cvar) =
+                        ContextVar::maybe_from_user_ty(self, loc, funcs[0].0.into())
                     {
                         let fn_node = self.add_node(Node::ContextVar(func_cvar));
                         self.add_edge(fn_node, member_idx, Edge::Context(ContextEdge::FuncAccess));
                         return ExprRet::Single((ctx, fn_node));
                     }
                 }
-                VarType::Array(..) => {
+                VarType::BuiltIn(..) => {
                     println!("{}", self.dot_str_no_tmps());
                     todo!("{:?}", ident)
                 }
@@ -458,6 +456,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     Builtin::Bytes(size) => panic!("Unknown member access on bytes{}: {:?}", size, ident.name),
                     Builtin::Rational => panic!("Unknown member access on rational: {:?}", ident.name),
                     Builtin::DynamicBytes => panic!("Unknown member access on bytes[]: {:?}", ident.name),
+                    Builtin::Array(_) => panic!("Unknown member access on array[]: {:?}", ident.name),
+                    Builtin::Mapping(_,_) => panic!("Unknown member access on mapping: {:?}", ident.name),
                     Builtin::Func(_, _) => panic!("Unknown member access on func: {:?}", ident.name),
                     Builtin::Int(size) => {
                         let size = *size;
@@ -540,7 +540,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         &mut self,
         loc: Loc,
         parent: NodeIdx,
-        dyn_builtin: DynBuiltInNode,
+        dyn_builtin: BuiltInNode,
         ident: &Identifier,
         ctx: ContextNode,
     ) -> ExprRet {
@@ -553,9 +553,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         index_paths: &ExprRet,
         loc: Loc,
         parent: ContextVarNode,
-        dyn_builtin: DynBuiltInNode,
+        dyn_builtin: BuiltInNode,
         ctx: ContextNode,
     ) -> ExprRet {
+        println!("match index access");
         match index_paths {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
             ExprRet::Single((_index_ctx, idx)) => {
@@ -580,6 +581,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 let idx_node = self.add_node(Node::ContextVar(indexed_var));
                 self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
                 self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
+                self.add_edge(*idx, idx_node, Edge::Context(ContextEdge::Index));
                 ExprRet::Single((ctx, idx_node))
             }
             _ => todo!("here"),
@@ -617,8 +619,21 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
             };
             let len_node = self.add_node(Node::ContextVar(len_var));
             let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, array_ctx);
-            if let VarType::Array(_, ref mut curr_len_node) = next_arr.underlying_mut(self).ty {
-                *curr_len_node = Some(ContextVarNode::from(len_node));
+            if next_arr.underlying(self).ty.is_dyn_builtin(self) {
+                if let Some(r) = next_arr.range(self) {
+                    let min = r.evaled_range_min(self);
+                    let max = r.evaled_range_max(self);
+
+                    if let Some(mut rd) = min.maybe_range_dyn() {
+                        rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                        next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                    }
+
+                    if let Some(mut rd) = max.maybe_range_dyn() {
+                        rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                        next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                    }
+                }
             }
 
             self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess));
@@ -641,11 +656,20 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 if let Some(len_var) = array_ctx.var_by_name_or_recurse(self, &name) {
                     let len_var = len_var.latest_version(self);
                     let new_len = self.advance_var_in_ctx(len_var, loc, array_ctx);
-                    if update_len_bound {
-                        if let VarType::Array(_, ref mut curr_len_node) =
-                            next_arr.underlying_mut(self).ty
-                        {
-                            *curr_len_node = Some(new_len);
+                    if update_len_bound && next_arr.underlying(self).ty.is_dyn_builtin(self) {
+                        if let Some(r) = next_arr.range(self) {
+                            let min = r.evaled_range_min(self);
+                            let max = r.evaled_range_max(self);
+
+                            if let Some(mut rd) = min.maybe_range_dyn() {
+                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
+                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                            }
+
+                            if let Some(mut rd) = max.maybe_range_dyn() {
+                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
+                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                            }
                         }
                     }
                     ExprRet::Single((array_ctx, new_len.into()))
@@ -664,10 +688,22 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         ),
                     };
                     let len_node = self.add_node(Node::ContextVar(len_var));
-                    if let VarType::Array(_, ref mut curr_len_node) =
-                        next_arr.underlying_mut(self).ty
-                    {
-                        *curr_len_node = Some(ContextVarNode::from(len_node));
+
+                    if next_arr.underlying(self).ty.is_dyn_builtin(self) {
+                        if let Some(r) = next_arr.range(self) {
+                            let min = r.evaled_range_min(self);
+                            let max = r.evaled_range_max(self);
+
+                            if let Some(mut rd) = min.maybe_range_dyn() {
+                                rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                            }
+
+                            if let Some(mut rd) = max.maybe_range_dyn() {
+                                rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                                next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                            }
+                        }
                     }
 
                     self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess));

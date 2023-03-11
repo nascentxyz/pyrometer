@@ -34,7 +34,36 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx);
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
         match (lhs_paths, rhs_paths) {
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+                ContextVarNode::from(lhs).cast_from(&ContextVarNode::from(rhs), self);
+                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
+                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
+                if lhs_ctx != rhs_ctx {
+                    ExprRet::Multi(vec![
+                        all_vars,
+                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
+                    ])
+                } else {
+                    all_vars
+                }
+            }
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
+                ContextVarNode::from(rhs).cast_from(&ContextVarNode::from(lhs), self);
+                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
+                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
+                if lhs_ctx != rhs_ctx {
+                    ExprRet::Multi(vec![
+                        all_vars,
+                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
+                    ])
+                } else {
+                    all_vars
+                }
+            }
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs)))
+            | (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
                 let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
@@ -85,12 +114,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                     })
                     .collect(),
             ),
-            (ExprRet::Multi(_lhs_sides), ExprRet::Multi(_rhs_sides)) => {
-                todo!("here")
+            (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
+                todo!("here: {lhs_sides:?} {rhs_sides:?}")
             }
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (_, _) => todo!(),
+            (l, r) => todo!("here: {l:?} {r:?}"),
         }
     }
 
@@ -180,7 +209,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                     if range.min_is_negative(self) {
                         let mut range_excls = range.range_exclusions();
                         let excl = Elem::from(Concrete::from(I256::zero()));
-                        range_excls.push(SolcRange { min: excl.clone(), max: excl, exclusions: vec![] });
+                        range_excls.push(excl);
                         tmp_rhs.set_range_exclusions(self, range_excls);
                     } else {
                         // the new min is max(1, rhs.min)
@@ -293,13 +322,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                     let tmp_var = ContextVar {
                         loc: Some(loc),
                         name: format!(
-                            "tmp{}({} <= 2**256 - 1 / {})",
+                            "tmp{}({} <= (2**256 - 1) / {})",
                             ctx.new_tmp(self),
                             tmp_lhs.name(self),
                             new_rhs.name(self),
                         ),
                         display_name: format!(
-                            "({} <= 2**256 - 1 / {})",
+                            "({} <= (2**256 - 1) / {})",
                             tmp_lhs.display_name(self),
                             new_rhs.display_name(self),
                         ),
@@ -315,6 +344,43 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
 
                     let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
                     ctx.add_ctx_dep(cvar, self);
+                }
+                RangeOp::Exp => {
+                    let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
+                    // the new min is max(lhs.min, rhs.min)
+                    let min = Elem::max(
+                        tmp_rhs.range_min(self).expect("No range minimum?"),
+                        Elem::from(Concrete::from(U256::zero()))
+                    );
+                    tmp_rhs.set_range_min(self, min);
+
+                    let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
+                    let zero_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, zero_node.into(), self)));
+
+                    let tmp_var = ContextVar {
+                        loc: Some(loc),
+                        name: format!(
+                            "tmp{}({} >= 0)",
+                            ctx.new_tmp(self),
+                            tmp_rhs.name(self),
+                        ),
+                        display_name: format!(
+                            "({} >= 0)",
+                            tmp_rhs.display_name(self),
+                        ),
+                        storage: None,
+                        is_tmp: true,
+                        tmp_of: Some(TmpConstruction::new(tmp_rhs, RangeOp::Gte, Some(zero_node.into()))),
+                        is_symbolic: true,
+                        ty: VarType::BuiltIn(
+                            BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                            SolcRange::from(Concrete::Bool(true)),
+                        ),
+                    };
+
+                    let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                    ctx.add_ctx_dep(cvar, self);
+                    new_rhs = tmp_rhs;
                 }
                 _ => {}
             };

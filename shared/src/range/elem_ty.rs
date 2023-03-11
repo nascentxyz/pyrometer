@@ -89,10 +89,72 @@ impl RangeElem<Concrete> for Dynamic {
 	}
 
 	fn simplify_maximize(&self, _: &impl GraphLike) -> Elem<Concrete> {
-		Elem::Dynamic(self.clone())
+		Elem::Dynamic(*self)
 	}
 	fn simplify_minimize(&self, _: &impl GraphLike) -> Elem<Concrete> {
-		Elem::Dynamic(self.clone())
+		Elem::Dynamic(*self)
+	}
+}
+
+/// A concrete value for a range element
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct RangeDyn<T> {
+	pub len: Elem<T>,
+	pub val: BTreeMap<Elem<T>, Elem<T>>,
+	pub loc: Loc,
+}
+
+impl RangeElem<Concrete> for RangeDyn<Concrete> {
+    fn range_eq(&self, _other: &Self) -> bool {
+    	false
+    }
+
+    fn range_ord(&self, _other: &Self) -> Option<std::cmp::Ordering> {
+    	todo!()
+    }
+
+    fn dependent_on(&self) -> Vec<ContextVarNode> {
+		let mut deps: Vec<ContextVarNode> = self.len.dependent_on();
+		deps.extend(self.val.iter().flat_map(|(_, val)| val.dependent_on()).collect::<Vec<_>>());
+		deps
+    }
+
+    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
+    	self.len.update_deps(mapping);
+		self.val.iter_mut().for_each(|(_, val)| val.update_deps(mapping));
+    }
+
+	fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
+
+	fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::ConcreteDyn(Box::new(Self {
+			len: self.len.maximize(analyzer),
+			val: self.val.clone().into_iter().map(|(idx, val)| (idx, val.maximize(analyzer))).collect(),
+			loc: self.loc
+		}))
+	}
+
+	fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::ConcreteDyn(Box::new(Self {
+			len: self.len.minimize(analyzer),
+			val: self.val.clone().into_iter().map(|(idx, val)| (idx, val.minimize(analyzer))).collect(),
+			loc: self.loc
+		}))
+	}
+
+	fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::ConcreteDyn(Box::new(Self {
+			len: self.len.simplify_maximize(analyzer),
+			val: self.val.clone().into_iter().map(|(idx, val)| (idx, val.simplify_maximize(analyzer))).collect(),
+			loc: self.loc
+		}))
+	}
+	fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+		Elem::ConcreteDyn(Box::new(Self {
+			len: self.len.simplify_minimize(analyzer),
+			val: self.val.clone().into_iter().map(|(idx, val)| (idx, val.simplify_minimize(analyzer))).collect(),
+			loc: self.loc
+		}))
 	}
 }
 
@@ -101,6 +163,15 @@ impl RangeElem<Concrete> for Dynamic {
 pub struct RangeConcrete<T> {
 	pub val: T,
 	pub loc: Loc,
+}
+
+impl From<Concrete> for RangeConcrete<Concrete> {
+	fn from(c: Concrete) -> Self {
+		Self {
+			val: c,
+			loc: Loc::Implicit,
+		}
+	}
 }
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
@@ -273,6 +344,8 @@ pub enum Elem<T> {
 	/// A range element that is a reference to another node
 	Dynamic(Dynamic),
 	/// A concrete range element of type `T`. e.g.: some number like `10`
+	ConcreteDyn(Box<RangeDyn<T>>),
+	/// A concrete range element of type `T`. e.g.: some number like `10`
 	Concrete(RangeConcrete<T>),
 	/// A range element that is an expression composed of other range elements
 	Expr(RangeExpr<T>),
@@ -393,6 +466,13 @@ impl Elem<Concrete> {
     		_ => None
     	}
     }
+
+    pub fn maybe_range_dyn(&self) -> Option<RangeDyn<Concrete>> {
+    	match self {
+    		Elem::ConcreteDyn(a) => Some(*a.clone()),
+    		_ => None
+    	}
+    }
 }
 
 impl RangeElem<Concrete> for Elem<Concrete> {
@@ -414,6 +494,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     		Self::Dynamic(d) => d.dependent_on(),
     		Self::Concrete(_) => vec![],
     		Self::Expr(expr) => expr.dependent_on(),
+    		Self::ConcreteDyn(d) => d.dependent_on(),
     		Self::Null => vec![]
     	}
     }
@@ -423,6 +504,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     		Self::Dynamic(d) => d.update_deps(mapping),
     		Self::Concrete(_) => {},
     		Self::Expr(expr) => expr.update_deps(mapping),
+    		Self::ConcreteDyn(d) => d.update_deps(mapping),
     		Self::Null => {},
     	}
 	}
@@ -434,6 +516,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     		},
     		Self::Concrete(_) => {},
     		Self::Expr(expr) => expr.filter_recursion(node_idx, old),
+    		Self::ConcreteDyn(d) => d.filter_recursion(node_idx, old),
     		Self::Null => {},
     	}
     	println!("{:?}", self);
@@ -444,6 +527,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 		match self {
 			Dynamic(dy) => dy.maximize(analyzer),
 			Concrete(inner) => inner.maximize(analyzer),
+			ConcreteDyn(inner) => inner.maximize(analyzer),
 			Expr(expr) => expr.maximize(analyzer),
 			Null => Elem::Null,
 		}
@@ -454,6 +538,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 		match self {
 			Dynamic(dy) => dy.minimize(analyzer),
 			Concrete(inner) => inner.minimize(analyzer),
+			ConcreteDyn(inner) => inner.minimize(analyzer),
 			Expr(expr) => expr.minimize(analyzer),
 			Null => Elem::Null,
 		}
@@ -464,6 +549,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 		match self {
 			Dynamic(dy) => dy.simplify_maximize(analyzer),
 			Concrete(inner) => inner.simplify_maximize(analyzer),
+			ConcreteDyn(inner) => inner.simplify_maximize(analyzer),
 			Expr(expr) => expr.simplify_maximize(analyzer),
 			Null => Elem::Null,
 		}
@@ -474,6 +560,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 		match self {
 			Dynamic(dy) => dy.simplify_minimize(analyzer),
 			Concrete(inner) => inner.simplify_minimize(analyzer),
+			ConcreteDyn(inner) => inner.simplify_minimize(analyzer),
 			Expr(expr) => expr.simplify_minimize(analyzer),
 			Null => Elem::Null,
 		}
@@ -757,186 +844,255 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 				}
 			}
 			RangeOp::Div => {
-				if maximize {
-					match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
-						(true, false, true, false) => {
-							// we dont know if lhs_min / rhs_min is larger or lhs_max / rhs_max is larger
-							match (lhs_min.range_div(&rhs_min), lhs_max.range_div(&rhs_max)) {
-								(Some(min_expr), Some(max_expr)) => {
-									match min_expr.range_ord(&max_expr) {
-										Some(std::cmp::Ordering::Less) => {
-											max_expr
-										}
-										Some(std::cmp::Ordering::Greater) => {
-											min_expr
-										}
-										_ => {
-											max_expr
-										}
-									}
-								}
-								(None, Some(max_expr)) => {
-									max_expr
-								}
-								(Some(min_expr), None) => {
-									min_expr
-								}
-								(None, None) => Elem::Expr(self.clone())
-							}
-						}
-						(false, false, true, true) => {
-							// since we are forced to go negative here, values closest to 0 will ensure we get the maximum
-							lhs_min.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, true, false, false) => {
-							// since we are forced to go negative here, values closest to 0 will ensure we get the maximum
-							lhs_max.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(_, false, false, _) => {
-							// lhs is positive, rhs min is positive, guaranteed to give largest
-							lhs_max.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(_, false, true, false) => {
-							// lhs_max is positive and rhs_max is positive, guaranteed to be lhs_max and rhs_max 
-							lhs_max.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, _, true, _) => {
-							// at this point, its either all trues, or a single false
-							// given that, to maximize, the only way to get a positive value is to use the most negative values
-							lhs_min.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))	
-						}
-						(false, true, _, _) | (_, _, false, true)=> {
-							panic!("unsatisfiable range")
-						}
+				let candidates = vec![
+					lhs_min.range_div(&rhs_min),
+					lhs_min.range_div(&rhs_max),
+					lhs_max.range_div(&rhs_min),
+					lhs_max.range_div(&rhs_max),
+				];
+				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+				candidates.sort_by(|a, b| {
+					match a.range_ord(b) {
+						Some(r) => r,
+						_ => std::cmp::Ordering::Less
 					}
-				} else {
-					match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
-						(false, false, false, false) => {
-							// smallest number will be lhs_min / rhs_min since both are positive
-							lhs_min.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, true, true, true) => {
-							// smallest number will be lhs_max / rhs_min since both are negative
-							lhs_max.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, true, true, false) => {
-							// The way to maintain most negative value is lhs_min / rhs_max, all others would go
-							// positive or guaranteed to be closer to 0
-							lhs_min.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, false, true, false) => {
-							// we dont know if lhs_min / rhs_max is larger or lhs_max / rhs_min is larger
-							match (lhs_min.range_div(&rhs_max), lhs_max.range_div(&rhs_min)) {
-								(Some(min_expr), Some(max_expr)) => {
-									match min_expr.range_ord(&max_expr) {
-										Some(std::cmp::Ordering::Less) => {
-											min_expr
-										}
-										Some(std::cmp::Ordering::Greater) => {
-											max_expr
-										}
-										_ => {
-											min_expr
-										}
-									}
-								}
-								(None, Some(max_expr)) => {
-									max_expr
-								}
-								(Some(min_expr), None) => {
-									min_expr
-								}
-								(None, None) => Elem::Expr(self.clone())
-							}
-						}
-						(_, false, true, _) => {
-							// We are going negative here, so it will be most positive / least negative
-							lhs_max.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, _, false, _) => {
-							// We are going negative here, so it will be most negative / least positive
-							lhs_min.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, true, _, _) | (_, _, false, true)=> {
-							panic!("unsatisfiable range")
-						}
-					}
+				});
+
+				if candidates.is_empty() {
+					return Elem::Expr(self.clone());
 				}
+
+				if maximize {
+					candidates[candidates.len() - 1].clone()
+				} else {
+					candidates[0].clone()
+				}
+				// if maximize {
+				// 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
+				// 		(true, false, true, false) => {
+				// 			// we dont know if lhs_min / rhs_min is larger or lhs_max / rhs_max is larger
+				// 			match (lhs_min.range_div(&rhs_min), lhs_max.range_div(&rhs_max)) {
+				// 				(Some(min_expr), Some(max_expr)) => {
+				// 					match min_expr.range_ord(&max_expr) {
+				// 						Some(std::cmp::Ordering::Less) => {
+				// 							max_expr
+				// 						}
+				// 						Some(std::cmp::Ordering::Greater) => {
+				// 							min_expr
+				// 						}
+				// 						_ => {
+				// 							max_expr
+				// 						}
+				// 					}
+				// 				}
+				// 				(None, Some(max_expr)) => {
+				// 					max_expr
+				// 				}
+				// 				(Some(min_expr), None) => {
+				// 					min_expr
+				// 				}
+				// 				(None, None) => Elem::Expr(self.clone())
+				// 			}
+				// 		}
+				// 		(false, false, true, true) => {
+				// 			// since we are forced to go negative here, values closest to 0 will ensure we get the maximum
+				// 			lhs_min.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, true, false, false) => {
+				// 			// since we are forced to go negative here, values closest to 0 will ensure we get the maximum
+				// 			lhs_max.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(_, false, false, _) => {
+				// 			// lhs is positive, rhs min is positive, guaranteed to give largest
+				// 			lhs_max.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(_, false, true, false) => {
+				// 			// lhs_max is positive and rhs_max is positive, guaranteed to be lhs_max and rhs_max 
+				// 			lhs_max.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, _, true, _) => {
+				// 			// at this point, its either all trues, or a single false
+				// 			// given that, to maximize, the only way to get a positive value is to use the most negative values
+				// 			lhs_min.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))	
+				// 		}
+				// 		(false, true, _, _) | (_, _, false, true)=> {
+				// 			panic!("unsatisfiable range")
+				// 		}
+				// 	}
+				// } else {
+				// 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
+				// 		(false, false, false, false) => {
+				// 			// smallest number will be lhs_min / rhs_min since both are positive
+				// 			lhs_min.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, true, true, true) => {
+				// 			// smallest number will be lhs_max / rhs_min since both are negative
+				// 			lhs_max.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, true, true, false) => {
+				// 			// The way to maintain most negative value is lhs_min / rhs_max, all others would go
+				// 			// positive or guaranteed to be closer to 0
+				// 			lhs_min.range_div(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, false, true, false) => {
+				// 			// we dont know if lhs_min / rhs_max is larger or lhs_max / rhs_min is larger
+				// 			match (lhs_min.range_div(&rhs_max), lhs_max.range_div(&rhs_min)) {
+				// 				(Some(min_expr), Some(max_expr)) => {
+				// 					match min_expr.range_ord(&max_expr) {
+				// 						Some(std::cmp::Ordering::Less) => {
+				// 							min_expr
+				// 						}
+				// 						Some(std::cmp::Ordering::Greater) => {
+				// 							max_expr
+				// 						}
+				// 						_ => {
+				// 							min_expr
+				// 						}
+				// 					}
+				// 				}
+				// 				(None, Some(max_expr)) => {
+				// 					max_expr
+				// 				}
+				// 				(Some(min_expr), None) => {
+				// 					min_expr
+				// 				}
+				// 				(None, None) => Elem::Expr(self.clone())
+				// 			}
+				// 		}
+				// 		(_, false, true, _) => {
+				// 			// We are going negative here, so it will be most positive / least negative
+				// 			lhs_max.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, _, false, _) => {
+				// 			// We are going negative here, so it will be most negative / least positive
+				// 			lhs_min.range_div(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, true, _, _) | (_, _, false, true)=> {
+				// 			panic!("unsatisfiable range")
+				// 		}
+				// 	}
+				// }
 			}
 			// RangeOp::Mod => {
 			//     lhs.range_mod(&rhs).unwrap_or(Elem::Expr(self.clone()))
 			// }
 			RangeOp::Min => {
-				if maximize {
-					match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
-						(true, _, true, _) | (false, _, false, _) => {
-							// counter-intuitively, we want the maximum value from a call to minimum
-							// this is due to the symbolic nature of the evaluation. We are still
-							// using the minimum values but getting the larger of the minimum
-							lhs_min.range_max(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, _, false, false) => {
-							rhs_min //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, false, true, _) => {
-							lhs_min //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, true, _, _) | (_, _, false, true)=> {
-							panic!("unsatisfiable range")
-						}
+				let candidates = vec![
+					lhs_min.range_min(&rhs_min),
+					lhs_min.range_min(&rhs_max),
+					lhs_max.range_min(&rhs_min),
+					lhs_max.range_min(&rhs_max),
+				];
+				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+				candidates.sort_by(|a, b| {
+					match a.range_ord(b) {
+						Some(r) => r,
+						_ => std::cmp::Ordering::Less
 					}
-				} else {
-					match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
-						(true, _, true, _) | (false, _, false, _) => {
-							lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, _, false, false) => {
-							lhs_min //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, false, true, _) => {
-							rhs_min //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, true, _, _) | (_, _, false, true)=> {
-							panic!("unsatisfiable range")
-						}
-					}
+				});
+
+				if candidates.is_empty() {
+					return Elem::Expr(self.clone());
 				}
+
+				if maximize {
+					candidates[candidates.len() - 1].clone()
+				} else {
+					candidates[0].clone()
+				}
+				// if maximize {
+				// 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
+				// 		(true, _, true, _) | (false, _, false, _) => {
+				// 			// counter-intuitively, we want the maximum value from a call to minimum
+				// 			// this is due to the symbolic nature of the evaluation. We are still
+				// 			// using the minimum values but getting the larger of the minimum
+				// 			lhs_min.range_max(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, _, false, false) => {
+				// 			rhs_min //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, false, true, _) => {
+				// 			lhs_min //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, true, _, _) | (_, _, false, true)=> {
+				// 			panic!("unsatisfiable range")
+				// 		}
+				// 	}
+				// } else {
+				// 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
+				// 		(true, _, true, _) | (false, _, false, _) => {
+				// 			lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, _, false, false) => {
+				// 			lhs_min //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, false, true, _) => {
+				// 			rhs_min //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, true, _, _) | (_, _, false, true)=> {
+				// 			panic!("unsatisfiable range")
+				// 		}
+				// 	}
+				// }
 			}
 			RangeOp::Max => {
-				if maximize {
-					match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
-						(true, _, true, _) | (false, _, false, _) => {
-							lhs_max.range_max(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, _, false, false) => {
-							rhs_max //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, false, true, _) => {
-							lhs_max //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, true, _, _) | (_, _, false, true)=> {
-							panic!("unsatisfiable range")
-						}
+				let candidates = vec![
+					lhs_min.range_max(&rhs_min),
+					lhs_min.range_max(&rhs_max),
+					lhs_max.range_max(&rhs_min),
+					lhs_max.range_max(&rhs_max),
+				];
+				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+				candidates.sort_by(|a, b| {
+					match a.range_ord(b) {
+						Some(r) => r,
+						_ => std::cmp::Ordering::Less
 					}
-				} else {
-					match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
-						(_, true, _, true) | (_, false, _, false) => {
-							// counter-intuitively, we want the minimum value from a call to maximum
-							// this is due to the symbolic nature of the evaluation. We are still
-							// using the maximum values but getting the smaller of the maximum
-							lhs_max.range_min(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(_, false, true, true) => {
-							lhs_max //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(true, true, _, false) => {
-							rhs_max //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
-						}
-						(false, true, _, _) | (_, _, false, true)=> {
-							panic!("unsatisfiable range")
-						}
-					}
+				});
+
+				if candidates.is_empty() {
+					return Elem::Expr(self.clone());
 				}
+
+				if maximize {
+					candidates[candidates.len() - 1].clone()
+				} else {
+					candidates[0].clone()
+				}
+				// if maximize {
+				// 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
+				// 		(true, _, true, _) | (false, _, false, _) => {
+				// 			lhs_max.range_max(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, _, false, false) => {
+				// 			rhs_max //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, false, true, _) => {
+				// 			lhs_max //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, true, _, _) | (_, _, false, true)=> {
+				// 			panic!("unsatisfiable range")
+				// 		}
+				// 	}
+				// } else {
+				// 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
+				// 		(_, true, _, true) | (_, false, _, false) => {
+				// 			// counter-intuitively, we want the minimum value from a call to maximum
+				// 			// this is due to the symbolic nature of the evaluation. We are still
+				// 			// using the maximum values but getting the smaller of the maximum
+				// 			lhs_max.range_min(&rhs_max).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(_, false, true, true) => {
+				// 			lhs_max //.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(true, true, _, false) => {
+				// 			rhs_max //lhs_min.range_min(&rhs_min).unwrap_or(Elem::Expr(self.clone()))
+				// 		}
+				// 		(false, true, _, _) | (_, _, false, true)=> {
+				// 			panic!("unsatisfiable range")
+				// 		}
+				// 	}
+				// }
 			}
 			RangeOp::Gt => {
 				if maximize {
@@ -1129,16 +1285,56 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 					Elem::Expr(self.clone())
 				}
 			}
-			// RangeOp::Shl => {
-			// 	lhs.range_shl(&rhs).unwrap_or(Elem::Expr(self.clone()))
-			// }
-			// RangeOp::Shr => {
-			// 	if maximize {
-			// 		lhs.range_shr(&self.rhs.minimize(analyzer)).unwrap_or(Elem::Expr(self.clone()))
-			// 	} else {
-			// 		lhs.range_shr(&rhs).unwrap_or(Elem::Expr(self.clone()))	
-			// 	}
-			// }
+			RangeOp::Shl => {
+				let candidates = vec![
+					lhs_min.range_shl(&rhs_min),
+					lhs_min.range_shl(&rhs_max),
+					lhs_max.range_shl(&rhs_min),
+					lhs_max.range_shl(&rhs_max),
+				];
+				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+				candidates.sort_by(|a, b| {
+					match a.range_ord(b) {
+						Some(r) => r,
+						_ => std::cmp::Ordering::Less
+					}
+				});
+
+				if candidates.is_empty() {
+					return Elem::Expr(self.clone());
+				}
+
+				if maximize {
+					candidates[candidates.len() - 1].clone()
+				} else {
+					candidates[0].clone()
+				}
+			}
+			RangeOp::Shr => {
+				let candidates = vec![
+					lhs_min.range_shr(&rhs_min),
+					lhs_min.range_shr(&rhs_max),
+					lhs_max.range_shr(&rhs_min),
+					lhs_max.range_shr(&rhs_max),
+				];
+				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+				candidates.sort_by(|a, b| {
+					match a.range_ord(b) {
+						Some(r) => r,
+						_ => std::cmp::Ordering::Less
+					}
+				});
+
+				if candidates.is_empty() {
+					return Elem::Expr(self.clone());
+				}
+
+				if maximize {
+					candidates[candidates.len() - 1].clone()
+				} else {
+					candidates[0].clone()
+				}
+			}
 			RangeOp::And => {
 				let candidates = vec![
 					lhs_min.range_and(&rhs_min),
@@ -1163,125 +1359,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 				} else {
 					candidates[0].clone()
 				}
-
-				// if maximize {
-				// 	match (
-				// 		lhs_min.maybe_concrete(),
-				// 		lhs_max.maybe_concrete(),
-				// 		rhs_min.maybe_concrete(),
-				// 		rhs_max.maybe_concrete(),
-				// 	) {
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), Some(RangeConcrete { val: Concrete::Bool(lmax), ..}), Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool((lmax || lmin) && (rmax || rmin)),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), Some(RangeConcrete { val: Concrete::Bool(lmax), ..}), Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), None) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool((lmax || lmin) && rmin),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc}), None, Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool((rmax || rmin) && lmin),
-				// 				loc,
-				// 			})
-				// 		}
-				// 		(None, Some(RangeConcrete { val: Concrete::Bool(lmax), loc}), Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool((rmax || rmin) && lmax),
-				// 				loc,
-				// 			})
-
-				// 		}
-				// 		(None, Some(RangeConcrete { val: Concrete::Bool(lmax), loc}), None, Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(rmax && lmax),
-				// 				loc,
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), None, Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), None) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(lmin && rmin),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), None, None, Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(lmin && rmax),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(None, None, _, _) => Elem::Expr(self.clone()),
-				// 		(_, _, None, None) => Elem::Expr(self.clone()),
-				// 		_ => Elem::Expr(self.clone())
-				// 	}
-				// } else {
-				// 	match (
-				// 		lhs_min.maybe_concrete(),
-				// 		lhs_max.maybe_concrete(),
-				// 		rhs_min.maybe_concrete(),
-				// 		rhs_max.maybe_concrete(),
-				// 	) {
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), Some(RangeConcrete { val: Concrete::Bool(lmax), ..}), Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(lmax && rmax && rmin && lmin),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), Some(RangeConcrete { val: Concrete::Bool(lmax), ..}), Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), None) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(lmax && rmin && lmin),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc}), None, Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(rmax && lmin && rmin),
-				// 				loc,
-				// 			})
-				// 		}
-				// 		(None, Some(RangeConcrete { val: Concrete::Bool(lmax), loc}), Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(rmax && lmax && rmin),
-				// 				loc,
-				// 			})
-
-				// 		}
-				// 		(None, Some(RangeConcrete { val: Concrete::Bool(lmax), loc}), None, Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(rmax && lmax),
-				// 				loc,
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), None, Some(RangeConcrete { val: Concrete::Bool(rmin), ..}), None) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(lmin && rmin),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(Some(RangeConcrete { val: Concrete::Bool(lmin), loc }), None, None, Some(RangeConcrete { val: Concrete::Bool(rmax), ..})) => {
-				// 			Elem::Concrete(RangeConcrete {
-				// 				val: Concrete::Bool(lmin && rmax),
-				// 				loc
-				// 			})
-				// 		}
-				// 		(None, None, _, _) => Elem::Expr(self.clone()),
-				// 		(_, _, None, None) => Elem::Expr(self.clone()),
-				// 		_ => Elem::Expr(self.clone())
-				// 	}
-				// }
 			}
 			RangeOp::Not => {
-				assert!(matches!(rhs, Elem::Null));
-				// lhs.range_not().unwrap_or(Elem::Expr(self.clone()))
+				assert!(matches!(rhs_min, Elem::Null) && matches!(rhs_max, Elem::Null));
 				let candidates = vec![
-					lhs_min.range_not(&rhs_min),
-					lhs_min.range_not(&rhs_max),
-					lhs_max.range_not(&rhs_min),
-					lhs_max.range_not(&rhs_max),
+					lhs_min.range_not(),
+					lhs_min.range_not(),
 				];
 				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
 				candidates.sort_by(|a, b| {

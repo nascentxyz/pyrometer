@@ -1,3 +1,4 @@
+use crate::range::elem_ty::RangeDyn;
 use ethers_core::types::H256;
 use crate::NodeIdx;
 use crate::GraphLike;
@@ -15,7 +16,7 @@ use crate::range::elem_ty::RangeConcrete;
 use crate::Builtin;
 use crate::range::elem_ty::Elem;
 use crate::range::elem::RangeElem;
-use crate::Concrete;
+use crate::{DynCapacity, Concrete};
 use crate::analyzer::AnalyzerLike;
 
 use solang_parser::pt::Loc;
@@ -29,7 +30,7 @@ pub mod range_string;
 pub struct SolcRange {
     pub min: Elem<Concrete>,
     pub max: Elem<Concrete>,
-    pub exclusions: Vec<SolcRange>,
+    pub exclusions: Vec<Elem<Concrete>>,
 }
 
 impl AsDotStr for SolcRange {
@@ -38,7 +39,7 @@ impl AsDotStr for SolcRange {
         format!("[{}, {}] excluding: [{}]",
             self.evaled_range_min(analyzer).to_range_string(false, analyzer).s,
             self.evaled_range_max(analyzer).to_range_string(true, analyzer).s,
-            self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", ")
+            self.exclusions.iter().map(|excl| excl.to_range_string(false, analyzer).s).collect::<Vec<_>>().join(", ")
         )
     }
 }
@@ -79,6 +80,25 @@ impl SolcRange {
                 Some(SolcRange {
                     min: Elem::Concrete(RangeConcrete { val: c.clone(), loc: Loc::Implicit }),
                     max: Elem::Concrete(RangeConcrete { val: c, loc: Loc::Implicit }),
+                    exclusions: vec![]
+                })
+            }
+            Concrete::DynBytes(b) => {
+                let val = b.iter().enumerate().map(|(i, v)| {
+                    let idx = Elem::from(Concrete::from(U256::from(i)));
+                    let mut bytes = [0x00; 32];
+                    bytes[0] = *v;
+                    let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                    (idx, v)
+                }).collect::<BTreeMap<_,_>>();
+                let r = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: Elem::from(Concrete::from(U256::from(b.len()))),
+                    val,
+                    loc: Loc::Implicit,
+                }));
+                Some(SolcRange {
+                    min: r.clone(),
+                    max: r,
                     exclusions: vec![]
                 })
             }
@@ -157,6 +177,13 @@ impl SolcRange {
                     exclusions: vec![],
                 })
             },
+            Builtin::DynamicBytes | Builtin::String | Builtin::Array(_) => {
+                Some(SolcRange {
+                    min: Elem::ConcreteDyn(Box::new(RangeDyn { len: Elem::from(Concrete::from(U256::zero())), val: Default::default(), loc: Loc::Implicit})),
+                    max: Elem::ConcreteDyn(Box::new(RangeDyn { len: Elem::from(Concrete::from(U256::MAX)), val: Default::default(), loc: Loc::Implicit})),
+                    exclusions: vec![],
+                })
+            }
             _ => None,
         }
     }
@@ -451,7 +478,7 @@ impl Range<Concrete> for SolcRange {
         self.range_max().simplify_maximize(analyzer)
     }
 
-    fn range_exclusions(&self) -> Vec<Self> {
+    fn range_exclusions(&self) -> Vec<Self::ElemTy> {
         self.exclusions.clone()
     }
     fn set_range_min(&mut self, new: Self::ElemTy) {
@@ -460,7 +487,7 @@ impl Range<Concrete> for SolcRange {
     fn set_range_max(&mut self, new: Self::ElemTy) {
         self.max = new;
     }
-    fn set_range_exclusions(&mut self, new: Vec<Self>) {
+    fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) {
         self.exclusions = new;
     }
     fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy) {
@@ -479,10 +506,10 @@ pub trait Range<T> {
     fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
     fn range_min(&self) -> Self::ElemTy;
     fn range_max(&self) -> Self::ElemTy;
-    fn range_exclusions(&self) -> Vec<Self> where Self: std::marker::Sized;
+    fn range_exclusions(&self) -> Vec<Self::ElemTy> where Self: std::marker::Sized;
     fn set_range_min(&mut self, new: Self::ElemTy);
     fn set_range_max(&mut self, new: Self::ElemTy);
-    fn set_range_exclusions(&mut self, new: Vec<Self>) where Self: std::marker::Sized;
+    fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) where Self: std::marker::Sized;
     fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
     fn filter_max_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
     fn dependent_on(&self) -> Vec<ContextVarNode> {

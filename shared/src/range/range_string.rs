@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use crate::range::RangeDyn;
 use crate::range::SolcRange;
 use crate::GraphLike;
 use crate::range::elem::RangeElem;
@@ -46,21 +48,6 @@ pub trait ToRangeString {
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString;
 }
 
-
-impl ToRangeString for SolcRange {
-    fn def_string(&self, _analyzer: &impl GraphLike) -> RangeElemString {
-        todo!()
-    }
-
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
-        if maximize {
-            self.max.to_range_string(true, analyzer)
-        } else {
-            self.min.to_range_string(false, analyzer)
-        }
-    }
-}
-
 impl ToRangeString for Elem<Concrete> {
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
@@ -71,8 +58,9 @@ impl ToRangeString for Elem<Concrete> {
                     .underlying(analyzer);
                 RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
+            Elem::ConcreteDyn(rd) => rd.def_string(analyzer),
             Elem::Expr(expr) => expr.def_string(analyzer),
-            Elem::Null => RangeElemString::new("".to_string(), Loc::Implicit)
+            Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit)
         }
     }
 
@@ -84,9 +72,71 @@ impl ToRangeString for Elem<Concrete> {
                 let name = as_var.display_name(analyzer);
                 RangeElemString::new(name, *loc)
             }
+            Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
             Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
-            Elem::Null => RangeElemString::new("".to_string(), Loc::Implicit)
+            Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit)
         }
+    }
+}
+
+impl ToRangeString for RangeDyn<Concrete> {
+    fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
+
+        let displayed_vals = self.val.iter().take(20).map(|(key, val)| {
+            (key.minimize(analyzer), val)
+        }).collect::<BTreeMap<_,_>>();
+
+        let val_str = displayed_vals.iter().map(|(key, val)| {
+            format!("{}: {}", key.def_string(analyzer).s, val.def_string(analyzer).s)
+        }).collect::<Vec<_>>().join(", ");
+
+        RangeElemString::new(
+            format!("{{len: {}, indices: [{}]}}", self.len.to_range_string(false, analyzer).s, val_str), self.loc)
+    }
+
+    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
+        let val_str = if self.val.len() > 10 {
+            let displayed_vals = self.val.iter().take(5).map(|(key, val)| {
+                if maximize {
+                    (key.maximize(analyzer), val)
+                } else {
+                    (key.minimize(analyzer), val)
+                }
+            }).collect::<BTreeMap<_,_>>();
+
+            let val_str_head = displayed_vals.iter().map(|(key, val)| {
+                format!("{}: {}", key.def_string(analyzer).s, val.def_string(analyzer).s)
+            }).collect::<Vec<_>>().join(", ");
+
+            let displayed_vals_tail = self.val.iter().rev().take(5).map(|(key, val)| {
+                if maximize {
+                    (key.maximize(analyzer), val)
+                } else {
+                    (key.minimize(analyzer), val)
+                }
+            }).collect::<BTreeMap<_,_>>();
+
+            let val_str_tail = displayed_vals_tail.iter().map(|(key, val)| {
+                format!("{}: {}", key.def_string(analyzer).s, val.def_string(analyzer).s)
+            }).collect::<Vec<_>>().join(", ");
+            format!("{} ... {}", val_str_head, val_str_tail)
+        } else {
+            let displayed_vals = self.val.iter().take(5).map(|(key, val)| {
+                if maximize {
+                    (key.maximize(analyzer), val)
+                } else {
+                    (key.minimize(analyzer), val)
+                }
+            }).collect::<BTreeMap<_,_>>();
+
+            displayed_vals.iter().map(|(key, val)| {
+                format!("{}: {}", key.def_string(analyzer).s, val.def_string(analyzer).s)
+            }).collect::<Vec<_>>().join(", ")
+        };
+        
+
+        RangeElemString::new(
+            format!("{{len: {}, indices: {{{}}}}}", self.len.to_range_string(maximize, analyzer).s, val_str), self.loc)
     }
 }
 

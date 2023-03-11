@@ -6,7 +6,6 @@ use crate::BuiltInNode;
 use crate::GraphLike;
 use crate::range::range_string::ToRangeString;
 use crate::AsDotStr;
-use crate::nodes::DynBuiltInNode;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::RangeConcrete;
 use crate::range::Range;
@@ -170,6 +169,37 @@ impl ContextVarNode {
         self.underlying(analyzer).tmp_of()
     }
 
+    pub fn is_len_var(&self, analyzer: &impl GraphLike) -> bool {
+        self.name(analyzer).ends_with(".length")
+            && analyzer.search_for_ancestor(self.first_version(analyzer).into(), &Edge::Context(ContextEdge::AttrAccess))
+                .is_some()
+    }
+
+    pub fn is_array_index_access(&self, analyzer: &impl GraphLike) -> bool {
+        analyzer.search_for_ancestor(self.first_version(analyzer).into(), &Edge::Context(ContextEdge::IndexAccess))
+                .is_some()
+    }
+
+    pub fn len_var_to_array(&self, analyzer: &impl GraphLike) -> Option<ContextVarNode> {
+        if self.name(analyzer).ends_with(".length") {
+            let arr = analyzer.search_for_ancestor(self.first_version(analyzer).into(), &Edge::Context(ContextEdge::AttrAccess))?;
+            Some(ContextVarNode::from(arr).latest_version(analyzer))
+        } else {
+            None
+        }
+    }
+
+    pub fn index_to_array(&self, analyzer: &impl GraphLike) -> Option<ContextVarNode> {
+        let arr = analyzer.search_for_ancestor(self.first_version(analyzer).into(), &Edge::Context(ContextEdge::IndexAccess))?;
+        Some(ContextVarNode::from(arr).latest_version(analyzer))
+    }
+
+    pub fn index_access_to_index(&self, analyzer: &impl GraphLike) -> Option<ContextVarNode> {
+        let set = analyzer.search_children(self.first_version(analyzer).into(), &Edge::Context(ContextEdge::Index));
+        let index = set.first()?;
+        Some(ContextVarNode::from(*index))
+    }
+
     pub fn as_range_elem(
         &self,
         analyzer: &impl GraphLike,
@@ -195,7 +225,7 @@ impl ContextVarNode {
             .set_range_max(new_max, fallback)
     }
 
-    pub fn set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<SolcRange>) {
+    pub fn set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<Elem<Concrete>>) {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
             .set_range_exclusions(new_exclusions, fallback);
@@ -213,7 +243,7 @@ impl ContextVarNode {
             .try_set_range_max(new_max, fallback)
     }
 
-    pub fn try_set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<SolcRange>) -> bool {
+    pub fn try_set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<Elem<Concrete>>) -> bool {
         let fallback = self.underlying(analyzer).fallback_range(analyzer);
         self.underlying_mut(analyzer)
             .try_set_range_exclusions(new_exclusions, fallback)
@@ -310,6 +340,13 @@ impl ContextVarNode {
         matches!(self.underlying(analyzer).ty, VarType::Concrete(_))
     }
 
+    pub fn as_concrete(&self, analyzer: &impl GraphLike) -> Concrete {
+        match &self.underlying(analyzer).ty {
+            VarType::Concrete(c) => c.underlying(analyzer).clone(),
+            e => panic!("Was not concrete: {e:?}"),
+        }
+    }
+
     pub fn as_cast_tmp(
         &self,
         loc: Loc,
@@ -319,6 +356,49 @@ impl ContextVarNode {
     ) -> Self {
         let new_underlying = self.underlying(analyzer).clone().as_cast_tmp(loc, ctx, cast_ty, analyzer);
         analyzer.add_node(Node::ContextVar(new_underlying)).into()
+    }
+
+    pub fn ty_eq(
+        &self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> bool {
+        self.ty(analyzer).ty_eq(other.ty(analyzer), analyzer)
+    }
+
+    pub fn cast_from(
+        &self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let to_ty = other.ty(analyzer).clone();
+        self.cast_from_ty(to_ty, analyzer);
+    }
+
+    pub fn cast_from_ty(
+        &self,
+        to_ty: VarType,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let from_ty = self.ty(analyzer).clone();
+        if !from_ty.ty_eq(&to_ty, analyzer) {
+            if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer) {
+                self.underlying_mut(analyzer).ty = new_ty;
+            }
+            if let (Some(r), Some(r2)) = (self.range(analyzer), to_ty.range(analyzer)) {
+                let min = r.min.cast(r2.min);
+                let max = r.max.cast(r2.max);
+                self.set_range_min(analyzer, min);
+                self.set_range_max(analyzer, max);
+            }
+        }
+
+        if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer), to_ty) {
+            // update name
+            println!("HERERERERE {:#?}", cnode.underlying(analyzer));
+            let display_name = cnode.underlying(analyzer).as_string();
+            self.underlying_mut(analyzer).display_name = display_name;
+        }
     }
 }
 
@@ -428,7 +508,7 @@ impl ContextVar {
                     Some(range.clone())
                 } else {
                     let underlying = bn.underlying(analyzer);
-                    println!("fallback range buitlin: {:?}", underlying);
+                    println!("fallback range builtin: {:?}", underlying);
                     SolcRange::try_from_builtin(underlying)
                 }
             }
@@ -487,7 +567,7 @@ impl ContextVar {
         }
     }
 
-    pub fn set_range_exclusions(&mut self, new_exclusions: Vec<SolcRange>, fallback_range: Option<SolcRange>) {
+    pub fn set_range_exclusions(&mut self, new_exclusions: Vec<Elem<Concrete>>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
             VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
@@ -521,7 +601,7 @@ impl ContextVar {
         }
     }
 
-    pub fn try_set_range_exclusions(&mut self, new_exclusions: Vec<SolcRange>, fallback_range: Option<SolcRange>) -> bool {
+    pub fn try_set_range_exclusions(&mut self, new_exclusions: Vec<Elem<Concrete>>, fallback_range: Option<SolcRange>) -> bool {
         match &mut self.ty {
             VarType::BuiltIn(_bn, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
@@ -624,12 +704,12 @@ impl ContextVar {
     }
 
     pub fn new_from_index(
-        analyzer: &impl GraphLike,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
         loc: Loc,
         parent_name: String,
         parent_display_name: String,
         parent_storage: StorageLocation,
-        parent_var: &DynBuiltInNode,
+        parent_var: &BuiltInNode,
         index: ContextVarNode,
     ) -> Self {
        ContextVar {
@@ -646,7 +726,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: index.underlying(analyzer).is_symbolic,
-            ty: parent_var.underlying_array_ty(analyzer).clone(),
+            ty: parent_var.array_underlying_ty(analyzer),
         }
     }
 

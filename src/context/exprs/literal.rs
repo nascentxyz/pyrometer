@@ -33,49 +33,56 @@ pub trait Literal: AnalyzerLike + Sized {
             int
         };
 
+        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
             let val = I256::from(-1i32) * I256::from_raw(val);
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(256, val))))
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
         } else {
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(256, val))))
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))
         };
 
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ExprRet::Single((ctx, node))
+        ExprRet::SingleLiteral((ctx, node))
     }
 
     fn hex_num_literal(&mut self, ctx: ContextNode, loc: Loc, integer: &str, negative: bool,) -> ExprRet {
         let val = U256::from_str_radix(integer, 16).unwrap();
+        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
             let val = I256::from(-1i32) * I256::from_raw(val);
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(256, val))))
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
         } else {
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(256, val))))
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))
         };
 
         let ccvar = Node::ContextVar(ContextVar::new_from_concrete(loc, concrete_node, self));
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ExprRet::Single((ctx, node))
+        ExprRet::SingleLiteral((ctx, node))
     }
 
     fn hex_literals(&mut self, ctx: ContextNode, hexes: &[HexLiteral]) -> ExprRet {
         if hexes.len() == 1 {
             let mut h = H256::default();
+            let mut max = 0;
             if let Ok(hex_val) = hex::decode(&hexes[0].hex) {
                 hex_val.iter().enumerate().for_each(|(i, hex_byte)| {
+                    println!("hex byte: {:?}", hex_byte);
+                    if *hex_byte != 0x00u8 {
+                        max = i as u8;
+                    }
                     h.0[i] = *hex_byte;
                 });
             }
 
             let concrete_node =
-                ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(32, h))));
+                ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(max + 1, h))));
             let ccvar = Node::ContextVar(ContextVar::new_from_concrete(hexes[0].loc, concrete_node, self));
             let node = self.add_node(ccvar);
             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-            ExprRet::Single((ctx, node))
+            ExprRet::SingleLiteral((ctx, node))
         } else {
             todo!("hexes: {:?}", hexes);
         }

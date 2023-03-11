@@ -24,7 +24,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
     fn not_inner(&mut self, loc: Loc, lhs_expr: ExprRet) -> ExprRet {
         match lhs_expr {
             ExprRet::CtxKilled => lhs_expr,
-            ExprRet::Single((ctx, lhs)) => {
+            ExprRet::Single((ctx, lhs)) | ExprRet::SingleLiteral((ctx, lhs)) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
                 let range = self.not_eval(ctx, loc, lhs_cvar);
 

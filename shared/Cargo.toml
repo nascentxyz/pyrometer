@@ -10,3 +10,4 @@ ethers-core = "*"
 petgraph = "0.6.2"
 solang-parser = { version = "0.2.1", features = ["pt-serde"] }
 lazy_static = "1.4.0"
+hex = "0.4.3"

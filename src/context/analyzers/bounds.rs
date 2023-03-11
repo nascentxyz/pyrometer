@@ -160,25 +160,19 @@ impl ReportDisplay for BoundAnalysis {
                 let range_excl = init_range.range_exclusions();
                 let mut range_excl_str = range_excl.iter().map(|range| {
                     let min = if self.report_config.eval_bounds {
-                        range
-                            .evaled_range_min(analyzer).to_range_string(false, analyzer)
-                            .s
+                        range.to_range_string(false, analyzer).s
                     } else if self.report_config.simplify_bounds {
-                        range
-                            .simplified_range_min(analyzer).to_range_string(false, analyzer)
-                            .s
+                        range.to_range_string(false, analyzer).s
                     } else {
-                        range.range_min().to_range_string(false, analyzer).s
+                        range.to_range_string(false, analyzer).s
                     };
 
                     let max = if self.report_config.eval_bounds {
-                        range.evaled_range_max(analyzer).to_range_string(true, analyzer)
-                            .s
+                        range.to_range_string(true, analyzer).s
                     } else if self.report_config.simplify_bounds {
-                        range.simplified_range_max(analyzer).to_range_string(true, analyzer)
-                            .s
+                        range.to_range_string(true, analyzer).s
                     } else {
-                        range.range_max().to_range_string(true, analyzer).s
+                        range.to_range_string(true, analyzer).s
                     };
 
                     if min == max {
@@ -262,25 +256,19 @@ impl ReportDisplay for BoundAnalysis {
                     let range_excl = bound_change.1.range_exclusions();
                     let mut range_excl_str = range_excl.iter().map(|range| {
                         let min = if self.report_config.eval_bounds {
-                            range
-                                .evaled_range_min(analyzer).to_range_string(false, analyzer)
-                                .s
+                            range.to_range_string(false, analyzer).s
                         } else if self.report_config.simplify_bounds {
-                            range
-                                .simplified_range_min(analyzer).to_range_string(false, analyzer)
-                                .s
+                            range.to_range_string(false, analyzer).s
                         } else {
-                            range.range_min().to_range_string(false, analyzer).s
+                            range.to_range_string(false, analyzer).s
                         };
 
                         let max = if self.report_config.eval_bounds {
-                            range.evaled_range_max(analyzer).to_range_string(true, analyzer)
-                                .s
+                            range.to_range_string(true, analyzer).s
                         } else if self.report_config.simplify_bounds {
-                            range.simplified_range_max(analyzer).to_range_string(true, analyzer)
-                                .s
+                            range.to_range_string(true, analyzer).s
                         } else {
-                            range.range_max().to_range_string(true, analyzer).s
+                            range.to_range_string(true, analyzer).s
                         };
 
                         if min == max {
@@ -530,14 +518,14 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 if let Some(next_range) = next.range(self) {
                     let nr_min = next_range.evaled_range_min(self);
                     let nr_max = next_range.evaled_range_max(self);
-                    // if nr_min != cr_min || nr_max != cr_max || curr_range.exclusions.len() != next_range.exclusions.len() {
+                    if nr_min != cr_min || nr_max != cr_max || curr_range.exclusions.len() != next_range.exclusions.len() {
                         cr_min = nr_min;
                         cr_max = nr_max;
                         ba.bound_changes.push((
                             LocStrSpan::new(file_mapping, next.loc(self)),
                             next_range.clone(),
                         ));
-                    // }
+                    }
                 }
 
                 if next == cvar {
@@ -569,7 +557,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
         format!(
             "Bounds for function: {}",
-            format!("function {}(..)", self.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
+            format!("function {}", self.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
         )
     }
 

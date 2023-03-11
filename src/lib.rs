@@ -27,7 +27,6 @@ pub struct Analyzer {
     pub block: BlockNode,
     pub graph: Graph<Node, Edge, Directed, usize>,
     pub builtins: HashMap<Builtin, NodeIdx>,
-    pub dyn_builtins: HashMap<DynBuiltin, NodeIdx>,
     pub user_types: HashMap<String, NodeIdx>,
     pub builtin_fns: HashMap<String, Function>,
     pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
@@ -42,7 +41,6 @@ impl Default for Analyzer {
             block: BlockNode(0),
             graph: Default::default(),
             builtins: Default::default(),
-            dyn_builtins: Default::default(),
             user_types: Default::default(),
             builtin_fns: builtin_fns::builtin_fns(),
             builtin_fn_inputs: Default::default(),
@@ -94,12 +92,6 @@ impl AnalyzerLike for Analyzer {
     fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx> {
         &mut self.builtins
     }
-    fn dyn_builtins(&self) -> &HashMap<DynBuiltin, NodeIdx> {
-        &self.dyn_builtins
-    }
-    fn dyn_builtins_mut(&mut self) -> &mut HashMap<DynBuiltin, NodeIdx> {
-        &mut self.dyn_builtins
-    }
     fn user_types(&self) -> &HashMap<String, NodeIdx> {
         &self.user_types
     }
@@ -136,12 +128,12 @@ impl AnalyzerLike for Analyzer {
             ArraySubscript(_loc, ty_expr, None) => {
                 let inner_ty = self.parse_expr(ty_expr);
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-                    let dyn_b = DynBuiltin::Array(var_type);
-                    if let Some(idx) = self.dyn_builtins.get(&dyn_b) {
+                    let dyn_b = Builtin::Array(var_type);
+                    if let Some(idx) = self.builtins.get(&dyn_b) {
                         *idx
                     } else {
-                        let idx = self.add_node(Node::DynBuiltin(dyn_b.clone()));
-                        self.dyn_builtins.insert(dyn_b, idx);
+                        let idx = self.add_node(Node::Builtin(dyn_b.clone()));
+                        self.builtins.insert(dyn_b, idx);
                         idx
                     }
                 } else {
@@ -195,6 +187,19 @@ impl Analyzer {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
                 let funcs = self.parse_source_unit(source_unit, file_no, parent, &mut imported);
+                funcs.iter().for_each(|func| {
+                    // add params now that parsing is done
+                    func.set_params_and_ret(self);
+                    let name = func.name(self);
+                    if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+                        let underlying = func.underlying(self).clone();
+                        let unresolved = self.node_mut(user_ty_node);
+                        *unresolved = Node::Function(underlying);
+                    } else {
+                        self.user_types.insert(name.to_string(), NodeIdx::from(*func));
+                    }
+                });
+
                 funcs.into_iter().for_each(|func| {
                     if let Some(body) = &func.underlying(self).body.clone() {
                         self.parse_ctx_statement(body, false, Some(func));
@@ -431,14 +436,6 @@ impl Analyzer {
                 let node = self.add_node(func);
                 let func_node = node.into();
 
-                func_def.params.iter().for_each(|(_loc, input)| {
-                    if let Some(input) = input {
-                        let param = FunctionParam::new(self, input.clone());
-                        let input_node = self.add_node(param);
-                        self.add_edge(input_node, node, Edge::FunctionParam);
-                    }
-                });
-
                 if let Some(con_node) = con_node {
                     self.add_edge(node, con_node, Edge::Constructor);
                 }
@@ -447,20 +444,6 @@ impl Analyzer {
             FunctionTy::Fallback => {
                 let node = self.add_node(func);
                 let func_node = node.into();
-                func_def.params.iter().for_each(|(_loc, input)| {
-                    if let Some(input) = input {
-                        let param = FunctionParam::new(self, input.clone());
-                        let input_node = self.add_node(param);
-                        self.add_edge(input_node, node, Edge::FunctionParam);
-                    }
-                });
-                func_def.returns.iter().for_each(|(_loc, output)| {
-                    if let Some(output) = output {
-                        let ret = FunctionReturn::new(self, output.clone());
-                        let output_node = self.add_node(ret);
-                        self.add_edge(output_node, func_node, Edge::FunctionReturn);
-                    }
-                });
 
                 if let Some(con_node) = con_node {
                     self.add_edge(node, con_node, Edge::FallbackFunc);
@@ -477,59 +460,57 @@ impl Analyzer {
                 FunctionNode::from(node)
             }
             FunctionTy::Function => {
-                let fn_node = self.named_fn_internal(func, func_def);
+                let fn_node = self.add_node(func);
                 if let Some(con_node) = con_node {
-                    self.add_edge(NodeIdx::from(fn_node), con_node, Edge::Func);
+                    self.add_edge(fn_node, con_node, Edge::Func);
                 }
-                fn_node
+                fn_node.into()
             }
             FunctionTy::Modifier => {
-                let fn_node = self.named_fn_internal(func, func_def);
+                let fn_node = self.add_node(func);
                 if let Some(con_node) = con_node {
-                    self.add_edge(NodeIdx::from(fn_node), con_node, Edge::Modifier);
+                    self.add_edge(fn_node, con_node, Edge::Modifier);
                 }
-                fn_node
+                fn_node.into()
             }
         }
-
-        // we delay the function body parsing to the end after parsing all sources
     }
 
-    fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
-        let name = func
-            .name
-            .as_ref()
-            .expect("Function was not named")
-            .name
-            .clone();
-        let func_node: FunctionNode =
-            if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-                let unresolved = self.node_mut(user_ty_node);
-                *unresolved = Node::Function(func);
-                user_ty_node.into()
-            } else {
-                let node = self.add_node(func);
-                self.user_types.insert(name.to_string(), node);
-                node.into()
-            };
+    // fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
+        // let name = func
+        //     .name
+        //     .as_ref()
+        //     .expect("Function was not named")
+        //     .name
+        //     .clone();
+        // let func_node: FunctionNode =
+        //     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+        //         let unresolved = self.node_mut(user_ty_node);
+        //         *unresolved = Node::Function(func);
+        //         user_ty_node.into()
+        //     } else {
+        //         let node = self.add_node(func);
+        //         self.user_types.insert(name.to_string(), node);
+        //         node.into()
+        //     };
 
-        func_def.params.iter().for_each(|(_loc, input)| {
-            if let Some(input) = input {
-                let param = FunctionParam::new(self, input.clone());
-                let input_node = self.add_node(param);
-                self.add_edge(input_node, func_node, Edge::FunctionParam);
-            }
-        });
-        func_def.returns.iter().for_each(|(_loc, output)| {
-            if let Some(output) = output {
-                let ret = FunctionReturn::new(self, output.clone());
-                let output_node = self.add_node(ret);
-                self.add_edge(output_node, func_node, Edge::FunctionReturn);
-            }
-        });
+        // func_def.params.iter().for_each(|(_loc, input)| {
+        //     if let Some(input) = input {
+        //         let param = FunctionParam::new(self, input.clone());
+        //         let input_node = self.add_node(param);
+        //         self.add_edge(input_node, func_node, Edge::FunctionParam);
+        //     }
+        // });
+        // func_def.returns.iter().for_each(|(_loc, output)| {
+        //     if let Some(output) = output {
+        //         let ret = FunctionReturn::new(self, output.clone());
+        //         let output_node = self.add_node(ret);
+        //         self.add_edge(output_node, func_node, Edge::FunctionReturn);
+        //     }
+        // });
 
-        func_node
-    }
+        // func_node
+    // }
 
     pub fn parse_var_def(&mut self, var_def: &VariableDefinition, in_contract: bool) -> VarNode {
         let var = Var::new(self, var_def.clone(), in_contract);

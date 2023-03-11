@@ -59,6 +59,15 @@ impl ContractNode {
         .map(FunctionNode::from)
         .collect()
     }
+
+    pub fn associated_source_unit_part(&self, analyzer: &impl GraphLike) -> Option<NodeIdx> {
+        analyzer.search_for_ancestor(self.0.into(), &Edge::Contract)
+    }
+
+    pub fn associated_source(&self, analyzer: &impl GraphLike) -> Option<NodeIdx> {
+        let sup = self.associated_source_unit_part(analyzer)?;
+        analyzer.search_for_ancestor(sup, &Edge::Part)
+    }
 }
 
 impl From<ContractNode> for NodeIdx {

@@ -171,7 +171,7 @@ fn main() {
         ).print_reports(&mut source_map, &analyzer);
         println!();
     });
-
+ 
     args.write_query.iter().for_each(|query| {
         let split: Vec<&str> = query.split('.').collect();
         println!("{:?}", split);
@@ -191,7 +191,7 @@ fn main() {
         dir.push(file_name);
      
         let mut file = fs::File::create(dir.clone()).unwrap();
-        file.write_all(analyzer.dot_str_no_tmps().as_bytes()).unwrap();
+        file.write_all(analyzer.dot_str().as_bytes()).unwrap();
         Command::new("dot")
             .arg("-Tjpeg")
             .arg(dir)

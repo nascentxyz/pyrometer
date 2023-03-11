@@ -20,6 +20,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -33,6 +35,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -46,6 +50,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -59,6 +65,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -72,6 +80,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -85,6 +95,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -98,6 +110,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -111,6 +125,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -124,6 +140,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -137,6 +155,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -150,6 +170,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -163,6 +185,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -176,6 +200,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -189,6 +215,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -202,6 +230,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -215,6 +245,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -228,6 +260,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -241,6 +275,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
         Function {
             body: None,
@@ -254,6 +290,8 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
+            params: vec![],
+            returns: vec![],
         },
     ];
     funcs
@@ -272,24 +310,28 @@ pub fn builtin_fns_inputs(
                 FunctionParam {
                     loc: Loc::Builtin,
                     ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                    order: 0,
                     storage: None,
                     name: None,
                 },
                 FunctionParam {
                     loc: Loc::Builtin,
                     ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                    order: 1,
                     storage: None,
                     name: None,
                 },
                 FunctionParam {
                     loc: Loc::Builtin,
                     ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                    order: 2,
                     storage: None,
                     name: None,
                 },
                 FunctionParam {
                     loc: Loc::Builtin,
                     ty: analyzer.builtin_or_add(Builtin::Uint(8)),
+                    order: 3,
                     storage: None,
                     name: None,
                 }
@@ -311,6 +353,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Bool),
+                order: 0,
                 storage: None,
                 name: None,
             }],
@@ -321,6 +364,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Bool),
+                order: 0,
                 storage: None,
                 name: None,
             }],
@@ -332,12 +376,14 @@ pub fn builtin_fns_inputs(
                 FunctionParam {
                     loc: Loc::Builtin,
                     ty: analyzer.builtin_or_add(Builtin::Bool),
+                    order: 0,
                     storage: None,
                     name: None,
                 },
                 FunctionParam {
                     loc: Loc::Builtin,
                     ty: analyzer.builtin_or_add(Builtin::String),
+                    order: 1,
                     storage: Some(StorageLocation::Memory(Loc::Implicit)),
                     name: None,
                 },
@@ -350,6 +396,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::String),
+                order: 0,
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
                 name: None,
             }],
@@ -360,6 +407,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Address),
+                order: 0,
                 storage: None,
                 name: None,
             }],
@@ -370,6 +418,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                order: 0,
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
                 name: None,
             }],
@@ -385,6 +434,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                order: 0,
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
                 name: None,
             }],
@@ -400,6 +450,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                order: 0,
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
                 name: None,
             }],
@@ -425,6 +476,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Uint(64)),
+                order: 0,
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
                 name: None,
             }],
@@ -440,6 +492,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                order: 0,
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
                 name: None,
             }],
@@ -470,6 +523,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Bytes(4)),
+                order: 0,
                 storage: None,
                 name: None,
             }],
@@ -485,6 +539,7 @@ pub fn builtin_fns_inputs(
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::String),
+                order: 0,
                 storage: None,
                 name: None,
             }],

@@ -31,6 +31,12 @@ impl From<ConcreteNode> for NodeIdx {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum DynCapacity {
+    Cap(U256),
+    Unlimited,
+}
+
 /// EVM/Solidity basic concrete types
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Concrete {
@@ -44,7 +50,7 @@ pub enum Concrete {
     Address(Address),
     /// A boolean
     Bool(bool),
-    /// A vector of bytes
+    /// A (capacity, vector of bytes)
     DynBytes(Vec<u8>),
     /// A string, (TODO: solidity doesn't enforce utf-8 encoding like rust. Likely this type
     /// should be modeled with a `Vec<u8>` instead.)
@@ -140,6 +146,26 @@ impl Concrete {
         self.cast(other.as_builtin())
     }
 
+    pub fn equivalent_ty(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Concrete::Uint(size, _), Concrete::Uint(other_size, _)) if size == other_size => true,
+            (Concrete::Int(size, _), Concrete::Int(other_size, _)) if size == other_size => true,
+            (Concrete::Bytes(size, _), Concrete::Bytes(other_size, _)) if size == other_size => true,
+            (Concrete::Address(_), Concrete::Address(_)) => true,
+            (Concrete::Bool(_), Concrete::Bool(_)) => true,
+            (Concrete::DynBytes(_), Concrete::DynBytes(_)) => true,
+            (Concrete::String(_), Concrete::String(_)) => true,
+            (Concrete::Array(v0), Concrete::Array(v1)) => {
+                if v0.is_empty() || v1.is_empty() {
+                    true
+                } else {
+                    v0[0].equivalent_ty(&v1[0])
+                }
+            }
+            _ => false
+        }
+    }
+
     /// Cast the concrete to another type as denoted by a [`Builtin`].
     pub fn cast(self, builtin: Builtin) -> Option<Self> {
         match self {
@@ -183,8 +209,7 @@ impl Concrete {
                             U256::from(2).pow((size as u16 * 8).into()) - 1
                         };
 
-                        let mut h = H256::default();
-                        (val & mask).to_big_endian(h.as_mut());
+                        let h = H256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
                         Some(Concrete::Bytes(size, h))
                     }
                     _ => None
@@ -241,7 +266,7 @@ impl Concrete {
                     _ => None
                 }
             }
-            Concrete::Bytes(_, b) => {
+            Concrete::Bytes(cap, b) => {
                 match builtin {
                     Builtin::Address => {
                         Some(Concrete::Address(Address::from_slice(&b[12..])))
@@ -268,6 +293,11 @@ impl Concrete {
                         let mut h = H256::default();
                         (0..size).for_each(|i| h.0[i as usize] = b.0[i as usize]);
                         Some(Concrete::Bytes(size, h))
+                    }
+                    Builtin::DynamicBytes => {
+                        let mut bytes = vec![0; cap.into()];
+                        b.0.into_iter().take(cap.into()).enumerate().for_each(|(i, b)| bytes[i] = b);
+                        Some(Concrete::DynBytes(bytes))
                     }
                     _ => None
                 }
@@ -305,6 +335,13 @@ impl Concrete {
                         (val & mask).to_big_endian(h.as_mut());
                         Some(Concrete::Bytes(size, h))
                     }
+                    _ => None
+                }
+            }
+            Concrete::DynBytes(ref _b) => {
+                match builtin {
+                    Builtin::DynamicBytes => Some(self),
+                    Builtin::String => todo!(),
                     _ => None
                 }
             }
@@ -383,6 +420,81 @@ impl Concrete {
         }
     }
 
+    pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
+        let mut builtins = vec![];
+        match self {
+            Concrete::Uint(size, val) => {
+                let mut min_bits = (256 - val.leading_zeros()) as u16;
+                let mut s = *size;
+                while s > min_bits {
+                    builtins.push(Builtin::Uint(s));
+                    s -= 8;
+                }
+                // now ints
+                min_bits = min_bits.saturating_sub(1);
+                let mut s = *size;
+                while s > min_bits {
+                    builtins.push(Builtin::Int(s));
+                    s -= 8;
+                }
+            }
+            Concrete::Int(size, val) => {
+                // if we evaled it as a int, it must be negative
+                let (abs, is_min) = val.overflowing_abs();
+                if is_min {
+                    builtins.push(Builtin::Int(*size))
+                } else {
+                    let min_bits = (255 - abs.leading_zeros()) as u16;
+                    let mut s = *size;
+                    while s > min_bits {
+                        builtins.push(Builtin::Int(s));
+                        s -= 8;
+                    }
+                }
+            }
+            Concrete::Bytes(size, val) => {
+                let min_bytes: u8 = val.as_fixed_bytes().iter().rev().enumerate().fold(0, |mut acc, (i, v)| {
+                    if v != &0x00u8 {
+                        acc = i as u8;
+                        acc
+                    } else {
+                        acc
+                    }
+                });
+                let mut s = *size;
+                while s > min_bytes {
+                    builtins.push(Builtin::Bytes(s));
+                    s -= 1;
+                }
+            }
+            _ => {},
+        }
+        builtins
+    }
+
+    /// Gets the smallest increment for a given type
+    pub fn one(&self) -> Option<Self> {
+        match self {
+            Concrete::Uint(size, _) => {
+                Some(Concrete::Uint(*size, U256::from(1)))
+            },
+            Concrete::Int(size, _) => {
+                Some(Concrete::Int(*size, I256::from(1)))
+            },
+            Concrete::Bytes(size, _) => {
+                let mut b = [0x00; 32];
+                b[0] = 0x01;
+                Some(Concrete::Bytes(size / 8, H256::from(b)))
+            },
+            Concrete::Address(_) => {
+                let mut b = [0x00; 20];
+                b[19] = 0x01;
+                Some(Concrete::Address(Address::from_slice(&b)))
+            },
+            _ => None,
+        }
+    }
+
     /// Gets the default min for a given concrete variant.
     pub fn min(&self) -> Option<Self> {
         match self {
@@ -439,10 +551,11 @@ impl Concrete {
         match self {
             Concrete::Uint(_, val) => val.to_string(),
             Concrete::Int(_, val) => val.to_string(),
-            Concrete::Bytes(_, b) => format!("0x{:x}", b),
+            Concrete::Bytes(size, b) => format!("0x{}", b.0.iter().take(*size as usize).map(|byte| format!("{:02x}", byte)).collect::<Vec<_>>().join("")),
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
             Concrete::Address(a) => a.to_string(),
+            Concrete::DynBytes(a) => if a.is_empty() { "0x".to_string() } else { hex::encode(a) },
             e => todo!("Concrete as string {e:?}"),
         }
     }
@@ -501,10 +614,13 @@ impl Concrete {
                     format!("-1 * {}", Concrete::Uint(*size, val).as_human_string())
                 }
             },
-            Concrete::Bytes(_, b) => format!("0x{:x}", b),
+            Concrete::Bytes(size, b) => {
+                format!("0x{}", b.0.iter().take(*size as usize).map(|byte| format!("{:02x}", byte)).collect::<Vec<_>>().join(""))
+            },
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
             Concrete::Address(a) => format!("{:?}", a),
+            Concrete::DynBytes(a) => if a.is_empty() { "0x".to_string() } else { hex::encode(a) },
             e => todo!("Concrete as string: {e:?}"),
         }
     }

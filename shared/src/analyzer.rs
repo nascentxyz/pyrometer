@@ -8,7 +8,7 @@ use petgraph::visit::EdgeRef;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use crate::range::range_string::ToRangeString;
-use crate::{FunctionParam, DynBuiltin, Function, FunctionReturn, Builtin, Node, Edge, NodeIdx};
+use crate::{FunctionParam, Function, FunctionReturn, Builtin, Node, Edge, NodeIdx};
 
 use petgraph::dot::Dot;
 use petgraph::{graph::*, Directed, Direction};
@@ -30,8 +30,6 @@ pub trait AnalyzerLike: GraphLike {
             idx
         }
     }
-    fn dyn_builtins(&self) -> &HashMap<DynBuiltin, NodeIdx>;
-    fn dyn_builtins_mut(&mut self) -> &mut HashMap<DynBuiltin, NodeIdx>;
     fn user_types(&self) -> &HashMap<String, NodeIdx>;
     fn user_types_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
     fn parse_expr(&mut self, expr: &Self::Expr) -> NodeIdx;
@@ -86,11 +84,11 @@ pub trait GraphLike {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
                 Node::ContextVar(cvar) => {
-                    if !cvar.is_symbolic {
-                        None
-                    } else {
+                    // if !cvar.is_symbolic {
+                    //     None
+                    // } else {
                         Some(node.clone())
-                    }
+                    // }
                 }
                 _ => Some(node.clone()),
             },

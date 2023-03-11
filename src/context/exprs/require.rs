@@ -14,7 +14,7 @@ use shared::{
     Edge,
 };
 
-use ethers_core::types::I256;
+use ethers_core::types::{U256, I256};
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
@@ -25,6 +25,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::Equal(loc, lhs, rhs) => {
                 let lhs_paths = self.parse_ctx_expr(lhs, ctx);
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -199,6 +200,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::CtxKilled) => {}
             (ExprRet::CtxKilled, _) => {}
+            (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
+                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
+                self.handle_require_inner(loc, lhs_paths, &ExprRet::Single((*rhs_ctx, *rhs)), op, rhs_op, recursion_ops)
+            }
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
@@ -300,46 +305,43 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         let mut any_unsat = false;
         let mut tmp_cvar = None;
         if let Some(mut lhs_range) = new_lhs.underlying(self).ty.range(self) {
-            // println!(
-            //     "op {:?}, {}, lhs_cvar: {}, rhs_cvar: {}",
-            //     op,
-            //     ctx.path(self),
-            //     new_lhs.display_name(self),
-            //     new_rhs.display_name(self)
-            // );
             let lhs_range_fn = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
-            let mut new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, loc);
+            let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, loc);
 
             if matches!(op, RangeOp::Neq) {
-                println!("here!");
-                let exclusion_range = SolcRange {
-                    min: Elem::Dynamic(Dynamic::new(
-                            new_rhs.latest_version(self).into(),
-                            loc,
-                    )),
-                    max: Elem::Dynamic(Dynamic::new(
+                let exclusion = Elem::Dynamic(Dynamic::new(
                         new_rhs.latest_version(self).into(),
                         loc,
-                    )),
-                    exclusions: vec![],
-                };
-                lhs_range.exclusions.push(exclusion_range);
+                ));
+                let excl_min = exclusion.minimize(self);
+                let excl_max = exclusion.maximize(self);
+                if let Some(std::cmp::Ordering::Equal) = excl_min.range_ord(&excl_max) {
+                    // min and max are equal
+                    if let Some(std::cmp::Ordering::Equal) = lhs_range.evaled_range_min(self).range_ord(&excl_min) {
+                        // mins are equivalent, add 1
+                        let min = lhs_range.evaled_range_min(self).maybe_concrete().expect("Was not concrete");
+                        let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
+                        let min = lhs_range.range_min() + Elem::from(one);
+                        new_lhs.set_range_min(self, min);
+                    } else {
+                        lhs_range.exclusions.push(exclusion);
+                        new_lhs.set_range_exclusions(self, lhs_range.exclusions);
+                    }
+                } else {
+                    lhs_range.exclusions.push(exclusion);
+                    new_lhs.set_range_exclusions(self, lhs_range.exclusions);
+                }
             }
-            // println!("new lhs range: {:#?}", new_lhs_range.min.eval(self).to_range_string(self));
-            // println!("new lhs range: {:#?}", new_lhs_range.max.eval(self).to_range_string(self));
 
             if let Some(mut rhs_range) = new_rhs.range(self) {
                 rhs_range.update_deps(ctx, self);
                 if new_lhs.is_const(self) && !new_rhs.is_const(self) {
-                    // println!("knew lhs");
                     let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                     let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, loc);
-                    // println!("new rhs range: {:#?}", new_rhs_range);
-                    new_rhs.set_range_min(self, new_rhs_range.range_min()); //lhs_cvar.range(self).unwrap().range_min());
-                    new_rhs.set_range_max(self, new_rhs_range.range_max()); //lhs_cvar.range(self).unwrap().range_max());
+                    new_rhs.set_range_min(self, new_rhs_range.range_min());
+                    new_rhs.set_range_max(self, new_rhs_range.range_max());
                 } else if new_rhs.is_const(self) {
-                    // println!("knew rhs, {:#?}", new_rhs.underlying(self));
                     if matches!(op, RangeOp::Eq) {
                         let min = Elem::Dynamic(Dynamic::new(
                                 new_rhs.latest_version(self).into(),
@@ -352,10 +354,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         new_lhs.set_range_min(self, min);
                         new_lhs.set_range_max(self, max);
                     } else if !matches!(op, RangeOp::Neq) {
-                        new_lhs.set_range_min(self, new_lhs_range.range_min()); //rhs_cvar.range(self).unwrap().range_min());
-                        new_lhs.set_range_max(self, new_lhs_range.range_max()); //rhs_cvar.range(self).unwrap().range_max());
-                    } else {
-                        new_lhs.set_range_exclusions(self, lhs_range.exclusions);
+                        new_lhs.set_range_min(self, new_lhs_range.range_min());
+                        new_lhs.set_range_max(self, new_lhs_range.range_max());
                     }
                 } else {
                     // we know nothing about either
@@ -365,8 +365,63 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     // any_unsat |= new_rhs_range.unsat(self);
                 }
             } else {
-                todo!("here");
+                todo!("here: {:?}", new_rhs.underlying(self));
             }
+
+            if let Some(backing_arr) = new_lhs.len_var_to_array(self) {
+                if let Some(r) = backing_arr.range(self) {
+                    let min = r.range_min();
+                    let max = r.range_max();
+
+                    if let Some(mut rd) = min.maybe_range_dyn() {
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        backing_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                    }
+
+                    if let Some(mut rd) = max.maybe_range_dyn() {
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        backing_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                    }
+                }
+            } else if let Some(arr) = new_lhs.index_to_array(self) {
+                if let Some(index) = new_lhs.index_access_to_index(self) {
+                    let next_arr = self.advance_var_in_ctx(arr, loc, ctx);
+                    if next_arr.underlying(self).ty.is_dyn_builtin(self) {
+                        if let Some(r) = next_arr.range(self) {
+                            let min = r.evaled_range_min(self);
+                            let max = r.evaled_range_max(self);
+
+                            if let Some(mut rd) = min.maybe_range_dyn() {
+                                rd.val.insert(Elem::Dynamic(Dynamic::new(index.into(), loc)), Elem::Dynamic(Dynamic::new(new_rhs.into(), loc)));
+                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                            }
+
+                            if let Some(mut rd) = max.maybe_range_dyn() {
+                                rd.val.insert(Elem::Dynamic(Dynamic::new(index.into(), loc)), Elem::Dynamic(Dynamic::new(new_rhs.into(), loc)));
+                                next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(backing_arr) = new_rhs.len_var_to_array(self) {
+                if let Some(r) = backing_arr.range(self) {
+                    let min = r.range_min();
+                    let max = r.range_max();
+
+                    if let Some(mut rd) = min.maybe_range_dyn() {
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        backing_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                    }
+
+                    if let Some(mut rd) = max.maybe_range_dyn() {
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        backing_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                    }
+                }
+            }
+
 
             let tmp_var = ContextVar {
                 loc: Some(loc),
