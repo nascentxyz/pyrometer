@@ -196,7 +196,8 @@ impl Analyzer {
                         let unresolved = self.node_mut(user_ty_node);
                         *unresolved = Node::Function(underlying);
                     } else {
-                        self.user_types.insert(name.to_string(), NodeIdx::from(*func));
+                        self.user_types
+                            .insert(name.to_string(), NodeIdx::from(*func));
                     }
                 });
 
@@ -309,7 +310,12 @@ impl Analyzer {
                 inner_sources
             }
             Import::Rename(path, elems, _) => {
-                println!("path: {:?}, elems: {:?}, curr: {:?}", path, elems, std::env::current_dir());
+                println!(
+                    "path: {:?}, elems: {:?}, curr: {:?}",
+                    path,
+                    elems,
+                    std::env::current_dir()
+                );
                 let sol = fs::read_to_string(path.string.clone())
                     .expect("Could not find file for dependency");
                 self.file_no += 1;
@@ -362,7 +368,7 @@ impl Analyzer {
                 let node = self.parse_ty_def(def);
                 self.add_edge(node, con_node, Edge::Ty);
             }
-            EventDefinition(_def) => {},
+            EventDefinition(_def) => {}
             Annotation(_anno) => todo!(),
             Using(_using) => todo!(),
             StraySemicolon(_loc) => todo!(),
@@ -477,39 +483,39 @@ impl Analyzer {
     }
 
     // fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
-        // let name = func
-        //     .name
-        //     .as_ref()
-        //     .expect("Function was not named")
-        //     .name
-        //     .clone();
-        // let func_node: FunctionNode =
-        //     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-        //         let unresolved = self.node_mut(user_ty_node);
-        //         *unresolved = Node::Function(func);
-        //         user_ty_node.into()
-        //     } else {
-        //         let node = self.add_node(func);
-        //         self.user_types.insert(name.to_string(), node);
-        //         node.into()
-        //     };
+    // let name = func
+    //     .name
+    //     .as_ref()
+    //     .expect("Function was not named")
+    //     .name
+    //     .clone();
+    // let func_node: FunctionNode =
+    //     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+    //         let unresolved = self.node_mut(user_ty_node);
+    //         *unresolved = Node::Function(func);
+    //         user_ty_node.into()
+    //     } else {
+    //         let node = self.add_node(func);
+    //         self.user_types.insert(name.to_string(), node);
+    //         node.into()
+    //     };
 
-        // func_def.params.iter().for_each(|(_loc, input)| {
-        //     if let Some(input) = input {
-        //         let param = FunctionParam::new(self, input.clone());
-        //         let input_node = self.add_node(param);
-        //         self.add_edge(input_node, func_node, Edge::FunctionParam);
-        //     }
-        // });
-        // func_def.returns.iter().for_each(|(_loc, output)| {
-        //     if let Some(output) = output {
-        //         let ret = FunctionReturn::new(self, output.clone());
-        //         let output_node = self.add_node(ret);
-        //         self.add_edge(output_node, func_node, Edge::FunctionReturn);
-        //     }
-        // });
+    // func_def.params.iter().for_each(|(_loc, input)| {
+    //     if let Some(input) = input {
+    //         let param = FunctionParam::new(self, input.clone());
+    //         let input_node = self.add_node(param);
+    //         self.add_edge(input_node, func_node, Edge::FunctionParam);
+    //     }
+    // });
+    // func_def.returns.iter().for_each(|(_loc, output)| {
+    //     if let Some(output) = output {
+    //         let ret = FunctionReturn::new(self, output.clone());
+    //         let output_node = self.add_node(ret);
+    //         self.add_edge(output_node, func_node, Edge::FunctionReturn);
+    //     }
+    // });
 
-        // func_node
+    // func_node
     // }
 
     pub fn parse_var_def(&mut self, var_def: &VariableDefinition, in_contract: bool) -> VarNode {

@@ -136,53 +136,63 @@ impl ReportDisplay for BoundAnalysis {
             if let Some(init_range) = &self.var_def.1 {
                 let min = if self.report_config.eval_bounds {
                     init_range
-                        .evaled_range_min(analyzer).to_range_string(false, analyzer)
+                        .evaled_range_min(analyzer)
+                        .to_range_string(false, analyzer)
                         .s
                 } else if self.report_config.simplify_bounds {
                     init_range
-                        .simplified_range_min(analyzer).to_range_string(false, analyzer)
+                        .simplified_range_min(analyzer)
+                        .to_range_string(false, analyzer)
                         .s
                 } else {
                     init_range.range_min().to_range_string(false, analyzer).s
                 };
                 let max = if self.report_config.eval_bounds {
                     init_range
-                        .evaled_range_max(analyzer).to_range_string(true, analyzer)
+                        .evaled_range_max(analyzer)
+                        .to_range_string(true, analyzer)
                         .s
                 } else if self.report_config.simplify_bounds {
                     init_range
-                        .simplified_range_max(analyzer).to_range_string(true, analyzer)
+                        .simplified_range_max(analyzer)
+                        .to_range_string(true, analyzer)
                         .s
                 } else {
                     init_range.range_max().to_range_string(true, analyzer).s
                 };
 
                 let range_excl = init_range.range_exclusions();
-                let mut range_excl_str = range_excl.iter().map(|range| {
-                    let min = if self.report_config.eval_bounds {
-                        range.to_range_string(false, analyzer).s
-                    } else if self.report_config.simplify_bounds {
-                        range.to_range_string(false, analyzer).s
-                    } else {
-                        range.to_range_string(false, analyzer).s
-                    };
+                let mut range_excl_str = range_excl
+                    .iter()
+                    .map(|range| {
+                        let min = if self.report_config.eval_bounds {
+                            range.to_range_string(false, analyzer).s
+                        } else if self.report_config.simplify_bounds {
+                            range.to_range_string(false, analyzer).s
+                        } else {
+                            range.to_range_string(false, analyzer).s
+                        };
 
-                    let max = if self.report_config.eval_bounds {
-                        range.to_range_string(true, analyzer).s
-                    } else if self.report_config.simplify_bounds {
-                        range.to_range_string(true, analyzer).s
-                    } else {
-                        range.to_range_string(true, analyzer).s
-                    };
+                        let max = if self.report_config.eval_bounds {
+                            range.to_range_string(true, analyzer).s
+                        } else if self.report_config.simplify_bounds {
+                            range.to_range_string(true, analyzer).s
+                        } else {
+                            range.to_range_string(true, analyzer).s
+                        };
 
-                    if min == max {
-                        min
-                    } else {
-                        format!("[ {}, {} ]", min, max)
-                    }
-                }).collect::<Vec<_>>().join(", ");
+                        if min == max {
+                            min
+                        } else {
+                            format!("[ {}, {} ]", min, max)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 range_excl_str = if !range_excl_str.is_empty() {
-                    format!("&& ∉ {{{}}}", range_excl_str).fg(Color::Red).to_string()
+                    format!("&& ∉ {{{}}}", range_excl_str)
+                        .fg(Color::Red)
+                        .to_string()
                 } else {
                     "".to_string().fg(Color::Red).to_string()
                 };
@@ -228,57 +238,71 @@ impl ReportDisplay for BoundAnalysis {
                     let min = if self.report_config.eval_bounds {
                         bound_change
                             .1
-                            .evaled_range_min(analyzer).to_range_string(false, analyzer)
+                            .evaled_range_min(analyzer)
+                            .to_range_string(false, analyzer)
                             .s
                     } else if self.report_config.simplify_bounds {
                         bound_change
                             .1
-                            .simplified_range_min(analyzer).to_range_string(false, analyzer)
+                            .simplified_range_min(analyzer)
+                            .to_range_string(false, analyzer)
                             .s
                     } else {
-                        bound_change.1.range_min().to_range_string(false, analyzer).s
+                        bound_change
+                            .1
+                            .range_min()
+                            .to_range_string(false, analyzer)
+                            .s
                     };
 
                     let max = if self.report_config.eval_bounds {
                         bound_change
                             .1
-                            .evaled_range_max(analyzer).to_range_string(true, analyzer)
+                            .evaled_range_max(analyzer)
+                            .to_range_string(true, analyzer)
                             .s
                     } else if self.report_config.simplify_bounds {
                         bound_change
                             .1
-                            .simplified_range_max(analyzer).to_range_string(true, analyzer)
+                            .simplified_range_max(analyzer)
+                            .to_range_string(true, analyzer)
                             .s
                     } else {
                         bound_change.1.range_max().to_range_string(true, analyzer).s
                     };
 
                     let range_excl = bound_change.1.range_exclusions();
-                    let mut range_excl_str = range_excl.iter().map(|range| {
-                        let min = if self.report_config.eval_bounds {
-                            range.to_range_string(false, analyzer).s
-                        } else if self.report_config.simplify_bounds {
-                            range.to_range_string(false, analyzer).s
-                        } else {
-                            range.to_range_string(false, analyzer).s
-                        };
+                    let mut range_excl_str = range_excl
+                        .iter()
+                        .map(|range| {
+                            let min = if self.report_config.eval_bounds {
+                                range.to_range_string(false, analyzer).s
+                            } else if self.report_config.simplify_bounds {
+                                range.to_range_string(false, analyzer).s
+                            } else {
+                                range.to_range_string(false, analyzer).s
+                            };
 
-                        let max = if self.report_config.eval_bounds {
-                            range.to_range_string(true, analyzer).s
-                        } else if self.report_config.simplify_bounds {
-                            range.to_range_string(true, analyzer).s
-                        } else {
-                            range.to_range_string(true, analyzer).s
-                        };
+                            let max = if self.report_config.eval_bounds {
+                                range.to_range_string(true, analyzer).s
+                            } else if self.report_config.simplify_bounds {
+                                range.to_range_string(true, analyzer).s
+                            } else {
+                                range.to_range_string(true, analyzer).s
+                            };
 
-                        if min == max {
-                            min
-                        } else {
-                            format!("[ {}, {} ]", min, max)
-                        }
-                    }).collect::<Vec<_>>().join(", ");
+                            if min == max {
+                                min
+                            } else {
+                                format!("[ {}, {} ]", min, max)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     range_excl_str = if !range_excl_str.is_empty() {
-                        format!("&& ∉ {{{}}}", range_excl_str).fg(Color::Red).to_string()
+                        format!("&& ∉ {{{}}}", range_excl_str)
+                            .fg(Color::Red)
+                            .to_string()
                     } else {
                         "".to_string().fg(Color::Red).to_string()
                     };
@@ -518,7 +542,10 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 if let Some(next_range) = next.range(self) {
                     let nr_min = next_range.evaled_range_min(self);
                     let nr_max = next_range.evaled_range_max(self);
-                    if nr_min != cr_min || nr_max != cr_max || curr_range.exclusions.len() != next_range.exclusions.len() {
+                    if nr_min != cr_min
+                        || nr_max != cr_max
+                        || curr_range.exclusions.len() != next_range.exclusions.len()
+                    {
                         cr_min = nr_min;
                         cr_max = nr_max;
                         ba.bound_changes.push((
@@ -599,25 +626,30 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         .filter_map(|(_name, cvar)| {
                             let min = if self.report_config.eval_bounds {
                                 cvar.range(analyzer)?
-                                    .evaled_range_min(analyzer).to_range_string(false, analyzer)
+                                    .evaled_range_min(analyzer)
+                                    .to_range_string(false, analyzer)
                                     .s
                             } else if self.report_config.simplify_bounds {
                                 cvar.range(analyzer)?
-                                    .simplified_range_min(analyzer).to_range_string(false, analyzer)
+                                    .simplified_range_min(analyzer)
+                                    .to_range_string(false, analyzer)
                                     .s
                             } else {
                                 cvar.range(analyzer)?
-                                    .range_min().to_range_string(false, analyzer)
+                                    .range_min()
+                                    .to_range_string(false, analyzer)
                                     .s
                             };
 
                             let max = if self.report_config.eval_bounds {
                                 cvar.range(analyzer)?
-                                    .evaled_range_max(analyzer).to_range_string(true, analyzer)
+                                    .evaled_range_max(analyzer)
+                                    .to_range_string(true, analyzer)
                                     .s
                             } else if self.report_config.simplify_bounds {
                                 cvar.range(analyzer)?
-                                    .simplified_range_max(analyzer).to_range_string(true, analyzer)
+                                    .simplified_range_max(analyzer)
+                                    .to_range_string(true, analyzer)
                                     .s
                             } else {
                                 cvar.range(analyzer)?
@@ -683,11 +715,13 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                                 "returns: \"{}\" ∈ [ {}, {} ]",
                                                 var.display_name(analyzer),
                                                 range
-                                                    .evaled_range_min(analyzer).to_range_string(false, analyzer)
+                                                    .evaled_range_min(analyzer)
+                                                    .to_range_string(false, analyzer)
                                                     .s
                                                     .fg(MIN_COLOR),
                                                 range
-                                                    .evaled_range_max(analyzer).to_range_string(true, analyzer)
+                                                    .evaled_range_max(analyzer)
+                                                    .to_range_string(true, analyzer)
                                                     .s
                                                     .fg(MAX_COLOR),
                                             )
@@ -735,21 +769,16 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         }
 
                         if let Some(ext_fn_call) = child.underlying(analyzer).ext_fn_call {
-                            if let Some(body) = &ext_fn_call
-                                        .underlying(analyzer)
-                                        .body {
+                            if let Some(body) = &ext_fn_call.underlying(analyzer).body {
                                 report.add_label(
-                                    Label::new(LocStrSpan::new(
-                                        self.file_mapping,
-                                        body.loc(),
-                                    ))
-                                    .with_message("External function call")
-                                    .with_priority(-2)
-                                    .with_order(-2)
-                                    .with_color(Color::Fixed(75)),
+                                    Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
+                                        .with_message("External function call")
+                                        .with_priority(-2)
+                                        .with_order(-2)
+                                        .with_color(Color::Fixed(75)),
                                 );
                             }
-                            
+
                             if let Some(c) = ext_fn_call.contract(analyzer) {
                                 report.add_label(
                                     Label::new(LocStrSpan::new(self.file_mapping, c.loc(analyzer)))
@@ -773,11 +802,13 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                                     "returns: \"{}\" ∈ [ {}, {} ]",
                                                     var.display_name(analyzer),
                                                     range
-                                                        .evaled_range_min(analyzer).to_range_string(false, analyzer)
+                                                        .evaled_range_min(analyzer)
+                                                        .to_range_string(false, analyzer)
                                                         .s
                                                         .fg(MIN_COLOR),
                                                     range
-                                                        .evaled_range_max(analyzer).to_range_string(true, analyzer)
+                                                        .evaled_range_max(analyzer)
+                                                        .to_range_string(true, analyzer)
                                                         .s
                                                         .fg(MAX_COLOR),
                                                 )
@@ -847,7 +878,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
                     vars.iter()
                         .filter_map(|var| {
                             let name = var.name(self);
-                            
+
                             let is_ret = var.is_return_node_in_any(&parents, self);
                             if is_ret | report_config.show_tmps
                                 && report_config.show_consts | report_config.show_tmps

@@ -105,7 +105,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                         rhs: Box::new(rhs_max),
                     });
 
-                    SolcRange { min, max, exclusions: lhs_range.exclusions }
+                    SolcRange {
+                        min,
+                        max,
+                        exclusions: lhs_range.exclusions,
+                    }
                 };
 
                 let out_var = ContextVar {
@@ -208,7 +212,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                 return SolcRange {
                     min: val.clone(),
                     max: val,
-                    exclusions: lhs_range.exclusions
+                    exclusions: lhs_range.exclusions,
                 };
             }
         }

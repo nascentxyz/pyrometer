@@ -89,7 +89,8 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
     fn match_true(&mut self, loc: Loc, true_cvars: &ExprRet, if_expr: &Expression) {
         match true_cvars {
             ExprRet::CtxKilled => {}
-            ExprRet::Single((fork_ctx, _true_cvar)) | ExprRet::SingleLiteral((fork_ctx, _true_cvar)) => {
+            ExprRet::Single((fork_ctx, _true_cvar))
+            | ExprRet::SingleLiteral((fork_ctx, _true_cvar)) => {
                 self.true_fork_if_cvar(loc, if_expr.clone(), *fork_ctx);
             }
             ExprRet::Multi(ref true_paths) => true_paths.iter().take(1).for_each(|expr_ret| {
@@ -106,7 +107,8 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
     fn match_false(&mut self, loc: Loc, false_cvars: &ExprRet, if_expr: &Expression) {
         match false_cvars {
             ExprRet::CtxKilled => {}
-            ExprRet::Single((fork_ctx, _false_cvar)) | ExprRet::SingleLiteral((fork_ctx, _false_cvar)) => {
+            ExprRet::Single((fork_ctx, _false_cvar))
+            | ExprRet::SingleLiteral((fork_ctx, _false_cvar)) => {
                 self.false_fork_if_cvar(loc, if_expr.clone(), *fork_ctx);
             }
             ExprRet::Multi(ref false_paths) => false_paths.iter().take(1).for_each(|expr_ret| {

@@ -334,7 +334,7 @@ pub fn builtin_fns_inputs(
                     order: 3,
                     storage: None,
                     name: None,
-                }
+                },
             ],
             vec![FunctionReturn {
                 loc: Loc::Builtin,
@@ -343,11 +343,7 @@ pub fn builtin_fns_inputs(
                 name: None,
             }],
         ),
-        (
-            "type",
-            vec![],
-            vec![],
-        ),
+        ("type", vec![], vec![]),
         (
             "assert",
             vec![FunctionParam {

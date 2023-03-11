@@ -1,6 +1,6 @@
 use crate::{
     context::exprs::{member_access::MemberAccess, require::Require},
-    ContextBuilder, Builtin, Edge, ExprRet, Node, VarType,
+    Builtin, ContextBuilder, Edge, ExprRet, Node, VarType,
 };
 use shared::{analyzer::AnalyzerLike, context::*, range::elem::RangeOp};
 

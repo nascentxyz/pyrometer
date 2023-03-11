@@ -1,18 +1,17 @@
-use ethers_core::types::I256;
-use ethers_core::types::H256;
-use solang_parser::pt::HexLiteral;
 use crate::ExprRet;
+use ethers_core::types::H256;
+use ethers_core::types::I256;
 use shared::{
     analyzer::AnalyzerLike,
     context::*,
     nodes::{Concrete, ConcreteNode},
     Edge, Node,
 };
+use solang_parser::pt::HexLiteral;
 
 use ethers_core::types::{Address, U256};
 use solang_parser::pt::Loc;
 use std::str::FromStr;
-
 
 impl<T> Literal for T where T: AnalyzerLike + Sized {}
 
@@ -47,7 +46,13 @@ pub trait Literal: AnalyzerLike + Sized {
         ExprRet::SingleLiteral((ctx, node))
     }
 
-    fn hex_num_literal(&mut self, ctx: ContextNode, loc: Loc, integer: &str, negative: bool,) -> ExprRet {
+    fn hex_num_literal(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        integer: &str,
+        negative: bool,
+    ) -> ExprRet {
         let val = U256::from_str_radix(integer, 16).unwrap();
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
@@ -79,7 +84,11 @@ pub trait Literal: AnalyzerLike + Sized {
 
             let concrete_node =
                 ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(max + 1, h))));
-            let ccvar = Node::ContextVar(ContextVar::new_from_concrete(hexes[0].loc, concrete_node, self));
+            let ccvar = Node::ContextVar(ContextVar::new_from_concrete(
+                hexes[0].loc,
+                concrete_node,
+                self,
+            ));
             let node = self.add_node(ccvar);
             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
             ExprRet::SingleLiteral((ctx, node))

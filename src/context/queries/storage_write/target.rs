@@ -32,11 +32,13 @@ impl ReportDisplay for StorageRangeReport {
             .filter_map(|(_name, cvar)| {
                 let min = if self.analysis.report_config.eval_bounds {
                     cvar.range(analyzer)?
-                        .evaled_range_min(analyzer) .to_range_string(false, analyzer)
+                        .evaled_range_min(analyzer)
+                        .to_range_string(false, analyzer)
                         .s
                 } else if self.analysis.report_config.simplify_bounds {
                     cvar.range(analyzer)?
-                        .simplified_range_min(analyzer).to_range_string(false, analyzer)
+                        .simplified_range_min(analyzer)
+                        .to_range_string(false, analyzer)
                         .s
                 } else {
                     cvar.range(analyzer)?
@@ -47,7 +49,8 @@ impl ReportDisplay for StorageRangeReport {
 
                 let max = if self.analysis.report_config.eval_bounds {
                     cvar.range(analyzer)?
-                        .evaled_range_max(analyzer) .to_range_string(true, analyzer)
+                        .evaled_range_max(analyzer)
+                        .to_range_string(true, analyzer)
                         .s
                 } else if self.analysis.report_config.simplify_bounds {
                     cvar.range(analyzer)?
