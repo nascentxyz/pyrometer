@@ -1,23 +1,23 @@
-use crate::range::elem_ty::RangeDyn;
-use ethers_core::types::H256;
-use crate::NodeIdx;
-use crate::GraphLike;
-use crate::range::range_string::ToRangeString;
+use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
-use ethers_core::types::Address;
 use crate::context::ContextNode;
-use std::collections::BTreeMap;
-use crate::range::elem_ty::Dynamic;
-use crate::range::elem::RangeOp;
 use crate::context::ContextVarNode;
+use crate::range::elem::RangeElem;
+use crate::range::elem::RangeOp;
+use crate::range::elem_ty::Dynamic;
+use crate::range::elem_ty::Elem;
+use crate::range::elem_ty::RangeConcrete;
+use crate::range::elem_ty::RangeDyn;
+use crate::range::range_string::ToRangeString;
+use crate::Builtin;
+use crate::Concrete;
+use crate::GraphLike;
+use crate::NodeIdx;
+use ethers_core::types::Address;
+use ethers_core::types::H256;
 use ethers_core::types::I256;
 use ethers_core::types::U256;
-use crate::range::elem_ty::RangeConcrete;
-use crate::Builtin;
-use crate::range::elem_ty::Elem;
-use crate::range::elem::RangeElem;
-use crate::{DynCapacity, Concrete};
-use crate::analyzer::AnalyzerLike;
+use std::collections::BTreeMap;
 
 use solang_parser::pt::Loc;
 
@@ -36,25 +36,36 @@ pub struct SolcRange {
 impl AsDotStr for SolcRange {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         // println!("here: {}", self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", "));
-        format!("[{}, {}] excluding: [{}]",
-            self.evaled_range_min(analyzer).to_range_string(false, analyzer).s,
-            self.evaled_range_max(analyzer).to_range_string(true, analyzer).s,
-            self.exclusions.iter().map(|excl| excl.to_range_string(false, analyzer).s).collect::<Vec<_>>().join(", ")
+        format!(
+            "[{}, {}] excluding: [{}]",
+            self.evaled_range_min(analyzer)
+                .to_range_string(false, analyzer)
+                .s,
+            self.evaled_range_max(analyzer)
+                .to_range_string(true, analyzer)
+                .s,
+            self.exclusions
+                .iter()
+                .map(|excl| excl.to_range_string(false, analyzer).s)
+                .collect::<Vec<_>>()
+                .join(", ")
         )
     }
 }
 
 impl From<bool> for SolcRange {
     fn from(b: bool) -> Self {
-        let val = Elem::Concrete(RangeConcrete { val: Concrete::Bool(b), loc: Loc::Implicit });
+        let val = Elem::Concrete(RangeConcrete {
+            val: Concrete::Bool(b),
+            loc: Loc::Implicit,
+        });
         Self {
             min: val.clone(),
             max: val,
-            exclusions: vec![]
+            exclusions: vec![],
         }
     }
 }
-
 
 impl SolcRange {
     pub fn min_is_negative(&self, analyzer: &impl GraphLike) -> bool {
@@ -62,12 +73,18 @@ impl SolcRange {
     }
 
     pub fn default_bool() -> Self {
-        let min = Elem::Concrete(RangeConcrete { val: Concrete::Bool(false), loc: Loc::Implicit });
-        let max = Elem::Concrete(RangeConcrete { val: Concrete::Bool(true), loc: Loc::Implicit });
+        let min = Elem::Concrete(RangeConcrete {
+            val: Concrete::Bool(false),
+            loc: Loc::Implicit,
+        });
+        let max = Elem::Concrete(RangeConcrete {
+            val: Concrete::Bool(true),
+            loc: Loc::Implicit,
+        });
         Self {
             min,
             max,
-            exclusions: vec![]
+            exclusions: vec![],
         }
     }
     pub fn from(c: Concrete) -> Option<Self> {
@@ -76,21 +93,29 @@ impl SolcRange {
             | c @ Concrete::Int(_, _)
             | c @ Concrete::Bool(_)
             | c @ Concrete::Address(_)
-            | c @ Concrete::Bytes(_, _) => {
-                Some(SolcRange {
-                    min: Elem::Concrete(RangeConcrete { val: c.clone(), loc: Loc::Implicit }),
-                    max: Elem::Concrete(RangeConcrete { val: c, loc: Loc::Implicit }),
-                    exclusions: vec![]
-                })
-            }
+            | c @ Concrete::Bytes(_, _) => Some(SolcRange {
+                min: Elem::Concrete(RangeConcrete {
+                    val: c.clone(),
+                    loc: Loc::Implicit,
+                }),
+                max: Elem::Concrete(RangeConcrete {
+                    val: c,
+                    loc: Loc::Implicit,
+                }),
+                exclusions: vec![],
+            }),
             Concrete::DynBytes(b) => {
-                let val = b.iter().enumerate().map(|(i, v)| {
-                    let idx = Elem::from(Concrete::from(U256::from(i)));
-                    let mut bytes = [0x00; 32];
-                    bytes[0] = *v;
-                    let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                    (idx, v)
-                }).collect::<BTreeMap<_,_>>();
+                let val = b
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let idx = Elem::from(Concrete::from(U256::from(i)));
+                        let mut bytes = [0x00; 32];
+                        bytes[0] = *v;
+                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        (idx, v)
+                    })
+                    .collect::<BTreeMap<_, _>>();
                 let r = Elem::ConcreteDyn(Box::new(RangeDyn {
                     len: Elem::from(Concrete::from(U256::from(b.len()))),
                     val,
@@ -99,10 +124,13 @@ impl SolcRange {
                 Some(SolcRange {
                     min: r.clone(),
                     max: r,
-                    exclusions: vec![]
+                    exclusions: vec![],
                 })
             }
-            e => { println!("from: {:?}", e); None}
+            e => {
+                println!("from: {:?}", e);
+                None
+            }
         }
     }
     pub fn try_from_builtin(builtin: &Builtin) -> Option<Self> {
@@ -110,13 +138,22 @@ impl SolcRange {
             Builtin::Uint(size) => {
                 if *size == 256 {
                     Some(SolcRange {
-                        min: Elem::Concrete(RangeConcrete { val: Concrete::Uint(*size, 0.into()), loc: Loc::Implicit }),
-                        max: Elem::Concrete(RangeConcrete { val: Concrete::Uint(*size, U256::MAX), loc: Loc::Implicit }),
+                        min: Elem::Concrete(RangeConcrete {
+                            val: Concrete::Uint(*size, 0.into()),
+                            loc: Loc::Implicit,
+                        }),
+                        max: Elem::Concrete(RangeConcrete {
+                            val: Concrete::Uint(*size, U256::MAX),
+                            loc: Loc::Implicit,
+                        }),
                         exclusions: vec![],
                     })
                 } else {
                     Some(SolcRange {
-                        min: Elem::Concrete(RangeConcrete { val: Concrete::Uint(*size, 0.into()), loc: Loc::Implicit }),
+                        min: Elem::Concrete(RangeConcrete {
+                            val: Concrete::Uint(*size, 0.into()),
+                            loc: Loc::Implicit,
+                        }),
                         max: Elem::Concrete(RangeConcrete {
                             val: Concrete::Uint(*size, U256::from(2).pow(U256::from(*size)) - 1),
                             loc: Loc::Implicit,
@@ -128,8 +165,14 @@ impl SolcRange {
             Builtin::Int(size) => {
                 if *size == 256 {
                     Some(SolcRange {
-                        min: Elem::Concrete(RangeConcrete { val: Concrete::Int(*size, I256::MIN), loc: Loc::Implicit }),
-                        max: Elem::Concrete(RangeConcrete { val: Concrete::Int(*size, I256::MAX), loc: Loc::Implicit }),
+                        min: Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*size, I256::MIN),
+                            loc: Loc::Implicit,
+                        }),
+                        max: Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*size, I256::MAX),
+                            loc: Loc::Implicit,
+                        }),
                         exclusions: vec![],
                     })
                 } else {
@@ -137,7 +180,10 @@ impl SolcRange {
                         I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - 1.into();
                     let min = max * I256::from(-1i32);
                     Some(SolcRange {
-                        min: Elem::Concrete(RangeConcrete { val: Concrete::Int(*size, min), loc: Loc::Implicit }),
+                        min: Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*size, min),
+                            loc: Loc::Implicit,
+                        }),
                         max: Elem::Concrete(RangeConcrete {
                             val: Concrete::Int(*size, max),
                             loc: Loc::Implicit,
@@ -146,98 +192,100 @@ impl SolcRange {
                     })
                 }
             }
-            Builtin::Bool => {
-                Some(SolcRange {
-                    min: Elem::Concrete(RangeConcrete { val: Concrete::Bool(false), loc: Loc::Implicit }),
-                    max: Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bool(true),
-                        loc: Loc::Implicit,
-                    }),
-                    exclusions: vec![],
-                })
-            },
-            Builtin::Address => {
-                Some(SolcRange {
-                    min: Elem::Concrete(RangeConcrete { val: Concrete::Address(Address::from_slice(&[0x00; 20])), loc: Loc::Implicit }),
-                    max: Elem::Concrete(RangeConcrete {
-                        val: Concrete::Address(Address::from_slice(&[0xff; 20])),
-                        loc: Loc::Implicit,
-                    }),
-                    exclusions: vec![],
-                })
-            },
+            Builtin::Bool => Some(SolcRange {
+                min: Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bool(false),
+                    loc: Loc::Implicit,
+                }),
+                max: Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bool(true),
+                    loc: Loc::Implicit,
+                }),
+                exclusions: vec![],
+            }),
+            Builtin::Address => Some(SolcRange {
+                min: Elem::Concrete(RangeConcrete {
+                    val: Concrete::Address(Address::from_slice(&[0x00; 20])),
+                    loc: Loc::Implicit,
+                }),
+                max: Elem::Concrete(RangeConcrete {
+                    val: Concrete::Address(Address::from_slice(&[0xff; 20])),
+                    loc: Loc::Implicit,
+                }),
+                exclusions: vec![],
+            }),
             Builtin::Bytes(size) => {
-                let v: Vec<_> = (0..32u8).map(|i| if i < *size { 0xff } else { 0x00 }).collect();
+                let v: Vec<_> = (0..32u8)
+                    .map(|i| if i < *size { 0xff } else { 0x00 })
+                    .collect();
                 Some(SolcRange {
-                    min: Elem::Concrete(RangeConcrete { val: Concrete::Bytes(*size, H256::from_slice(&[0x00; 32])), loc: Loc::Implicit }),
+                    min: Elem::Concrete(RangeConcrete {
+                        val: Concrete::Bytes(*size, H256::from_slice(&[0x00; 32])),
+                        loc: Loc::Implicit,
+                    }),
                     max: Elem::Concrete(RangeConcrete {
                         val: Concrete::Bytes(*size, H256::from_slice(&v[..])),
                         loc: Loc::Implicit,
                     }),
                     exclusions: vec![],
                 })
-            },
-            Builtin::DynamicBytes | Builtin::String | Builtin::Array(_) => {
-                Some(SolcRange {
-                    min: Elem::ConcreteDyn(Box::new(RangeDyn { len: Elem::from(Concrete::from(U256::zero())), val: Default::default(), loc: Loc::Implicit})),
-                    max: Elem::ConcreteDyn(Box::new(RangeDyn { len: Elem::from(Concrete::from(U256::MAX)), val: Default::default(), loc: Loc::Implicit})),
-                    exclusions: vec![],
-                })
             }
+            Builtin::DynamicBytes | Builtin::String | Builtin::Array(_) => Some(SolcRange {
+                min: Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: Elem::from(Concrete::from(U256::zero())),
+                    val: Default::default(),
+                    loc: Loc::Implicit,
+                })),
+                max: Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: Elem::from(Concrete::from(U256::MAX)),
+                    val: Default::default(),
+                    loc: Loc::Implicit,
+                })),
+                exclusions: vec![],
+            }),
             _ => None,
         }
     }
 
-    pub fn lte_dyn(self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn lte_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min,
-            max: self
-                .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            max: self.max.min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
 
-    pub fn gte_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn gte_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
-            min: self
-                .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            min: self.min.max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             max: self.max,
             exclusions: self.exclusions,
         }
     }
 
-    pub fn lt_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn lt_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min,
-            max: self
-                .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), loc)) - Elem::Concrete(RangeConcrete { val: U256::from(1).into(), loc: Loc::Implicit } )),
+            max: self.max.min(
+                Elem::Dynamic(Dynamic::new(other.into(), loc))
+                    - Elem::Concrete(RangeConcrete {
+                        val: U256::from(1).into(),
+                        loc: Loc::Implicit,
+                    }),
+            ),
             exclusions: self.exclusions,
         }
     }
 
-    pub fn gt_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn gt_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
-            min: self
-                .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), loc)) + Elem::Concrete(RangeConcrete { val: U256::from(1).into(), loc: Loc::Implicit } )),
+            min: self.min.max(
+                Elem::Dynamic(Dynamic::new(other.into(), loc))
+                    + Elem::Concrete(RangeConcrete {
+                        val: U256::from(1).into(),
+                        loc: Loc::Implicit,
+                    }),
+            ),
             max: self.max,
             exclusions: self.exclusions,
         }
@@ -245,9 +293,7 @@ impl SolcRange {
 
     pub fn dyn_fn_from_op(
         op: RangeOp,
-    ) -> 
-        &'static dyn Fn(SolcRange, ContextVarNode, Loc) -> SolcRange
-    {
+    ) -> &'static dyn Fn(SolcRange, ContextVarNode, Loc) -> SolcRange {
         match op {
             RangeOp::Add => &Self::add_dyn,
             RangeOp::Sub => &Self::sub_dyn,
@@ -278,11 +324,7 @@ impl SolcRange {
         }
     }
 
-    pub fn add_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn add_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min + Elem::Dynamic(Dynamic::new(other.into(), loc)),
             max: self.max + Elem::Dynamic(Dynamic::new(other.into(), loc)),
@@ -290,11 +332,7 @@ impl SolcRange {
         }
     }
 
-    pub fn sub_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn sub_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min - Elem::Dynamic(Dynamic::new(other.into(), loc)),
             max: self.max - Elem::Dynamic(Dynamic::new(other.into(), loc)),
@@ -302,11 +340,7 @@ impl SolcRange {
         }
     }
 
-    pub fn mul_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn mul_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min * Elem::Dynamic(Dynamic::new(other.into(), loc)),
             max: self.max * Elem::Dynamic(Dynamic::new(other.into(), loc)),
@@ -314,11 +348,7 @@ impl SolcRange {
         }
     }
 
-    pub fn exp_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn exp_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min.pow(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             max: self.max.pow(Elem::Dynamic(Dynamic::new(other.into(), loc))),
@@ -326,11 +356,7 @@ impl SolcRange {
         }
     }
 
-    pub fn bit_and_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn bit_and_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min & Elem::Dynamic(Dynamic::new(other.into(), loc)),
             max: self.max & Elem::Dynamic(Dynamic::new(other.into(), loc)),
@@ -338,23 +364,19 @@ impl SolcRange {
         }
     }
 
-    pub fn div_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn div_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
-            min: self.min / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            max: self.max / Elem::from(Concrete::from(U256::from(1))).max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            min: self.min
+                / Elem::from(Concrete::from(U256::from(1)))
+                    .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            max: self.max
+                / Elem::from(Concrete::from(U256::from(1)))
+                    .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
 
-    pub fn shl_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn shl_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min << Elem::Dynamic(Dynamic::new(other.into(), loc)),
             max: self.max << Elem::Dynamic(Dynamic::new(other.into(), loc)),
@@ -362,11 +384,7 @@ impl SolcRange {
         }
     }
 
-    pub fn shr_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn shr_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: self.min >> Elem::Dynamic(Dynamic::new(other.into(), loc)),
             max: self.max >> Elem::Dynamic(Dynamic::new(other.into(), loc)),
@@ -374,61 +392,34 @@ impl SolcRange {
         }
     }
 
-    pub fn mod_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn mod_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
             min: Elem::from(Concrete::from(U256::zero())),
-            max: Elem::Dynamic(Dynamic::new(other.into(), loc)) - Elem::from(Concrete::from(U256::from(1))),
+            max: Elem::Dynamic(Dynamic::new(other.into(), loc))
+                - Elem::from(Concrete::from(U256::from(1))),
             exclusions: self.exclusions,
         }
     }
 
-    pub fn min_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn min_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
-            min: self
-                .min
-                .min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            max: self
-                .max
-                .min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            min: self.min.min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            max: self.max.min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
 
-    pub fn max_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
+    pub fn max_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
-            min: self
-                .min
-                .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            max: self
-                .max
-                .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            min: self.min.max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            max: self.max.max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
             exclusions: self.exclusions,
         }
     }
 
-    pub fn eq_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
-        let min = self
-                .min
-                .eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
-        let max = self
-                .max
-                .eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
+    pub fn eq_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+        let min = self.min.eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
+        let max = self.max.eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         Self {
             min: min.clone().max(max.clone()),
             max: min.max(max),
@@ -436,17 +427,9 @@ impl SolcRange {
         }
     }
 
-    pub fn neq_dyn(
-        self,
-        other: ContextVarNode,
-        loc: Loc,
-    ) -> Self {
-        let min = self
-                .min
-                .neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
-        let max = self
-                .max
-                .neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
+    pub fn neq_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+        let min = self.min.neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
+        let max = self.max.neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         Self {
             min: min.clone().max(max.clone()),
             max: min.max(max),
@@ -454,7 +437,6 @@ impl SolcRange {
         }
     }
 }
-
 
 impl Range<Concrete> for SolcRange {
     type ElemTy = Elem<Concrete>;
@@ -506,10 +488,14 @@ pub trait Range<T> {
     fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
     fn range_min(&self) -> Self::ElemTy;
     fn range_max(&self) -> Self::ElemTy;
-    fn range_exclusions(&self) -> Vec<Self::ElemTy> where Self: std::marker::Sized;
+    fn range_exclusions(&self) -> Vec<Self::ElemTy>
+    where
+        Self: std::marker::Sized;
     fn set_range_min(&mut self, new: Self::ElemTy);
     fn set_range_max(&mut self, new: Self::ElemTy);
-    fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) where Self: std::marker::Sized;
+    fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>)
+    where
+        Self: std::marker::Sized;
     fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
     fn filter_max_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
     fn dependent_on(&self) -> Vec<ContextVarNode> {
@@ -520,9 +506,10 @@ pub trait Range<T> {
 
     fn update_deps(&mut self, ctx: ContextNode, analyzer: &impl GraphLike) {
         let deps = self.dependent_on();
-        let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps.into_iter().map(|dep| {
-            (dep, dep.latest_version_in_ctx(ctx, analyzer))
-        }).collect();
+        let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
+            .into_iter()
+            .map(|dep| (dep, dep.latest_version_in_ctx(ctx, analyzer)))
+            .collect();
 
         let mut min = self.range_min();
         let mut max = self.range_max();
@@ -543,19 +530,25 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     fn sat(&self, analyzer: &impl AnalyzerLike) -> bool {
-        matches!(self
-            .evaled_range_min(analyzer)
-            .range_ord(&self.evaled_range_max(analyzer)), None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal))
+        matches!(
+            self.evaled_range_min(analyzer)
+                .range_ord(&self.evaled_range_max(analyzer)),
+            None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+        )
     }
 
     fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
-        let min_contains = matches!(self
-            .evaled_range_min(analyzer)
-            .range_ord(&other.evaled_range_min(analyzer)), Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal));
+        let min_contains = matches!(
+            self.evaled_range_min(analyzer)
+                .range_ord(&other.evaled_range_min(analyzer)),
+            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+        );
 
-        let max_contains = matches!(self
-            .evaled_range_max(analyzer)
-            .range_ord(&other.evaled_range_max(analyzer)), Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal));
+        let max_contains = matches!(
+            self.evaled_range_max(analyzer)
+                .range_ord(&other.evaled_range_max(analyzer)),
+            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+        );
 
         min_contains && max_contains
     }
@@ -563,10 +556,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
 #[cfg(test)]
 mod tests {
-    
 
     #[test]
-    fn it_works() {
-
-    }
+    fn it_works() {}
 }

@@ -3,7 +3,7 @@ use shared::{
     analyzer::*,
     context::ContextNode,
     nodes::{ContractNode, TypeNode, VarType},
-    range::{elem::RangeElem, range_string::ToRangeString, Range},
+    range::{range_string::ToRangeString, Range},
     NodeIdx,
 };
 

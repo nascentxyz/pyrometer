@@ -14,7 +14,7 @@ use shared::{
     Edge,
 };
 
-use ethers_core::types::{I256, U256};
+use ethers_core::types::I256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}

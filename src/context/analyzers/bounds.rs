@@ -2,7 +2,7 @@ use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
 use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
-    range::{elem::RangeElem, range_string::*, Range, RangeEval, SolcRange},
+    range::{range_string::*, Range, RangeEval, SolcRange},
 };
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
@@ -275,21 +275,21 @@ impl ReportDisplay for BoundAnalysis {
                     let mut range_excl_str = range_excl
                         .iter()
                         .map(|range| {
-                            let min = if self.report_config.eval_bounds {
-                                range.to_range_string(false, analyzer).s
-                            } else if self.report_config.simplify_bounds {
-                                range.to_range_string(false, analyzer).s
-                            } else {
-                                range.to_range_string(false, analyzer).s
-                            };
+                            let min = range.to_range_string(false, analyzer).s; //if self.report_config.eval_bounds {
 
-                            let max = if self.report_config.eval_bounds {
-                                range.to_range_string(true, analyzer).s
-                            } else if self.report_config.simplify_bounds {
-                                range.to_range_string(true, analyzer).s
-                            } else {
-                                range.to_range_string(true, analyzer).s
-                            };
+                            // } else if self.report_config.simplify_bounds {
+                            //     range.to_range_string(false, analyzer).s
+                            // } else {
+                            //     range.to_range_string(false, analyzer).s
+                            // };
+
+                            let max = range.to_range_string(true, analyzer).s; //if self.report_config.eval_bounds {
+
+                            // } else if self.report_config.simplify_bounds {
+                            //     range.to_range_string(true, analyzer).s
+                            // } else {
+                            //     range.to_range_string(true, analyzer).s
+                            // };
 
                             if min == max {
                                 min
@@ -623,7 +623,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                     let bounds_string = ctx
                         .ctx_deps(analyzer)
                         .iter()
-                        .filter_map(|(_name, cvar)| {
+                        .enumerate()
+                        .filter_map(|(i, (_name, cvar))| {
                             let min = if self.report_config.eval_bounds {
                                 cvar.range(analyzer)?
                                     .evaled_range_min(analyzer)
@@ -658,10 +659,16 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     .s
                             };
                             if min == max {
-                                Some(format!("\"{} == {}\"", cvar.display_name(analyzer), min))
+                                Some(format!(
+                                    "{}. {} == {}\n",
+                                    i + 1,
+                                    cvar.display_name(analyzer),
+                                    min
+                                ))
                             } else {
                                 Some(format!(
-                                    "\"{}\" ∈ [ {}, {} ]",
+                                    "{}. \"{}\" ∈ [ {}, {} ]\n",
+                                    i + 1,
                                     cvar.display_name(analyzer),
                                     min.fg(MIN_COLOR),
                                     max.fg(MAX_COLOR),
@@ -669,7 +676,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                             }
                         })
                         .collect::<Vec<_>>()
-                        .join(" && ");
+                        .join("");
                     let mut report = Report::build(
                         self.report_kind(),
                         self.ctx_loc.source(),
@@ -681,7 +688,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         if bounds_string.is_empty() {
                             ""
                         } else {
-                            " where "
+                            " where:\n"
                         },
                         bounds_string.fg(Color::Yellow),
                     ))

@@ -1,19 +1,18 @@
-use crate::range::Range;
-use crate::MsgNode;
-use crate::BlockNode;
 use crate::as_dot_str;
+use crate::range::Range;
+use crate::BlockNode;
+use crate::MsgNode;
 
 use crate::context::ContextVarNode;
+use crate::range::range_string::ToRangeString;
+use crate::{Builtin, Edge, Function, FunctionParam, FunctionReturn, Node, NodeIdx};
 use petgraph::visit::EdgeRef;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use crate::range::range_string::ToRangeString;
-use crate::{FunctionParam, Function, FunctionReturn, Builtin, Node, Edge, NodeIdx};
 
 use petgraph::dot::Dot;
 use petgraph::{graph::*, Directed, Direction};
 use std::collections::HashMap;
-
 
 pub trait AnalyzerLike: GraphLike {
     type Expr;
@@ -38,7 +37,7 @@ pub trait AnalyzerLike: GraphLike {
 }
 
 struct G<'a> {
-    pub graph: &'a Graph<Node, Edge, Directed, usize>
+    pub graph: &'a Graph<Node, Edge, Directed, usize>,
 }
 impl GraphLike for G<'_> {
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
@@ -80,14 +79,18 @@ pub trait GraphLike {
             .add_edge(from_node.into(), to_node.into(), edge.into());
     }
 
-    fn dot_str(&self) -> String where Self: std::marker::Sized, Self: AnalyzerLike {
+    fn dot_str(&self) -> String
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
-                Node::ContextVar(cvar) => {
+                Node::ContextVar(_cvar) => {
                     // if !cvar.is_symbolic {
                     //     None
                     // } else {
-                        Some(node.clone())
+                    Some(node.clone())
                     // }
                 }
                 _ => Some(node.clone()),
@@ -100,13 +103,19 @@ pub trait GraphLike {
     edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
     bgcolor="#1a1b26";"##;
         dot_str.push(raw_start_str.to_string());
-        let nodes_and_edges_str = format!("{:?}", Dot::with_attr_getters(
+        let nodes_and_edges_str = format!(
+            "{:?}",
+            Dot::with_attr_getters(
                 &new_graph,
-                &[petgraph::dot::Config::GraphContentOnly, petgraph::dot::Config::NodeNoLabel, petgraph::dot::Config::EdgeNoLabel],
+                &[
+                    petgraph::dot::Config::GraphContentOnly,
+                    petgraph::dot::Config::NodeNoLabel,
+                    petgraph::dot::Config::EdgeNoLabel
+                ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
                         Edge::Context(edge) => format!("label = \"{:?}\"", edge),
-                        e => format!("label = \"{:?}\"", e)
+                        e => format!("label = \"{:?}\"", e),
                     }
                 },
                 &|_graph, (idx, node_ref)| {
@@ -121,11 +130,21 @@ pub trait GraphLike {
                                 "".to_string()
                             };
 
-                            format!("{} -- {} -- range: {}, loc: {:?}", cvar.display_name, cvar.ty.as_string(self), range_str, cvar.loc)
+                            format!(
+                                "{} -- {} -- range: {}, loc: {:?}",
+                                cvar.display_name,
+                                cvar.ty.as_string(self),
+                                range_str,
+                                cvar.loc
+                            )
                         }
-                        _ => as_dot_str(idx, &G { graph: &new_graph })
+                        _ => as_dot_str(idx, &G { graph: &new_graph }),
                     };
-                    format!("label = \"{}\", color = \"{}\"", dot_str.replace('\"', "\'"), node_ref.dot_str_color())
+                    format!(
+                        "label = \"{}\", color = \"{}\"",
+                        dot_str.replace('\"', "\'"),
+                        node_ref.dot_str_color()
+                    )
                 }
             )
         );
@@ -135,7 +154,11 @@ pub trait GraphLike {
         dot_str.join("\n")
     }
 
-    fn dot_str_no_tmps(&self) -> String where Self: std::marker::Sized, Self: AnalyzerLike {
+    fn dot_str_no_tmps(&self) -> String
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
                 Node::ContextVar(cvar) => {
@@ -155,13 +178,19 @@ pub trait GraphLike {
     edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
     bgcolor="#1a1b26";"##;
         dot_str.push(raw_start_str.to_string());
-        let nodes_and_edges_str = format!("{:?}", Dot::with_attr_getters(
+        let nodes_and_edges_str = format!(
+            "{:?}",
+            Dot::with_attr_getters(
                 &new_graph,
-                &[petgraph::dot::Config::GraphContentOnly, petgraph::dot::Config::NodeNoLabel, petgraph::dot::Config::EdgeNoLabel],
+                &[
+                    petgraph::dot::Config::GraphContentOnly,
+                    petgraph::dot::Config::NodeNoLabel,
+                    petgraph::dot::Config::EdgeNoLabel
+                ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
                         Edge::Context(edge) => format!("label = \"{:?}\"", edge),
-                        e => format!("label = \"{:?}\"", e)
+                        e => format!("label = \"{:?}\"", e),
                     }
                 },
                 &|_graph, (idx, node_ref)| {
@@ -174,11 +203,20 @@ pub trait GraphLike {
                                 "".to_string()
                             };
 
-                            format!("{} -- {} -- range: {}", cvar.display_name, cvar.ty.as_string(self), range_str)
+                            format!(
+                                "{} -- {} -- range: {}",
+                                cvar.display_name,
+                                cvar.ty.as_string(self),
+                                range_str
+                            )
                         }
-                        _ => as_dot_str(idx, &G { graph: &new_graph })
+                        _ => as_dot_str(idx, &G { graph: &new_graph }),
                     };
-                    format!("label = \"{}\", color = \"{}\"", inner.replace('\"', "\'"), node_ref.dot_str_color())
+                    format!(
+                        "label = \"{}\", color = \"{}\"",
+                        inner.replace('\"', "\'"),
+                        node_ref.dot_str_color()
+                    )
                 }
             )
         );
@@ -188,7 +226,11 @@ pub trait GraphLike {
         dot_str.join("\n")
     }
 
-    fn dot_str_no_tmps_for_ctx(&self, fork_name: String) -> String where Self: AnalyzerLike, Self: Sized {
+    fn dot_str_no_tmps_for_ctx(&self, fork_name: String) -> String
+    where
+        Self: AnalyzerLike,
+        Self: Sized,
+    {
         let new_graph = self.graph().filter_map(
             |idx, node| match node {
                 Node::Context(ctx) => {
@@ -219,29 +261,48 @@ pub trait GraphLike {
     edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
     bgcolor="#1a1b26";"##;
         dot_str.push(raw_start_str.to_string());
-        let nodes_and_edges_str = format!("{:?}", Dot::with_attr_getters(
+        let nodes_and_edges_str = format!(
+            "{:?}",
+            Dot::with_attr_getters(
                 &new_graph,
-                &[petgraph::dot::Config::GraphContentOnly, petgraph::dot::Config::NodeNoLabel, petgraph::dot::Config::EdgeNoLabel],
+                &[
+                    petgraph::dot::Config::GraphContentOnly,
+                    petgraph::dot::Config::NodeNoLabel,
+                    petgraph::dot::Config::EdgeNoLabel
+                ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
                         Edge::Context(edge) => format!("label = \"{:?}\"", edge),
-                        e => format!("label = \"{:?}\"", e)
+                        e => format!("label = \"{:?}\"", e),
                     }
                 },
                 &|_graph, (idx, node_ref)| {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
                             let range_str = if let Some(r) = cvar.ty.range(self) {
-                                format!("[{}, {}]", r.evaled_range_min(self).to_range_string(false, self).s, r.evaled_range_max(self).to_range_string(true, self).s)
+                                format!(
+                                    "[{}, {}]",
+                                    r.evaled_range_min(self).to_range_string(false, self).s,
+                                    r.evaled_range_max(self).to_range_string(true, self).s
+                                )
                             } else {
                                 "".to_string()
                             };
 
-                            format!("{} -- {} -- range: {}", cvar.display_name, cvar.ty.as_string(self), range_str)
+                            format!(
+                                "{} -- {} -- range: {}",
+                                cvar.display_name,
+                                cvar.ty.as_string(self),
+                                range_str
+                            )
                         }
-                        _ => as_dot_str(idx, &G { graph: &new_graph })
+                        _ => as_dot_str(idx, &G { graph: &new_graph }),
                     };
-                    format!("label = \"{}\", color = \"{}\"", inner.replace('\"', "\'"), node_ref.dot_str_color())
+                    format!(
+                        "label = \"{}\", color = \"{}\"",
+                        inner.replace('\"', "\'"),
+                        node_ref.dot_str_color()
+                    )
                 }
             )
         );
@@ -251,7 +312,6 @@ pub trait GraphLike {
         dot_str.join("\n")
     }
 }
-
 
 impl<T> Search for T where T: GraphLike {}
 pub trait Search: GraphLike {

@@ -11,7 +11,7 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
             "block" => Some(ExprRet::Single((ctx, self.block().into()))),
             "abi" => todo!("abi"),
             e => {
-                println!("{:?}", e);
+                println!("env {:?}", e);
                 None
             }
         }

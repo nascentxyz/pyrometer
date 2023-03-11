@@ -4,29 +4,38 @@
 
 
 
-
 ## TODO
-
-- [ ] Support For/While loops
-- [ ] Support memory elements
-    - [ ] Struct support
-- [ ] Support assembly
-    - [ ] Variable support
-    - [ ] Cross-language boundary (i.e. yul var to solc var)
-    - [ ] `sload`/`sstore` support
-    - [ ] `mload`/`mstore` support
-- [ ] Fully support storage variables
-    - [ ] Persist state across external function calls
-    - [ ] Constructor support
+- [ ] Language
+    - [ ] Storage
+        - [ ] Considering constructor
+        - [ ] Considering non-constructor initializer
+    - [ ] Functions
+        - [ ] Call modifier at start of function analysis
+        - [ ] Call modifiers when calling another function from within a function
+    - [ ] Considering `unchecked` math
+        - [ ] Keep uncheckedness for the entire block
+        - [ ] Pass uncheckedness into `bin_op`
+    - [ ] Support `assembly`
+    - [ ] Support `for` loop
+    - [ ] Support `while`/`do while`
+    - [ ] Support `++i/i++/--i/i++`
+    - [ ] Support low-level call
 - [ ] Analyzers
-    - [ ] Bound analyzer
-    - [ ] Array access analyzer
-    - [ ] Reentrancy analyzer
-    - [ ] Symbolic storage write analyzer
-    - [ ] Taint analyzer
-    - [ ] Invariant analyzer
-    - [ ] Access control analysis
+    - [ ] Bound Analyzer
+        - [ ] Cleanup CLI output
+        - [ ] Fix multiple calls to single function that don't show
+    - [ ] Taint Analyzer
+    - [ ] Gas Optimization Analyzer
+        - [ ] Unchecked Recommendation Analyzer
+        - [ ] Storage Variable Initialization Analyzer
+    - [ ] Invariant Analyzer
+    - [ ] Reentrancy Analyzer
 - [ ] Queries
-    - [ ] Storage write query
-    - [ ] Code execution target query
+    - [ ] Access Control Querier
+        - [ ] Cleanup output
+    - [ ] Code Path Querier
+- [ ] Long term
+    - [ ] GUI for better exploring code
+    - [ ] LSP/IDE integration
+    - [ ] DSL for writing queries
 

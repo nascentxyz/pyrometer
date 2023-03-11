@@ -25,6 +25,10 @@ impl FunctionNode {
         }
     }
 
+    pub fn modifiers(&self, _analyzer: &impl GraphLike) -> &Function {
+        todo!();
+    }
+
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut Function {
         match analyzer.node_mut(*self) {
             Node::Function(func) => func,

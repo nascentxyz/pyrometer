@@ -857,6 +857,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         func_idx: NodeIdx,
         ctx: ContextNode,
     ) -> ExprRet {
+
+        println!("func: {:#?}", FunctionNode::from(func_idx).underlying(self));
         // if we have a single match thats our function
         let mut var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
             Some(v) => v,

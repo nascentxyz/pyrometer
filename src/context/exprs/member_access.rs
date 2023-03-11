@@ -115,8 +115,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::BuiltIn(..) => {
-                    println!("{}", self.dot_str_no_tmps());
-                    todo!("{:?}", ident)
+                    println!("member access {}", self.dot_str_no_tmps());
+                    todo!("member access {:?}", ident)
                 }
                 e => todo!("member access: {:?}, {:?}", e, ident),
             },

@@ -5,7 +5,7 @@ use crate::analyzers::{
 use shared::{
     analyzer::*,
     nodes::{ContractNode, FunctionNode},
-    range::{elem::RangeElem, range_string::ToRangeString, Range, RangeEval, SolcRange},
+    range::{range_string::ToRangeString, Range, RangeEval, SolcRange},
     NodeIdx,
 };
 
