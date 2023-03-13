@@ -17,6 +17,11 @@ impl ConcreteNode {
             ),
         }
     }
+
+    pub fn max_size(&self, analyzer: &mut impl GraphLike) -> Self {
+        let c = self.underlying(analyzer).max_size();
+        analyzer.add_node(Node::Concrete(c)).into()
+    }
 }
 
 impl From<NodeIdx> for ConcreteNode {
@@ -164,6 +169,10 @@ impl Concrete {
             }
             _ => false
         }
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self, Concrete::Int(_, _))
     }
 
     /// Cast the concrete to another type as denoted by a [`Builtin`].
@@ -377,11 +386,26 @@ impl Concrete {
     pub fn into_u256(&self) -> Option<U256> {
         match self {
             Concrete::Uint(_, val) => Some(*val),
-            Concrete::Int(_, val) => if val > &I256::from(0) { Some(val.into_raw()) } else { None },
+            Concrete::Int(_, val) => if val >= &I256::from(0) { Some(val.into_raw()) } else { None },
             Concrete::Bytes(_, b) => Some(U256::from_big_endian(b.as_bytes())),
             Concrete::Address(a) => Some(U256::from_big_endian(a.as_bytes())),
             Concrete::Bool(b) => if *b { Some(1.into()) } else { Some(0.into()) },
             _ => None,
+        }
+    }
+
+    pub fn max_size(&self) -> Self {
+        match self {
+            Concrete::Uint(_, val) => {
+                Concrete::Uint(256, *val)
+            },
+            Concrete::Int(_, val) => {
+                Concrete::Int(256, *val)
+            },
+            Concrete::Bytes(_, val) => {
+                Concrete::Bytes(32, *val)
+            },
+            _ => self.clone()
         }
     }
 
@@ -502,9 +526,15 @@ impl Concrete {
                 Some(Concrete::Uint(*size, 0.into()))
             },
             Concrete::Int(size, _) => {
-                let max: I256 =
-                    I256::from_raw(U256::from(1u8) << U256::from(*size - 1)) - 1.into();
+                println!("size: {size}");
+                let max = if size == &256u16 {
+                    I256::MAX
+                } else {
+                    I256::from_raw(U256::from(1u8) << U256::from(*size - 1)) - I256::from(1)
+                };
+
                 let min = max * I256::from(-1i32);
+                println!("here");
                 Some(Concrete::Int(*size, min))
             },
             Concrete::Bytes(size, _) => {
@@ -516,7 +546,7 @@ impl Concrete {
             Concrete::Address(_) => {
                 Some(Concrete::Address(Address::from_slice(&[0x00; 20])))
             },
-            _ => None,
+            e => { println!("was other: {e:?}"); None},
         }
     }
 

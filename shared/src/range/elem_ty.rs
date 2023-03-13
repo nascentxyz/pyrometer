@@ -239,9 +239,10 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     		_ => {
     			match (&self.val, &other.val) {
     				// two negatives
-    				(Concrete::Int(_, s), Concrete::Int(_, o)) => Some(s.cmp(o)),
+    				(Concrete::Int(_, s), Concrete::Int(_, o)) => {
+    					Some(s.cmp(o))
+    				},
     				_ => None
-
     			}
     		}
     	}
@@ -289,14 +290,6 @@ impl<T> RangeExpr<T> {
 }
 
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
-	// fn eval(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-	// 	self.exec_op(analyzer)
-	// }
-
-	// fn simplify(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-	// 	self.simplify_exec_op(analyzer)
-	// }
-
     fn range_eq(&self, _other: &Self) -> bool {
     	false
     }
@@ -476,14 +469,24 @@ impl Elem<Concrete> {
 }
 
 impl RangeElem<Concrete> for Elem<Concrete> {
-    fn range_eq(&self, _other: &Self) -> bool {
-    	false
+    fn range_eq(&self, other: &Self) -> bool {
+    	match (self, other) {
+    		(Self::Concrete(a), Self::Concrete(b)) => {
+    			a.range_eq(b)
+    		}
+    		_ => false,
+    	}
     }
 
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
     	match (self, other) {
     		(Self::Concrete(a), Self::Concrete(b)) => {
-    			a.range_ord(b)
+    			let ord = a.range_ord(b);
+    			if ord.is_none() {
+    				println!("couldnt compare: {:?} {:?}", a, b);
+    			}
+
+    			ord
     		}
     		_ => None,
     	}
@@ -672,6 +675,32 @@ impl BitAnd for Elem<Concrete> {
     }
 }
 
+impl BitOr for Elem<Concrete> {
+    type Output = Self;
+
+    fn bitor(self, other: Self) -> Self::Output {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::BitOr,
+            rhs: Box::new(other),
+        };
+        Self::Expr(expr)
+    }
+}
+
+impl BitXor for Elem<Concrete> {
+    type Output = Self;
+
+    fn bitxor(self, other: Self) -> Self::Output {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::BitXor,
+            rhs: Box::new(other),
+        };
+        Self::Expr(expr)
+    }
+}
+
 impl Elem<Concrete> {
 	/// Creates a logical AND of two range elements
     pub fn and(self, other: Self) -> Self {
@@ -691,6 +720,20 @@ impl Elem<Concrete> {
             rhs: Box::new(other),
         };
         Self::Expr(expr)
+    }
+
+    pub fn maybe_elem_min(&self) -> Option<Self> {
+    	match self {
+    		Elem::Concrete(RangeConcrete { val, ..}) => Some(Elem::from(Concrete::min(val)?)),
+    		_ => None
+    	}
+    }
+
+    pub fn maybe_elem_max(&self) -> Option<Self> {
+    	match self {
+    		Elem::Concrete(RangeConcrete { val, ..}) => Some(Elem::from(Concrete::max(val)?)),
+    		_ => None
+    	}
     }
 }
 

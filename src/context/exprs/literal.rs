@@ -34,7 +34,12 @@ pub trait Literal: AnalyzerLike + Sized {
 
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
-            let val = I256::from(-1i32) * I256::from_raw(val);
+            let val = if val == U256::from(2).pow(255.into()) {
+                // no need to set upper bit
+                I256::from_raw(val)   
+            } else {
+                I256::from(-1i32) * I256::from_raw(val)
+            };
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
         } else {
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))

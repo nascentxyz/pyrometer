@@ -312,6 +312,8 @@ impl SolcRange {
             RangeOp::Neq => &Self::neq_dyn,
             RangeOp::Exp => &Self::exp_dyn,
             RangeOp::BitAnd => &Self::bit_and_dyn,
+            RangeOp::BitOr => &Self::bit_or_dyn,
+            RangeOp::BitXor => &Self::bit_xor_dyn,
             // RangeOp::And => (
             //     &Self::and_dyn,
             //     (DynSide::Min, DynSide::Max),
@@ -364,14 +366,27 @@ impl SolcRange {
         }
     }
 
-    pub fn div_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn bit_or_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         Self {
-            min: self.min
-                / Elem::from(Concrete::from(U256::from(1)))
-                    .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            max: self.max
-                / Elem::from(Concrete::from(U256::from(1)))
-                    .max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            min: self.min | Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max | Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            exclusions: self.exclusions,
+        }
+    }
+
+    pub fn bit_xor_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+        Self {
+            min: self.min ^ Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            max: self.max ^ Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            exclusions: self.exclusions,
+        }
+    }
+
+    pub fn div_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+        let elem = Elem::Dynamic(Dynamic::new(other.into(), loc));
+        Self {
+            min: self.min / elem.clone(),
+            max: self.max / elem,
             exclusions: self.exclusions,
         }
     }
@@ -393,10 +408,10 @@ impl SolcRange {
     }
 
     pub fn mod_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+        let elem = Elem::Dynamic(Dynamic::new(other.into(), loc));
         Self {
             min: Elem::from(Concrete::from(U256::zero())),
-            max: Elem::Dynamic(Dynamic::new(other.into(), loc))
-                - Elem::from(Concrete::from(U256::from(1))),
+            max: elem.clone() - Elem::from(Concrete::from(U256::from(1))).cast(elem),
             exclusions: self.exclusions,
         }
     }
@@ -526,6 +541,8 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
         !self.sat(analyzer)
     }
     fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
+    fn contains_elem(&self, other: &T, analyzer: &impl AnalyzerLike) -> bool;
+    fn overlaps(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
 }
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
@@ -552,11 +569,36 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
         min_contains && max_contains
     }
-}
 
-#[cfg(test)]
-mod tests {
+    fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl AnalyzerLike) -> bool {
+        let min_contains = matches!(
+            self.evaled_range_min(analyzer)
+                .range_ord(&other.minimize(analyzer)),
+            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+        );
 
-    #[test]
-    fn it_works() {}
+        let max_contains = matches!(
+            self.evaled_range_max(analyzer)
+                .range_ord(&other.maximize(analyzer)),
+            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+        );
+
+        min_contains && max_contains
+    }
+
+    fn overlaps(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+        let min_contains = matches!(
+            self.evaled_range_min(analyzer)
+                .range_ord(&other.evaled_range_min(analyzer)),
+            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+        );
+
+        let max_contains = matches!(
+            self.evaled_range_max(analyzer)
+                .range_ord(&other.evaled_range_max(analyzer)),
+            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+        );
+
+        min_contains || max_contains
+    }
 }

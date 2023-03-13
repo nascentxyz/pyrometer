@@ -82,7 +82,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 VarType::User(TypeNode::Contract(con_node)) => {
                     // we can only access functions via this pattern
                     println!(
-                        "{:?}",
+                        "functions {:?}",
                         con_node
                             .funcs(self)
                             .iter()

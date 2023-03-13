@@ -180,6 +180,19 @@ impl VarType {
         }
     }
 
+    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Self {
+        match self {
+            Self::BuiltIn(from_bn, _r) => {
+                let bn = from_bn.max_size(analyzer);
+                Self::BuiltIn(bn, SolcRange::try_from_builtin(bn.underlying(analyzer)))
+            },
+            Self::Concrete(from_c) => {
+                Self::Concrete(from_c.max_size(analyzer))
+            }
+            _ => self.clone(),
+        }
+    }
+
     pub fn range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
         match self {
             Self::BuiltIn(_, Some(range)) => Some(range.clone()),
@@ -195,7 +208,9 @@ impl VarType {
             Self::User(TypeNode::Func(_)) => false,
             _ => {
                 if let Some(range) = self.range(analyzer) {
-                    range.evaled_range_min(analyzer).range_eq(&range.evaled_range_max(analyzer))
+                    let min = range.evaled_range_min(analyzer);
+                    let max = range.evaled_range_max(analyzer);
+                    min.range_eq(&max)
                 } else {
                     false
                 }
@@ -249,11 +264,21 @@ impl VarType {
                     _ => unreachable!()
                 }
             },
-            // VarType::Array(dbn, _) => dbn.as_string(analyzer),
-            // VarType::Mapping(dbn) => dbn.as_string(analyzer),
             VarType::Concrete(c) => {
                 c.underlying(analyzer).as_builtin().as_string(analyzer)
             },
+        }
+    }
+
+    pub fn is_int(&self, analyzer: &impl GraphLike) -> bool {
+        match self {
+            VarType::BuiltIn(bn, _) => {
+                bn.underlying(analyzer).is_int()
+            },
+            VarType::Concrete(c) => {
+                c.underlying(analyzer).is_int()
+            },
+            _ => false,
         }
     }
 }
@@ -309,6 +334,11 @@ impl BuiltInNode {
 
     pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         self.underlying(analyzer).implicitly_castable_to(other.underlying(analyzer))
+    }
+
+    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Self {
+        let m = self.underlying(analyzer).max_size();
+        analyzer.builtin_or_add(m).into()
     }
 
     pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
@@ -403,6 +433,10 @@ impl Builtin {
             _ => None,
         }
     }
+    
+    pub fn is_int(&self) -> bool {
+        matches!(self, Builtin::Int(_))
+    }
 
     pub fn implicitly_castable_to(&self, other: &Self) -> bool {
         use Builtin::*;
@@ -424,6 +458,22 @@ impl Builtin {
                 from_size <= to_size
             }
             _ => false            
+        }
+    }
+
+    pub fn max_size(&self) -> Self {
+        use Builtin::*;
+        match self {
+            Uint(_) => {
+                Uint(256)
+            }
+            Int(from_size) => {
+                Uint(256)
+            }
+            Bytes(from_size) => {
+                Uint(32)
+            }
+            _ => self.clone()
         }
     }
 

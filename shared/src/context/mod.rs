@@ -427,7 +427,7 @@ impl ContextNode {
         self.underlying(analyzer).killed
     }
 
-    /// Returns a vector of variable dependencies for this context
+    /// Returns a map of variable dependencies for this context
     pub fn ctx_deps(&self, analyzer: &impl AnalyzerLike) -> HashMap<String, ContextVarNode> {
         self.underlying(analyzer).ctx_deps.clone()
     }

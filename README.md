@@ -5,6 +5,10 @@
 
 
 ## TODO
+- [ ] General
+    - [ ] Graceful error handling
+    - [ ] Trait/Lang separation cleanup
+    - [ ] 
 - [ ] Language
     - [ ] Storage
         - [ ] Considering constructor
@@ -35,7 +39,8 @@
         - [ ] Cleanup output
     - [ ] Code Path Querier
 - [ ] Long term
-    - [ ] GUI for better exploring code
+    - [ ] GUI for better exploring code execution forks
     - [ ] LSP/IDE integration
     - [ ] DSL for writing queries
+    - [ ] Export bounds for SMT solvers (z3, cvc5, etc.)
 

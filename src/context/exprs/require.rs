@@ -16,6 +16,7 @@ use shared::{
 
 use ethers_core::types::I256;
 use solang_parser::pt::{Expression, Loc};
+use std::cmp::Ordering;
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
 pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
@@ -184,6 +185,17 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::CtxKilled) => {}
             (ExprRet::CtxKilled, _) => {}
+            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self);
+                self.handle_require_inner(
+                    loc,
+                    &ExprRet::Single((*lhs_ctx, *lhs)),
+                    rhs_paths,
+                    op,
+                    rhs_op,
+                    recursion_ops,
+                )
+            }
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
                 self.handle_require_inner(
@@ -282,65 +294,45 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         if let Some(mut lhs_range) = new_lhs.underlying(self).ty.range(self) {
             let lhs_range_fn = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
-            let new_lhs_range = lhs_range_fn(lhs_range.clone(), new_rhs, loc);
+            let mut new_var_range = lhs_range_fn(lhs_range.clone(), new_rhs, loc);
 
-            if matches!(op, RangeOp::Neq) {
-                let exclusion =
-                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
-                let excl_min = exclusion.minimize(self);
-                let excl_max = exclusion.maximize(self);
-                if let Some(std::cmp::Ordering::Equal) = excl_min.range_ord(&excl_max) {
-                    // min and max are equal
-                    if let Some(std::cmp::Ordering::Equal) =
-                        lhs_range.evaled_range_min(self).range_ord(&excl_min)
-                    {
-                        // mins are equivalent, add 1
-                        let min = lhs_range
-                            .evaled_range_min(self)
-                            .maybe_concrete()
-                            .expect("Was not concrete");
-                        let one =
-                            Concrete::one(&min.val).expect("Cannot increment range elem by one");
-                        let min = lhs_range.range_min() + Elem::from(one);
-                        new_lhs.set_range_min(self, min);
-                    } else {
-                        lhs_range.exclusions.push(exclusion);
-                        new_lhs.set_range_exclusions(self, lhs_range.exclusions);
-                    }
-                } else {
-                    lhs_range.exclusions.push(exclusion);
-                    new_lhs.set_range_exclusions(self, lhs_range.exclusions);
-                }
-            }
 
             if let Some(mut rhs_range) = new_rhs.range(self) {
                 rhs_range.update_deps(ctx, self);
-                if new_lhs.is_const(self) && !new_rhs.is_const(self) {
-                    let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
-                    let new_rhs_range = rhs_range_fn(rhs_range.clone(), new_lhs, loc);
-                    new_rhs.set_range_min(self, new_rhs_range.range_min());
-                    new_rhs.set_range_max(self, new_rhs_range.range_max());
-                } else if new_rhs.is_const(self) {
-                    if matches!(op, RangeOp::Eq) {
-                        let min =
-                            Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
-                        let max =
-                            Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
-                        new_lhs.set_range_min(self, min);
-                        new_lhs.set_range_max(self, max);
-                    } else if !matches!(op, RangeOp::Neq) {
-                        new_lhs.set_range_min(self, new_lhs_range.range_min());
-                        new_lhs.set_range_max(self, new_lhs_range.range_max());
+                let lhs_is_const = new_lhs.is_const(self);
+                let rhs_is_const = new_rhs.is_const(self);
+                match (lhs_is_const, rhs_is_const) {
+                    (true, true) => {
+                        if self.const_killable(op, lhs_range, rhs_range) {
+                            ctx.kill(self, loc);
+                            return None;
+                        }
                     }
-                } else {
-                    // we know nothing about either
-                    // println!("didnt know either");
-                    // new_rhs.set_range_min(self, new_rhs_range.range_min());
-                    // new_rhs.set_range_max(self, new_rhs_range.range_max());
-                    // any_unsat |= new_rhs_range.unsat(self);
+                    (true, false) => {
+                        // flip the new range around to be in terms of rhs
+                        let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
+                        new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs, loc);
+
+                        if self.update_nonconst_from_const(loc, op, new_lhs, new_rhs, rhs_range) {
+                            ctx.kill(self, loc);
+                            return None;
+                        }
+                    }
+                    (false, true) => {
+                        if self.update_nonconst_from_const(loc, op, new_rhs, new_lhs, lhs_range) {
+                            ctx.kill(self, loc);
+                            return None;
+                        }
+                    }
+                    (false, false) => {
+                        if self.update_nonconst_from_nonconst(loc, op, new_lhs, new_rhs, lhs_range, rhs_range) {
+                            ctx.kill(self, loc);
+                            return None;
+                        }
+                    }
                 }
             } else {
-                todo!("here: {:?}", new_rhs.underlying(self));
+                todo!("Require: right hand side didnt have a range, likely invalid solidity - {:?}", new_rhs.underlying(self));
             }
 
             if let Some(backing_arr) = new_lhs.len_var_to_array(self) {
@@ -433,7 +425,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             tmp_cvar = Some(cvar);
 
-            any_unsat |= new_lhs_range.unsat(self);
+            any_unsat |= new_var_range.unsat(self);
             if any_unsat {
                 ctx.kill(self, loc);
                 return None;
@@ -444,15 +436,333 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
         if let Some(tmp) = new_lhs.tmp_of(self) {
             if tmp.op.inverse().is_some() {
-                println!("range recursion: {:?}", tmp);
                 self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)
             } else {
                 self.uninvertable_range_recursion(tmp, new_lhs, new_rhs, loc, ctx);
-                // println!("did not recurse as it was not reversable: {:?}", tmp);
             }
         }
 
         tmp_cvar
+    }
+
+    /// Checks and returns whether the require statement is killable (i.e. impossible)
+    fn const_killable(
+        &mut self,
+        op: RangeOp,
+        lhs_range: SolcRange,
+        rhs_range: SolcRange,
+    ) -> bool {
+        // if they are not equal, this will get picked up in the unsat call
+        match op {
+            RangeOp::Eq => !lhs_range.evaled_range_min(self).range_eq(&rhs_range.evaled_range_min(self)),
+            RangeOp::Neq => lhs_range.evaled_range_min(self).range_eq(&rhs_range.evaled_range_min(self)),
+            RangeOp::Gt =>  {
+                matches!(
+                    lhs_range.evaled_range_min(self).range_ord(&rhs_range.evaled_range_min(self)),
+                    Some(Ordering::Equal) | Some(Ordering::Less)
+                )
+            },
+            RangeOp::Gte =>  {
+                matches!(
+                    lhs_range.evaled_range_min(self).range_ord(&rhs_range.evaled_range_min(self)),
+                    Some(Ordering::Less)
+                )
+            }
+            RangeOp::Lt =>  {
+                matches!(
+                    lhs_range.evaled_range_min(self).range_ord(&rhs_range.evaled_range_min(self)),
+                    Some(Ordering::Equal) | Some(Ordering::Greater)
+                )
+            }
+            RangeOp::Lte =>  {
+                matches!(
+                    lhs_range.evaled_range_min(self).range_ord(&rhs_range.evaled_range_min(self)),
+                    Some(Ordering::Greater)
+                )
+            }
+            e => todo!("Non-comparator in require, {e:?}")
+        }
+    }
+
+    /// Given a const var and a nonconst range, update the range based on the op
+    fn update_nonconst_from_const(
+        &mut self,
+        loc: Loc,
+        op: RangeOp,
+        const_var: ContextVarNode,
+        nonconst_var: ContextVarNode,
+        mut nonconst_range: SolcRange,  
+    ) -> bool {
+        match op {
+            RangeOp::Eq => {
+                // check that the constant is contained in the nonconst var range
+                let elem =
+                    Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+
+                if !nonconst_range.contains_elem(&elem, self) {
+                    return true;
+                }
+                // if its contained, we can set the min & max to it
+                nonconst_var.set_range_min(self, elem.clone());
+                nonconst_var.set_range_max(self, elem);
+                false
+            }
+            RangeOp::Neq => {
+                // check if contains
+                let elem =
+                    Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+
+                // potentially add the const var as a range exclusion 
+                if let Some(Ordering::Equal) =
+                    nonconst_range.evaled_range_min(self).range_ord(&elem)
+                {
+                    // mins are equivalent, add 1 instead of adding an exclusion
+                    let min = nonconst_range
+                        .evaled_range_min(self)
+                        .maybe_concrete()
+                        .expect("Was not concrete");
+                    let one =
+                        Concrete::one(&min.val).expect("Cannot increment range elem by one");
+                    let min = nonconst_range.range_min() + Elem::from(one);
+                    nonconst_var.set_range_min(self, min);
+                } else if let Some(std::cmp::Ordering::Equal) =
+                    nonconst_range.evaled_range_max(self).range_ord(&elem) {
+                    // maxs are equivalent, subtract 1 instead of adding an exclusion
+                    let max = nonconst_range
+                        .evaled_range_max(self)
+                        .maybe_concrete()
+                        .expect("Was not concrete");
+                    let one =
+                        Concrete::one(&max.val).expect("Cannot decrement range elem by one");
+                    let max = nonconst_range.range_max() - Elem::from(one);
+                    nonconst_var.set_range_max(self, max);
+                } else {
+                    // just add as an exclusion
+                    nonconst_range.exclusions.push(elem);
+                    nonconst_var.set_range_exclusions(self, nonconst_range.exclusions);
+                }
+
+                false
+            }
+            RangeOp::Gt =>  {
+                let elem =
+                    Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+
+                // if nonconst max is <= const, we can't make this true
+                let max = nonconst_range.evaled_range_max(self);
+                if matches!(
+                    max.range_ord(&elem.minimize(self)),
+                    Some(Ordering::Less) | Some(Ordering::Equal)
+                ) {
+                    return true;
+                }
+
+                // we add one to the element because its strict >
+                let max_conc = max.maybe_concrete().expect("Was not concrete");
+                let one =
+                        Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
+                nonconst_var.set_range_min(self, elem + one.into());
+                false
+            },
+            RangeOp::Gte =>  {
+                let elem =
+                    Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+
+                // if nonconst max is < const, we can't make this true
+                if matches!(
+                    nonconst_range.evaled_range_max(self).range_ord(&elem.minimize(self)),
+                    Some(Ordering::Less)
+                ) {
+                    return true;
+                }
+
+                nonconst_var.set_range_min(self, elem.clone());
+                false
+            }
+            RangeOp::Lt =>  {
+                let elem =
+                    Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+
+                // if nonconst min is >= const, we can't make this true
+                let min = nonconst_range.evaled_range_min(self);
+                if matches!(
+                    min.range_ord(&elem.minimize(self)),
+                    Some(Ordering::Greater) | Some(Ordering::Equal)
+                ) {
+                    return true;
+                }
+
+                // we add one to the element because its strict >
+                let min_conc = min.maybe_concrete().expect("Was not concrete");
+                let one =
+                        Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
+
+                nonconst_var.set_range_max(self, elem - one.into());
+                false
+            }
+            RangeOp::Lte =>  {
+                let elem =
+                    Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+
+                // if nonconst min is > const, we can't make this true
+                let min = nonconst_range.evaled_range_min(self);
+                if matches!(
+                    min.range_ord(&elem.minimize(self)),
+                    Some(Ordering::Greater)
+                ) {
+                    return true;
+                }
+
+                nonconst_var.set_range_max(self, elem);
+                false
+            }
+            e => todo!("Non-comparator in require, {e:?}")
+        }
+    }
+
+    /// Given a const var and a nonconst range, update the range based on the op. Returns whether its impossible
+    fn update_nonconst_from_nonconst(
+        &mut self,
+        loc: Loc,
+        op: RangeOp,
+        new_lhs: ContextVarNode,
+        new_rhs: ContextVarNode,
+        mut lhs_range: SolcRange,
+        mut rhs_range: SolcRange,
+    ) -> bool {
+        match op {
+            RangeOp::Eq => {
+                // check that there is overlap in the ranges
+                if !lhs_range.overlaps(&rhs_range, self) {
+                    return true;
+                }
+
+                // take the tighest range
+                match lhs_range.evaled_range_min(self).range_ord(&rhs_range.evaled_range_min(self)) {
+                    Some(Ordering::Greater) => {
+                        // take lhs range min as its tigher
+                        new_rhs.set_range_min(self, lhs_range.range_min());
+                    }
+                    Some(Ordering::Less) => {
+                        // take rhs range min as its tigher
+                        new_lhs.set_range_min(self, rhs_range.range_min());
+                    }
+                    _ => {
+                        // equal or not comparable - both keep their minimums
+                    }
+                }
+
+                // take the tighest range
+                match lhs_range.evaled_range_max(self).range_ord(&rhs_range.evaled_range_max(self)) {
+                    Some(Ordering::Less) => {
+                        // take lhs range min as its tigher
+                        new_rhs.set_range_max(self, lhs_range.range_max());
+                    }
+                    Some(Ordering::Greater) => {
+                        // take rhs range min as its tigher
+                        new_lhs.set_range_max(self, rhs_range.range_max());
+                    }
+                    _ => {
+                        // equal or not comparable - both keep their maximums
+                    }
+                }
+
+                false
+            }
+            RangeOp::Neq => {
+                let rhs_elem =
+                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+                // just add as an exclusion
+                lhs_range.exclusions.push(rhs_elem);
+                new_lhs.set_range_exclusions(self, lhs_range.exclusions);
+
+                let lhs_elem =
+                    Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into(), loc));
+                // just add as an exclusion
+                rhs_range.exclusions.push(lhs_elem);
+                new_rhs.set_range_exclusions(self, rhs_range.exclusions);
+                false
+            }
+            RangeOp::Gt =>  {
+                let rhs_elem =
+                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+
+                // if lhs.max is <= rhs.min, we can't make this true
+                let max = lhs_range.evaled_range_max(self);
+                if matches!(
+                    max.range_ord(&rhs_elem.minimize(self)),
+                    Some(Ordering::Less) | Some(Ordering::Equal)
+                ) {
+                    return true;
+                }
+
+                
+                let max_conc = max.maybe_concrete().expect("Was not concrete");
+                let one =
+                        Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
+
+                // we add/sub one to the element because its strict >
+                new_lhs.set_range_min(self, rhs_elem + one.clone().into());
+                new_rhs.set_range_max(self, lhs_range.range_min() - one.into());
+                false
+            },
+            RangeOp::Gte =>  {
+                let rhs_elem =
+                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+
+                // if lhs.max is < rhs.min, we can't make this true
+                if matches!(
+                    lhs_range.evaled_range_max(self).range_ord(&rhs_elem.minimize(self)),
+                    Some(Ordering::Less)
+                ) {
+                    return true;
+                }
+
+                new_lhs.set_range_min(self, rhs_elem);
+                new_rhs.set_range_max(self, lhs_range.range_min());
+                false
+            }
+            RangeOp::Lt =>  {
+                let rhs_elem =
+                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+
+                // if lhs min is >= rhs.max, we can't make this true
+                let min = lhs_range.evaled_range_min(self);
+                if matches!(
+                    min.range_ord(&rhs_elem.minimize(self)),
+                    Some(Ordering::Greater) | Some(Ordering::Equal)
+                ) {
+                    return true;
+                }
+
+                // we add/sub one to the element because its strict >
+                let min_conc = min.maybe_concrete().expect("Was not concrete");
+                let one =
+                        Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
+
+                new_lhs.set_range_max(self, rhs_elem - one.clone().into());
+                new_rhs.set_range_min(self, lhs_range.range_max() + one.into());
+                false
+            }
+            RangeOp::Lte =>  {
+                let rhs_elem =
+                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+
+                // if nonconst min is > const, we can't make this true
+                let min = lhs_range.evaled_range_min(self);
+                if matches!(
+                    min.range_ord(&rhs_elem.minimize(self)),
+                    Some(Ordering::Greater)
+                ) {
+                    return true;
+                }
+
+                new_lhs.set_range_max(self, rhs_elem);
+                new_rhs.set_range_max(self, lhs_range.range_min());
+                false
+            }
+            e => todo!("Non-comparator in require, {e:?}")
+        }
     }
 
     fn uninvertable_range_recursion(

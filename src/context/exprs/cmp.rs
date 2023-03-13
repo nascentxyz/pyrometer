@@ -79,7 +79,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 let range = {
-                    let lhs_range = lhs_cvar.range(self).expect("Variable didnt have a range");
+                    let lhs_range = lhs_cvar.range(self).unwrap_or_else(|| panic!("Variable didnt have a range: {}", lhs_cvar.display_name(self)));
                     let rhs_range = rhs_cvar.range(self).expect("Rhs didnt have a range");
                     let rhs_min = Elem::Expr(RangeExpr {
                         lhs: Box::new(rhs_range.min.clone()),

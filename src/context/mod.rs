@@ -388,6 +388,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_paths: Option<&ExprRet>,
     ) {
         match (lhs_paths, rhs_paths) {
+            (ExprRet::CtxKilled, _) => {},
+            (_, Some(ExprRet::CtxKilled)) => {},
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
@@ -547,7 +549,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
+        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, false),
@@ -813,7 +815,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         if !literals.iter().any(|i| *i) {
             None
         } else {
-            println!("funcs: {:?}", funcs);
+            // println!("funcs: {:?}", funcs);
             let funcs = funcs
                 .iter()
                 .filter(|func| {
@@ -858,7 +860,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         ctx: ContextNode,
     ) -> ExprRet {
 
-        println!("func: {:#?}", FunctionNode::from(func_idx).underlying(self));
+        // println!("func: {:#?}", FunctionNode::from(func_idx).underlying(self));
         // if we have a single match thats our function
         let mut var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
             Some(v) => v,

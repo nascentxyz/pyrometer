@@ -136,10 +136,16 @@ impl ContextVarNode {
         Some(self.range(analyzer)?.range_max())
     }
 
+    pub fn evaled_range_min(&self, analyzer: &'_ impl GraphLike) -> Option<Elem<Concrete>> {
+        Some(self.range(analyzer)?.evaled_range_min(analyzer))
+    }
+
+    pub fn evaled_range_max(&self, analyzer: &'_ impl GraphLike) -> Option<Elem<Concrete>> {
+        Some(self.range(analyzer)?.evaled_range_max(analyzer))
+    }
+
     pub fn is_const(&self, analyzer: &impl GraphLike) -> bool {
         let underlying = self.underlying(analyzer);
-        // let _is = underlying.storage.is_none() && underlying.ty.is_const(analyzer);
-        // println!("is const: {}, {}", underlying.display_name, is);
         underlying.storage.is_none() && underlying.ty.is_const(analyzer)
     }
 
@@ -395,10 +401,21 @@ impl ContextVarNode {
 
         if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer), to_ty) {
             // update name
-            println!("HERERERERE {:#?}", cnode.underlying(analyzer));
             let display_name = cnode.underlying(analyzer).as_string();
             self.underlying_mut(analyzer).display_name = display_name;
         }
+    }
+
+    pub fn try_increase_size(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let from_ty = self.ty(analyzer).clone();
+        self.cast_from_ty(from_ty.max_size(analyzer), analyzer);
+    }
+
+    pub fn is_int(&self, analyzer: &impl GraphLike) -> bool {
+        self.underlying(analyzer).ty.is_int(analyzer)
     }
 }
 
