@@ -193,11 +193,6 @@ contract Cast {
 		return x_bytes32;
 	}
 
-	function b_ytes_uint_conc() public return (bytes32) {
-		bytes32 round_trip = u_int_bytes(b_ytes_uint(hex"1337"));
-		return round_trip;
-	}
-
 	function u_int_addr(uint160 x) public returns (address) {
 		return address(x);
 	}
@@ -206,8 +201,15 @@ contract Cast {
 		return uint160(x);
 	}
 
+	function b_ytes_uint_conc() public return (bytes32) {
+		bytes32 round_trip = u_int_bytes(b_ytes_uint(hex"1337"));
+		require(round_trip == bytes32(hex"1337"));
+		return round_trip;
+	}
+
 	function addr_uint_conc() public return (address) {
 		address round_trip = u_int_addr(addr_uint(address(1337)));
+		require(round_trip == address(1337));
 		return round_trip;
 	}
 }

@@ -1,3 +1,4 @@
+use shared::range::elem_ty::Dynamic;
 use crate::{ContextBuilder, ExprRet};
 use shared::{
     analyzer::AnalyzerLike,
@@ -75,40 +76,39 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         rhs_paths: &ExprRet,
     ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
+            (ExprRet::SingleLiteral((ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self);
+                self.cmp_inner(
+                    loc,
+                    &ExprRet::Single((*rhs_ctx, *rhs)),
+                    op,
+                    rhs_paths
+                )
+            }
+            (ExprRet::Single((ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
+                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
+                self.cmp_inner(
+                    loc,
+                    lhs_paths,
+                    op,
+                    &ExprRet::Single((*rhs_ctx, *rhs))
+                )
+            }
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 let range = {
-                    let lhs_range = lhs_cvar.range(self).unwrap_or_else(|| panic!("Variable didnt have a range: {}", lhs_cvar.display_name(self)));
-                    let rhs_range = rhs_cvar.range(self).expect("Rhs didnt have a range");
-                    let rhs_min = Elem::Expr(RangeExpr {
-                        lhs: Box::new(rhs_range.min.clone()),
+                    let elem = Elem::Expr(RangeExpr {
+                        lhs: Box::new(Elem::Dynamic(Dynamic::new(lhs_cvar.into(), loc))),
                         op,
-                        rhs: Box::new(rhs_range.max.clone()),
+                        rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))),
                     });
 
-                    let min = Elem::Expr(RangeExpr {
-                        lhs: Box::new(lhs_range.min),
-                        op,
-                        rhs: Box::new(rhs_min),
-                    });
-
-                    let rhs_max = Elem::Expr(RangeExpr {
-                        lhs: Box::new(rhs_range.min),
-                        op,
-                        rhs: Box::new(rhs_range.max),
-                    });
-
-                    let max = Elem::Expr(RangeExpr {
-                        lhs: Box::new(lhs_range.max),
-                        op,
-                        rhs: Box::new(rhs_max),
-                    });
-
+                    let exclusions = lhs_cvar.range(self).expect("No lhs rnage").range_exclusions();
                     SolcRange {
-                        min,
-                        max,
-                        exclusions: lhs_range.exclusions,
+                        min: elem.clone(),
+                        max: elem.clone(),
+                        exclusions,
                     }
                 };
 

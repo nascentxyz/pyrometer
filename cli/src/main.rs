@@ -116,7 +116,7 @@ fn main() {
     let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
 
     let mut analyzer = Analyzer::default();
-    let mut t0 = std::time::Instant::now();
+    let t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) = analyzer.parse(&sol);
     let parse_time = t0.elapsed().as_millis();
     all_sources.push((maybe_entry, args.path, sol, 0));
@@ -151,10 +151,11 @@ fn main() {
         let funcs = analyzer.search_children(entry, &Edge::Func);
         for func in funcs.into_iter() {
             if !args.funcs.is_empty() {
-                if args
-                    .funcs
-                    .contains(&FunctionNode::from(func).name(&analyzer))
-                {
+                if args.funcs.iter().any(|analyze_for| {
+                    FunctionNode::from(func)
+                        .name(&analyzer)
+                        .starts_with(analyze_for)
+                }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
                         let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
                         analysis.print_reports(&mut source_map, &analyzer);

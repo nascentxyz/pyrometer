@@ -132,8 +132,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::And(loc, lhs, rhs) => {
-                // println!("was not in require");
-                let lhs_paths = self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx);
+                let lhs_paths = self.cmp(*loc, lhs, RangeOp::And, rhs, ctx);
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true =
                     Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, cnode, self));
@@ -151,7 +150,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::Or(loc, lhs, rhs) => {
-                // println!("was not in require");
                 let lhs_paths = self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx);
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true =
@@ -180,7 +178,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         op: RangeOp,
         rhs_op: RangeOp,
         recursion_ops: (RangeOp, RangeOp),
-        // fns: EitherRangeFn,
     ) {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::CtxKilled) => {}
@@ -291,6 +288,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) -> Option<ContextVarNode> {
         let mut any_unsat = false;
         let mut tmp_cvar = None;
+
+        // println!("lhs: {} - {:?}, rhs: {} - {:?}", new_lhs.display_name(self), new_lhs.is_const(self), new_rhs.display_name(self), new_rhs.is_const(self));
+
         if let Some(mut lhs_range) = new_lhs.underlying(self).ty.range(self) {
             let lhs_range_fn = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
@@ -452,7 +452,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         lhs_range: SolcRange,
         rhs_range: SolcRange,
     ) -> bool {
-        // if they are not equal, this will get picked up in the unsat call
+        // check that the op is satisfied, return it as a bool
         match op {
             RangeOp::Eq => !lhs_range.evaled_range_min(self).range_eq(&rhs_range.evaled_range_min(self)),
             RangeOp::Neq => lhs_range.evaled_range_min(self).range_eq(&rhs_range.evaled_range_min(self)),

@@ -1403,6 +1403,31 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 					candidates[0].clone()
 				}
 			}
+			RangeOp::Or => {
+				let candidates = vec![
+					lhs_min.range_or(&rhs_min),
+					lhs_min.range_or(&rhs_max),
+					lhs_max.range_or(&rhs_min),
+					lhs_max.range_or(&rhs_max),
+				];
+				let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+				candidates.sort_by(|a, b| {
+					match a.range_ord(b) {
+						Some(r) => r,
+						_ => std::cmp::Ordering::Less
+					}
+				});
+
+				if candidates.is_empty() {
+					return Elem::Expr(self.clone());
+				}
+
+				if maximize {
+					candidates[candidates.len() - 1].clone()
+				} else {
+					candidates[0].clone()
+				}
+			}
 			RangeOp::Not => {
 				assert!(matches!(rhs_min, Elem::Null) && matches!(rhs_max, Elem::Null));
 				let candidates = vec![

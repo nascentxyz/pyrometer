@@ -243,6 +243,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             RangeOp::Sub => {
+                let lhs_cvar = lhs_cvar.latest_version(self);
                 if lhs_cvar.is_const(self) {
                     if !lhs_cvar.is_int(self) {
                         if let (Some(lmax), Some(rmin)) = (lhs_cvar.evaled_range_max(self), rhs_cvar.evaled_range_min(self)) {
@@ -289,6 +290,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             RangeOp::Add => {
+                let lhs_cvar = lhs_cvar.latest_version(self);
                 if lhs_cvar.is_symbolic(self) {
                     let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
 
@@ -344,6 +346,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             RangeOp::Mul => {
+                let lhs_cvar = lhs_cvar.latest_version(self);
                 if lhs_cvar.is_symbolic(self) {
                     let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
 
@@ -467,7 +470,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.
         if matches!(op, RangeOp::Exp) {
             if let (Some(old_lhs_range), Some(rhs_range)) =
-                (lhs_cvar.range(self), new_rhs.range(self))
+                (lhs_cvar.latest_version(self).range(self), new_rhs.range(self))
             {
                 let zero = Elem::from(Concrete::from(U256::zero()));
                 let zero_range = SolcRange {

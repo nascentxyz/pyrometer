@@ -79,7 +79,6 @@ pub trait Literal: AnalyzerLike + Sized {
             let mut max = 0;
             if let Ok(hex_val) = hex::decode(&hexes[0].hex) {
                 hex_val.iter().enumerate().for_each(|(i, hex_byte)| {
-                    println!("hex byte: {:?}", hex_byte);
                     if *hex_byte != 0x00u8 {
                         max = i as u8;
                     }

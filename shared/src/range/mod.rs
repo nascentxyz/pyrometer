@@ -571,11 +571,24 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     }
 
     fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl AnalyzerLike) -> bool {
+        // println!(
+        //     "min: {:?}, other_min: {:?}, ord: {:?}",
+        //     self.evaled_range_min(analyzer),
+        //     other.minimize(analyzer),
+        //     self.evaled_range_min(analyzer).range_ord(&other.minimize(analyzer))
+        // );
         let min_contains = matches!(
             self.evaled_range_min(analyzer)
                 .range_ord(&other.minimize(analyzer)),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
+
+        // println!(
+        //     "max: {:?}, other_max: {:?}, ord: {:?}",
+        //     self.evaled_range_max(analyzer),
+        //     other.maximize(analyzer),
+        //     self.evaled_range_max(analyzer).range_ord(&other.maximize(analyzer))
+        // );
 
         let max_contains = matches!(
             self.evaled_range_max(analyzer)

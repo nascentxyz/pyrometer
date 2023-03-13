@@ -1116,6 +1116,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     loc: other.loc,
                 })))
             }
+            (None, None) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
             e => panic!("here0: {e:?}"),
         }
     }

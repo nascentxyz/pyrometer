@@ -215,10 +215,13 @@ impl Concrete {
                         let mask = if size == 32 {
                             U256::MAX
                         } else {
-                            U256::from(2).pow((size as u16 * 8).into()) - 1
+                            let v = U256::from(2).pow((size as u16 * 8).into()) - 1;
+                            v << v.leading_zeros()
                         };
 
-                        let h = H256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
+                        // let h = H256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
+                        let mut h = H256::default();
+                        (val & mask).to_big_endian(&mut h.0);
                         Some(Concrete::Bytes(size, h))
                     }
                     _ => None
