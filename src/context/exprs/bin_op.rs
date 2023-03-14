@@ -187,270 +187,272 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
 
 
         // if lhs_cvar.is_symbolic(self) && new_rhs.is_symbolic(self) {
-        match op {
-            RangeOp::Div | RangeOp::Mod => {
-                if new_rhs.is_const(self) {
-                    if new_rhs.evaled_range_min(self).expect("No range?").range_eq(&Elem::from(Concrete::from(U256::zero()))) {
-                        ctx.kill(self, loc);
-                        return ExprRet::CtxKilled;
+        if !assign {
+            match op {
+                RangeOp::Div | RangeOp::Mod => {
+                    if new_rhs.is_const(self) {
+                        if new_rhs.evaled_range_min(self).expect("No range?").range_eq(&Elem::from(Concrete::from(U256::zero()))) {
+                            ctx.kill(self, loc);
+                            return ExprRet::CtxKilled;
+                        }
+                    } else if new_rhs.is_symbolic(self) {
+                        let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
+                        let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
+                        let zero_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            zero_node.into(),
+                            self,
+                        )));
+
+                        let tmp_var = ContextVar {
+                            loc: Some(loc),
+                            name: format!("tmp{}({} != 0)", ctx.new_tmp(self), tmp_rhs.name(self),),
+                            display_name: format!("({} != 0)", tmp_rhs.display_name(self),),
+                            storage: None,
+                            is_tmp: true,
+                            tmp_of: Some(TmpConstruction::new(
+                                new_lhs,
+                                RangeOp::Gt,
+                                Some(zero_node.into()),
+                            )),
+                            is_symbolic: true,
+                            ty: VarType::BuiltIn(
+                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                                SolcRange::from(Concrete::Bool(true)),
+                            ),
+                        };
+
+                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        ctx.add_ctx_dep(cvar, self);
+
+                        let range = tmp_rhs.range(self).expect("No range?");
+                        if range.min_is_negative(self) {
+                            let mut range_excls = range.range_exclusions();
+                            let excl = Elem::from(Concrete::from(I256::zero()));
+                            range_excls.push(excl);
+                            tmp_rhs.set_range_exclusions(self, range_excls);
+                        } else {
+                            // the new min is max(1, rhs.min)
+                            let min = Elem::max(
+                                tmp_rhs.range_min(self).expect("No range minimum?"),
+                                Elem::from(Concrete::from(U256::from(1))).cast(tmp_rhs.range_min(self).expect("No range minimum?")),
+                            );
+
+                            tmp_rhs.set_range_min(self, min);
+                            new_rhs = tmp_rhs;
+                        }
                     }
-                } else if new_rhs.is_symbolic(self) {
-                    let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
-                    let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                    let zero_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
-                        Loc::Implicit,
-                        zero_node.into(),
-                        self,
-                    )));
+                }
+                RangeOp::Sub => {
+                    let lhs_cvar = lhs_cvar.latest_version(self);
+                    if lhs_cvar.is_const(self) {
+                        if !lhs_cvar.is_int(self) {
+                            if let (Some(lmax), Some(rmin)) = (lhs_cvar.evaled_range_max(self), rhs_cvar.evaled_range_min(self)) {
+                                if matches!(lmax.range_ord(&rmin), Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)) {
+                                    ctx.kill(self, loc);
+                                    return ExprRet::CtxKilled;
+                                }
+                            }
+                        }
+                    } else if lhs_cvar.is_symbolic(self) {
+                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
+                        // the new min is max(lhs.min, rhs.min)
+                        let min = Elem::max(
+                            tmp_lhs.range_min(self).expect("No range minimum?"),
+                            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                        );
+                        tmp_lhs.set_range_min(self, min);
 
-                    let tmp_var = ContextVar {
-                        loc: Some(loc),
-                        name: format!("tmp{}({} != 0)", ctx.new_tmp(self), tmp_rhs.name(self),),
-                        display_name: format!("({} != 0)", tmp_rhs.display_name(self),),
-                        storage: None,
-                        is_tmp: true,
-                        tmp_of: Some(TmpConstruction::new(
-                            new_lhs,
-                            RangeOp::Gt,
-                            Some(zero_node.into()),
-                        )),
-                        is_symbolic: true,
-                        ty: VarType::BuiltIn(
-                            BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                            SolcRange::from(Concrete::Bool(true)),
-                        ),
-                    };
+                        let tmp_var = ContextVar {
+                            loc: Some(loc),
+                            name: format!(
+                                "tmp{}({} >= {})",
+                                ctx.new_tmp(self),
+                                tmp_lhs.name(self),
+                                new_rhs.name(self),
+                            ),
+                            display_name: format!(
+                                "({} >= {})",
+                                tmp_lhs.display_name(self),
+                                new_rhs.display_name(self),
+                            ),
+                            storage: None,
+                            is_tmp: true,
+                            tmp_of: Some(TmpConstruction::new(tmp_lhs, RangeOp::Gte, Some(new_rhs))),
+                            is_symbolic: true,
+                            ty: VarType::BuiltIn(
+                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                                SolcRange::from(Concrete::Bool(true)),
+                            ),
+                        };
 
-                    let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                    ctx.add_ctx_dep(cvar, self);
+                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        ctx.add_ctx_dep(cvar, self);
+                    }
+                }
+                RangeOp::Add => {
+                    let lhs_cvar = lhs_cvar.latest_version(self);
+                    if lhs_cvar.is_symbolic(self) {
+                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
 
-                    let range = tmp_rhs.range(self).expect("No range?");
-                    if range.min_is_negative(self) {
-                        let mut range_excls = range.range_exclusions();
-                        let excl = Elem::from(Concrete::from(I256::zero()));
-                        range_excls.push(excl);
-                        tmp_rhs.set_range_exclusions(self, range_excls);
-                    } else {
-                        // the new min is max(1, rhs.min)
+                        // the new max is min(lhs.max, (2**256 - rhs.min))
+                        let max = Elem::min(
+                            tmp_lhs.range_max(self).expect("No range max?"),
+                            Elem::from(Concrete::from(U256::MAX))
+                                - Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                        );
+
+                        tmp_lhs.set_range_max(self, max);
+
+                        let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
+                        let max_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            max_node.into(),
+                            self,
+                        )));
+
+                        let (_, tmp_rhs) = self
+                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)
+                            .expect_single();
+
+                        let tmp_var = ContextVar {
+                            loc: Some(loc),
+                            name: format!(
+                                "tmp{}({} <= 2**256 - 1 - {})",
+                                ctx.new_tmp(self),
+                                tmp_lhs.name(self),
+                                new_rhs.name(self),
+                            ),
+                            display_name: format!(
+                                "({} <= 2**256 - 1 - {})",
+                                tmp_lhs.display_name(self),
+                                new_rhs.display_name(self),
+                            ),
+                            storage: None,
+                            is_tmp: true,
+                            tmp_of: Some(TmpConstruction::new(
+                                tmp_lhs,
+                                RangeOp::Lte,
+                                Some(tmp_rhs.into()),
+                            )),
+                            is_symbolic: true,
+                            ty: VarType::BuiltIn(
+                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                                SolcRange::from(Concrete::Bool(true)),
+                            ),
+                        };
+
+                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        ctx.add_ctx_dep(cvar, self);
+                    }
+                }
+                RangeOp::Mul => {
+                    let lhs_cvar = lhs_cvar.latest_version(self);
+                    if lhs_cvar.is_symbolic(self) {
+                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
+
+                        // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
+                        let max = Elem::min(
+                            tmp_lhs.range_max(self).expect("No range max?"),
+                            Elem::from(Concrete::from(U256::MAX))
+                                / Elem::max(
+                                    Elem::from(Concrete::from(U256::from(1))),
+                                    Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                                ),
+                        );
+
+                        tmp_lhs.set_range_max(self, max);
+
+                        let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
+                        let max_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            max_node.into(),
+                            self,
+                        )));
+
+                        let (_, tmp_rhs) = self
+                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, false)
+                            .expect_single();
+
+                        let tmp_var = ContextVar {
+                            loc: Some(loc),
+                            name: format!(
+                                "tmp{}({} <= (2**256 - 1) / {})",
+                                ctx.new_tmp(self),
+                                tmp_lhs.name(self),
+                                new_rhs.name(self),
+                            ),
+                            display_name: format!(
+                                "({} <= (2**256 - 1) / {})",
+                                tmp_lhs.display_name(self),
+                                new_rhs.display_name(self),
+                            ),
+                            storage: None,
+                            is_tmp: true,
+                            tmp_of: Some(TmpConstruction::new(
+                                tmp_lhs,
+                                RangeOp::Lte,
+                                Some(tmp_rhs.into()),
+                            )),
+                            is_symbolic: true,
+                            ty: VarType::BuiltIn(
+                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                                SolcRange::from(Concrete::Bool(true)),
+                            ),
+                        };
+
+                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        ctx.add_ctx_dep(cvar, self);
+                    }
+                }
+                RangeOp::Exp => {
+                    if new_rhs.is_const(self) {
+                        if matches!(new_rhs.evaled_range_min(self).expect("No range").range_ord(&Elem::from(Concrete::from(U256::zero()))), Some(std::cmp::Ordering::Less)) {
+                            ctx.kill(self, loc);
+                            return ExprRet::CtxKilled;
+                        }
+                    } else if new_rhs.is_symbolic(self) {
+                        let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
+                        // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
                             tmp_rhs.range_min(self).expect("No range minimum?"),
-                            Elem::from(Concrete::from(U256::from(1))).cast(tmp_rhs.range_min(self).expect("No range minimum?")),
+                            Elem::from(Concrete::from(U256::zero())),
                         );
 
                         tmp_rhs.set_range_min(self, min);
+
+                        let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
+                        let zero_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            zero_node.into(),
+                            self,
+                        )));
+
+                        let tmp_var = ContextVar {
+                            loc: Some(loc),
+                            name: format!("tmp{}({} >= 0)", ctx.new_tmp(self), tmp_rhs.name(self),),
+                            display_name: format!("({} >= 0)", tmp_rhs.display_name(self),),
+                            storage: None,
+                            is_tmp: true,
+                            tmp_of: Some(TmpConstruction::new(
+                                tmp_rhs,
+                                RangeOp::Gte,
+                                Some(zero_node.into()),
+                            )),
+                            is_symbolic: true,
+                            ty: VarType::BuiltIn(
+                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                                SolcRange::from(Concrete::Bool(true)),
+                            ),
+                        };
+
+                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        ctx.add_ctx_dep(cvar, self);
                         new_rhs = tmp_rhs;
                     }
                 }
+                _ => {}
             }
-            RangeOp::Sub => {
-                let lhs_cvar = lhs_cvar.latest_version(self);
-                if lhs_cvar.is_const(self) {
-                    if !lhs_cvar.is_int(self) {
-                        if let (Some(lmax), Some(rmin)) = (lhs_cvar.evaled_range_max(self), rhs_cvar.evaled_range_min(self)) {
-                            if matches!(lmax.range_ord(&rmin), Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)) {
-                                ctx.kill(self, loc);
-                                return ExprRet::CtxKilled;
-                            }
-                        }
-                    }
-                } else if lhs_cvar.is_symbolic(self) {
-                    let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
-                    // the new min is max(lhs.min, rhs.min)
-                    let min = Elem::max(
-                        tmp_lhs.range_min(self).expect("No range minimum?"),
-                        Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
-                    );
-                    tmp_lhs.set_range_min(self, min);
-
-                    let tmp_var = ContextVar {
-                        loc: Some(loc),
-                        name: format!(
-                            "tmp{}({} >= {})",
-                            ctx.new_tmp(self),
-                            tmp_lhs.name(self),
-                            new_rhs.name(self),
-                        ),
-                        display_name: format!(
-                            "({} >= {})",
-                            tmp_lhs.display_name(self),
-                            new_rhs.display_name(self),
-                        ),
-                        storage: None,
-                        is_tmp: true,
-                        tmp_of: Some(TmpConstruction::new(tmp_lhs, RangeOp::Gte, Some(new_rhs))),
-                        is_symbolic: true,
-                        ty: VarType::BuiltIn(
-                            BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                            SolcRange::from(Concrete::Bool(true)),
-                        ),
-                    };
-
-                    let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                    ctx.add_ctx_dep(cvar, self);
-                }
-            }
-            RangeOp::Add => {
-                let lhs_cvar = lhs_cvar.latest_version(self);
-                if lhs_cvar.is_symbolic(self) {
-                    let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
-
-                    // the new max is min(lhs.max, (2**256 - rhs.min))
-                    let max = Elem::min(
-                        tmp_lhs.range_max(self).expect("No range max?"),
-                        Elem::from(Concrete::from(U256::MAX))
-                            - Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
-                    );
-
-                    tmp_lhs.set_range_max(self, max);
-
-                    let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
-                    let max_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
-                        Loc::Implicit,
-                        max_node.into(),
-                        self,
-                    )));
-
-                    let (_, tmp_rhs) = self
-                        .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)
-                        .expect_single();
-
-                    let tmp_var = ContextVar {
-                        loc: Some(loc),
-                        name: format!(
-                            "tmp{}({} <= 2**256 - 1 - {})",
-                            ctx.new_tmp(self),
-                            tmp_lhs.name(self),
-                            new_rhs.name(self),
-                        ),
-                        display_name: format!(
-                            "({} <= 2**256 - 1 - {})",
-                            tmp_lhs.display_name(self),
-                            new_rhs.display_name(self),
-                        ),
-                        storage: None,
-                        is_tmp: true,
-                        tmp_of: Some(TmpConstruction::new(
-                            tmp_lhs,
-                            RangeOp::Lte,
-                            Some(tmp_rhs.into()),
-                        )),
-                        is_symbolic: true,
-                        ty: VarType::BuiltIn(
-                            BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                            SolcRange::from(Concrete::Bool(true)),
-                        ),
-                    };
-
-                    let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                    ctx.add_ctx_dep(cvar, self);
-                }
-            }
-            RangeOp::Mul => {
-                let lhs_cvar = lhs_cvar.latest_version(self);
-                if lhs_cvar.is_symbolic(self) {
-                    let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
-
-                    // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
-                    let max = Elem::min(
-                        tmp_lhs.range_max(self).expect("No range max?"),
-                        Elem::from(Concrete::from(U256::MAX))
-                            / Elem::max(
-                                Elem::from(Concrete::from(U256::from(1))),
-                                Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
-                            ),
-                    );
-
-                    tmp_lhs.set_range_max(self, max);
-
-                    let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
-                    let max_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
-                        Loc::Implicit,
-                        max_node.into(),
-                        self,
-                    )));
-
-                    let (_, tmp_rhs) = self
-                        .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, false)
-                        .expect_single();
-
-                    let tmp_var = ContextVar {
-                        loc: Some(loc),
-                        name: format!(
-                            "tmp{}({} <= (2**256 - 1) / {})",
-                            ctx.new_tmp(self),
-                            tmp_lhs.name(self),
-                            new_rhs.name(self),
-                        ),
-                        display_name: format!(
-                            "({} <= (2**256 - 1) / {})",
-                            tmp_lhs.display_name(self),
-                            new_rhs.display_name(self),
-                        ),
-                        storage: None,
-                        is_tmp: true,
-                        tmp_of: Some(TmpConstruction::new(
-                            tmp_lhs,
-                            RangeOp::Lte,
-                            Some(tmp_rhs.into()),
-                        )),
-                        is_symbolic: true,
-                        ty: VarType::BuiltIn(
-                            BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                            SolcRange::from(Concrete::Bool(true)),
-                        ),
-                    };
-
-                    let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                    ctx.add_ctx_dep(cvar, self);
-                }
-            }
-            RangeOp::Exp => {
-                if new_rhs.is_const(self) {
-                    if matches!(new_rhs.evaled_range_min(self).expect("No range").range_ord(&Elem::from(Concrete::from(U256::zero()))), Some(std::cmp::Ordering::Less)) {
-                        ctx.kill(self, loc);
-                        return ExprRet::CtxKilled;
-                    }
-                } else if new_rhs.is_symbolic(self) {
-                    let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
-                    // the new min is max(lhs.min, rhs.min)
-                    let min = Elem::max(
-                        tmp_rhs.range_min(self).expect("No range minimum?"),
-                        Elem::from(Concrete::from(U256::zero())),
-                    );
-
-                    tmp_rhs.set_range_min(self, min);
-
-                    let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                    let zero_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
-                        Loc::Implicit,
-                        zero_node.into(),
-                        self,
-                    )));
-
-                    let tmp_var = ContextVar {
-                        loc: Some(loc),
-                        name: format!("tmp{}({} >= 0)", ctx.new_tmp(self), tmp_rhs.name(self),),
-                        display_name: format!("({} >= 0)", tmp_rhs.display_name(self),),
-                        storage: None,
-                        is_tmp: true,
-                        tmp_of: Some(TmpConstruction::new(
-                            tmp_rhs,
-                            RangeOp::Gte,
-                            Some(zero_node.into()),
-                        )),
-                        is_symbolic: true,
-                        ty: VarType::BuiltIn(
-                            BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                            SolcRange::from(Concrete::Bool(true)),
-                        ),
-                    };
-
-                    let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                    ctx.add_ctx_dep(cvar, self);
-                    new_rhs = tmp_rhs;
-                }
-            }
-            _ => {}
         }
 
         let lhs_range = if let Some(lhs_range) = new_lhs.range(self) {

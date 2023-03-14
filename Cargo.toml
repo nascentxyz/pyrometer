@@ -9,6 +9,6 @@ edition = "2021"
 petgraph = "0.6.2"
 solang-parser = { version = "0.2.1", features = ["pt-serde"] }
 ethers-core = "*"
-ariadne = "0.1.5"
+ariadne = "0.2.0"
 shared = { path = "./shared" }
 hex = "0.4.3"

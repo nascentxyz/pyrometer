@@ -77,6 +77,10 @@ impl ContextVarNode {
         &self.underlying(analyzer).storage
     }
 
+    pub fn is_storage(&self, analyzer: &impl GraphLike) -> bool {
+        matches!(self.underlying(analyzer).storage, Some(StorageLocation::Storage(..)))
+    }
+
     pub fn ty<'a>(&self, analyzer: &'a impl GraphLike) -> &'a VarType {
         &self.underlying(analyzer).ty
     }

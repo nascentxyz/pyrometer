@@ -167,21 +167,8 @@ impl ReportDisplay for BoundAnalysis {
                 let mut range_excl_str = range_excl
                     .iter()
                     .map(|range| {
-                        let min = if self.report_config.eval_bounds {
-                            range.to_range_string(false, analyzer).s
-                        } else if self.report_config.simplify_bounds {
-                            range.to_range_string(false, analyzer).s
-                        } else {
-                            range.to_range_string(false, analyzer).s
-                        };
-
-                        let max = if self.report_config.eval_bounds {
-                            range.to_range_string(true, analyzer).s
-                        } else if self.report_config.simplify_bounds {
-                            range.to_range_string(true, analyzer).s
-                        } else {
-                            range.to_range_string(true, analyzer).s
-                        };
+                        let min = range.to_range_string(false, analyzer).s;
+                        let max = range.to_range_string(true, analyzer).s;
 
                         if min == max {
                             min
@@ -520,7 +507,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         } else {
             BoundAnalysis {
                 ctx,
-                var_name,
+                var_name: var_name.clone(),
                 var_display_name: cvar.display_name(self),
                 func_span,
                 var_def: (
@@ -540,18 +527,21 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
         if let Some(curr_range) = curr.range(self) {
             let mut cr_min = curr_range.evaled_range_min(self);
             let mut cr_max = curr_range.evaled_range_max(self);
+            let mut cr_excl = curr_range.range_exclusions();
             while let Some(next) = curr.next_version(self) {
                 if let Some(next_range) = next.range(self) {
                     let nr_min = next_range.evaled_range_min(self);
                     let nr_max = next_range.evaled_range_max(self);
+                    let nr_excl = next_range.exclusions.clone();
 
                     if report_config.show_all_lines
                         || nr_min != cr_min
                         || nr_max != cr_max
-                        || curr_range.exclusions.len() != next_range.exclusions.len()
+                        || nr_excl != cr_excl
                     {
                         cr_min = nr_min;
                         cr_max = nr_max;
+                        cr_excl = nr_excl;
                         ba.bound_changes.push((
                             LocStrSpan::new(file_mapping, next.loc(self)),
                             next_range.clone(),
@@ -618,9 +608,11 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                     .with_color(Color::Red),
             );
         }
+
         let mut reports = vec![report.finish()];
 
         let mut called_fns = BTreeSet::new();
+        let mut added_fn_calls = BTreeSet::new();
 
         reports.extend(
             self.vars_by_ctx
@@ -628,7 +620,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                 .map(|(ctx, analyses)| {
                     // sort by display name instead of normal name
                     let deps = ctx.ctx_deps(analyzer);
-                    let deps = deps.iter().map(|(_, var)| (var.display_name(analyzer), var)).collect::<BTreeMap<_,_>>();
+                    let deps = deps.values().map(|var| (var.display_name(analyzer), var)).collect::<BTreeMap<_,_>>();
                     // create the bound strings
                     let bounds_string = deps
                         .iter()
@@ -722,6 +714,21 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         );
                     }
 
+                    if !added_fn_calls.contains(ctx) {
+                        ctx.underlying(analyzer).children.iter().for_each(|child| {
+                            report.add_label(
+                                Label::new(LocStrSpan::new(
+                                    self.file_mapping,
+                                    child.underlying(analyzer).loc,
+                                ))
+                                .with_color(Color::Fixed(140))
+                                .with_order(5)
+                            );    
+                        });
+
+                        added_fn_calls.insert(ctx);
+                    }
+
                     ctx.return_nodes(analyzer)
                         .into_iter()
                         .for_each(|(loc, var)| {
@@ -791,7 +798,6 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                 );
                                 called_fns.insert(fn_name);
                             }
-                            
                         }
 
                         if let Some(ext_fn_call) = child.underlying(analyzer).ext_fn_call {

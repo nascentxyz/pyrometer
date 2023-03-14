@@ -127,8 +127,9 @@ pub enum Edge {
     Func,
     FunctionParam,
     FunctionReturn,
+    FuncModifier(usize),
+    Modifier,
     FallbackFunc,
     Constructor,
     ReceiveFunc,
-    Modifier,
 }

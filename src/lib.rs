@@ -190,6 +190,7 @@ impl Analyzer {
                 funcs.iter().for_each(|func| {
                     // add params now that parsing is done
                     func.set_params_and_ret(self);
+                    func.set_modifiers(self);
                     let name = func.name(self);
                     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
                         let underlying = func.underlying(self).clone();
@@ -571,6 +572,7 @@ contract Storage {
                 show_consts: true,
                 show_subctxs: true,
                 show_initial_bounds: true,
+                show_all_lines: true,
             };
             let ctx = ContextNode::from(context);
 

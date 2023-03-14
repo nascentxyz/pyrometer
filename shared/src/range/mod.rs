@@ -467,14 +467,12 @@ impl Range<Concrete> for SolcRange {
     fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
         self.range_max().maximize(analyzer)
     }
-
     fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
         self.range_min().simplify_minimize(analyzer)
     }
     fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
         self.range_max().simplify_maximize(analyzer)
     }
-
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
         self.exclusions.clone()
     }

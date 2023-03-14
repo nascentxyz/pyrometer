@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use crate::FunctionParamNode;
 use crate::ContractNode;
 use crate::GraphLike;
 use petgraph::{Direction, visit::EdgeRef};
@@ -43,9 +45,39 @@ pub enum ContextEdge {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ModifierState {
+    pub entry_call: bool,
+    pub num: usize,
+    pub loc: Loc,
+    pub parent_fn: FunctionNode,
+    pub parent_ctx: ContextNode,
+    pub inputs: Vec<ContextVarNode>,
+    pub params: Vec<FunctionParamNode>,
+    pub renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+}
+
+impl ModifierState {
+    pub fn new(
+        entry_call: bool,
+        num: usize,
+        loc: Loc,
+        parent_fn: FunctionNode,
+        parent_ctx: ContextNode,
+        inputs: Vec<ContextVarNode>,
+        params: Vec<FunctionParamNode>
+    ) -> Self {
+        Self {
+            entry_call, num, loc, parent_fn, parent_ctx, inputs, params, renamed_inputs: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The function associated with this context
     pub parent_fn: FunctionNode,
+    /// Whether this function call is actually a modifier call
+    pub modifier_state: Option<ModifierState>,
     /// An optional parent context (i.e. this context is a fork or subcontext of another previous context)
     pub parent_ctx: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
@@ -90,6 +122,7 @@ impl Context {
             children: vec![],
             ret: vec![],
             loc,
+            modifier_state: None,
         }
     }
 
@@ -101,6 +134,7 @@ impl Context {
         fn_call: Option<FunctionNode>,
         fn_ext: bool,
         analyzer: &impl AnalyzerLike,
+        modifier_state: Option<ModifierState>,
     ) -> Self {
         let (ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
             if fn_ext {
@@ -134,6 +168,7 @@ impl Context {
             tmp_var_ctr: parent_ctx.underlying(analyzer).tmp_var_ctr,
             ret: vec![],
             loc,
+            modifier_state,
         }
     }
 

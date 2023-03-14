@@ -19,6 +19,11 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
             let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);
             ExprRet::Single((ctx, var.0.into()))
+        } else if let Some(env) = self.env_variable(ident, ctx) {
+            env
+        } else if ident.name == "_" {
+            // if we've reached this point, we are evaluating a modifier and it was the "_" keyword
+            ExprRet::Multi(vec![])
         } else if let Some(parent_ctx) = ctx.underlying(self).parent_ctx {
             // check if we can inherit it
             let (_pctx, cvar) = self.variable(ident, parent_ctx).expect_single();
@@ -35,8 +40,9 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
             let mut var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
                 Some(v) => v,
                 None => panic!(
-                    "Could not create context variable from user type: {:?}",
-                    self.node(*idx)
+                    "Could not create context variable from user type: {:?}, {:#?}",
+                    self.node(*idx),
+                    self.user_types()
                 ),
             };
 
@@ -70,8 +76,6 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
                 self.add_edge(output_node, func_node, Edge::FunctionReturn);
             });
             ExprRet::Single((ctx, func_node))
-        } else if let Some(env) = self.env_variable(ident, ctx) {
-            env
         } else {
             let node = self.add_node(Node::Unresolved(ident.clone()));
             self.user_types_mut().insert(ident.name.clone(), node);

@@ -9,4 +9,7 @@ edition = "2021"
 clap = { version = "4.1.4", features = ["derive"] }
 pyrometer = { path = "../" }
 shared = { path = "../shared" }
-ariadne = "0.1.5"
+ariadne = "0.2.0"
+
+[profile.release]
+debug = true
