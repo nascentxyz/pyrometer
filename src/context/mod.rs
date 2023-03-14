@@ -833,11 +833,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 rhs_cvar.cast_from(&lhs_cvar, self);
-                println!(
-                    "HERE {:?}, {:?}",
-                    self.node(NodeIdx::from(rhs_cvar.0)),
-                    rhs_cvar.range(self)
-                );
                 self.assign(loc, lhs_cvar, rhs_cvar, *rhs_ctx)
             }
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {

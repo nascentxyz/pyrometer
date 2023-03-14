@@ -14,8 +14,8 @@
         - [ ] Considering constructor
         - [ ] Considering non-constructor initializer
     - [ ] Functions
-        - [ ] Call modifier at start of function analysis
-        - [ ] Call modifiers when calling another function from within a function
+        - [x] Call modifier at start of function analysis
+        - [x] Call modifiers when calling another function from within a function
     - [ ] Considering `unchecked` math
         - [ ] Keep uncheckedness for the entire block
         - [ ] Pass uncheckedness into `bin_op`
