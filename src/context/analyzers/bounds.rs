@@ -7,7 +7,7 @@ use shared::{
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
 use solang_parser::pt::{CodeLocation, StorageLocation};
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 pub struct BoundAnalysis {
@@ -173,13 +173,13 @@ impl ReportDisplay for BoundAnalysis {
                         if min == max {
                             min
                         } else {
-                            format!("[ {}, {} ]", min, max)
+                            format!("[ {min}, {max} ]")
                         }
                     })
                     .collect::<Vec<_>>()
                     .join(", ");
                 range_excl_str = if !range_excl_str.is_empty() {
-                    format!("&& ∉ {{{}}}", range_excl_str)
+                    format!("&& ∉ {{{range_excl_str}}}")
                         .fg(Color::Red)
                         .to_string()
                 } else {
@@ -269,13 +269,13 @@ impl ReportDisplay for BoundAnalysis {
                             if min == max {
                                 min
                             } else {
-                                format!("[ {}, {} ]", min, max)
+                                format!("[ {min}, {max} ]")
                             }
                         })
                         .collect::<Vec<_>>()
                         .join(", ");
                     range_excl_str = if !range_excl_str.is_empty() {
-                        format!("&& ∉ {{{}}}", range_excl_str)
+                        format!("&& ∉ {{{range_excl_str}}}")
                             .fg(Color::Red)
                             .to_string()
                     } else {
@@ -501,13 +501,13 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             new_ba.ctx = ctx;
             new_ba.func_span = func_span;
             new_ba.ctx_killed = ctx
-                    .killed_loc(self)
-                    .map(|loc| LocStrSpan::new(file_mapping, loc));
+                .killed_loc(self)
+                .map(|loc| LocStrSpan::new(file_mapping, loc));
             new_ba
         } else {
             BoundAnalysis {
                 ctx,
-                var_name: var_name.clone(),
+                var_name,
                 var_display_name: cvar.display_name(self),
                 func_span,
                 var_def: (
@@ -620,7 +620,10 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                 .map(|(ctx, analyses)| {
                     // sort by display name instead of normal name
                     let deps = ctx.ctx_deps(analyzer);
-                    let deps = deps.values().map(|var| (var.display_name(analyzer), var)).collect::<BTreeMap<_,_>>();
+                    let deps = deps
+                        .values()
+                        .map(|var| (var.display_name(analyzer), var))
+                        .collect::<BTreeMap<_, _>>();
                     // create the bound strings
                     let bounds_string = deps
                         .iter()
@@ -722,8 +725,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     child.underlying(analyzer).loc,
                                 ))
                                 .with_color(Color::Fixed(140))
-                                .with_order(5)
-                            );    
+                                .with_order(5),
+                            );
                         });
 
                         added_fn_calls.insert(ctx);
@@ -733,7 +736,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         .into_iter()
                         .for_each(|(loc, var)| {
                             if let Some(range) = var.range(analyzer) {
-                                let min = range.evaled_range_min(analyzer)
+                                let min = range
+                                    .evaled_range_min(analyzer)
                                     .to_range_string(false, analyzer)
                                     .s;
                                 let max = range
@@ -827,7 +831,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                             .into_iter()
                             .for_each(|(loc, var)| {
                                 if let Some(range) = var.range(analyzer) {
-                                    let min = range.evaled_range_min(analyzer)
+                                    let min = range
+                                        .evaled_range_min(analyzer)
                                         .to_range_string(false, analyzer)
                                         .s;
                                     let max = range
@@ -837,7 +842,11 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     let r_str = if min == max {
                                         format!(" == {}", min.fg(MAX_COLOR))
                                     } else {
-                                        format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR),)
+                                        format!(
+                                            " ∈ [ {}, {} ]",
+                                            min.fg(MIN_COLOR),
+                                            max.fg(MAX_COLOR),
+                                        )
                                     };
                                     report.add_label(
                                         Label::new(LocStrSpan::new(self.file_mapping, loc))

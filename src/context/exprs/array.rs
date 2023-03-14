@@ -91,7 +91,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                     ExprRet::Single((ctx, idx_node))
                 }
             }
-            e => panic!("Expected single expr evaluation of index expression, but was: {:?}. This is a bug. Please report it at github.com/nascentxyz/pyrometer.", e),
+            e => panic!("Expected single expr evaluation of index expression, but was: {e:?}. This is a bug. Please report it at github.com/nascentxyz/pyrometer."),
         }
     }
 }

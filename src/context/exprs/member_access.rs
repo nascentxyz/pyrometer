@@ -487,7 +487,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             let c = Concrete::from(max);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, node, self);
-                            var.name = format!("int{}.max", size);
+                            var.name = format!("int{size}.max");
                             var.display_name = var.name.clone();
                             var.is_tmp = true;
                             var.is_symbolic = false;
@@ -499,14 +499,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             let c = Concrete::from(min);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, node, self);
-                            var.name = format!("int{}.min", size);
+                            var.name = format!("int{size}.min");
                             var.display_name = var.name.clone();
                             var.is_tmp = true;
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         }
-                        e => panic!("Unknown type attribute on int{}: {:?}", size, e),
+                        e => panic!("Unknown type attribute on int{size}: {e:?}"),
                     }
                 }
                 Builtin::Uint(size) => {
@@ -521,7 +521,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             let c = Concrete::from(max);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, node, self);
-                            var.name = format!("int{}.max", size);
+                            var.name = format!("int{size}.max");
                             var.display_name = var.name.clone();
                             var.is_tmp = true;
                             var.is_symbolic = false;
@@ -534,7 +534,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             let c = Concrete::from(min);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, node, self);
-                            var.name = format!("int{}.min", size);
+                            var.name = format!("int{size}.min");
                             var.display_name = var.name.clone();
                             var.is_tmp = true;
                             var.is_symbolic = false;
@@ -542,7 +542,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                             return ExprRet::Single((ctx, cvar));
                         }
-                        e => panic!("Unknown type attribute on int{}: {:?}", size, e),
+                        e => panic!("Unknown type attribute on int{size}: {e:?}"),
                     }
                 }
             },

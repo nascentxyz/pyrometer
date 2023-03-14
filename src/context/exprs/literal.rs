@@ -36,7 +36,7 @@ pub trait Literal: AnalyzerLike + Sized {
         let concrete_node = if negative {
             let val = if val == U256::from(2).pow(255.into()) {
                 // no need to set upper bit
-                I256::from_raw(val)   
+                I256::from_raw(val)
             } else {
                 I256::from(-1i32) * I256::from_raw(val)
             };

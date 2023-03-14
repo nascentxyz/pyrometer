@@ -15,11 +15,11 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
         ctx: ContextNode,
     ) {
         let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None
+            ctx, loc, true, None, false, self, None,
         ))));
         ctx.add_fork(true_subctx, self);
         let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None
+            ctx, loc, true, None, false, self, None,
         ))));
         ctx.add_fork(false_subctx, self);
         let ctx_fork = self.add_node(Node::ContextFork);

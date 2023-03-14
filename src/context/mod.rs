@@ -1,12 +1,11 @@
-
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphLike;
 use shared::context::*;
 
 use shared::range::elem_ty::Dynamic;
 
+use shared::range::elem_ty::Elem;
 use shared::range::Range;
-use shared::range::{elem_ty::Elem};
 use solang_parser::pt::VariableDeclaration;
 
 use crate::VarType;
@@ -159,7 +158,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         );
                         let ctx_node = self.add_node(Node::Context(ctx));
                         self.add_edge(ctx_node, parent, Edge::Context(ContextEdge::Context));
-                        
+
                         ctx_node
                     }
                     Node::Context(_) => {
@@ -181,7 +180,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 };
 
                 // optionally add named input and named outputs into context
-                let (params, inputs): (Vec<_>, Vec<_>) = self.graph()
+                let (params, inputs): (Vec<_>, Vec<_>) = self
+                    .graph()
                     .edges_directed(parent.into(), Direction::Incoming)
                     .filter(|edge| *edge.weight() == Edge::FunctionParam)
                     .map(|edge| FunctionParamNode::from(edge.source()))
@@ -203,7 +203,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         } else {
                             None
                         }
-                    }).unzip();
+                    })
+                    .unzip();
 
                 self.graph()
                     .edges_directed(parent.into(), Direction::Incoming)
@@ -412,8 +413,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_paths: Option<&ExprRet>,
     ) {
         match (lhs_paths, rhs_paths) {
-            (ExprRet::CtxKilled, _) => {},
-            (_, Some(ExprRet::CtxKilled)) => {},
+            (ExprRet::CtxKilled, _) => {}
+            (_, Some(ExprRet::CtxKilled)) => {}
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);

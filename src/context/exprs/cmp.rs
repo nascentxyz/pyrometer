@@ -1,5 +1,5 @@
-use shared::range::elem_ty::Dynamic;
 use crate::{ContextBuilder, ExprRet};
+use shared::range::elem_ty::Dynamic;
 use shared::{
     analyzer::AnalyzerLike,
     context::*,
@@ -76,23 +76,13 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         rhs_paths: &ExprRet,
     ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
-            (ExprRet::SingleLiteral((ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+            (ExprRet::SingleLiteral((_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
                 ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self);
-                self.cmp_inner(
-                    loc,
-                    &ExprRet::Single((*rhs_ctx, *rhs)),
-                    op,
-                    rhs_paths
-                )
+                self.cmp_inner(loc, &ExprRet::Single((*rhs_ctx, *rhs)), op, rhs_paths)
             }
-            (ExprRet::Single((ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
+            (ExprRet::Single((_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
-                self.cmp_inner(
-                    loc,
-                    lhs_paths,
-                    op,
-                    &ExprRet::Single((*rhs_ctx, *rhs))
-                )
+                self.cmp_inner(loc, lhs_paths, op, &ExprRet::Single((*rhs_ctx, *rhs)))
             }
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
@@ -104,10 +94,13 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                         rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))),
                     });
 
-                    let exclusions = lhs_cvar.range(self).expect("No lhs rnage").range_exclusions();
+                    let exclusions = lhs_cvar
+                        .range(self)
+                        .expect("No lhs rnage")
+                        .range_exclusions();
                     SolcRange {
                         min: elem.clone(),
-                        max: elem.clone(),
+                        max: elem,
                         exclusions,
                     }
                 };

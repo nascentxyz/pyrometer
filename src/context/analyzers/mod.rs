@@ -129,7 +129,7 @@ impl ReportConfig {
             show_consts,
             show_subctxs,
             show_initial_bounds,
-            show_all_lines
+            show_all_lines,
         }
     }
 }
