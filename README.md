@@ -1,8 +1,9 @@
 <img width="100%" src="pyro.jpg">
 
-[tg-badge]: https://img.shields.io/endpoint?color=neon&logo=telegram&label=chat&style=flat-square&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fpyrometer
-[tg-url]: https://t.me/pyrometer
 # 🔥🔫 Pyrometer 🔥🔫
+
+[tg-url]: https://t.me/pyrometer
+
 Pyrometer is a work-in-progress security tool currently in _ALPHA_.
 
 In a lot of ways, it is similar to a compiler - just without the lexer and parser (those are handled by `solang`) nor the actual bytecode generation. It replaces that bytecode generation with a method of calculating bounds on variables. Effectively, it is a mix between symbolic execution, abstract interpretation, and static analysis - it takes ideas from each and applies them with an *engineering first* mindset to create an effective tool (and avoid nerdsnipes by academic papers).

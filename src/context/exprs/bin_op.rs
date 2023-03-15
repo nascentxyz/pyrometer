@@ -199,7 +199,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                             return ExprRet::CtxKilled;
                         }
                     } else if new_rhs.is_symbolic(self) {
-                        println!("lhs: {}, op: {}, rhs: {:?}", lhs_cvar.display_name(self), op.to_string(), new_rhs.display_name(self));
+                        println!(
+                            "lhs: {}, op: {}, rhs: {:?}",
+                            lhs_cvar.display_name(self),
+                            op.to_string(),
+                            new_rhs.display_name(self)
+                        );
                         let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx);
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let zero_node = self.add_node(Node::ContextVar(

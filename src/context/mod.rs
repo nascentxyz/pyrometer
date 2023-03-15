@@ -1,8 +1,8 @@
-use shared::range::SolcRange;
 use ethers_core::types::U256;
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphLike;
 use shared::context::*;
+use shared::range::SolcRange;
 
 use shared::range::elem_ty::Dynamic;
 
@@ -389,19 +389,29 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 let adjusts = c.post_statement_range_adjs.clone();
                 adjusts.into_iter().for_each(|(var, loc, increment)| {
                     let one_node = self.add_node(Node::Concrete(Concrete::from(U256::from(1))));
-                    let one_node = self.add_node(Node::ContextVar(
-                        ContextVar::new_from_concrete(Loc::Implicit, one_node.into(), self),
-                    ));
-                    let (_, _var) = self.op(
-                        loc,
-                        var.latest_version(self),
+                    let one_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
+                        Loc::Implicit,
                         one_node.into(),
-                        parent.into().into(),
-                        if increment { RangeOp::Add } else { RangeOp::Sub },
-                        true,
-                    ).expect_single();
+                        self,
+                    )));
+                    let (_, _var) = self
+                        .op(
+                            loc,
+                            var.latest_version(self),
+                            one_node.into(),
+                            parent.into().into(),
+                            if increment {
+                                RangeOp::Add
+                            } else {
+                                RangeOp::Sub
+                            },
+                            true,
+                        )
+                        .expect_single();
                 });
-                ContextNode::from(parent.into()).underlying_mut(self).post_statement_range_adjs = vec![];
+                ContextNode::from(parent.into())
+                    .underlying_mut(self)
+                    .post_statement_range_adjs = vec![];
             }
         }
     }
@@ -410,14 +420,26 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         match paths {
             ExprRet::CtxKilled => {}
             ExprRet::Single((ctx, expr)) | ExprRet::SingleLiteral((ctx, expr)) => {
-                self.add_edge(ContextVarNode::from(*expr).latest_version(self), *ctx, Edge::Context(ContextEdge::Return));
+                self.add_edge(
+                    ContextVarNode::from(*expr).latest_version(self),
+                    *ctx,
+                    Edge::Context(ContextEdge::Return),
+                );
                 ctx.add_return_node(*loc, ContextVarNode::from(*expr).latest_version(self), self);
             }
             ExprRet::Multi(rets) => {
                 rets.iter().for_each(|expr_ret| {
                     let (ctx, expr) = expr_ret.expect_single();
-                    self.add_edge(ContextVarNode::from(expr).latest_version(self), ctx, Edge::Context(ContextEdge::Return));
-                    ctx.add_return_node(*loc, ContextVarNode::from(expr).latest_version(self), self);
+                    self.add_edge(
+                        ContextVarNode::from(expr).latest_version(self),
+                        ctx,
+                        Edge::Context(ContextEdge::Return),
+                    );
+                    ctx.add_return_node(
+                        *loc,
+                        ContextVarNode::from(expr).latest_version(self),
+                        self,
+                    );
                 });
             }
             ExprRet::Fork(world1, world2) => {
@@ -811,19 +833,19 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             PreIncrement(loc, expr) => {
                 let resp = self.parse_ctx_expr(expr, ctx);
                 self.match_in_de_crement(true, true, *loc, &resp)
-            },
-            PostIncrement(loc, expr)  => {
+            }
+            PostIncrement(loc, expr) => {
                 let resp = self.parse_ctx_expr(expr, ctx);
                 self.match_in_de_crement(false, true, *loc, &resp)
-            },
-            PreDecrement(loc, expr)  => {
+            }
+            PreDecrement(loc, expr) => {
                 let resp = self.parse_ctx_expr(expr, ctx);
                 self.match_in_de_crement(true, false, *loc, &resp)
-            },
+            }
             PostDecrement(loc, expr) => {
                 let resp = self.parse_ctx_expr(expr, ctx);
                 self.match_in_de_crement(false, false, *loc, &resp)
-            },
+            }
 
             // Misc.
             Variable(ident) => self.variable(ident, ctx),
@@ -870,7 +892,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                             new_cvar.set_range_max(self, r.max + one);
                             ExprRet::Single((*ctx, new_cvar.into()))
                         } else {
-                            ctx.underlying_mut(self).post_statement_range_adjs.push((cvar, loc, increment));
+                            ctx.underlying_mut(self)
+                                .post_statement_range_adjs
+                                .push((cvar, loc, increment));
                             ExprRet::Single((*ctx, cvar.into()))
                         }
                     } else if pre {
@@ -879,20 +903,25 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         new_cvar.set_range_max(self, r.max - one);
                         ExprRet::Single((*ctx, new_cvar.into()))
                     } else {
-                        ctx.underlying_mut(self).post_statement_range_adjs.push((cvar, loc, increment));
+                        ctx.underlying_mut(self)
+                            .post_statement_range_adjs
+                            .push((cvar, loc, increment));
                         ExprRet::Single((*ctx, cvar.into()))
                     }
                 } else {
                     panic!("No range in post-increment")
                 }
             }
-            ExprRet::Multi(inner) => ExprRet::Multi(inner.iter().map(|expr| self.match_in_de_crement(pre, increment, loc, expr)).collect()),
-            ExprRet::Fork(w1, w2) => {
-                ExprRet::Fork(
-                    Box::new(self.match_in_de_crement(pre, increment, loc, w1)),
-                    Box::new(self.match_in_de_crement(pre, increment, loc, w2)),
-                )
-            }
+            ExprRet::Multi(inner) => ExprRet::Multi(
+                inner
+                    .iter()
+                    .map(|expr| self.match_in_de_crement(pre, increment, loc, expr))
+                    .collect(),
+            ),
+            ExprRet::Fork(w1, w2) => ExprRet::Fork(
+                Box::new(self.match_in_de_crement(pre, increment, loc, w1)),
+                Box::new(self.match_in_de_crement(pre, increment, loc, w2)),
+            ),
         }
     }
 
