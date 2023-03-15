@@ -1,3 +1,11 @@
+function forks(uint256 x) public returns (uint256) {
+    if (x < 10) {
+        return 10;
+    } else {
+        return x;
+    }
+}
+
 // // pragma solidity 0.8.17;
 
 // // contract Storage {
@@ -69,28 +77,28 @@
 // // }
 
 
-contract MathBoi {
-    function hmmm(uint256 x, uint256 y, uint256 z) public returns (uint256) {
-        require(msg.sender != address(0));
-        require(y >= 1);
-        require(x < 1000000);
-        require(y < 1000000);
-        require(z < 1000000);
+// contract MathBoi {
+//     function hmmm(uint256 x, uint256 y, uint256 z) public returns (uint256) {
+//         require(msg.sender != address(0));
+//         require(y >= 1);
+//         require(x < 1000000);
+//         require(y < 1000000);
+//         require(z < 1000000);
 
-        require(x > 100);
-        require(y > 100);
-        require(z > 100);
+//         require(x > 100);
+//         require(y > 100);
+//         require(z > 100);
 
 
-        uint256 a = x * x;
-        uint256 b = x / y;
-        uint256 c = z * y;
+//         uint256 a = x * x;
+//         uint256 b = x / y;
+//         uint256 c = z * y;
 
-        require(c >= 1);
+//         require(c >= 1);
 
-        return a * b / c;
-    }
-}
+//         return a * b / c;
+//     }
+// }
 
 
 // contract AccessControl {

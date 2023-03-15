@@ -9,10 +9,9 @@
 
 Pyrometer is a work-in-progress security tool currently in _ALPHA_.
 
-In a lot of ways, it is similar to a compiler - just without the lexer and parser (those are handled by `solang`) nor the actual bytecode generation. It replaces that bytecode generation with a method of calculating bounds on variables. Effectively, it is a mix between symbolic execution, abstract interpretation, and static analysis - it takes ideas from each and applies them with an *engineering first* mindset to create an effective tool (and avoid nerdsnipes by academic papers).
+Effectively, Pyrometer is a mix of symbolic execution, abstract interpretation, and static analysis - we take ideas from each and apply them with an *engineering first* mindset to create an effective tool (and avoid nerdsnipes by academic papers) aiming to help both auditors and developers.
 
-Eventually, Pyrometer may be language agnostic. The code isn't currently entirely structured for this, but it has some of the bones to be able to support other EVM-targeting languages.
-
+Pyrometer may eventually be language agnostic, but for now it is targeting Solidity. The code isn't currently entirely structured for multi-language support, but it has some of the bones to be able to support other EVM-targeting languages.
 
 Here is an example output:
 
@@ -52,6 +51,10 @@ You will generally see a line underlined followed by the `∈` symbol followed b
 
 ` "x" ∈ [ 0, 10 ] && ∉ { 5 }`, you can read this as "x is in the range 0 to 10, excluding 5". Each solidity type has their own default bounds. If you see `"x" == 3`, `x` must be 3 at that point in the program.
 
+
+## Contributing
+Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop in the telegram (see badge above) to ask questions.
+
 ## TODO
 - [ ] General
     - [ ] Cleanup repo (remove unnecessary files, automate testing, etc.)
@@ -66,7 +69,7 @@ You will generally see a line underlined followed by the `∈` symbol followed b
     - [ ] Storage
         - [ ] Consider constructor
         - [ ] Consider non-constructor initializer
-    - [] Functions
+    - [ ] Functions
         - [x] Call modifier at start of function analysis
         - [x] Call modifiers when calling another function from within a function
         - [ ] Handle virtual/overriding
