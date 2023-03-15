@@ -3,7 +3,6 @@ use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphLike;
 use shared::context::*;
 
-
 use shared::range::elem_ty::Dynamic;
 
 use shared::range::elem_ty::Elem;
@@ -753,6 +752,31 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             NamedFunctionCall(_loc, _func_expr, _input_exprs) => todo!("Named function call"),
             FunctionCall(loc, func_expr, input_exprs) => {
                 match &**func_expr {
+                    MemberAccess(loc, _member_expr, _ident) => {
+                        let (_func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
+                            ExprRet::Single((ctx, idx)) => (ctx, idx),
+                            m @ ExprRet::Multi(_) => m.expect_single(),
+                            ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                            e => todo!("got fork in func call: {:?}", e),
+                        };
+
+                        let inputs = ExprRet::Multi(
+                            input_exprs
+                                .iter()
+                                .map(|expr| self.parse_ctx_expr(expr, ctx))
+                                .collect(),
+                        );
+
+                        self.func_call(
+                            ctx,
+                            *loc,
+                            &inputs,
+                            ContextVarNode::from(func_idx)
+                                .ty(self)
+                                .func_node(self)
+                                .expect(""),
+                        )
+                    }
                     Variable(ident) => {
                         // It is a function call, check if we have the ident in scope
                         let funcs = ctx.visible_funcs(self);

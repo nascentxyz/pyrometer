@@ -47,6 +47,12 @@ impl ContractNode {
             .name
     }
 
+    /// Tries to Get the name from the underlying node data for the [`Contract`]
+    pub fn maybe_name(&self, analyzer: &'_ impl GraphLike) -> Option<String> {
+        let ident = self.underlying(analyzer).name.clone()?;
+        Some(ident.name)
+    }
+
     /// Gets the sourcecode location from the underlying node data for the [`Contract`]
     pub fn loc(&self, analyzer: &'_ impl GraphLike) -> Loc {
         self.underlying(analyzer).loc

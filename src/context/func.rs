@@ -300,11 +300,12 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     } else {
                         panic!("input has fork - need to flatten")
                     }
+                } else {
+                    panic!("Length mismatch: {:?} {:?}", inputs, params);
                 }
             }
             _ => todo!("here"),
         }
-        ExprRet::CtxKilled
     }
 
     /// Checks if there are any modifiers and executes them prior to executing the function
@@ -367,8 +368,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         params: Vec<FunctionParamNode>,
         modifier_state: Option<ModifierState>,
     ) -> ExprRet {
-        // println!("executing inner: {}", func_node.name(self));
-
         let fn_ext = ctx.is_fn_ext(func_node, self);
         let subctx = if entry_call {
             ctx

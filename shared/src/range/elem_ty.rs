@@ -522,7 +522,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     		Self::ConcreteDyn(d) => d.filter_recursion(node_idx, old),
     		Self::Null => {},
     	}
-    	println!("filter recursion {:?}", self);
+    	// println!("filter recursion {:?}", self);
 	}
 
 	fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {

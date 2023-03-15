@@ -55,7 +55,6 @@ fn main() {
     let args = Args::parse();
     let path_str = args.path.to_string();
     let verbosity = args.verbosity;
-    println!("verbosity: {:?}", verbosity);
     let config = match verbosity {
         0 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -118,7 +117,7 @@ fn main() {
     let mut analyzer = Analyzer::default();
     let t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) = analyzer.parse(&sol);
-    let parse_time = t0.elapsed().as_millis();
+    let _parse_time = t0.elapsed().as_millis();
     all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
 
@@ -146,7 +145,7 @@ fn main() {
         .into_iter()
         .map(ContractNode::from)
         .collect::<Vec<_>>();
-    let t1 = std::time::Instant::now();
+    let _t1 = std::time::Instant::now();
     if args.contracts.is_empty() {
         let funcs = analyzer.search_children(entry, &Edge::Func);
         for func in funcs.into_iter() {
@@ -205,7 +204,7 @@ fn main() {
 
     args.write_query.iter().for_each(|query| {
         let split: Vec<&str> = query.split('.').collect();
-        println!("{:?}", split);
+        // println!("{:?}", split);
         if let Some(report) = analyzer.func_query(
             entry,
             &file_mapping,
@@ -224,9 +223,9 @@ fn main() {
         println!();
     });
 
-    println!("parse time: {:?}ms", parse_time);
-    println!("analyzer time: {:?}ms", t1.elapsed().as_millis());
-    println!("total time: {:?}ms", t0.elapsed().as_millis());
+    // println!("parse time: {:?}ms", parse_time);
+    // println!("analyzer time: {:?}ms", t1.elapsed().as_millis());
+    // println!("total time: {:?}ms", t0.elapsed().as_millis());
 
     if args.open_dot {
         let mut dir = temp_dir();

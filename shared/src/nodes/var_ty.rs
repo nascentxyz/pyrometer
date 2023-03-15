@@ -1,7 +1,7 @@
 use crate::VarType;
 use crate::analyzer::AsDotStr;
 use crate::{analyzer::{GraphLike, AnalyzerLike}, Node, NodeIdx};
-use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition, Expression};
+use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition, Expression, Visibility};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct VarNode(pub usize);
@@ -94,5 +94,11 @@ impl Var {
             initializer: var.initializer.map(|init| analyzer.parse_expr(&init)),
             in_contract,
         }
+    }
+
+    pub fn is_public(&self) -> bool {
+        self.attrs.iter().any(|var_attr| {
+            matches!(var_attr, VariableAttribute::Visibility(Visibility::Public(_)))
+        })
     }
 }

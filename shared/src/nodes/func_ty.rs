@@ -1,3 +1,4 @@
+use solang_parser::pt::VariableDefinition;
 use std::collections::BTreeMap;
 use solang_parser::pt::ParameterList;
 use crate::analyzer::AsDotStr;
@@ -278,6 +279,30 @@ impl From<FunctionDefinition> for Function {
             body: func.body,
             params: func.params,
             returns: func.returns,
+        }
+    }
+}
+
+impl From<VariableDefinition> for Function {
+    fn from(var: VariableDefinition) -> Function {
+        Function {
+            loc: var.loc,
+            ty: FunctionTy::Function,
+            name: var.name.clone(),
+            name_loc: var.loc,
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Public(Some(var.loc)))],
+            body: Some(Statement::Block {
+                loc: var.loc,
+                unchecked: false,
+                statements: vec![
+                    Statement::Return(
+                        var.loc,
+                        Some(Expression::Variable(var.name.expect("unnamed public variable?")))
+                    )
+                ]
+            }),
+            params: vec![],
+            returns: vec![(var.loc, Some(Parameter { loc: var.loc, ty: var.ty, storage: None, name: None }))],
         }
     }
 }

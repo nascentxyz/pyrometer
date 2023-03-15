@@ -81,14 +81,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
                 VarType::User(TypeNode::Contract(con_node)) => {
                     // we can only access functions via this pattern
-                    println!(
-                        "functions {:?}",
-                        con_node
-                            .funcs(self)
-                            .iter()
-                            .map(|func| func.name(self))
-                            .collect::<Vec<_>>()
-                    );
+                    // println!(
+                    //     "functions {:?}",
+                    //     con_node
+                    //         .funcs(self)
+                    //         .iter()
+                    //         .map(|func| func.name(self))
+                    //         .collect::<Vec<_>>()
+                    // );
                     let funcs = con_node
                         .funcs(self)
                         .into_iter()
@@ -115,7 +115,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::BuiltIn(..) => {
-                    println!("member access {}", self.dot_str_no_tmps());
+                    // println!("member access {}", self.dot_str_no_tmps());
                     todo!("member access {:?}", ident)
                 }
                 e => todo!("member access: {:?}, {:?}", e, ident),
@@ -571,7 +571,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         dyn_builtin: BuiltInNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        println!("match index access");
+        // println!("match index access");
         match index_paths {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
             ExprRet::Single((_index_ctx, idx)) => {

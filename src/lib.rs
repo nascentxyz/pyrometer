@@ -273,7 +273,10 @@ impl Analyzer {
                 self.add_edge(node, sup_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let node = self.parse_var_def(def, false);
+                let (node, maybe_func) = self.parse_var_def(def, false);
+                if let Some(func) = maybe_func {
+                    func_nodes.push(self.handle_func(func, None));
+                }
                 self.add_edge(node, sup_node, Edge::Var);
             }
             FunctionDefinition(def) => {
@@ -360,7 +363,10 @@ impl Analyzer {
                 self.add_edge(node, con_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let node = self.parse_var_def(def, true);
+                let (node, maybe_func) = self.parse_var_def(def, true);
+                if let Some(func) = maybe_func {
+                    func_nodes.push(self.handle_func(func, Some(con_node)));
+                }
                 self.add_edge(node, con_node, Edge::Var);
             }
             FunctionDefinition(def) => {
@@ -439,7 +445,10 @@ impl Analyzer {
         con_node: Option<ContractNode>,
     ) -> FunctionNode {
         let func = Function::from(func_def.clone());
+        self.handle_func(func, con_node)
+    }
 
+    pub fn handle_func(&mut self, func: Function, con_node: Option<ContractNode>) -> FunctionNode {
         match func.ty {
             FunctionTy::Constructor => {
                 let node = self.add_node(func);
@@ -521,11 +530,19 @@ impl Analyzer {
     // func_node
     // }
 
-    pub fn parse_var_def(&mut self, var_def: &VariableDefinition, in_contract: bool) -> VarNode {
+    pub fn parse_var_def(
+        &mut self,
+        var_def: &VariableDefinition,
+        in_contract: bool,
+    ) -> (VarNode, Option<Function>) {
         let var = Var::new(self, var_def.clone(), in_contract);
+        let mut func = None;
+        if var.is_public() {
+            func = Some(Function::from(var_def.clone()));
+        }
         let var_node = VarNode::from(self.add_node(var));
         self.user_types.insert(var_node.name(self), var_node.into());
-        var_node
+        (var_node, func)
     }
 
     pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {

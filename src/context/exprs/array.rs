@@ -44,7 +44,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
         inner_paths: ExprRet,
         index_paths: ExprRet,
     ) -> ExprRet {
-        println!("index into array");
+        // println!("index into array");
         match (inner_paths, index_paths) {
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,

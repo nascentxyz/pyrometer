@@ -613,6 +613,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
 
         let mut called_fns = BTreeSet::new();
         let mut added_fn_calls = BTreeSet::new();
+        let mut called_contracts = BTreeSet::new();
+        let mut called_external_fns = BTreeSet::new();
 
         reports.extend(
             self.vars_by_ctx
@@ -809,24 +811,38 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         }
 
                         if let Some(ext_fn_call) = child.underlying(analyzer).ext_fn_call {
-                            if let Some(body) = &ext_fn_call.underlying(analyzer).body {
-                                report.add_label(
-                                    Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
-                                        .with_message("External function call")
-                                        .with_priority(-2)
-                                        .with_order(-2)
-                                        .with_color(Color::Fixed(75)),
-                                );
+                            let fn_name = ext_fn_call.name(analyzer);
+                            if !called_external_fns.contains(&fn_name) {
+                                if let Some(body) = &ext_fn_call.underlying(analyzer).body {
+                                    report.add_label(
+                                        Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
+                                            .with_message("External function call")
+                                            .with_priority(-2)
+                                            .with_order(-2)
+                                            .with_color(Color::Fixed(75)),
+                                    );
+                                }
+
+                                called_external_fns.insert(fn_name);
                             }
 
                             if let Some(c) = ext_fn_call.contract(analyzer) {
-                                report.add_label(
-                                    Label::new(LocStrSpan::new(self.file_mapping, c.loc(analyzer)))
-                                        .with_message("External Contract")
-                                        .with_priority(-3)
-                                        .with_order(-3)
-                                        .with_color(Color::Fixed(8)),
-                                );
+                                if let Some(cname) = c.maybe_name(analyzer) {
+                                    if !called_contracts.contains(&cname) {
+                                        report.add_label(
+                                            Label::new(LocStrSpan::new(
+                                                self.file_mapping,
+                                                c.loc(analyzer),
+                                            ))
+                                            .with_message("External Contract")
+                                            .with_priority(-3)
+                                            .with_order(-3)
+                                            .with_color(Color::Fixed(8)),
+                                        );
+
+                                        called_contracts.insert(cname);
+                                    }
+                                }
                             }
                         }
 
