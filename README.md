@@ -82,10 +82,9 @@ Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop i
         - [ ] Keep uncheckedness for the entire block
         - [ ] Pass uncheckedness into `bin_op`
     - [ ] Support `assembly`
-    - [ ] Support `for` loop
+    - [ ] Improve Support for `for/while` loops
         - [ ] Be smarter about the variables by looking at max num of iters and determine if we should just unroll & execute it
         - [ ] Take a guess at the gas usage inside the body of the for-loop and try to set upper bounds
-    - [ ] Support `while`/`do while`
     - [x] Support `++i/i++/--i/i++`
     - [ ] Support low-level call
 - [ ] Analyzers
