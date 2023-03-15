@@ -475,10 +475,10 @@ impl Builtin {
             Uint(_) => {
                 Uint(256)
             }
-            Int(from_size) => {
+            Int(_from_size) => {
                 Uint(256)
             }
-            Bytes(from_size) => {
+            Bytes(_from_size) => {
                 Uint(32)
             }
             _ => self.clone()

@@ -1,4 +1,3 @@
-use crate::range::SolcRange;
 use std::collections::BTreeMap;
 use crate::FunctionParamNode;
 use crate::ContractNode;
