@@ -1,27 +1,25 @@
+contract InternalFuncCalls {
+	address _owner;
 
+	// modifier onlyOwner {
+	// 	require(msg.sender == _owner);
+	// 	_;
+	// }
 
-// contract InternalFuncCalls {
-// 	address _owner;
+	function transferOwnership(address newOwner) public virtual  {
+        innerRequire(newOwner);
+        _transferOwnership(newOwner);
+    }
 
-// 	// modifier onlyOwner {
-// 	// 	require(msg.sender == _owner);
-// 	// 	_;
-// 	// }
+    function innerRequire(address newOwner) public virtual {
+    	require(newOwner != address(0), "Ownable: new owner is the zero address");
+    }
 
-// 	function transferOwnership(address newOwner) public virtual  {
-//         innerRequire(newOwner);
-//         _transferOwnership(newOwner);
-//     }
-
-//     function innerRequire(address newOwner) public virtual {
-//     	require(newOwner != address(0), "Ownable: new owner is the zero address");
-//     }
-
-//     function _transferOwnership(address newOwner) internal virtual {
-//         address oldOwner = _owner;
-//         _owner = newOwner;
-//     }
-// }
+    function _transferOwnership(address newOwner) internal virtual {
+        address oldOwner = _owner;
+        _owner = newOwner;
+    }
+}
 
 contract B {
 	uint256 public a;
