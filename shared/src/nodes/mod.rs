@@ -202,6 +202,14 @@ impl VarType {
         }
     }
 
+    pub fn default_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+        match self {
+            Self::BuiltIn(bn, _) => SolcRange::try_from_builtin(bn.underlying(analyzer)),
+            Self::Concrete(cnode) => SolcRange::from(cnode.underlying(analyzer).clone()),
+            _ => None,
+        }
+    }
+
     pub fn is_const(&self, analyzer: &impl GraphLike) -> bool {
         match self {
             Self::Concrete(_) => true,

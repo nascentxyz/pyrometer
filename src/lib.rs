@@ -302,8 +302,9 @@ impl Analyzer {
         match import {
             Import::Plain(path, _) => {
                 // println!("path: {:?}", path);
-                let sol = fs::read_to_string(path.string.clone())
-                    .expect("Could not find file for dependency");
+                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {:?}", path.string)
+                });
                 self.file_no += 1;
                 let file_no = self.file_no;
                 let (maybe_entry, mut inner_sources) = self.parse(&sol);
@@ -317,8 +318,9 @@ impl Analyzer {
                     elems,
                     std::env::current_dir()
                 );
-                let sol = fs::read_to_string(path.string.clone())
-                    .expect("Could not find file for dependency");
+                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {:?}", path.string)
+                });
                 self.file_no += 1;
                 let file_no = self.file_no;
                 let (maybe_entry, mut inner_sources) = self.parse(&sol);

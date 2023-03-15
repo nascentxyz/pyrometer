@@ -77,47 +77,39 @@ function forks(uint256 x) public returns (uint256) {
 // // }
 
 
-// contract MathBoi {
-//     function hmmm(uint256 x, uint256 y, uint256 z) public returns (uint256) {
+// contract MathExample {
+//     function complicatedMath(uint256 x, uint256 y, uint256 z) public returns (uint256) {
 //         require(msg.sender != address(0));
-//         require(y >= 1);
 //         require(x < 1000000);
 //         require(y < 1000000);
 //         require(z < 1000000);
 
-//         require(x > 100);
-//         require(y > 100);
-//         require(z > 100);
-
-
 //         uint256 a = x * x;
 //         uint256 b = x / y;
 //         uint256 c = z * y;
-
-//         require(c >= 1);
 
 //         return a * b / c;
 //     }
 // }
 
 
-// contract AccessControl {
-//     address owner;
-//     uint256 myVerySecureVariable;
+contract AccessControl {
+    address owner;
+    uint256 myVerySecureVariable;
 
-//     function setVar(uint256 muchSafe) public {
-//         require(msg.sender == owner);
-//         myVerySecureVariable = muchSafe;
-//     }
+    function setVar(uint256 muchSafe) public {
+        require(msg.sender == owner);
+        myVerySecureVariable = muchSafe;
+    }
 
-//     function muchSneak(uint256 muchSneak) public {
-//         innerSneak(muchSneak);
-//     }
+    function sneakyWrite(uint256 muchSneak) public {
+        innerSneakyWrite(muchSneak);
+    }
 
-//     function innerSneak(uint256 muchSneak) internal {
-//         myVerySecureVariable = muchSneak;
-//     }
-// }
+    function innerSneakyWrite(uint256 muchSneak) internal {
+        myVerySecureVariable = muchSneak;
+    }
+}
 
 // contract Baz {
 //     bool private state1;

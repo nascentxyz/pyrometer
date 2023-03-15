@@ -718,16 +718,20 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                     }
 
                     if !added_fn_calls.contains(ctx) {
-                        ctx.underlying(analyzer).children.iter().for_each(|child| {
-                            report.add_label(
-                                Label::new(LocStrSpan::new(
-                                    self.file_mapping,
-                                    child.underlying(analyzer).loc,
-                                ))
-                                .with_color(Color::Fixed(140))
-                                .with_order(5),
-                            );
-                        });
+                        ctx.underlying(analyzer)
+                            .children
+                            .iter()
+                            .filter(|child| child.underlying(analyzer).fn_call.is_some())
+                            .for_each(|child| {
+                                report.add_label(
+                                    Label::new(LocStrSpan::new(
+                                        self.file_mapping,
+                                        child.underlying(analyzer).loc,
+                                    ))
+                                    .with_color(Color::Fixed(140))
+                                    .with_order(5),
+                                );
+                            });
 
                         added_fn_calls.insert(ctx);
                     }

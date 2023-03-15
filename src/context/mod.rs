@@ -18,6 +18,9 @@ use solang_parser::pt::{Expression, Loc, Statement};
 pub mod func;
 use func::*;
 
+pub mod loops;
+use loops::*;
+
 pub mod exprs;
 use exprs::*;
 
@@ -293,25 +296,36 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     })
                 }
             }
-            While(_loc, _cond, _body) => {
-                todo!("while")
+            While(loc, cond, body) => {
+                if let Some(parent) = parent_ctx {
+                    self.while_loop(*loc, parent.into().into(), cond, body);
+                }
             }
             Expression(_loc, expr) => {
                 if let Some(parent) = parent_ctx {
                     let _paths = self.parse_ctx_expr(expr, ContextNode::from(parent.into()));
                 }
             }
-            For(_loc, _maybe_for_start, _maybe_for_middle, _maybe_for_end, _maybe_for_body) => {
-                todo!("for");
+            For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {
+                if let Some(parent) = parent_ctx {
+                    self.for_loop(
+                        *loc,
+                        parent.into().into(),
+                        maybe_for_start,
+                        maybe_for_middle,
+                        maybe_for_end,
+                        maybe_for_body,
+                    );
+                }
             }
             DoWhile(_loc, _while_stmt, _while_expr) => {
-                todo!("do while");
+                todo!("do while not supported");
             }
             Continue(_loc) => {
-                todo!("continue")
+                // TODO: We cheat in loops by just widening so continues dont matter yet
             }
             Break(_loc) => {
-                todo!("break")
+                // TODO: We cheat in loops by just widening so breaks dont matter yet
             }
             Assembly {
                 loc: _,
@@ -944,6 +958,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_paths: &ExprRet,
     ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
+            (ExprRet::CtxKilled, _) | (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);

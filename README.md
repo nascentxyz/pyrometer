@@ -7,7 +7,7 @@
 [tg-badge]: https://img.shields.io/endpoint?color=neon&logo=telegram&label=chat&style=flat-square&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fpyrometer
 [tg-url]: https://t.me/pyrometer
 
-Pyrometer is a work-in-progress security tool currently in _ALPHA_.
+Pyrometer is a work-in-progress security tool currently in _ALPHA_. We are releasing it in its current stage to find contributors and adventurous users (that don't mind when the tool breaks).
 
 Effectively, Pyrometer is a mix of symbolic execution, abstract interpretation, and static analysis - we take ideas from each and apply them with an *engineering first* mindset to create an effective tool (and avoid nerdsnipes by academic papers) aiming to help both auditors and developers.
 
@@ -30,9 +30,14 @@ Then:
 ```bash
 git clone https://github.com/nascentxyz/pyrometer
 cd pyrometer/cli
-cargo build --release
-./target/release/pyrometer <PATH_TO_SOLIDITY_FILE>
+cargo install --path . --locked
+pyrometer <PATH_TO_SOLIDITY_FILE>
 ```
+
+Make sure `$CARGO_HOME/bin` is in your `$PATH`.
+
+Binaries will eventually be built and released for version upgrades.
+
 
 ### Configuring Pyrometer
 Pyrometer has a few different levels of verbosity, via the cli flag `-v` through `-vvvvv` (same as foundry). Documentation on these different levels hasn't been made as it is subject to change, though more `v`'s == more output. If you have trouble with imports, either wait a few days for me to improve them or use `forge flatten` from foundry and run Pyrometer on the output of that.
@@ -53,7 +58,7 @@ You will generally see a line underlined followed by the `∈` symbol followed b
 
 
 ## Contributing
-Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop in the telegram (see badge above) to ask questions.
+Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop in the telegram (see badge above) to ask questions. While "a mix of symbolic execution, abstract interpretation, and static analysis" sounds like magic, under the hood most concepts are relatively simple, so don't be afraid to dive in! Testing & CI aren't setup yet. The idea is to use the `test_data` folder and ensure none of the require statements error out as well as reading the contracts and ensuring the structure is as expected.
 
 ## TODO
 - [ ] General
@@ -64,7 +69,7 @@ Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop i
 - [ ] Language
     - [ ] Better import handling (`foundry.toml` reading?)
     - [ ] User Types, i.e. `type MyType is uint256;`
-    - [ ] Library 
+    - [ ] Better Library handling
     - [ ] Operator overloading
     - [ ] Storage
         - [ ] Consider constructor
