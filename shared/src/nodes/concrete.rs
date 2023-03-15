@@ -529,7 +529,6 @@ impl Concrete {
                 Some(Concrete::Uint(*size, 0.into()))
             },
             Concrete::Int(size, _) => {
-                println!("size: {size}");
                 let max = if size == &256u16 {
                     I256::MAX
                 } else {
@@ -537,7 +536,6 @@ impl Concrete {
                 };
 
                 let min = max * I256::from(-1i32);
-                println!("here");
                 Some(Concrete::Int(*size, min))
             },
             Concrete::Bytes(size, _) => {

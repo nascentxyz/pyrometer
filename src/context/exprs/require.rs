@@ -455,7 +455,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         match op {
             RangeOp::Eq => !lhs_range
                 .evaled_range_min(self)
-                .range_eq(&rhs_range.evaled_range_min(self)),
+                .range_eq(&rhs_range.evaled_range_min(self))
+            ,
             RangeOp::Neq => lhs_range
                 .evaled_range_min(self)
                 .range_eq(&rhs_range.evaled_range_min(self)),

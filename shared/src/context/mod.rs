@@ -1,3 +1,4 @@
+use crate::range::SolcRange;
 use std::collections::BTreeMap;
 use crate::FunctionParamNode;
 use crate::ContractNode;
@@ -103,6 +104,8 @@ pub struct Context {
     pub loc: Loc,
     /// The return node and the return location
     pub ret: Vec<(Loc, ContextVarNode)>,
+    /// Range adjustments to occur after the statement finishes. Useful for post in/decrement 
+    pub post_statement_range_adjs: Vec<(ContextVarNode, Loc, bool)>,
 }
 
 impl Context {
@@ -123,6 +126,7 @@ impl Context {
             ret: vec![],
             loc,
             modifier_state: None,
+            post_statement_range_adjs: vec![],
         }
     }
 
@@ -169,6 +173,7 @@ impl Context {
             ret: vec![],
             loc,
             modifier_state,
+            post_statement_range_adjs: vec![],
         }
     }
 

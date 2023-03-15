@@ -112,7 +112,7 @@ impl ContextVarNode {
         ))
     }
 
-    pub fn update_deps(&mut self, ctx: ContextNode, analyzer: &mut impl GraphLike) {
+    pub fn update_deps(&mut self, ctx: ContextNode, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         if let Some(mut range) = self.range(analyzer) {
             range.update_deps(ctx, analyzer);
             self.set_range_min(analyzer, range.min);
@@ -223,16 +223,30 @@ impl ContextVarNode {
         }
     }
 
-    pub fn set_range_min(&self, analyzer: &mut impl GraphLike, new_min: Elem<Concrete>) {
-        let fallback = self.underlying(analyzer).fallback_range(analyzer);
-        self.underlying_mut(analyzer)
-            .set_range_min(new_min, fallback);
+    pub fn set_range_min(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), new_min: Elem<Concrete>) {
+        if self.is_concrete(analyzer) {
+            let mut new_ty = self.ty(analyzer).clone();
+            new_ty.concrete_to_builtin(analyzer);
+            self.underlying_mut(analyzer).ty = new_ty;
+            self.set_range_min(analyzer, new_min);
+        } else {
+            let fallback = self.underlying(analyzer).fallback_range(analyzer);
+            self.underlying_mut(analyzer)
+                .set_range_min(new_min, fallback);
+        }
     }
 
-    pub fn set_range_max(&self, analyzer: &mut impl GraphLike, new_max: Elem<Concrete>) {
-        let fallback = self.underlying(analyzer).fallback_range(analyzer);
-        self.underlying_mut(analyzer)
-            .set_range_max(new_max, fallback)
+    pub fn set_range_max(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), new_max: Elem<Concrete>) {
+        if self.is_concrete(analyzer) {
+            let mut new_ty = self.ty(analyzer).clone();
+            new_ty.concrete_to_builtin(analyzer);
+            self.underlying_mut(analyzer).ty = new_ty;
+            self.set_range_max(analyzer, new_max);
+        } else {
+            let fallback = self.underlying(analyzer).fallback_range(analyzer);
+            self.underlying_mut(analyzer)
+                .set_range_max(new_max, fallback)
+        }
     }
 
     pub fn set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<Elem<Concrete>>) {
@@ -241,16 +255,30 @@ impl ContextVarNode {
             .set_range_exclusions(new_exclusions, fallback);
     }
 
-    pub fn try_set_range_min(&self, analyzer: &mut impl GraphLike, new_min: Elem<Concrete>) -> bool {
-        let fallback = self.underlying(analyzer).fallback_range(analyzer);
-        self.underlying_mut(analyzer)
-            .try_set_range_min(new_min, fallback)
+    pub fn try_set_range_min(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), new_min: Elem<Concrete>) -> bool {
+        if self.is_concrete(analyzer) {
+            let mut new_ty = self.ty(analyzer).clone();
+            new_ty.concrete_to_builtin(analyzer);
+            self.underlying_mut(analyzer).ty = new_ty;
+            self.try_set_range_min(analyzer, new_min)
+        } else {
+            let fallback = self.underlying(analyzer).fallback_range(analyzer);
+            self.underlying_mut(analyzer)
+                .try_set_range_min(new_min, fallback)
+        }
     }
 
-    pub fn try_set_range_max(&self, analyzer: &mut impl GraphLike, new_max: Elem<Concrete>) -> bool {
-        let fallback = self.underlying(analyzer).fallback_range(analyzer);
-        self.underlying_mut(analyzer)
-            .try_set_range_max(new_max, fallback)
+    pub fn try_set_range_max(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), new_max: Elem<Concrete>) -> bool {
+        if self.is_concrete(analyzer) {
+            let mut new_ty = self.ty(analyzer).clone();
+            new_ty.concrete_to_builtin(analyzer);
+            self.underlying_mut(analyzer).ty = new_ty;
+            self.try_set_range_max(analyzer, new_max)
+        } else {
+            let fallback = self.underlying(analyzer).fallback_range(analyzer);
+            self.underlying_mut(analyzer)
+                .try_set_range_max(new_max, fallback)
+        }
     }
 
     pub fn try_set_range_exclusions(&self, analyzer: &mut impl GraphLike, new_exclusions: Vec<Elem<Concrete>>) -> bool {
@@ -301,6 +329,16 @@ impl ContextVarNode {
             earlier = prev;
         }
         earlier
+    }
+
+    pub fn num_versions(&self, analyzer: &'_ impl GraphLike) -> usize {
+        let mut count = 1;
+        let mut earlier = self.latest_version(analyzer);
+        while let Some(prev) = earlier.previous_version(analyzer) {
+            earlier = prev;
+            count += 1;
+        }
+        count
     }
 
     pub fn next_version(&self, analyzer: &'_ impl GraphLike) -> Option<Self> {
@@ -529,7 +567,6 @@ impl ContextVar {
                     Some(range.clone())
                 } else {
                     let underlying = bn.underlying(analyzer);
-                    println!("fallback range builtin: {:?}", underlying);
                     SolcRange::try_from_builtin(underlying)
                 }
             }

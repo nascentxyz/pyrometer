@@ -177,7 +177,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
             ContextVarNode::from(new_var)
         };
 
-        let mut new_rhs = rhs_cvar;
+        let mut new_rhs = rhs_cvar.latest_version(self);
 
         // TODO: change to only hit this path if !uncheck
 
@@ -199,7 +199,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                             return ExprRet::CtxKilled;
                         }
                     } else if new_rhs.is_symbolic(self) {
-                        let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
+                        println!("lhs: {}, op: {}, rhs: {:?}", lhs_cvar.display_name(self), op.to_string(), new_rhs.display_name(self));
+                        let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx);
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let zero_node = self.add_node(Node::ContextVar(
                             ContextVar::new_from_concrete(Loc::Implicit, zero_node.into(), self),
@@ -380,7 +381,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                         ));
 
                         let (_, tmp_rhs) = self
-                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, false)
+                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)
                             .expect_single();
 
                         let tmp_var = ContextVar {

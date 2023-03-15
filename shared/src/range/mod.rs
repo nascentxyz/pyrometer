@@ -521,6 +521,7 @@ pub trait Range<T> {
         let deps = self.dependent_on();
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
             .into_iter()
+            .filter(|dep| !dep.is_const(analyzer))
             .map(|dep| (dep, dep.latest_version_in_ctx(ctx, analyzer)))
             .collect();
 
