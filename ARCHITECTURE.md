@@ -17,7 +17,7 @@ Once all user types and imports are handled, we can start analyzing function bod
 The graph is heirarchial in a lot of ways - everything flows up to a more senior element. For example, a variable points to a previous version of that variable, which flows to the function that created the variable, which points to the contract, which points to a source unit part, which points to a source unit.
 ```mermaid
 flowchart TD
-  NewestVariable -->|Prev|Variable -->|Variable|Function -->|Func| Contract-->|Contract| SourceUnitPart-->|Source Part| Source
+  NewestVersionOfVariable -->|Prev|Variable -->|Variable|Context -->|Function Body Context|Function -->|Func| Contract-->|Contract| SourceUnitPart-->|Source Part| Source
 ```
 
 In general, the codebase works on graph indices, not the actual underlying data structure. The graph holds the `Node` enum and connects elements via the `Edge` enum. 
