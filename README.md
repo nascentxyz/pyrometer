@@ -2,6 +2,8 @@
 
 # 🔥🔫 Pyrometer 🔥🔫
 
+![Github Actions][![Telegram Chat][tg-badge]][tg-url]
+[tg-badge]: https://img.shields.io/endpoint?color=neon&logo=telegram&label=chat&style=flat-square&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fpyrometer
 [tg-url]: https://t.me/pyrometer
 
 Pyrometer is a work-in-progress security tool currently in _ALPHA_.
