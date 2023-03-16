@@ -7,7 +7,7 @@ use solang_parser::pt::Import;
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
     FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
-    VariableDefinition,
+    VariableDefinition, Using, UsingList
 };
 use std::{collections::HashMap, fs};
 
@@ -379,12 +379,36 @@ impl Analyzer {
             }
             EventDefinition(_def) => {}
             Annotation(_anno) => todo!(),
-            Using(_using) => todo!(),
+            Using(using) => self.parse_using(using),
             StraySemicolon(_loc) => todo!(),
         });
         self.user_types
             .insert(con_node.name(self), con_node.0.into());
         (con_node, func_nodes)
+    }
+
+    pub fn parse_using(&mut self, using_def: &Using) {
+        let ty_idx = self.parse_expr(&using_def.ty.clone().expect("No type defined for using statement"));
+        println!("{:?}", self.node(ty_idx));
+        match &using_def.list {
+            UsingList::Library(ident_paths) => {
+                ident_paths.identifiers.iter().for_each(|ident| {
+                    if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
+                        self.add_edge(*hopefully_contract, ty_idx, Edge::LibraryContract);
+                    }
+                });
+            }
+            UsingList::Functions(vec_ident_paths) => {
+                vec_ident_paths.iter().for_each(|ident_paths| {
+                    ident_paths.identifiers.iter().for_each(|ident| {
+                        if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
+                            self.add_edge(*hopefully_contract, ty_idx, Edge::LibraryContract);
+                        }
+                    });
+                });
+            }
+            UsingList::Error(..) => todo!()
+        }
     }
 
     pub fn parse_enum_def(&mut self, enum_def: &EnumDefinition) -> EnumNode {

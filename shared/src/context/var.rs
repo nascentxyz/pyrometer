@@ -1,3 +1,4 @@
+use crate::FunctionNode;
 use crate::AnalyzerLike;
 use crate::Builtin;
 use crate::ContractNode;
@@ -787,6 +788,24 @@ impl ContextVar {
             ty: parent_var.array_underlying_ty(analyzer),
         }
     }
+
+
+    pub fn new_from_func(
+        analyzer: &impl GraphLike,
+        func: FunctionNode,
+    ) -> Self {
+        ContextVar {
+            loc: Some(func.underlying(analyzer).loc),
+            name: func.name(analyzer),
+            display_name: func.name(analyzer),
+            storage: None,
+            is_tmp: false,
+            tmp_of: None,
+            is_symbolic: false,
+            ty: VarType::User(TypeNode::Func(func)),
+        }
+    }
+
 
     pub fn maybe_new_from_func_param(
         analyzer: &impl GraphLike,

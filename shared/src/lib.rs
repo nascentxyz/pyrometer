@@ -132,4 +132,5 @@ pub enum Edge {
     FallbackFunc,
     Constructor,
     ReceiveFunc,
+    LibraryContract,
 }
