@@ -154,6 +154,16 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             let cvar = self.add_node(Node::ContextVar(var));
                             ExprRet::Single((ctx, cvar))
                         }
+                        "keccak256" => {
+                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Bytes(32)).into(), 
+                                self,
+                            );
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            ExprRet::Single((ctx, cvar))
+                        },
                         e => todo!("builtin function: {:?}", e),
                     }
                 } else {
