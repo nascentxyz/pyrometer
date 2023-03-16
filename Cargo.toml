@@ -12,3 +12,9 @@ ethers-core = "*"
 ariadne = "0.2.0"
 shared = { path = "./shared" }
 hex = "0.4.3"
+
+[workspace]
+members = ["cli", "shared"]
+
+[profile.release.package.cli]
+debug = true
