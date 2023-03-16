@@ -77,11 +77,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
     ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral((_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
-                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self);
+                ContextVarNode::from(*lhs).literal_cast_from(&ContextVarNode::from(*rhs), self);
                 self.cmp_inner(loc, &ExprRet::Single((*rhs_ctx, *rhs)), op, rhs_paths)
             }
             (ExprRet::Single((_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
-                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
+                ContextVarNode::from(*rhs).literal_cast_from(&ContextVarNode::from(*lhs), self);
                 self.cmp_inner(loc, lhs_paths, op, &ExprRet::Single((*rhs_ctx, *rhs)))
             }
             (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {

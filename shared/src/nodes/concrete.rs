@@ -151,6 +151,12 @@ impl Concrete {
         self.cast(other.as_builtin())
     }
 
+    /// Cast from one concrete variant given another concrete variant, but since its a literal
+    /// uint to bytesX are right padded
+    pub fn literal_cast_from(self, other: &Self) -> Option<Self> {
+        self.literal_cast(other.as_builtin())
+    }
+
     pub fn equivalent_ty(&self, other: &Self) -> bool {
         match (self, other) {
             (Concrete::Uint(size, _), Concrete::Uint(other_size, _)) if size == other_size => true,
@@ -173,6 +179,28 @@ impl Concrete {
 
     pub fn is_int(&self) -> bool {
         matches!(self, Concrete::Int(_, _))
+    }
+
+    pub fn literal_cast(self, builtin: Builtin) -> Option<Self> {
+        match self {
+            Concrete::Uint(_, val) => {
+                match builtin {
+                    Builtin::Bytes(size) => {
+                        let mask = if size == 32 {
+                            U256::MAX
+                        } else {
+                            U256::from(2).pow((size as u16 * 8).into()) - 1
+                        };
+
+
+                        let h = H256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
+                        Some(Concrete::Bytes(size, h))
+                    } 
+                    _ => self.cast(builtin)
+                }
+            }
+            _ => self.cast(builtin)
+        }
     }
 
     /// Cast the concrete to another type as denoted by a [`Builtin`].

@@ -168,6 +168,33 @@ impl VarType {
         }
     }
 
+    pub fn try_literal_cast(self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Option<Self> {
+        match (self, other) {
+            (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
+                if from_bn.implicitly_castable_to(to_bn, analyzer) {
+                    Some(Self::BuiltIn(*to_bn, sr))
+                } else {
+                    None
+                }
+            },
+            (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
+                let c = from_c.underlying(analyzer).clone();
+                let b = to_bn.underlying(analyzer);
+                let casted = c.literal_cast(b.clone())?;
+                let node = analyzer.add_node(Node::Concrete(casted));
+                Some(Self::Concrete(node.into()))
+            }
+            (Self::Concrete(from_c), Self::Concrete(to_c)) => {
+                let c = from_c.underlying(analyzer).clone();
+                let to_c = to_c.underlying(analyzer);
+                let casted = c.literal_cast_from(to_c)?;
+                let node = analyzer.add_node(Node::Concrete(casted));
+                Some(Self::Concrete(node.into()))
+            }
+            _ => None,
+        }
+    }
+
     pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         match (self, other) {
             (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {

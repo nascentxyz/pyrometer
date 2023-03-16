@@ -423,6 +423,15 @@ impl ContextVarNode {
         self.cast_from_ty(to_ty, analyzer);
     }
 
+    pub fn literal_cast_from(
+        &self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let to_ty = other.ty(analyzer).clone();
+        self.literal_cast_from_ty(to_ty, analyzer);
+    }
+
     pub fn cast_from_ty(
         &self,
         to_ty: VarType,
@@ -439,6 +448,26 @@ impl ContextVarNode {
                 self.set_range_min(analyzer, min);
                 self.set_range_max(analyzer, max);
             }
+        }
+
+        if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer), to_ty) {
+            // update name
+            let display_name = cnode.underlying(analyzer).as_string();
+            self.underlying_mut(analyzer).display_name = display_name;
+        }
+    }
+
+    pub fn literal_cast_from_ty(
+        &self,
+        to_ty: VarType,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let from_ty = self.ty(analyzer).clone();
+        if !from_ty.ty_eq(&to_ty, analyzer) {
+            if let Some(new_ty) = from_ty.try_literal_cast(&to_ty, analyzer) {
+                self.underlying_mut(analyzer).ty = new_ty;
+            }
+            // we dont need to update the ranges because a literal by definition is concrete
         }
 
         if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer), to_ty) {

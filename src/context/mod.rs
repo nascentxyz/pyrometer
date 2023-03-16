@@ -475,7 +475,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                rhs_cvar.cast_from_ty(ty, self);
+                rhs_cvar.literal_cast_from_ty(ty, self);
                 self.match_var_def(
                     var_decl,
                     loc,
@@ -752,7 +752,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             NamedFunctionCall(_loc, _func_expr, _input_exprs) => todo!("Named function call"),
             FunctionCall(loc, func_expr, input_exprs) => {
                 match &**func_expr {
-                    MemberAccess(loc, _member_expr, _ident) => {
+                    MemberAccess(loc, member_expr, _ident) => {
                         let (_func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
                             ExprRet::Single((ctx, idx)) => (ctx, idx),
                             m @ ExprRet::Multi(_) => m.expect_single(),
@@ -760,12 +760,14 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                             e => todo!("got fork in func call: {:?}", e),
                         };
 
-                        let inputs = ExprRet::Multi(
+                        let mut inputs = vec![self.parse_ctx_expr(member_expr, ctx)];
+                        inputs.extend(
                             input_exprs
                                 .iter()
                                 .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                .collect(),
+                                .collect::<Vec<_>>(),
                         );
+                        let inputs = ExprRet::Multi(inputs);
 
                         self.func_call(
                             ctx,
@@ -986,7 +988,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                rhs_cvar.cast_from(&lhs_cvar, self);
+                rhs_cvar.literal_cast_from(&lhs_cvar, self);
                 self.assign(loc, lhs_cvar, rhs_cvar, *rhs_ctx)
             }
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
@@ -1060,6 +1062,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
+
+        // println!("rhs_range: {:?}", rhs_cvar.range(self));
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
@@ -1090,6 +1094,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     if let Some(r) = next_arr.range(self) {
                         let min = r.evaled_range_min(self);
                         let max = r.evaled_range_max(self);
+
+                        println!("{min:?}, {max:?}");
 
                         if let Some(mut rd) = min.maybe_range_dyn() {
                             rd.val.insert(

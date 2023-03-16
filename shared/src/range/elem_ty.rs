@@ -242,6 +242,9 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     				(Concrete::Int(_, s), Concrete::Int(_, o)) => {
     					Some(s.cmp(o))
     				},
+    				(Concrete::DynBytes(b0), Concrete::DynBytes(b1)) => {
+    					Some(b0.cmp(b1))
+    				},
     				_ => None
     			}
     		}
