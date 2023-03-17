@@ -12,7 +12,7 @@ use solang_parser::pt::VariableDeclaration;
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
 use shared::{analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, Edge, Node, NodeIdx};
-use solang_parser::pt::{Expression, Loc, Statement};
+use solang_parser::pt::{Expression, Identifier, Loc, Statement};
 
 pub mod func;
 use func::*;

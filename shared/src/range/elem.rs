@@ -1,9 +1,9 @@
-use crate::NodeIdx;
-use crate::GraphLike;
-use std::collections::BTreeMap;
 use crate::context::ContextVarNode;
-use crate::range::elem_ty::RangeExpr;
 use crate::range::elem_ty::Elem;
+use crate::range::elem_ty::RangeExpr;
+use crate::GraphLike;
+use crate::NodeIdx;
+use std::collections::BTreeMap;
 
 /// An operation to be performed on a range element
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -58,7 +58,6 @@ pub enum RangeOp {
     Exp,
 }
 
-
 impl RangeOp {
     /// Attempts to return the inverse range operation (e.g.: `RangeOp::Add => RangeOp::Sub`)
     pub fn inverse(self) -> Option<Self> {
@@ -72,8 +71,7 @@ impl RangeOp {
             Shr => Some(Shl),
             Eq => Some(Neq),
             Neq => Some(Eq),
-            _ => None
-            // e => panic!("tried to inverse unreversable op: {:?}", e),
+            _ => None, // e => panic!("tried to inverse unreversable op: {:?}", e),
         }
     }
 }
@@ -110,7 +108,6 @@ impl ToString for RangeOp {
     }
 }
 
-
 pub trait RangeElem<T> {
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
     fn maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
@@ -125,7 +122,10 @@ pub trait RangeElem<T> {
     /// Tries to compare the ordering of two range elements
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
     /// Constructs a range `Elem::Expr` given a lhs, rhs, and operation ([`RangeOp`]).
-    fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp) -> Elem<T> where Self: Sized {
+    fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp) -> Elem<T>
+    where
+        Self: Sized,
+    {
         Elem::Expr(RangeExpr::new(lhs, op, rhs))
     }
     /// Traverses the range expression and finds all nodes that are dynamically pointed to
@@ -148,5 +148,3 @@ pub trait RangeElem<T> {
     /// cyclic dependency.
     fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<T>);
 }
-
-

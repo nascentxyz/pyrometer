@@ -2,3 +2,6 @@
 **/.DS_Store
 **/out
 **/cache
+**/dot.jpeg
+**/flamegraph.svg
+**/.swp
