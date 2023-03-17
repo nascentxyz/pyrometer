@@ -10,15 +10,139 @@ use shared::range::elem_ty::Dynamic;
 
 use shared::range::Range;
 use shared::range::{elem_ty::Elem, SolcRange};
-use solang_parser::pt::StorageLocation;
+use solang_parser::pt::{Identifier, StorageLocation, Expression, Loc};
 
 use crate::VarType;
 
 use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
-use solang_parser::pt::{Expression, Loc};
 
 impl<T> FuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+    fn fn_call_expr(
+        &mut self,
+        ctx: ContextNode,
+        loc: &Loc,
+        func_expr: &Expression,
+        input_exprs: &[Expression]
+    ) -> ExprRet {
+        use solang_parser::pt::Expression::*;
+        match &*func_expr {
+            MemberAccess(loc, member_expr, ident) => {
+                let mut inputs = vec![self.parse_ctx_expr(&member_expr, ctx)];
+                inputs.extend(
+                    input_exprs
+                        .iter()
+                        .map(|expr| self.parse_ctx_expr(expr, ctx))
+                        .collect::<Vec<_>>(),
+                );
+
+                let inputs = ExprRet::Multi(inputs);
+                let as_input_str = inputs.try_as_func_input_str(self);
+
+                let (_func_ctx, func_idx) = match self.parse_ctx_expr(
+                    &MemberAccess(
+                        *loc,
+                        member_expr.clone(),
+                        Identifier {
+                            loc: ident.loc,
+                            name: format!("{}{}", ident.name, as_input_str),
+                        },
+                    ),
+                    ctx,
+                ) {
+                    ExprRet::Single((ctx, idx)) => (ctx, idx),
+                    m @ ExprRet::Multi(_) => m.expect_single(),
+                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                    e => todo!("got fork in func call: {:?}", e),
+                };
+
+                self.func_call(
+                    ctx,
+                    *loc,
+                    &inputs,
+                    ContextVarNode::from(func_idx)
+                        .ty(self)
+                        .func_node(self)
+                        .expect(""),
+                )
+            }
+            Variable(ident) => {
+                // It is a function call, check if we have the ident in scope
+                let funcs = ctx.visible_funcs(self);
+                // filter down all funcs to those that match
+                let possible_funcs = funcs
+                    .iter()
+                    .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
+                    .collect::<Vec<_>>();
+
+                if possible_funcs.is_empty() {
+                    // this is a builtin, cast, or unknown function?
+                    let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
+                        ExprRet::Single((ctx, idx)) => (ctx, idx),
+                        m @ ExprRet::Multi(_) => m.expect_single(),
+                        ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                        e => todo!("got fork in func call: {:?}", e),
+                    };
+                    self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
+                } else if possible_funcs.len() == 1 {
+                    let inputs = ExprRet::Multi(
+                        input_exprs
+                            .iter()
+                            .map(|expr| self.parse_ctx_expr(expr, ctx))
+                            .collect(),
+                    );
+                    self.setup_fn_call(
+                        &ident.loc,
+                        &inputs,
+                        (*possible_funcs[0]).into(),
+                        ctx,
+                    )
+                } else {
+                    // this is the annoying case due to function overloading & type inference on number literals
+                    let lits = input_exprs
+                        .iter()
+                        .map(|expr| {
+                            match expr {
+                                Negate(_, expr) => {
+                                    // negative number potentially
+                                    matches!(**expr, NumberLiteral(..) | HexLiteral(..))
+                                }
+                                NumberLiteral(..) | HexLiteral(..) => true,
+                                _ => false,
+                            }
+                        })
+                        .collect();
+                    let inputs = ExprRet::Multi(
+                        input_exprs
+                            .iter()
+                            .map(|expr| self.parse_ctx_expr(expr, ctx))
+                            .collect(),
+                    );
+
+                    if let Some(func) = self.disambiguate_fn_call(
+                        &ident.name,
+                        lits,
+                        &inputs,
+                        &possible_funcs,
+                    ) {
+                        self.setup_fn_call(loc, &inputs, func.into(), ctx)
+                    } else {
+                        ExprRet::CtxKilled
+                    }
+                }
+            }
+            _ => {
+                let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
+                    ExprRet::Single((ctx, idx)) => (ctx, idx),
+                    m @ ExprRet::Multi(_) => m.expect_single(),
+                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                    e => todo!("got fork in func call: {:?}", e),
+                };
+                self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
+            }
+        }
+    }
+
     /// Disambiguates a function call by their inputs (length & type)
     fn disambiguate_fn_call(
         &mut self,

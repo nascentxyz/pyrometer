@@ -419,30 +419,30 @@ impl Analyzer {
             }
             UsingList::Functions(vec_ident_paths) => {
                 vec_ident_paths.iter().for_each(|ident_paths| {
-                    if ident_paths.identifiers.len() == 2 {
+                    if ident_paths.path.identifiers.len() == 2 {
                         if let Some(hopefully_contract) =
-                            self.user_types.get(&ident_paths.identifiers[0].name)
+                            self.user_types.get(&ident_paths.path.identifiers[0].name)
                         {
                             if let Some(func) = ContractNode::from(*hopefully_contract)
                                 .funcs(self)
                                 .iter()
                                 .find(|func| {
                                     func.name(self)
-                                        .starts_with(&ident_paths.identifiers[1].name)
+                                        .starts_with(&ident_paths.path.identifiers[1].name)
                                 })
                             {
                                 self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
                             } else {
                                 panic!(
                                     "Cannot find library function {}.{}",
-                                    ident_paths.identifiers[0].name,
-                                    ident_paths.identifiers[1].name
+                                    ident_paths.path.identifiers[0].name,
+                                    ident_paths.path.identifiers[1].name
                                 );
                             }
                         } else {
                             panic!(
                                 "Cannot find library contract {}",
-                                ident_paths.identifiers[0].name
+                                ident_paths.path.identifiers[0].name
                             );
                         }
                     } else {
@@ -458,13 +458,13 @@ impl Analyzer {
                         if let Some(func) = funcs.iter().find(|func| {
                             FunctionNode::from(**func)
                                 .name(self)
-                                .starts_with(&ident_paths.identifiers[0].name)
+                                .starts_with(&ident_paths.path.identifiers[0].name)
                         }) {
                             self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
                         } else {
                             panic!(
                                 "Cannot find library function {}",
-                                ident_paths.identifiers[0].name
+                                ident_paths.path.identifiers[0].name
                             );
                         }
                     }
