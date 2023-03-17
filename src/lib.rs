@@ -158,7 +158,7 @@ impl AnalyzerLike for Analyzer {
                 // }
                 0.into()
             }
-            NumberLiteral(_loc, int, exp) => {
+            NumberLiteral(_loc, int, exp, _unit) => {
                 let int = U256::from_dec_str(int).unwrap();
                 let val = if !exp.is_empty() {
                     let exp = U256::from_dec_str(exp).unwrap();

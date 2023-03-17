@@ -634,7 +634,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             // literals
-            NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, false),
+            NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
             StringLiteral(lits) => ExprRet::Multi(
                 lits.iter()
@@ -642,12 +642,14 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     .collect(),
             ),
             BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
-            HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b, false),
+            HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexLiteral(hexes) => self.hex_literals(ctx, hexes),
-            RationalNumberLiteral(_, _, _, _) => todo!("Rational literal"),
-            UnaryMinus(_loc, expr) => match &**expr {
-                NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, true),
-                HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b, true),
+            RationalNumberLiteral(_, _, _, _, _) => todo!("Rational literal"),
+            Negate(_loc, expr) => match &**expr {
+                NumberLiteral(loc, int, exp, _unit) => {
+                    self.number_literal(ctx, *loc, int, exp, true)
+                }
+                HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, true),
                 e => todo!("UnaryMinus unexpected rhs: {e:?}"),
             },
             UnaryPlus(_loc, e) => todo!("UnaryPlus unexpected rhs: {e:?}"),
@@ -828,7 +830,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                                 .iter()
                                 .map(|expr| {
                                     match expr {
-                                        UnaryMinus(_, expr) => {
+                                        Negate(_, expr) => {
                                             // negative number potentially
                                             matches!(**expr, NumberLiteral(..) | HexLiteral(..))
                                         }
@@ -915,7 +917,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 }
             }
             Parenthesis(_loc, expr) => self.parse_ctx_expr(expr, ctx),
-            Unit(_, _, _) => todo!("Unit"),
         }
     }
 
