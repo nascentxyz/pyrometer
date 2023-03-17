@@ -57,6 +57,14 @@ impl ExprRet {
         }
     }
 
+    pub fn has_literal(&self) -> bool {
+        match self {
+            ExprRet::SingleLiteral(..) => true,
+            ExprRet::Multi(multis) => multis.iter().any(|expr_ret| expr_ret.has_literal()),
+            _ => false,
+        }
+    }
+
     pub fn expect_multi(self) -> Vec<ExprRet> {
         match self {
             ExprRet::Multi(inner) => inner,
@@ -68,7 +76,8 @@ impl ExprRet {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let (_, idx) = inner;
-                let var_ty = VarType::try_from_idx(analyzer, *idx).expect("Non-typeable as type");
+                let var_ty = VarType::try_from_idx(analyzer, *idx)
+                    .unwrap_or_else(|| panic!("Non-typeable as type: {:?}", analyzer.node(*idx)));
                 var_ty.as_dot_str(analyzer)
             }
             ExprRet::Multi(inner) if !self.has_fork() => {
@@ -152,8 +161,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             } => {
                 let parent = parent_ctx.expect("Free floating contexts shouldn't happen");
                 let mut entry_loc = None;
+                let mut mods_set = false;
                 let ctx_node = match self.node(parent) {
                     Node::Function(fn_node) => {
+                        mods_set = fn_node.modifiers_set;
                         entry_loc = Some(fn_node.loc);
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
@@ -231,6 +242,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     });
 
                 if let Some(fn_loc) = entry_loc {
+                    if !mods_set {
+                        let parent = FunctionNode::from(parent.into());
+                        self.set_modifiers(parent, ctx_node.into());
+                    }
                     self.func_call_inner(
                         true,
                         ctx_node.into(),
@@ -486,27 +501,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::Single((rhs_ctx, rhs)))) => {
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                // if let VarType::Array(_, ref mut range) = ty {
-                //     *range = Some(self.tmp_length(ContextVarNode::from(*rhs), *rhs_ctx, loc))
-                // }
-
-                // if ty.is_dyn_builtin(self) {
-                //     if let Some(r) = ContextVarNode::from(ty).range(self) {
-                //         let mut min = r.range_min().clone();
-                //         let mut max = r.range_max().clone();
-
-                //         if let Some(rd) = min.maybe_range_dyn() {
-                //             rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                //             next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
-                //         }
-
-                //         if let Some(rd) = max.maybe_range_dyn() {
-                //             rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                //             next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                //         }
-                //     }
-                // }
-
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),

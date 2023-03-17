@@ -53,7 +53,18 @@ contract Modifier {
         return x + 1;
     }
 
-    function inputFunc(uint256 x) Input(addOne(x)) internal {
+    function inputFunc(uint256 x) Input(addOne(x)) internal returns (uint256) {
         return x;
+    }
+
+    function inputFuncConst(uint256 x) Input(addOne(99)) internal returns (uint256){
+        require(a == 1);
+        return x;
+    }
+
+    function inputFunc_conc() internal returns (uint256) {
+        uint256 y = inputFunc(99);
+        require(a == 1);
+        return y;
     }
 }
