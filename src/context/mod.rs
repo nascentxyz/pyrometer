@@ -57,6 +57,14 @@ impl ExprRet {
         }
     }
 
+    pub fn has_literal(&self) -> bool {
+        match self {
+            ExprRet::SingleLiteral(..) => true,
+            ExprRet::Multi(multis) => multis.iter().any(|expr_ret| expr_ret.has_literal()),
+            _ => false,
+        }
+    }
+
     pub fn expect_multi(self) -> Vec<ExprRet> {
         match self {
             ExprRet::Multi(inner) => inner,
@@ -526,7 +534,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 self.add_edge(lhs, *lhs_ctx, Edge::Context(ContextEdge::Variable));
             }
             (l @ ExprRet::Single((_lhs_ctx, _lhs)), Some(ExprRet::Multi(rhs_sides))) => {
-                println!("{:?}", rhs_sides);
                 rhs_sides.iter().for_each(|expr_ret| {
                     self.match_var_def(var_decl, loc, l, Some(expr_ret));
                 });

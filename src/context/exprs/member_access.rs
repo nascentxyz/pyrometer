@@ -10,6 +10,7 @@ use shared::{
     range::SolcRange,
     {Edge, Node},
 };
+use std::collections::BTreeSet;
 
 use ethers_core::types::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
@@ -62,29 +63,37 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::User(TypeNode::Contract(con_node)) => {
-                    let funcs = con_node
+                    println!(
+                        "funcs: {:?}, ident: {:?}",
+                        con_node
+                            .funcs(self)
+                            .iter()
+                            .map(|func| func.name(self))
+                            .collect::<Vec<_>>(),
+                        ident.name
+                    );
+                    if let Some(func) = con_node
                         .funcs(self)
                         .into_iter()
-                        .filter(|func_node| {
-                            func_node
-                                .name(self)
-                                .starts_with(&format!("{}(", &ident.name))
-                        })
-                        .collect::<Vec<_>>();
-                    if funcs.is_empty() {
+                        .find(|func_node| func_node.name(self) == ident.name)
+                    {
+                        if let Some(func_cvar) =
+                            ContextVar::maybe_from_user_ty(self, loc, func.0.into())
+                        {
+                            let fn_node = self.add_node(Node::ContextVar(func_cvar));
+                            self.add_edge(
+                                fn_node,
+                                member_idx,
+                                Edge::Context(ContextEdge::FuncAccess),
+                            );
+                            return ExprRet::Single((ctx, fn_node));
+                        }
+                    } else {
                         panic!(
                             "No function with name {:?} in contract: {:?}",
                             ident.name,
                             con_node.name(self)
                         )
-                    } else if funcs.len() > 1 {
-                        panic!("Function lookup not unique")
-                    } else if let Some(func_cvar) =
-                        ContextVar::maybe_from_user_ty(self, loc, funcs[0].0.into())
-                    {
-                        let fn_node = self.add_node(Node::ContextVar(func_cvar));
-                        self.add_edge(fn_node, member_idx, Edge::Context(ContextEdge::FuncAccess));
-                        return ExprRet::Single((ctx, fn_node));
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
@@ -600,6 +609,48 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         }
 
         None
+    }
+
+    fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> BTreeSet<FunctionNode> {
+        let mut funcs: BTreeSet<FunctionNode> = BTreeSet::new();
+        if let Some(associated_contract) = ctx.maybe_associated_contract(self) {
+            // search for local library based functions
+            funcs.extend(
+                self.search_children(ty, &Edge::LibraryFunction(associated_contract.into()))
+                    .into_iter()
+                    .map(FunctionNode::from)
+                    .collect::<Vec<_>>(),
+            );
+
+            // search for local library contracts
+            let using_libs_children =
+                self.search_children(ty, &Edge::LibraryContract(associated_contract.into()));
+            funcs.extend(
+                using_libs_children
+                    .iter()
+                    .flat_map(|lib_contract| ContractNode::from(*lib_contract).funcs(self))
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        // Search for global funcs
+        let source = ctx.associated_source(self);
+        funcs.extend(
+            self.search_children(ty, &Edge::LibraryFunction(source))
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>(),
+        );
+
+        let using_libs_children = self.search_children(ty, &Edge::LibraryContract(source));
+        funcs.extend(
+            using_libs_children
+                .iter()
+                .flat_map(|lib_contract| ContractNode::from(*lib_contract).funcs(self))
+                .collect::<BTreeSet<_>>(),
+        );
+
+        funcs
     }
 
     fn index_access(

@@ -1,3 +1,4 @@
+use crate::context::exprs::MemberAccess;
 use crate::context::exprs::Require;
 use crate::context::ContextBuilder;
 use crate::ExprRet;
@@ -28,43 +29,106 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                let mut inputs = vec![self.parse_ctx_expr(member_expr, ctx)];
-                inputs.extend(
-                    input_exprs
+                let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
+
+                let inputs = match ContextVarNode::from(member).underlying(self).ty {
+                    VarType::User(TypeNode::Contract(_)) => input_exprs
                         .iter()
                         .map(|expr| self.parse_ctx_expr(expr, ctx))
                         .collect::<Vec<_>>(),
-                );
-
-                let inputs = ExprRet::Multi(inputs);
-                let as_input_str = inputs.try_as_func_input_str(self);
-
-                let (_func_ctx, func_idx) = match self.parse_ctx_expr(
-                    &MemberAccess(
-                        *loc,
-                        member_expr.clone(),
-                        Identifier {
-                            loc: ident.loc,
-                            name: format!("{}{}", ident.name, as_input_str),
-                        },
-                    ),
-                    ctx,
-                ) {
-                    ExprRet::Single((ctx, idx)) => (ctx, idx),
-                    m @ ExprRet::Multi(_) => m.expect_single(),
-                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                    e => todo!("got fork in func call: {:?}", e),
+                    _ => {
+                        let mut inputs = vec![ExprRet::Single((mem_ctx, member))];
+                        inputs.extend(
+                            input_exprs
+                                .iter()
+                                .map(|expr| self.parse_ctx_expr(expr, ctx))
+                                .collect::<Vec<_>>(),
+                        );
+                        inputs
+                    }
                 };
 
-                self.func_call(
-                    ctx,
-                    *loc,
-                    &inputs,
-                    ContextVarNode::from(func_idx)
-                        .ty(self)
-                        .func_node(self)
-                        .expect(""),
-                )
+                let inputs = ExprRet::Multi(inputs);
+                if !inputs.has_literal() {
+                    let as_input_str = inputs.try_as_func_input_str(self);
+
+                    let (_func_ctx, func_idx) = match self.parse_ctx_expr(
+                        &MemberAccess(
+                            *loc,
+                            member_expr.clone(),
+                            Identifier {
+                                loc: ident.loc,
+                                name: format!("{}{}", ident.name, as_input_str),
+                            },
+                        ),
+                        ctx,
+                    ) {
+                        ExprRet::Single((ctx, idx)) => (ctx, idx),
+                        m @ ExprRet::Multi(_) => m.expect_single(),
+                        ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                        e => todo!("got fork in func call: {:?}", e),
+                    };
+
+                    self.func_call(
+                        ctx,
+                        *loc,
+                        &inputs,
+                        ContextVarNode::from(func_idx)
+                            .ty(self)
+                            .func_node(self)
+                            .expect(""),
+                    )
+                } else {
+                    // we need to disambiguate the literals
+                    let ty = &ContextVarNode::from(member).underlying(self).ty;
+                    let possible_funcs: Vec<FunctionNode> = match ty {
+                        VarType::User(TypeNode::Contract(con_node)) => con_node.funcs(self),
+                        VarType::BuiltIn(bn, _) => self
+                            .possible_library_funcs(ctx, bn.0.into())
+                            .into_iter()
+                            .collect::<Vec<_>>(),
+                        VarType::Concrete(cnode) => {
+                            let b = cnode.underlying(self).as_builtin();
+                            let bn = self.builtin_or_add(b);
+                            self.possible_library_funcs(ctx, bn)
+                                .into_iter()
+                                .collect::<Vec<_>>()
+                        }
+                        VarType::User(TypeNode::Struct(sn)) => self
+                            .possible_library_funcs(ctx, sn.0.into())
+                            .into_iter()
+                            .collect::<Vec<_>>(),
+                        VarType::User(TypeNode::Enum(en)) => self
+                            .possible_library_funcs(ctx, en.0.into())
+                            .into_iter()
+                            .collect::<Vec<_>>(),
+                        VarType::User(TypeNode::Func(_)) => todo!(),
+                    };
+                    let lits = input_exprs
+                        .iter()
+                        .map(|expr| {
+                            match expr {
+                                Negate(_, expr) => {
+                                    // negative number potentially
+                                    matches!(**expr, NumberLiteral(..) | HexLiteral(..))
+                                }
+                                NumberLiteral(..) | HexLiteral(..) => true,
+                                _ => false,
+                            }
+                        })
+                        .collect();
+
+                    if let Some(func) =
+                        self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs[..])
+                    {
+                        self.setup_fn_call(loc, &inputs, func.into(), ctx)
+                    } else {
+                        panic!(
+                            "Could not disambiguate function call: {}, {:?}",
+                            ident.name, inputs
+                        )
+                    }
+                }
             }
             Variable(ident) => {
                 // It is a function call, check if we have the ident in scope
@@ -73,6 +137,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 let possible_funcs = funcs
                     .iter()
                     .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
+                    .copied()
                     .collect::<Vec<_>>();
 
                 if possible_funcs.is_empty() {
@@ -91,7 +156,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             .map(|expr| self.parse_ctx_expr(expr, ctx))
                             .collect(),
                     );
-                    self.setup_fn_call(&ident.loc, &inputs, (*possible_funcs[0]).into(), ctx)
+                    self.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx)
                 } else {
                     // this is the annoying case due to function overloading & type inference on number literals
                     let lits = input_exprs
@@ -141,25 +206,25 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         fn_name: &str,
         literals: Vec<bool>,
         input_paths: &ExprRet,
-        funcs: &[&FunctionNode],
+        funcs: &[FunctionNode],
     ) -> Option<FunctionNode> {
         // try to find the function based on naive signature
         // This doesnt do type inference on NumberLiterals (i.e. 100 could be uintX or intX, and there could
         // be a function that takes an int256 but we evaled as uint256)
         let fn_sig = format!("{}{}", fn_name, input_paths.try_as_func_input_str(self));
         if let Some(func) = funcs.iter().find(|func| func.name(self) == fn_sig) {
-            return Some(**func);
+            return Some(*func);
         }
 
         // filter by input len
         let inputs = input_paths.as_flat_vec();
-        let funcs: Vec<&&FunctionNode> = funcs
+        let funcs: Vec<&FunctionNode> = funcs
             .iter()
             .filter(|func| func.params(self).len() == inputs.len())
             .collect();
 
         if funcs.len() == 1 {
-            return Some(**funcs[0]);
+            return Some(*funcs[0]);
         }
 
         if !literals.iter().any(|i| *i) {
@@ -194,7 +259,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 })
                 .collect::<Vec<_>>();
             if funcs.len() == 1 {
-                Some(***funcs[0])
+                Some(**funcs[0])
             } else {
                 // this would be invalid solidity, likely the user needs to perform a cast
                 None
