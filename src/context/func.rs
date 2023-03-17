@@ -10,7 +10,7 @@ use shared::range::elem_ty::Dynamic;
 
 use shared::range::Range;
 use shared::range::{elem_ty::Elem, SolcRange};
-use solang_parser::pt::{Identifier, StorageLocation, Expression, Loc};
+use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation};
 
 use crate::VarType;
 
@@ -23,12 +23,12 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         ctx: ContextNode,
         loc: &Loc,
         func_expr: &Expression,
-        input_exprs: &[Expression]
+        input_exprs: &[Expression],
     ) -> ExprRet {
         use solang_parser::pt::Expression::*;
-        match &*func_expr {
+        match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                let mut inputs = vec![self.parse_ctx_expr(&member_expr, ctx)];
+                let mut inputs = vec![self.parse_ctx_expr(member_expr, ctx)];
                 inputs.extend(
                     input_exprs
                         .iter()
@@ -91,12 +91,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             .map(|expr| self.parse_ctx_expr(expr, ctx))
                             .collect(),
                     );
-                    self.setup_fn_call(
-                        &ident.loc,
-                        &inputs,
-                        (*possible_funcs[0]).into(),
-                        ctx,
-                    )
+                    self.setup_fn_call(&ident.loc, &inputs, (*possible_funcs[0]).into(), ctx)
                 } else {
                     // this is the annoying case due to function overloading & type inference on number literals
                     let lits = input_exprs
@@ -119,12 +114,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             .collect(),
                     );
 
-                    if let Some(func) = self.disambiguate_fn_call(
-                        &ident.name,
-                        lits,
-                        &inputs,
-                        &possible_funcs,
-                    ) {
+                    if let Some(func) =
+                        self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
+                    {
                         self.setup_fn_call(loc, &inputs, func.into(), ctx)
                     } else {
                         ExprRet::CtxKilled
@@ -719,5 +711,47 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 }
             });
         }
+    }
+
+    fn modifiers(&mut self, ctx: ContextNode, func: FunctionNode) -> Vec<FunctionNode> {
+        use std::fmt::Write;
+        let binding = func.underlying(self).clone();
+        let modifiers = binding.modifiers_as_base();
+        let func_params = func.params(self);
+        if modifiers.is_empty() {
+            vec![]
+        } else {
+            modifiers
+                .iter()
+                .filter_map(|modifier| {
+                    assert_eq!(modifier.name.identifiers.len(), 1);
+                    // construct arg string for function selector
+                    let mut mod_name = format!("{}(", modifier.name.identifiers[0]);
+                    if let Some(args) = &modifier.args {
+                        let args_str = args
+                            .iter()
+                            .map(|expr| {
+                                let ret = self.parse_ctx_expr(expr, ctx);
+                                ret.try_as_func_input_str(self)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let _ = write!(mod_name, "{}", args_str);
+                    }
+                    let _ = write!(mod_name, ")");
+                    self.user_types()
+                        .get(&mod_name)
+                        .map(|idx| FunctionNode::from(*idx))
+                })
+                .collect()
+        }
+    }
+
+    fn set_modifiers(&mut self, func: FunctionNode, ctx: ContextNode) {
+        let modifiers = self.modifiers(ctx, func);
+        modifiers
+            .iter()
+            .enumerate()
+            .for_each(|(i, modifier)| self.add_edge(*modifier, func, Edge::FuncModifier(i)));
     }
 }

@@ -68,7 +68,8 @@ impl ExprRet {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let (_, idx) = inner;
-                let var_ty = VarType::try_from_idx(analyzer, *idx).expect("Non-typeable as type");
+                let var_ty = VarType::try_from_idx(analyzer, *idx)
+                    .unwrap_or_else(|| panic!("Non-typeable as type: {:?}", analyzer.node(*idx)));
                 var_ty.as_dot_str(analyzer)
             }
             ExprRet::Multi(inner) if !self.has_fork() => {
@@ -152,8 +153,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             } => {
                 let parent = parent_ctx.expect("Free floating contexts shouldn't happen");
                 let mut entry_loc = None;
+                let mut mods_set = false;
                 let ctx_node = match self.node(parent) {
                     Node::Function(fn_node) => {
+                        mods_set = fn_node.modifiers_set;
                         entry_loc = Some(fn_node.loc);
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
@@ -231,6 +234,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     });
 
                 if let Some(fn_loc) = entry_loc {
+                    if !mods_set {
+                        let parent = FunctionNode::from(parent.into());
+                        self.set_modifiers(parent, ctx_node.into());
+                    }
                     self.func_call_inner(
                         true,
                         ctx_node.into(),
