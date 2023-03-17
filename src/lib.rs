@@ -7,7 +7,7 @@ use solang_parser::pt::Import;
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
     FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
-    VariableDefinition, Using, UsingList
+    Using, UsingList, VariableDefinition,
 };
 use std::{collections::HashMap, fs};
 
@@ -186,7 +186,11 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                let funcs = self.parse_source_unit(source_unit, file_no, parent, &mut imported);
+                let (funcs, usings) =
+                    self.parse_source_unit(source_unit, file_no, parent, &mut imported);
+                usings.into_iter().for_each(|(using, scope_node)| {
+                    self.parse_using(&using, scope_node);
+                });
                 funcs.iter().for_each(|func| {
                     // add params now that parsing is done
                     func.set_params_and_ret(self);
@@ -220,14 +224,15 @@ impl Analyzer {
         file_no: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-    ) -> Vec<FunctionNode> {
+    ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         let mut all_funcs = vec![];
+        let mut all_usings = vec![];
         source_unit
             .0
             .iter()
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
-                let (_sup, funcs) = self.parse_source_unit_part(
+                let (_sup, funcs, usings) = self.parse_source_unit_part(
                     source_unit_part,
                     file_no,
                     unit_part,
@@ -235,8 +240,9 @@ impl Analyzer {
                     imported,
                 );
                 all_funcs.extend(funcs);
+                all_usings.extend(usings);
             });
-        all_funcs
+        (all_funcs, all_usings)
     }
 
     pub fn parse_source_unit_part(
@@ -246,19 +252,21 @@ impl Analyzer {
         unit_part: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-    ) -> (NodeIdx, Vec<FunctionNode>) {
+    ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use SourceUnitPart::*;
 
         let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
         self.add_edge(sup_node, parent, Edge::Part);
 
         let mut func_nodes = vec![];
+        let mut usings = vec![];
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs) = self.parse_contract_def(def, imported);
+                let (node, funcs, con_usings) = self.parse_contract_def(def, imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
+                usings.extend(con_usings);
             }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(def);
@@ -290,12 +298,12 @@ impl Analyzer {
             }
             EventDefinition(_def) => todo!(),
             Annotation(_anno) => todo!(),
-            Using(_using) => todo!(),
+            Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
             ImportDirective(import) => imported.extend(self.parse_import(import)),
         }
-        (sup_node, func_nodes)
+        (sup_node, func_nodes, usings)
     }
 
     pub fn parse_import(
@@ -338,7 +346,7 @@ impl Analyzer {
         &mut self,
         contract_def: &ContractDefinition,
         imports: &[(Option<NodeIdx>, String, String, usize)],
-    ) -> (ContractNode, Vec<FunctionNode>) {
+    ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use ContractPart::*;
 
         let contract = Contract::from_w_imports(contract_def.clone(), imports, self);
@@ -347,6 +355,7 @@ impl Analyzer {
         inherits.iter().for_each(|contract_node| {
             self.add_edge(*contract_node, con_node, Edge::InheritedContract);
         });
+        let mut usings = vec![];
 
         let mut func_nodes = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
@@ -379,35 +388,89 @@ impl Analyzer {
             }
             EventDefinition(_def) => {}
             Annotation(_anno) => todo!(),
-            Using(using) => self.parse_using(using),
+            Using(using) => usings.push((*using.clone(), con_node.0.into())),
             StraySemicolon(_loc) => todo!(),
         });
         self.user_types
             .insert(con_node.name(self), con_node.0.into());
-        (con_node, func_nodes)
+        (con_node, func_nodes, usings)
     }
 
-    pub fn parse_using(&mut self, using_def: &Using) {
-        let ty_idx = self.parse_expr(&using_def.ty.clone().expect("No type defined for using statement"));
-        println!("{:?}", self.node(ty_idx));
+    pub fn parse_using(&mut self, using_def: &Using, scope_node: NodeIdx) {
+        let ty_idx = self.parse_expr(
+            &using_def
+                .ty
+                .clone()
+                .expect("No type defined for using statement"),
+        );
         match &using_def.list {
             UsingList::Library(ident_paths) => {
                 ident_paths.identifiers.iter().for_each(|ident| {
                     if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
-                        self.add_edge(*hopefully_contract, ty_idx, Edge::LibraryContract);
+                        self.add_edge(
+                            *hopefully_contract,
+                            ty_idx,
+                            Edge::LibraryContract(scope_node),
+                        );
+                    } else {
+                        panic!("Cannot find library contract {}", ident.name);
                     }
                 });
             }
             UsingList::Functions(vec_ident_paths) => {
                 vec_ident_paths.iter().for_each(|ident_paths| {
-                    ident_paths.identifiers.iter().for_each(|ident| {
-                        if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
-                            self.add_edge(*hopefully_contract, ty_idx, Edge::LibraryContract);
+                    if ident_paths.identifiers.len() == 2 {
+                        if let Some(hopefully_contract) =
+                            self.user_types.get(&ident_paths.identifiers[0].name)
+                        {
+                            if let Some(func) = ContractNode::from(*hopefully_contract)
+                                .funcs(self)
+                                .iter()
+                                .find(|func| {
+                                    func.name(self)
+                                        .starts_with(&ident_paths.identifiers[1].name)
+                                })
+                            {
+                                self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                            } else {
+                                panic!(
+                                    "Cannot find library function {}.{}",
+                                    ident_paths.identifiers[0].name,
+                                    ident_paths.identifiers[1].name
+                                );
+                            }
+                        } else {
+                            panic!(
+                                "Cannot find library contract {}",
+                                ident_paths.identifiers[0].name
+                            );
                         }
-                    });
+                    } else {
+                        // looking for free floating function
+                        let funcs = match self.node(scope_node) {
+                            Node::Contract(_) => self.search_children(
+                                ContractNode::from(scope_node).associated_source(self),
+                                &Edge::Func,
+                            ),
+                            Node::SourceUnit(..) => self.search_children(scope_node, &Edge::Func),
+                            _ => unreachable!(),
+                        };
+                        if let Some(func) = funcs.iter().find(|func| {
+                            FunctionNode::from(**func)
+                                .name(self)
+                                .starts_with(&ident_paths.identifiers[0].name)
+                        }) {
+                            self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                        } else {
+                            panic!(
+                                "Cannot find library function {}",
+                                ident_paths.identifiers[0].name
+                            );
+                        }
+                    }
                 });
             }
-            UsingList::Error(..) => todo!()
+            UsingList::Error(..) => todo!(),
         }
     }
 

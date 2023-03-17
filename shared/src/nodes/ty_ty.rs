@@ -1,9 +1,9 @@
 use crate::analyzer::AsDotStr;
-use crate::VarType;
-use crate::analyzer::{GraphLike, AnalyzerLike};
+use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::Node;
 use crate::NodeIdx;
-use solang_parser::pt::{Identifier, Loc, TypeDefinition, Expression};
+use crate::VarType;
+use solang_parser::pt::{Expression, Identifier, Loc, TypeDefinition};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct TyNode(pub usize);
@@ -33,7 +33,8 @@ impl From<NodeIdx> for TyNode {
 impl AsDotStr for TyNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
-        format!("{} {}",
+        format!(
+            "{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
                 var_ty.as_dot_str(analyzer)
             } else {

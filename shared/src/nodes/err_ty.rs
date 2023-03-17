@@ -1,7 +1,7 @@
 use crate::AnalyzerLike;
 use crate::AsDotStr;
 use crate::{analyzer::GraphLike, Node, NodeIdx};
-use solang_parser::pt::{ErrorDefinition, ErrorParameter, Identifier, Loc, Expression};
+use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ErrorNode(pub usize);
@@ -19,7 +19,8 @@ impl ErrorNode {
 impl AsDotStr for ErrorNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
-        format!("error {}",
+        format!(
+            "error {}",
             if let Some(name) = &underlying.name {
                 name.name.clone()
             } else {
