@@ -580,42 +580,6 @@ impl Analyzer {
         }
     }
 
-    // fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
-    // let name = func
-    //     .name
-    //     .as_ref()
-    //     .expect("Function was not named")
-    //     .name
-    //     .clone();
-    // let func_node: FunctionNode =
-    //     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-    //         let unresolved = self.node_mut(user_ty_node);
-    //         *unresolved = Node::Function(func);
-    //         user_ty_node.into()
-    //     } else {
-    //         let node = self.add_node(func);
-    //         self.user_types.insert(name.to_string(), node);
-    //         node.into()
-    //     };
-
-    // func_def.params.iter().for_each(|(_loc, input)| {
-    //     if let Some(input) = input {
-    //         let param = FunctionParam::new(self, input.clone());
-    //         let input_node = self.add_node(param);
-    //         self.add_edge(input_node, func_node, Edge::FunctionParam);
-    //     }
-    // });
-    // func_def.returns.iter().for_each(|(_loc, output)| {
-    //     if let Some(output) = output {
-    //         let ret = FunctionReturn::new(self, output.clone());
-    //         let output_node = self.add_node(ret);
-    //         self.add_edge(output_node, func_node, Edge::FunctionReturn);
-    //     }
-    // });
-
-    // func_node
-    // }
-
     pub fn parse_var_def(
         &mut self,
         var_def: &VariableDefinition,
@@ -636,56 +600,3 @@ impl Analyzer {
         TyNode(self.add_node(ty).index())
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::analyzers::ReportConfig;
-//     use crate::context::analyzers::bounds::BoundAnalyzer;
-//     use shared::context::{ContextEdge, ContextNode};
-
-//     #[test]
-//     fn it_works() {
-//         let sol = r###"
-// contract Storage {
-//     uint256 c;
-
-//     function b5(uint64 x) public  {
-//         address a = address(uint160(1));
-
-//         int256 b = int256(1);
-//         b -= 10000;
-
-//         c = uint256(int256(uint256(x)) - b);
-//         c += 10 + 20;
-
-//     }
-// }"###;
-//         let mut analyzer = Analyzer::default();
-//         let t0 = std::time::Instant::now();
-//         let (maybe_entry, _sources) = analyzer.parse(sol);
-//         let entry = maybe_entry.unwrap();
-//         let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
-//         println!("parse time: {:?}", t0.elapsed().as_nanos());
-//         println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
-//         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
-//         for context in contexts.into_iter() {
-//             let config = ReportConfig {
-//                 eval_bounds: true,
-//                 simplify_bounds: false,
-//                 show_tmps: false,
-//                 show_consts: true,
-//                 show_subctxs: true,
-//                 show_initial_bounds: true,
-//                 show_all_lines: true,
-//             };
-//             let ctx = ContextNode::from(context);
-
-//             let analysis =
-//                 analyzer.bounds_for_var(None, &file_mapping, ctx, "a".to_string(), config, false);
-//             println!("{analysis:#?}");
-//             // analysis.print_reports(("test.sol".to_string(), &sol), &analyzer);
-//         }
-//         println!("total analyze time: {:?}", t0.elapsed().as_nanos());
-//     }
-// }
