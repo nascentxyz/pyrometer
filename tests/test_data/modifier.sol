@@ -48,4 +48,23 @@ contract Modifier {
     function internalModPub(uint256 b) public {
         internalMod(b);
     }
+
+    function addOne(uint256 x) internal returns (uint256) {
+        return x + 1;
+    }
+
+    function inputFunc(uint256 x) internal Input(addOne(x)) returns (uint256) {
+        return x;
+    }
+
+    function inputFuncConst(uint256 x) internal Input(addOne(99)) returns (uint256) {
+        require(a == 1);
+        return x;
+    }
+
+    function inputFunc_conc() internal returns (uint256) {
+        uint256 y = inputFunc(99);
+        require(a == 1);
+        return y;
+    }
 }

@@ -22,6 +22,7 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
                     // println!("inheriting back from parent into modifier");
                     self.inherit_storage_changes(ctx, mod_state.parent_ctx);
 
+                    self.modifier_inherit_return(ctx, mod_state.parent_ctx);
                     Some(res)
                 } else {
                     None

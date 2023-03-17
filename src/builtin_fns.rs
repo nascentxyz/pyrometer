@@ -5,40 +5,39 @@ use solang_parser::pt::{
 };
 use std::collections::HashMap;
 
+macro_rules! builtin_fn {
+    ($($field:ident : $value:expr),* $(,)?) => {
+        Function {
+            $(
+                $field: $value,
+            )*
+            ..Default::default()
+        }
+    }
+}
+
 // A list of all Solidity builtins functions
 pub fn builtin_fns() -> HashMap<String, Function> {
     let funcs = [
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "ecrecover".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "type".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
+        ),
+        builtin_fn!(
             body: None,
             loc: Loc::Builtin,
             ty: FunctionTy::Function,
@@ -50,249 +49,151 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "require".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "require_str".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "revert".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "revert_str".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "selfdestruct".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "keccak256".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "ripemd160".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "sha256".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "gasleft".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "blockhash".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "abi.decode".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "abi.encode".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "abi.encodePacked".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "abi.encodeWithSelector".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "abi.encodeWithSignature".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
-        Function {
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "abi.encodeCall".to_string(),
             }),
-            name_loc: Loc::Builtin,
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
                 Loc::Builtin,
             )))],
-            params: vec![],
-            returns: vec![],
-        },
+        ),
     ];
     funcs
         .into_iter()

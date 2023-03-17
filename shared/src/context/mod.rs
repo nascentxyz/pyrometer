@@ -45,35 +45,30 @@ pub enum ContextEdge {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModifierState {
-    pub entry_call: bool,
     pub num: usize,
     pub loc: Loc,
     pub parent_fn: FunctionNode,
+    pub parent_caller_ctx: ContextNode,
     pub parent_ctx: ContextNode,
-    pub inputs: Vec<ContextVarNode>,
-    pub params: Vec<FunctionParamNode>,
     pub renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
 }
 
 impl ModifierState {
     pub fn new(
-        entry_call: bool,
         num: usize,
         loc: Loc,
         parent_fn: FunctionNode,
         parent_ctx: ContextNode,
-        inputs: Vec<ContextVarNode>,
-        params: Vec<FunctionParamNode>,
+        parent_caller_ctx: ContextNode,
+        renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
     ) -> Self {
         Self {
-            entry_call,
             num,
             loc,
             parent_fn,
             parent_ctx,
-            inputs,
-            params,
-            renamed_inputs: Default::default(),
+            parent_caller_ctx,
+            renamed_inputs,
         }
     }
 }

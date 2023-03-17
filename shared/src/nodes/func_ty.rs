@@ -193,17 +193,6 @@ impl FunctionNode {
         }
     }
 
-    pub fn set_modifiers(&self, analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>)) {
-        let modifiers = self
-            .underlying(analyzer)
-            .clone()
-            .modifiers(self.params(analyzer), analyzer);
-        modifiers
-            .iter()
-            .enumerate()
-            .for_each(|(i, modifier)| analyzer.add_edge(*modifier, *self, Edge::FuncModifier(i)));
-    }
-
     pub fn returns(&self, analyzer: &'_ impl GraphLike) -> Vec<FunctionReturnNode> {
         analyzer
             .graph()
@@ -291,59 +280,26 @@ pub struct Function {
     pub body: Option<Statement>,
     pub params: ParameterList,
     pub returns: ParameterList,
+    pub modifiers_set: bool,
+}
+
+impl Default for Function {
+    fn default() -> Self {
+        Self {
+            loc: Loc::Implicit,
+            ty: FunctionTy::Function,
+            name: None,
+            name_loc: Loc::Implicit,
+            attributes: vec![],
+            body: None,
+            params: vec![],
+            returns: vec![],
+            modifiers_set: true,
+        }
+    }
 }
 
 impl Function {
-    pub fn modifiers(
-        &self,
-        func_params: Vec<FunctionParamNode>,
-        analyzer: &(impl GraphLike + AnalyzerLike<Expr = Expression>),
-    ) -> Vec<FunctionNode> {
-        use std::fmt::Write;
-        let modifiers = self.modifiers_as_base();
-        if modifiers.is_empty() {
-            vec![]
-        } else {
-            modifiers
-                .iter()
-                .filter_map(|modifier| {
-                    assert_eq!(modifier.name.identifiers.len(), 1);
-                    // construct arg string for function selector
-                    let mut mod_name = format!("{}(", modifier.name.identifiers[0]);
-                    if let Some(args) = &modifier.args {
-                        let args_str = args
-                            .iter()
-                            .map(|expr| match expr {
-                                Expression::Variable(ident) => {
-                                    let func_param_ty_str = func_params
-                                        .iter()
-                                        .find(|param| {
-                                            if let Some(param_name) = param.maybe_name(analyzer) {
-                                                param_name == ident.name
-                                            } else {
-                                                false
-                                            }
-                                        })
-                                        .map(|param| param.ty_str(analyzer))
-                                        .unwrap_or_else(|| "".to_string());
-                                    func_param_ty_str
-                                }
-                                e => todo!("here: {e:?}"),
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        let _ = write!(mod_name, "{}", args_str);
-                    }
-                    let _ = write!(mod_name, ")");
-                    analyzer
-                        .user_types()
-                        .get(&mod_name)
-                        .map(|idx| FunctionNode::from(*idx))
-                })
-                .collect()
-        }
-    }
-
     pub fn modifiers_as_base(&self) -> Vec<&Base> {
         self.attributes
             .iter()
@@ -372,6 +328,7 @@ impl From<FunctionDefinition> for Function {
             body: func.body,
             params: func.params,
             returns: func.returns,
+            modifiers_set: false,
         }
     }
 }
@@ -406,6 +363,7 @@ impl From<VariableDefinition> for Function {
                     name: None,
                 }),
             )],
+            modifiers_set: true,
         }
     }
 }
