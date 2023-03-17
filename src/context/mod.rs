@@ -493,27 +493,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::Single((rhs_ctx, rhs)))) => {
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                // if let VarType::Array(_, ref mut range) = ty {
-                //     *range = Some(self.tmp_length(ContextVarNode::from(*rhs), *rhs_ctx, loc))
-                // }
-
-                // if ty.is_dyn_builtin(self) {
-                //     if let Some(r) = ContextVarNode::from(ty).range(self) {
-                //         let mut min = r.range_min().clone();
-                //         let mut max = r.range_max().clone();
-
-                //         if let Some(rd) = min.maybe_range_dyn() {
-                //             rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                //             next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
-                //         }
-
-                //         if let Some(rd) = max.maybe_range_dyn() {
-                //             rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                //             next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                //         }
-                //     }
-                // }
-
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
@@ -547,6 +526,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 self.add_edge(lhs, *lhs_ctx, Edge::Context(ContextEdge::Variable));
             }
             (l @ ExprRet::Single((_lhs_ctx, _lhs)), Some(ExprRet::Multi(rhs_sides))) => {
+                println!("{:?}", rhs_sides);
                 rhs_sides.iter().for_each(|expr_ret| {
                     self.match_var_def(var_decl, loc, l, Some(expr_ret));
                 });
