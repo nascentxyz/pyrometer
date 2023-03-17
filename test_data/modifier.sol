@@ -1,51 +1,51 @@
 contract Modifier {
-	uint256 a;
-	modifier Noop() {
-		_;
-	}
+    uint256 a;
 
-	modifier RequireBefore() {
-		require(a == 0);
-		_;
-	}
+    modifier Noop() {
+        _;
+    }
 
-	modifier RequireAfter() {
-		_;
-		require(a == 1);
-	}
+    modifier RequireBefore() {
+        require(a == 0);
+        _;
+    }
 
-	modifier Input(uint256 c) {
-		require(c == 100);
-		a += 1;
-		_;
-		
-	}
+    modifier RequireAfter() {
+        _;
+        require(a == 1);
+    }
 
-	function noop() public Noop {
-		a = 100;
-	}
+    modifier Input(uint256 c) {
+        require(c == 100);
+        a += 1;
+        _;
+    }
 
-	function requireBefore() public RequireBefore {
-		a += 1;
-	}
+    function noop() public Noop {
+        a = 100;
+    }
 
-	function requireAfter() public RequireAfter {
-		a += 1;
-	}
+    function requireBefore() public RequireBefore {
+        a += 1;
+    }
 
-	function input(uint256 b) public Input(b) {
-		uint256 a = b;
-	}
+    function requireAfter() public RequireAfter {
+        a += 1;
+    }
 
-	function input(uint256 b, uint256 c) public Input(b) Input(c) {
-		uint256 k = b;
-	}
+    function input(uint256 b) public Input(b) {
+        uint256 a = b;
+    }
 
-	function internalMod(uint256 b) internal Input(b) {
-		uint256 k = b;
-	}
+    function input(uint256 b, uint256 c) public Input(b) Input(c) {
+        uint256 k = b;
+    }
 
-	function internalModPub(uint256 b) public {
-		internalMod(b);
-	}
+    function internalMod(uint256 b) internal Input(b) {
+        uint256 k = b;
+    }
+
+    function internalModPub(uint256 b) public {
+        internalMod(b);
+    }
 }

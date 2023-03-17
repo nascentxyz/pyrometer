@@ -1,10 +1,10 @@
 contract DynTypes {
-	function bytes_dyn(bytes calldata x) public {
-		bytes memory y = x;
-		require(x.length < 10);
-		y[8] = 0xff;
-		require(y.length == 9);
-	}
+    function bytes_dyn(bytes calldata x) public {
+        bytes memory y = x;
+        require(x.length < 10);
+        y[8] = 0xff;
+        require(y.length == 9);
+    }
 
 	// function array_dyn(uint256[] calldata x) public {
 	// 	uint256[] memory y = x;
