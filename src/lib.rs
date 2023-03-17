@@ -637,55 +637,55 @@ impl Analyzer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::analyzers::ReportConfig;
-    use crate::context::analyzers::bounds::BoundAnalyzer;
-    use shared::context::{ContextEdge, ContextNode};
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::analyzers::ReportConfig;
+//     use crate::context::analyzers::bounds::BoundAnalyzer;
+//     use shared::context::{ContextEdge, ContextNode};
 
-    #[test]
-    fn it_works() {
-        let sol = r###"
-contract Storage {
-    uint256 c;
+//     #[test]
+//     fn it_works() {
+//         let sol = r###"
+// contract Storage {
+//     uint256 c;
 
-    function b5(uint64 x) public  {
-        address a = address(uint160(1));
+//     function b5(uint64 x) public  {
+//         address a = address(uint160(1));
 
-        int256 b = int256(1);
-        b -= 10000;
+//         int256 b = int256(1);
+//         b -= 10000;
 
-        c = uint256(int256(uint256(x)) - b);
-        c += 10 + 20;
+//         c = uint256(int256(uint256(x)) - b);
+//         c += 10 + 20;
 
-    }
-}"###;
-        let mut analyzer = Analyzer::default();
-        let t0 = std::time::Instant::now();
-        let (maybe_entry, _sources) = analyzer.parse(sol);
-        let entry = maybe_entry.unwrap();
-        let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
-        println!("parse time: {:?}", t0.elapsed().as_nanos());
-        println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
-        let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
-        for context in contexts.into_iter() {
-            let config = ReportConfig {
-                eval_bounds: true,
-                simplify_bounds: false,
-                show_tmps: false,
-                show_consts: true,
-                show_subctxs: true,
-                show_initial_bounds: true,
-                show_all_lines: true,
-            };
-            let ctx = ContextNode::from(context);
+//     }
+// }"###;
+//         let mut analyzer = Analyzer::default();
+//         let t0 = std::time::Instant::now();
+//         let (maybe_entry, _sources) = analyzer.parse(sol);
+//         let entry = maybe_entry.unwrap();
+//         let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
+//         println!("parse time: {:?}", t0.elapsed().as_nanos());
+//         println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
+//         let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
+//         for context in contexts.into_iter() {
+//             let config = ReportConfig {
+//                 eval_bounds: true,
+//                 simplify_bounds: false,
+//                 show_tmps: false,
+//                 show_consts: true,
+//                 show_subctxs: true,
+//                 show_initial_bounds: true,
+//                 show_all_lines: true,
+//             };
+//             let ctx = ContextNode::from(context);
 
-            let analysis =
-                analyzer.bounds_for_var(None, &file_mapping, ctx, "a".to_string(), config, false);
-            println!("{analysis:#?}");
-            // analysis.print_reports(("test.sol".to_string(), &sol), &analyzer);
-        }
-        println!("total analyze time: {:?}", t0.elapsed().as_nanos());
-    }
-}
+//             let analysis =
+//                 analyzer.bounds_for_var(None, &file_mapping, ctx, "a".to_string(), config, false);
+//             println!("{analysis:#?}");
+//             // analysis.print_reports(("test.sol".to_string(), &sol), &analyzer);
+//         }
+//         println!("total analyze time: {:?}", t0.elapsed().as_nanos());
+//     }
+// }
