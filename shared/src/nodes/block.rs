@@ -1,10 +1,10 @@
-use ethers_core::types::Address;
-use ethers_core::types::U256;
-use ethers_core::types::H256;
-use crate::GraphLike;
 use crate::analyzer::AsDotStr;
+use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
+use ethers_core::types::Address;
+use ethers_core::types::H256;
+use ethers_core::types::U256;
 
 /// An index in the graph that references a Block node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

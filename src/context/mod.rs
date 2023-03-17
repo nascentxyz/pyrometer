@@ -12,7 +12,7 @@ use solang_parser::pt::VariableDeclaration;
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
 use shared::{analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, Edge, Node, NodeIdx};
-use solang_parser::pt::{Expression, Loc, Statement};
+use solang_parser::pt::{Expression, Identifier, Loc, Statement};
 
 pub mod func;
 use func::*;
@@ -752,20 +752,34 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             NamedFunctionCall(_loc, _func_expr, _input_exprs) => todo!("Named function call"),
             FunctionCall(loc, func_expr, input_exprs) => {
                 match &**func_expr {
-                    MemberAccess(loc, _member_expr, _ident) => {
-                        let (_func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
+                    MemberAccess(loc, member_expr, ident) => {
+                        let mut inputs = vec![self.parse_ctx_expr(member_expr, ctx)];
+                        inputs.extend(
+                            input_exprs
+                                .iter()
+                                .map(|expr| self.parse_ctx_expr(expr, ctx))
+                                .collect::<Vec<_>>(),
+                        );
+
+                        let inputs = ExprRet::Multi(inputs);
+                        let as_input_str = inputs.try_as_func_input_str(self);
+
+                        let (_func_ctx, func_idx) = match self.parse_ctx_expr(
+                            &MemberAccess(
+                                *loc,
+                                member_expr.clone(),
+                                Identifier {
+                                    loc: ident.loc,
+                                    name: format!("{}{}", ident.name, as_input_str),
+                                },
+                            ),
+                            ctx,
+                        ) {
                             ExprRet::Single((ctx, idx)) => (ctx, idx),
                             m @ ExprRet::Multi(_) => m.expect_single(),
                             ExprRet::CtxKilled => return ExprRet::CtxKilled,
                             e => todo!("got fork in func call: {:?}", e),
                         };
-
-                        let inputs = ExprRet::Multi(
-                            input_exprs
-                                .iter()
-                                .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                .collect(),
-                        );
 
                         self.func_call(
                             ctx,
