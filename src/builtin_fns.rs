@@ -1,7 +1,7 @@
 use crate::Builtin;
 use crate::{AnalyzerLike, Function, FunctionParam, FunctionReturn};
 use solang_parser::pt::{
-    FunctionAttribute, FunctionTy, Identifier, Loc, StorageLocation, Visibility,
+    FunctionAttribute, Identifier, Loc, StorageLocation, Visibility,
 };
 use std::collections::HashMap;
 
@@ -22,6 +22,15 @@ pub fn builtin_fns() -> HashMap<String, Function> {
         builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
+                name: "push".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
                 name: "ecrecover".to_string(),
             }),
             attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
@@ -38,9 +47,6 @@ pub fn builtin_fns() -> HashMap<String, Function> {
             )))],
         ),
         builtin_fn!(
-            body: None,
-            loc: Loc::Builtin,
-            ty: FunctionTy::Function,
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "assert".to_string(),
@@ -205,6 +211,7 @@ pub fn builtin_fns_inputs(
     analyzer: &mut impl AnalyzerLike,
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
+        ("push", vec![], vec![]),
         (
             "ecrecover",
             vec![

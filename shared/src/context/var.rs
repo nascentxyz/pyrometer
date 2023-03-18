@@ -482,6 +482,19 @@ impl ContextVarNode {
         analyzer.add_node(Node::ContextVar(new_underlying)).into()
     }
 
+    pub fn as_tmp(
+        &self,
+        loc: Loc,
+        ctx: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        let new_underlying = self
+            .underlying(analyzer)
+            .clone()
+            .as_tmp(loc, ctx, analyzer);
+        analyzer.add_node(Node::ContextVar(new_underlying)).into()
+    }
+
     pub fn ty_eq(&self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> bool {
         self.ty(analyzer).ty_eq(other.ty(analyzer), analyzer)
     }
@@ -491,7 +504,20 @@ impl ContextVarNode {
         self.cast_from_ty(to_ty, analyzer);
     }
 
-    pub fn cast_from_ty(&self, to_ty: VarType, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+    pub fn literal_cast_from(
+        &self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let to_ty = other.ty(analyzer).clone();
+        self.literal_cast_from_ty(to_ty, analyzer);
+    }
+
+    pub fn cast_from_ty(
+        &self,
+        to_ty: VarType,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
         let from_ty = self.ty(analyzer).clone();
         if !from_ty.ty_eq(&to_ty, analyzer) {
             if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer) {
@@ -512,7 +538,30 @@ impl ContextVarNode {
         }
     }
 
-    pub fn try_increase_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+    pub fn literal_cast_from_ty(
+        &self,
+        to_ty: VarType,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        let from_ty = self.ty(analyzer).clone();
+        if !from_ty.ty_eq(&to_ty, analyzer) {
+            if let Some(new_ty) = from_ty.try_literal_cast(&to_ty, analyzer) {
+                self.underlying_mut(analyzer).ty = new_ty;
+            }
+            // we dont need to update the ranges because a literal by definition is concrete
+        }
+
+        if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer), to_ty) {
+            // update name
+            let display_name = cnode.underlying(analyzer).as_string();
+            self.underlying_mut(analyzer).display_name = display_name;
+        }
+    }
+
+    pub fn try_increase_size(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
         let from_ty = self.ty(analyzer).clone();
         self.cast_from_ty(from_ty.max_size(analyzer), analyzer);
     }
@@ -588,6 +637,24 @@ impl ContextVar {
             self.name,
             ctx.new_tmp(analyzer),
             cast_ty.as_string(analyzer),
+            self.name
+        );
+        new_tmp
+    }
+
+    pub fn as_tmp(
+        &self,
+        loc: Loc,
+        ctx: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        let mut new_tmp = self.clone();
+        new_tmp.loc = Some(loc);
+        new_tmp.is_tmp = true;
+        new_tmp.name = format!(
+            "tmp{}_{}({})",
+            self.name,
+            ctx.new_tmp(analyzer),
             self.name
         );
         new_tmp

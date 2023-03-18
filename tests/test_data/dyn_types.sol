@@ -1,4 +1,6 @@
 contract DynTypes {
+    uint256[] storeVar;
+
     function bytes_dyn(bytes calldata x) public {
         bytes memory y = x;
         require(x.length < 10);
@@ -14,9 +16,14 @@ contract DynTypes {
     }
 
     function nested_bytes_dyn(bytes[] calldata x) public {
-        // require(x.length < 10);
         bytes memory a = hex"1337";
-        require(x[0] == hex"14");
+        x[0] = a;
+        require(x[0][0] == hex"13");
         require(x.length == 1);
+    }
+
+    function array_push(uint256 x) public {
+        storeVar.push(x);
+        require(storeVar[0] == x);
     }
 }
