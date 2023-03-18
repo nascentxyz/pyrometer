@@ -24,6 +24,7 @@ use context::*;
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
+    pub root: PathBuf,
     pub remappings: Vec<Remapping>,
     pub file_no: usize,
     pub msg: MsgNode,
@@ -38,6 +39,7 @@ pub struct Analyzer {
 impl Default for Analyzer {
     fn default() -> Self {
         let mut a = Self {
+            root: Default::default(),
             remappings: Default::default(),
             file_no: 0,
             msg: MsgNode(0),
@@ -263,7 +265,7 @@ impl Analyzer {
                     unit_part,
                     parent,
                     imported,
-                    &current_path
+                    &current_path,
                 );
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
@@ -339,8 +341,8 @@ impl Analyzer {
         current_path: &PathBuf,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
-            Import::Plain(import_path, loc) => {
-                println!("import_path: {:?}", import_path);
+            Import::Plain(import_path, _) => {
+                // println!("import_path: {:?}", import_path);
 
                 let remapping = self
                     .remappings
@@ -349,9 +351,11 @@ impl Analyzer {
                     .find(|x| import_path.string.starts_with(&x.name));
 
                 let remapped = if remapping.is_some() {
-                    Remapping::into_relative(remapping.unwrap(), &current_path)
+                    let unwrapped = remapping.clone().unwrap();
+                    Remapping::into_relative(remapping.unwrap(), &self.root)
                         .path
                         .relative()
+                        .join(&import_path.string.replacen(&unwrapped.name.clone(), "", 1))
                 } else {
                     PathBuf::from(current_path.clone())
                         .parent()
@@ -359,8 +363,10 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                let sol = fs::read_to_string(&remapped).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", remapped)
+                let canonical = fs::canonicalize(&remapped).unwrap();
+
+                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {:?}", canonical)
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
@@ -387,9 +393,11 @@ impl Analyzer {
                     .find(|x| import_path.string.starts_with(&x.name));
 
                 let remapped = if remapping.is_some() {
-                    Remapping::into_relative(remapping.unwrap(), &current_path)
+                    let unwrapped = remapping.clone().unwrap();
+                    Remapping::into_relative(remapping.unwrap(), &self.root)
                         .path
                         .relative()
+                        .join(&import_path.string.replacen(&unwrapped.name.clone(), "", 1))
                 } else {
                     PathBuf::from(current_path.clone())
                         .parent()
@@ -397,8 +405,10 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                let sol = fs::read_to_string(&remapped).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", remapped)
+                let canonical = fs::canonicalize(&remapped).unwrap();
+
+                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {:?}", canonical)
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
