@@ -1,4 +1,5 @@
 use ethers_core::types::U256;
+use ethers_solc::remappings::Remapping;
 use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
@@ -9,6 +10,8 @@ use solang_parser::pt::{
     FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
     Using, UsingList, VariableDefinition,
 };
+use std::path::PathBuf;
+use std::str::FromStr;
 use std::{collections::HashMap, fs};
 
 use petgraph::{graph::*, Directed};
@@ -21,7 +24,7 @@ use context::*;
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
-    pub remappings: HashMap<String, String>,
+    pub remappings: Vec<Remapping>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
@@ -174,9 +177,26 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
+    pub fn set_remappings(&mut self, remappings_path: String) {
+        let content = fs::read_to_string(remappings_path)
+            .map_err(|err| err.to_string())
+            .expect("Remappings file not found");
+
+        let remappings = content
+            .lines()
+            .map(|x| x.trim())
+            .filter(|x| !x.is_empty())
+            .map(Remapping::from_str)
+            .map(|r| r.ok().unwrap())
+            .collect::<Vec<_>>();
+
+        self.remappings = remappings;
+    }
+
     pub fn parse(
         &mut self,
         src: &str,
+        current_path: &PathBuf,
     ) -> (
         Option<NodeIdx>,
         Vec<(Option<NodeIdx>, String, String, usize)>,
@@ -186,8 +206,13 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                let (funcs, usings) =
-                    self.parse_source_unit(source_unit, file_no, parent, &mut imported);
+                let (funcs, usings) = self.parse_source_unit(
+                    source_unit,
+                    file_no,
+                    parent,
+                    &mut imported,
+                    current_path,
+                );
                 usings.into_iter().for_each(|(using, scope_node)| {
                     self.parse_using(&using, scope_node);
                 });
@@ -223,6 +248,7 @@ impl Analyzer {
         file_no: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
+        current_path: &PathBuf,
     ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
@@ -237,6 +263,7 @@ impl Analyzer {
                     unit_part,
                     parent,
                     imported,
+                    &current_path
                 );
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
@@ -251,6 +278,7 @@ impl Analyzer {
         unit_part: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
+        current_path: &PathBuf,
     ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use SourceUnitPart::*;
 
@@ -300,7 +328,7 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(import) => imported.extend(self.parse_import(import)),
+            ImportDirective(import) => imported.extend(self.parse_import(import, &current_path)),
         }
         (sup_node, func_nodes, usings)
     }
@@ -308,33 +336,82 @@ impl Analyzer {
     pub fn parse_import(
         &mut self,
         import: &Import,
+        current_path: &PathBuf,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
-            Import::Plain(path, _) => {
-                // println!("path: {:?}", path);
-                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", path.string)
+            Import::Plain(import_path, loc) => {
+                let remapping = self
+                    .remappings
+                    .clone()
+                    .into_iter()
+                    .find(|x| import_path.string.starts_with(&x.name));
+
+                let remapped = if remapping.is_some() {
+                    Remapping::into_relative(remapping.unwrap(), &current_path)
+                        .path
+                        .relative()
+                } else {
+                    PathBuf::from(current_path.clone())
+                        .parent()
+                        .unwrap()
+                        .join(import_path.string.clone())
+                };
+
+                println!("loc: {:?}", loc);
+                println!("import_path: {:?}", import_path);
+                println!("path: {:?}", &current_path);
+                println!("remapped: {:?}", remapped);
+
+                let sol = fs::read_to_string(&remapped).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {:?}", remapped)
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol);
-                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                inner_sources.push((
+                    maybe_entry,
+                    remapped.to_str().unwrap().to_owned(),
+                    sol.to_string(),
+                    file_no,
+                ));
                 inner_sources
             }
-            Import::Rename(path, elems, _) => {
+            Import::Rename(import_path, elems, _) => {
                 println!(
-                    "path: {:?}, elems: {:?}, curr: {:?}",
-                    path,
+                    "import_path: {:?}, elems: {:?}, curr: {:?}",
+                    import_path,
                     elems,
                     std::env::current_dir()
                 );
-                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", path.string)
+                let remapping = self
+                    .remappings
+                    .clone()
+                    .into_iter()
+                    .find(|x| import_path.string.starts_with(&x.name));
+
+                let remapped = if remapping.is_some() {
+                    Remapping::into_relative(remapping.unwrap(), &current_path)
+                        .path
+                        .relative()
+                } else {
+                    PathBuf::from(current_path.clone())
+                        .parent()
+                        .unwrap()
+                        .join(import_path.string.clone())
+                };
+
+                let sol = fs::read_to_string(&remapped).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {:?}", remapped)
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol);
-                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                inner_sources.push((
+                    maybe_entry,
+                    remapped.to_str().unwrap().to_owned(),
+                    sol.to_string(),
+                    file_no,
+                ));
                 inner_sources
             }
             e => todo!("import {:?}", e),
