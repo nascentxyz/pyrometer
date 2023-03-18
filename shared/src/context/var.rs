@@ -482,6 +482,19 @@ impl ContextVarNode {
         analyzer.add_node(Node::ContextVar(new_underlying)).into()
     }
 
+    pub fn as_tmp(
+        &self,
+        loc: Loc,
+        ctx: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        let new_underlying = self
+            .underlying(analyzer)
+            .clone()
+            .as_tmp(loc, ctx, analyzer);
+        analyzer.add_node(Node::ContextVar(new_underlying)).into()
+    }
+
     pub fn ty_eq(&self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> bool {
         self.ty(analyzer).ty_eq(other.ty(analyzer), analyzer)
     }
@@ -624,6 +637,24 @@ impl ContextVar {
             self.name,
             ctx.new_tmp(analyzer),
             cast_ty.as_string(analyzer),
+            self.name
+        );
+        new_tmp
+    }
+
+    pub fn as_tmp(
+        &self,
+        loc: Loc,
+        ctx: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        let mut new_tmp = self.clone();
+        new_tmp.loc = Some(loc);
+        new_tmp.is_tmp = true;
+        new_tmp.name = format!(
+            "tmp{}_{}({})",
+            self.name,
+            ctx.new_tmp(analyzer),
             self.name
         );
         new_tmp

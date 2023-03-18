@@ -97,11 +97,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
-                    if let Some(ret) = self.library_func_search(ctx, bn.0.into(), ident) {
-                        return ret;
-                    } else {
-                        panic!("Couldn't find library function: {ident:?}")
-                    }
+                    return self.builin_member_access(loc, ctx, *bn, ContextVarNode::from(member_idx).is_storage(self), ident);
                 }
                 e => todo!("member access: {:?}, {:?}", e, ident),
             },
@@ -442,111 +438,133 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     return ExprRet::Single((ctx, cvar));
                 }
             }
-            Node::Builtin(ref b) => {
-                let b = b.clone();
-                if let Some(user_defined_fn) = self.library_func_search(ctx, member_idx, ident) {
-                    return user_defined_fn;
-                } else {
-                    match b {
-                        Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                            // TODO: handle address(x).call/delegatecall, etc
-                            panic!("Unknown member access on address: {:?}", ident.name)
-                        }
-                        Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),
-                        Builtin::String => {
-                            panic!("Unknown member access on string: {:?}", ident.name)
-                        }
-                        Builtin::Bytes(size) => {
-                            panic!("Unknown member access on bytes{}: {:?}", size, ident.name)
-                        }
-                        Builtin::Rational => {
-                            panic!("Unknown member access on rational: {:?}", ident.name)
-                        }
-                        Builtin::DynamicBytes => {
-                            panic!("Unknown member access on bytes[]: {:?}", ident.name)
-                        }
-                        Builtin::Array(_) => {
-                            panic!("Unknown member access on array[]: {:?}", ident.name)
-                        }
-                        Builtin::Mapping(_, _) => {
-                            panic!("Unknown member access on mapping: {:?}", ident.name)
-                        }
-                        Builtin::Func(_, _) => {
-                            panic!("Unknown member access on func: {:?}", ident.name)
-                        }
-                        Builtin::Int(size) => {
-                            let size = size;
-                            let max = if size == 256 {
-                                I256::MAX
-                            } else {
-                                I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - 1.into()
-                            };
-                            match &*ident.name {
-                                "max" => {
-                                    let c = Concrete::from(max);
-                                    let node = self.add_node(Node::Concrete(c)).into();
-                                    let mut var = ContextVar::new_from_concrete(loc, node, self);
-                                    var.name = format!("int{size}.max");
-                                    var.display_name = var.name.clone();
-                                    var.is_tmp = true;
-                                    var.is_symbolic = false;
-                                    let cvar = self.add_node(Node::ContextVar(var));
-                                    self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                }
-                                "min" => {
-                                    let min = max * I256::from(-1i32);
-                                    let c = Concrete::from(min);
-                                    let node = self.add_node(Node::Concrete(c)).into();
-                                    let mut var = ContextVar::new_from_concrete(loc, node, self);
-                                    var.name = format!("int{size}.min");
-                                    var.display_name = var.name.clone();
-                                    var.is_tmp = true;
-                                    var.is_symbolic = false;
-                                    let cvar = self.add_node(Node::ContextVar(var));
-                                    self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                }
-                                e => panic!("Unknown type attribute on int{size}: {e:?}"),
-                            }
-                        }
-                        Builtin::Uint(size) => match &*ident.name {
-                            "max" => {
-                                let max = if size == 256 {
-                                    U256::MAX
-                                } else {
-                                    U256::from(2).pow(U256::from(size)) - 1
-                                };
-                                let c = Concrete::from(max);
-                                let node = self.add_node(Node::Concrete(c)).into();
-                                let mut var = ContextVar::new_from_concrete(loc, node, self);
-                                var.name = format!("int{size}.max");
-                                var.display_name = var.name.clone();
-                                var.is_tmp = true;
-                                var.is_symbolic = false;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
-                            }
-                            "min" => {
-                                let min = U256::zero();
-                                let c = Concrete::from(min);
-                                let node = self.add_node(Node::Concrete(c)).into();
-                                let mut var = ContextVar::new_from_concrete(loc, node, self);
-                                var.name = format!("int{size}.min");
-                                var.display_name = var.name.clone();
-                                var.is_tmp = true;
-                                var.is_symbolic = false;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
-                            }
-                            e => panic!("Unknown type attribute on uint{size}: {e:?}"),
-                        },
-                    }
-                }
+            Node::Builtin(ref _b) => {
+                return self.builin_member_access(loc, ctx, BuiltInNode::from(member_idx), false, ident);
             }
             e => todo!("{:?}", e),
         }
         ExprRet::Single((ctx, member_idx))
+    }
+
+    fn builin_member_access(
+        &mut self,
+        loc: Loc,
+        ctx: ContextNode,
+        node: BuiltInNode,
+        is_storage: bool,
+        ident: &Identifier
+    ) -> ExprRet {
+        if let Some(ret) = self.library_func_search(ctx, node.0.into(), ident) {
+            ret
+         } else {
+            match node.underlying(self).clone() {
+                Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
+                    // TODO: handle address(x).call/delegatecall, etc
+                    panic!("Unknown member access on address: {:?}", ident.name)
+                }
+                Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),
+                Builtin::String => {
+                    panic!("Unknown member access on string: {:?}", ident.name)
+                }
+                Builtin::Bytes(size) => {
+                    panic!("Unknown member access on bytes{}: {:?}", size, ident.name)
+                }
+                Builtin::Rational => {
+                    panic!("Unknown member access on rational: {:?}", ident.name)
+                }
+                Builtin::DynamicBytes => {
+                    panic!("Unknown member access on bytes[]: {:?}", ident.name)
+                }
+                Builtin::Array(_) => {
+                    if ident.name.starts_with("push") {
+                        if is_storage {
+                            let as_fn = self.builtin_fns().get("push").unwrap();
+                            let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                            ExprRet::Single((ctx, fn_node.into()))
+                        } else {
+                            panic!("Trying to push to nonstorage variable is not supported");
+                        }
+                    } else {
+                        panic!("Unknown member access on array[]: {:?}", ident.name)
+                    }
+                }
+                Builtin::Mapping(_, _) => {
+                    panic!("Unknown member access on mapping: {:?}", ident.name)
+                }
+                Builtin::Func(_, _) => {
+                    panic!("Unknown member access on func: {:?}", ident.name)
+                }
+                Builtin::Int(size) => {
+                    let max = if size == 256 {
+                        I256::MAX
+                    } else {
+                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - 1.into()
+                    };
+                    match &*ident.name {
+                        "max" => {
+                            let c = Concrete::from(max);
+                            let node = self.add_node(Node::Concrete(c)).into();
+                            let mut var = ContextVar::new_from_concrete(loc, node, self);
+                            var.name = format!("int{size}.max");
+                            var.display_name = var.name.clone();
+                            var.is_tmp = true;
+                            var.is_symbolic = false;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                            ExprRet::Single((ctx, cvar))
+                        }
+                        "min" => {
+                            let min = max * I256::from(-1i32);
+                            let c = Concrete::from(min);
+                            let node = self.add_node(Node::Concrete(c)).into();
+                            let mut var = ContextVar::new_from_concrete(loc, node, self);
+                            var.name = format!("int{size}.min");
+                            var.display_name = var.name.clone();
+                            var.is_tmp = true;
+                            var.is_symbolic = false;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                            ExprRet::Single((ctx, cvar))
+                        }
+                        e => panic!("Unknown type attribute on int{size}: {e:?}"),
+                    }
+                }
+                Builtin::Uint(size) => match &*ident.name {
+                    "max" => {
+                        let size = size;
+                        let max = if size == 256 {
+                            U256::MAX
+                        } else {
+                            U256::from(2).pow(U256::from(size)) - 1
+                        };
+                        let c = Concrete::from(max);
+                        let node = self.add_node(Node::Concrete(c)).into();
+                        let mut var = ContextVar::new_from_concrete(loc, node, self);
+                        var.name = format!("int{size}.max");
+                        var.display_name = var.name.clone();
+                        var.is_tmp = true;
+                        var.is_symbolic = false;
+                        let cvar = self.add_node(Node::ContextVar(var));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        ExprRet::Single((ctx, cvar))
+                    }
+                    "min" => {
+                        let min = U256::zero();
+                        let c = Concrete::from(min);
+                        let node = self.add_node(Node::Concrete(c)).into();
+                        let mut var = ContextVar::new_from_concrete(loc, node, self);
+                        var.name = format!("int{size}.min");
+                        var.display_name = var.name.clone();
+                        var.is_tmp = true;
+                        var.is_symbolic = false;
+                        let cvar = self.add_node(Node::ContextVar(var));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        ExprRet::Single((ctx, cvar))
+                    }
+                    e => panic!("Unknown type attribute on uint{size}: {e:?}"),
+                },
+            }
+        }
     }
 
     fn library_func_search(
@@ -673,7 +691,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         dyn_builtin: BuiltInNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        // println!("match index access");
+        println!("match index access");
         match index_paths {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
             ExprRet::Single((_index_ctx, idx)) => {
@@ -735,6 +753,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 ),
             };
             let len_node = self.add_node(Node::ContextVar(len_var));
+
             let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, array_ctx);
             if next_arr.underlying(self).ty.is_dyn_builtin(self) {
                 if let Some(r) = next_arr.range(self) {
@@ -748,7 +767,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                        next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                        next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                     }
                 }
             }

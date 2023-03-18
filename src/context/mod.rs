@@ -625,7 +625,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
 
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
+        println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
@@ -962,6 +962,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
         );
 
+
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
         if !lhs_cvar.ty_eq(&rhs_cvar, self) {
             let _ = new_lhs.try_set_range_min(
@@ -987,8 +988,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     if let Some(r) = next_arr.range(self) {
                         let min = r.evaled_range_min(self);
                         let max = r.evaled_range_max(self);
-
-                        println!("{min:?}, {max:?}");
 
                         if let Some(mut rd) = min.maybe_range_dyn() {
                             rd.val.insert(
@@ -1019,7 +1018,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         loc: Loc,
         ctx: ContextNode,
     ) -> ContextVarNode {
-        assert_eq!(None, cvar_node.next_version(self));
+        if let Some(cvar) = cvar_node.next_version(self) {
+            panic!("Not latest version of: {}", cvar.display_name(self));
+        }
         let mut new_cvar = cvar_node.latest_version(self).underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));

@@ -1,3 +1,4 @@
+use crate::context::exprs::Array;
 use crate::context::exprs::MemberAccess;
 use crate::context::exprs::Require;
 use crate::context::ContextBuilder;
@@ -69,15 +70,22 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         e => todo!("got fork in func call: {:?}", e),
                     };
 
-                    self.func_call(
-                        ctx,
-                        *loc,
-                        &inputs,
-                        ContextVarNode::from(func_idx)
-                            .ty(self)
-                            .func_node(self)
-                            .expect(""),
-                    )
+                    if matches!(self.node(func_idx), Node::Function(..)) {
+                        // intrinsic
+                        let mut inputs: Vec<Expression> = vec![*member_expr.clone()];
+                        inputs.extend(input_exprs.to_vec());
+                        self.intrinsic_func_call(loc, &inputs, func_idx, ctx)
+                    } else {
+                         self.func_call(
+                            ctx,
+                            *loc,
+                            &inputs,
+                            ContextVarNode::from(func_idx)
+                                .ty(self)
+                                .func_node(self)
+                                .expect(""),
+                        )
+                    }
                 } else {
                     // we need to disambiguate the literals
                     let ty = &ContextVarNode::from(member).underlying(self).ty;
@@ -322,6 +330,25 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         "type" => ExprRet::Single(
                             self.parse_ctx_expr(&input_exprs[0], ctx).expect_single(),
                         ),
+                        "push" => {
+                            let (arr_ctx, arr) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                            let arr = ContextVarNode::from(arr).latest_version(self);
+                            // get length
+                            let len = self.tmp_length(
+                                arr,
+                                arr_ctx,
+                                *loc,
+                            );
+
+                            println!("array: {:?}", arr.underlying(self));
+
+                            let len_as_idx = len.as_tmp(*loc, ctx, self);
+                            // set length as index
+                            let index = self.index_into_array_inner(*loc, ExprRet::Single((arr_ctx, arr.latest_version(self).into())), ExprRet::Single((arr_ctx, len_as_idx.latest_version(self).into())));
+                            // assign index to new_elem
+                            let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx);
+                            self.match_assign_sides(*loc, &index, &new_elem)
+                        }
                         "ecrecover" => {
                             input_exprs.iter().for_each(|expr| {
                                 // we want to parse even though we dont need the variables here
