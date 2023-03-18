@@ -340,6 +340,8 @@ impl Analyzer {
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(import_path, loc) => {
+                println!("import_path: {:?}", import_path);
+
                 let remapping = self
                     .remappings
                     .clone()
@@ -356,11 +358,6 @@ impl Analyzer {
                         .unwrap()
                         .join(import_path.string.clone())
                 };
-
-                println!("loc: {:?}", loc);
-                println!("import_path: {:?}", import_path);
-                println!("path: {:?}", &current_path);
-                println!("remapped: {:?}", remapped);
 
                 let sol = fs::read_to_string(&remapped).unwrap_or_else(|_| {
                     panic!("Could not find file for dependency: {:?}", remapped)
