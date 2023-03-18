@@ -15,12 +15,12 @@ fn test_cast() {
     assert_no_ctx_killed(path_str, sol);
 }
 
-// #[test]
-// fn test_dyn_types() {
-//     let path_str = "./test_data/dyn_types.sol".to_string();
-// 	let sol = include_str!("./test_data/dyn_types.sol");
-// 	assert_no_ctx_killed(path_str, sol);
-// }
+#[test]
+fn test_dyn_types() {
+    let path_str = "./test_data/dyn_types.sol".to_string();
+	let sol = include_str!("./test_data/dyn_types.sol");
+	assert_no_ctx_killed(path_str, sol);
+}
 
 #[test]
 fn test_env() {
