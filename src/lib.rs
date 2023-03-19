@@ -346,18 +346,16 @@ impl Analyzer {
 
                 let remapping = self
                     .remappings
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .find(|x| import_path.string.starts_with(&x.name));
 
-                let remapped = if remapping.is_some() {
-                    let unwrapped = remapping.clone().unwrap();
-                    Remapping::into_relative(remapping.unwrap(), &self.root)
+                let remapped = if let Some(mappings) = remapping {
+                    Remapping::into_relative(mappings.clone(), &self.root)
                         .path
                         .relative()
-                        .join(&import_path.string.replacen(&unwrapped.name.clone(), "", 1))
+                        .join(import_path.string.replacen(&mappings.name, "", 1))
                 } else {
-                    PathBuf::from(current_path.clone())
+                    current_path
                         .parent()
                         .unwrap()
                         .join(import_path.string.clone())
@@ -388,18 +386,16 @@ impl Analyzer {
                 );
                 let remapping = self
                     .remappings
-                    .clone()
-                    .into_iter()
+                    .iter()
                     .find(|x| import_path.string.starts_with(&x.name));
 
-                let remapped = if remapping.is_some() {
-                    let unwrapped = remapping.clone().unwrap();
-                    Remapping::into_relative(remapping.unwrap(), &self.root)
+                let remapped = if let Some(mappings) = remapping {
+                    Remapping::into_relative(mappings.clone(), &self.root)
                         .path
                         .relative()
-                        .join(&import_path.string.replacen(&unwrapped.name.clone(), "", 1))
+                        .join(import_path.string.replacen(&mappings.name, "", 1))
                 } else {
-                    PathBuf::from(current_path.clone())
+                    current_path
                         .parent()
                         .unwrap()
                         .join(import_path.string.clone())
