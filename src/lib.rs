@@ -1,5 +1,4 @@
 use ethers_core::types::U256;
-use ethers_solc::remappings::Remapping;
 use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
@@ -11,7 +10,6 @@ use solang_parser::pt::{
     Using, UsingList, VariableDefinition,
 };
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::{collections::HashMap, fs};
 
 use petgraph::{graph::*, Directed};
@@ -25,7 +23,7 @@ use context::*;
 #[derive(Debug, Clone)]
 pub struct Analyzer {
     pub root: PathBuf,
-    pub remappings: Vec<Remapping>,
+    pub remappings: Vec<(String, String)>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
@@ -180,19 +178,17 @@ impl AnalyzerLike for Analyzer {
 
 impl Analyzer {
     pub fn set_remappings(&mut self, remappings_path: String) {
-        let content = fs::read_to_string(remappings_path)
+        let remappings_file = fs::read_to_string(remappings_path)
             .map_err(|err| err.to_string())
             .expect("Remappings file not found");
 
-        let remappings = content
+        self.remappings = remappings_file
             .lines()
             .map(|x| x.trim())
             .filter(|x| !x.is_empty())
-            .map(Remapping::from_str)
-            .map(|r| r.ok().unwrap())
-            .collect::<Vec<_>>();
-
-        self.remappings = remappings;
+            .map(|x| x.split_once('=').expect("Invalid remapping"))
+            .map(|(name, path)| (name.to_owned(), path.to_owned()))
+            .collect();
     }
 
     pub fn parse(
@@ -347,13 +343,12 @@ impl Analyzer {
                 let remapping = self
                     .remappings
                     .iter()
-                    .find(|x| import_path.string.starts_with(&x.name));
+                    .find(|x| import_path.string.starts_with(&x.0));
 
-                let remapped = if let Some(mappings) = remapping {
-                    Remapping::into_relative(mappings.clone(), &self.root)
-                        .path
-                        .relative()
-                        .join(import_path.string.replacen(&mappings.name, "", 1))
+                let remapped = if let Some((name, path)) = remapping {
+                    self.root
+                        .join(path)
+                        .join(import_path.string.replacen(name, "", 1))
                 } else {
                     current_path
                         .parent()
@@ -384,16 +379,16 @@ impl Analyzer {
                     elems,
                     std::env::current_dir()
                 );
+
                 let remapping = self
                     .remappings
                     .iter()
-                    .find(|x| import_path.string.starts_with(&x.name));
+                    .find(|x| import_path.string.starts_with(&x.0));
 
-                let remapped = if let Some(mappings) = remapping {
-                    Remapping::into_relative(mappings.clone(), &self.root)
-                        .path
-                        .relative()
-                        .join(import_path.string.replacen(&mappings.name, "", 1))
+                let remapped = if let Some((name, path)) = remapping {
+                    self.root
+                        .join(path)
+                        .join(import_path.string.replacen(name, "", 1))
                 } else {
                     current_path
                         .parent()
