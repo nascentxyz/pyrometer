@@ -1,8 +1,8 @@
-use shared::NodeIdx;
-use std::path::PathBuf;
 use pyrometer::Analyzer;
 use shared::analyzer::Search;
+use shared::NodeIdx;
 use shared::{nodes::FunctionNode, Edge};
+use std::path::PathBuf;
 
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();
@@ -11,7 +11,6 @@ pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let entry = maybe_entry.unwrap();
     no_ctx_killed(analyzer, entry);
 }
-
 
 pub fn remapping_assert_no_ctx_killed(path_str: String, remapping_file: String, sol: &str) {
     let mut analyzer = Analyzer::default();
@@ -36,4 +35,3 @@ pub fn no_ctx_killed(analyzer: Analyzer, entry: NodeIdx) {
         }
     }
 }
-

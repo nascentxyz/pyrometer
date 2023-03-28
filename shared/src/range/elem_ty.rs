@@ -237,41 +237,37 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     }
 
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
-    	match (self.val.into_u256(), other.val.into_u256()) {
-    		(Some(self_val), Some(other_val)) => Some(self_val.cmp(&other_val)),
-    		(Some(_), _) => {
-    			match other.val {
-    				Concrete::Int(_, _) => {
-    					// if we couldnt convert an int to uint, its negative
-    					// so self must be > other
-    					Some(std::cmp::Ordering::Greater)
-    				}
-    				_ => None
-    			}
-    		}
-    		(_, Some(_)) => {
-    			match self.val {
-    				Concrete::Int(_, _) => {
-    					// if we couldnt convert an int to uint, its negative
-    					// so self must be < other
-    					Some(std::cmp::Ordering::Less)
-    				}
-    				_ => None
-    			}
-    		}
-    		_ => {
-    			match (&self.val, &other.val) {
-    				// two negatives
-    				(Concrete::Int(_, s), Concrete::Int(_, o)) => {
-    					Some(s.cmp(o))
-    				},
-    				(Concrete::DynBytes(b0), Concrete::DynBytes(b1)) => {
-    					Some(b0.cmp(b1))
-    				},
-    				_ => None
-    			}
-    		}
-    	}
+        match (self.val.into_u256(), other.val.into_u256()) {
+            (Some(self_val), Some(other_val)) => Some(self_val.cmp(&other_val)),
+            (Some(_), _) => {
+                match other.val {
+                    Concrete::Int(_, _) => {
+                        // if we couldnt convert an int to uint, its negative
+                        // so self must be > other
+                        Some(std::cmp::Ordering::Greater)
+                    }
+                    _ => None,
+                }
+            }
+            (_, Some(_)) => {
+                match self.val {
+                    Concrete::Int(_, _) => {
+                        // if we couldnt convert an int to uint, its negative
+                        // so self must be < other
+                        Some(std::cmp::Ordering::Less)
+                    }
+                    _ => None,
+                }
+            }
+            _ => {
+                match (&self.val, &other.val) {
+                    // two negatives
+                    (Concrete::Int(_, s), Concrete::Int(_, o)) => Some(s.cmp(o)),
+                    (Concrete::DynBytes(b0), Concrete::DynBytes(b1)) => Some(b0.cmp(b1)),
+                    _ => None,
+                }
+            }
+        }
     }
 
     fn dependent_on(&self) -> Vec<ContextVarNode> {

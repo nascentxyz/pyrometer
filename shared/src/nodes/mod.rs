@@ -171,7 +171,11 @@ impl VarType {
         }
     }
 
-    pub fn try_literal_cast(self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Option<Self> {
+    pub fn try_literal_cast(
+        self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<Self> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer) {
@@ -179,7 +183,7 @@ impl VarType {
                 } else {
                     None
                 }
-            },
+            }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
                 let c = from_c.underlying(analyzer).clone();
                 let b = to_bn.underlying(analyzer);

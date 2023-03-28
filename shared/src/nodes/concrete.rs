@@ -190,23 +190,26 @@ impl Concrete {
 
     pub fn literal_cast(self, builtin: Builtin) -> Option<Self> {
         match self {
-            Concrete::Uint(_, val) => {
-                match builtin {
-                    Builtin::Bytes(size) => {
-                        let mask = if size == 32 {
-                            U256::MAX
-                        } else {
-                            U256::from(2).pow((size as u16 * 8).into()) - 1
-                        };
+            Concrete::Uint(_, val) => match builtin {
+                Builtin::Bytes(size) => {
+                    let mask = if size == 32 {
+                        U256::MAX
+                    } else {
+                        U256::from(2).pow((size as u16 * 8).into()) - 1
+                    };
 
-
-                        let h = H256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
-                        Some(Concrete::Bytes(size, h))
-                    } 
-                    _ => self.cast(builtin)
+                    let h = H256::from_slice(
+                        &(val & mask)
+                            .0
+                            .iter()
+                            .flat_map(|v| v.to_le_bytes())
+                            .collect::<Vec<_>>()[..],
+                    );
+                    Some(Concrete::Bytes(size, h))
                 }
-            }
-            _ => self.cast(builtin)
+                _ => self.cast(builtin),
+            },
+            _ => self.cast(builtin),
         }
     }
 

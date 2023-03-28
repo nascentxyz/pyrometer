@@ -76,7 +76,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         inputs.extend(input_exprs.to_vec());
                         self.intrinsic_func_call(loc, &inputs, func_idx, ctx)
                     } else {
-                         self.func_call(
+                        self.func_call(
                             ctx,
                             *loc,
                             &inputs,
@@ -331,20 +331,21 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             self.parse_ctx_expr(&input_exprs[0], ctx).expect_single(),
                         ),
                         "push" => {
-                            let (arr_ctx, arr) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                            let (arr_ctx, arr) =
+                                self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
                             let arr = ContextVarNode::from(arr).latest_version(self);
                             // get length
-                            let len = self.tmp_length(
-                                arr,
-                                arr_ctx,
-                                *loc,
-                            );
+                            let len = self.tmp_length(arr, arr_ctx, *loc);
 
                             println!("array: {:?}", arr.underlying(self));
 
                             let len_as_idx = len.as_tmp(*loc, ctx, self);
                             // set length as index
-                            let index = self.index_into_array_inner(*loc, ExprRet::Single((arr_ctx, arr.latest_version(self).into())), ExprRet::Single((arr_ctx, len_as_idx.latest_version(self).into())));
+                            let index = self.index_into_array_inner(
+                                *loc,
+                                ExprRet::Single((arr_ctx, arr.latest_version(self).into())),
+                                ExprRet::Single((arr_ctx, len_as_idx.latest_version(self).into())),
+                            );
                             // assign index to new_elem
                             let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx);
                             self.match_assign_sides(*loc, &index, &new_elem)

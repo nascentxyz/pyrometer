@@ -22,8 +22,8 @@ fn test_cast() {
 fn test_dyn_types() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{}/tests/test_data/dyn_types.sol", manifest_dir);
-	let sol = include_str!("./test_data/dyn_types.sol");
-	assert_no_ctx_killed(path_str, sol);
+    let sol = include_str!("./test_data/dyn_types.sol");
+    assert_no_ctx_killed(path_str, sol);
 }
 
 #[test]
@@ -93,7 +93,10 @@ fn test_using() {
 #[test]
 fn test_relative_import() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let path_str = format!("{}/tests/test_data/relative_imports/relative_import.sol", manifest_dir);
+    let path_str = format!(
+        "{}/tests/test_data/relative_imports/relative_import.sol",
+        manifest_dir
+    );
     let sol = include_str!("./test_data/relative_imports/relative_import.sol");
     assert_no_ctx_killed(path_str, sol);
 }
@@ -103,5 +106,9 @@ fn test_remapping_import() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{}/tests/test_data/remapping_import.sol", manifest_dir);
     let sol = include_str!("./test_data/remapping_import.sol");
-    remapping_assert_no_ctx_killed(path_str, format!("{}/tests/test_data/remappings.txt", manifest_dir), sol);
+    remapping_assert_no_ctx_killed(
+        path_str,
+        format!("{}/tests/test_data/remappings.txt", manifest_dir),
+        sol,
+    );
 }

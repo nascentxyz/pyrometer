@@ -24,7 +24,7 @@ use std::process::Command;
 use shared::nodes::FunctionNode;
 
 use shared::Edge;
-use std::env::{temp_dir, self};
+use std::env::{self, temp_dir};
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -117,7 +117,10 @@ fn main() {
 
     let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
 
-    let mut analyzer = Analyzer { root: env::current_dir().unwrap(), ..Default::default() };
+    let mut analyzer = Analyzer {
+        root: env::current_dir().unwrap(),
+        ..Default::default()
+    };
     if args.remappings.is_some() {
         let remappings = args.remappings.unwrap();
         analyzer.set_remappings_and_root(remappings);

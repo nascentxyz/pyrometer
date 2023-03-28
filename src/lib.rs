@@ -1,9 +1,9 @@
-use std::path::{Component, Path};
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::Import;
+use std::path::{Component, Path};
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
@@ -179,7 +179,10 @@ impl AnalyzerLike for Analyzer {
 
 impl Analyzer {
     pub fn set_remappings_and_root(&mut self, remappings_path: String) {
-        self.root = PathBuf::from(&remappings_path).parent().unwrap().to_path_buf();
+        self.root = PathBuf::from(&remappings_path)
+            .parent()
+            .unwrap()
+            .to_path_buf();
         let remappings_file = fs::read_to_string(remappings_path)
             .map_err(|err| err.to_string())
             .expect("Remappings file not found");
@@ -347,9 +350,12 @@ impl Analyzer {
                     .find(|x| import_path.string.starts_with(&x.0));
 
                 let remapped = if let Some((name, path)) = remapping {
-                    self.root
-                        .join(path)
-                        .join(import_path.string.replacen(name, "", 1).trim_start_matches('/'))
+                    self.root.join(path).join(
+                        import_path
+                            .string
+                            .replacen(name, "", 1)
+                            .trim_start_matches('/'),
+                    )
                 } else {
                     current_path
                         .parent()
