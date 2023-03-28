@@ -280,9 +280,9 @@ impl VarType {
     pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
         match self {
             Self::BuiltIn(node, _) => node.array_underlying_ty(analyzer),
-            e => panic!(
-                "Node type confusion: expected node to be VarType::Array but it was: {e:?}"
-            ),
+            e => {
+                panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
+            }
         }
     }
 
@@ -356,9 +356,7 @@ impl BuiltInNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Builtin {
         match analyzer.node(*self) {
             Node::Builtin(b) => b,
-            e => panic!(
-                "Node type confusion: expected node to be Builtin but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Builtin but it was: {e:?}"),
         }
     }
 
@@ -388,9 +386,9 @@ impl BuiltInNode {
                     exclusions: vec![],
                 }),
             ),
-            e => panic!(
-                "Node type confusion: expected node to be Builtin::Array but it was: {e:?}"
-            ),
+            e => {
+                panic!("Node type confusion: expected node to be Builtin::Array but it was: {e:?}")
+            }
         }
     }
 

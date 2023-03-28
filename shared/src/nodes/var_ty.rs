@@ -15,9 +15,7 @@ impl VarNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Var {
         match analyzer.node(*self) {
             Node::Var(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Var but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Var but it was: {e:?}"),
         }
     }
 

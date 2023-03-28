@@ -28,9 +28,7 @@ impl EnumNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Enum {
         match analyzer.node(*self) {
             Node::Enum(e) => e,
-            e => panic!(
-                "Node type confusion: expected node to be Contract but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Contract but it was: {e:?}"),
         }
     }
 

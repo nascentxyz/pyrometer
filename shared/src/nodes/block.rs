@@ -15,9 +15,7 @@ impl BlockNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Block {
         match analyzer.node(*self) {
             Node::Block(st) => st,
-            e => panic!(
-                "Node type confusion: expected node to be Msg but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Msg but it was: {e:?}"),
         }
     }
 }

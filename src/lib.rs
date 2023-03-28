@@ -3,7 +3,7 @@ use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::Import;
-use std::path::{Path};
+use std::path::Path;
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,

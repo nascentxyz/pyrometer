@@ -25,9 +25,7 @@ impl FunctionNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Function {
         match analyzer.node(*self) {
             Node::Function(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Function but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Function but it was: {e:?}"),
         }
     }
 
@@ -68,9 +66,7 @@ impl FunctionNode {
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut Function {
         match analyzer.node_mut(*self) {
             Node::Function(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Function but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Function but it was: {e:?}"),
         }
     }
 
@@ -394,9 +390,7 @@ impl FunctionParamNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a FunctionParam {
         match analyzer.node(*self) {
             Node::FunctionParam(param) => param,
-            e => panic!(
-                "Node type confusion: expected node to be FunctionParam but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be FunctionParam but it was: {e:?}"),
         }
     }
 
@@ -504,9 +498,7 @@ impl FunctionReturnNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a FunctionReturn {
         match analyzer.node(*self) {
             Node::FunctionReturn(ret) => ret,
-            e => panic!(
-                "Node type confusion: expected node to be FunctionParam but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be FunctionParam but it was: {e:?}"),
         }
     }
 

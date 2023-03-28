@@ -9,9 +9,7 @@ impl ErrorNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Error {
         match analyzer.node(*self) {
             Node::Error(err) => err,
-            e => panic!(
-                "Node type confusion: expected node to be Var but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Var but it was: {e:?}"),
         }
     }
 }

@@ -31,9 +31,7 @@ impl ContractNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Contract {
         match analyzer.node(*self) {
             Node::Contract(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Contract but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Contract but it was: {e:?}"),
         }
     }
 

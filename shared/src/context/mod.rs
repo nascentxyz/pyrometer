@@ -280,9 +280,7 @@ impl ContextNode {
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut Context {
         match analyzer.node_mut(*self) {
             Node::Context(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be Context but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Context but it was: {e:?}"),
         }
     }
 
@@ -290,9 +288,7 @@ impl ContextNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Context {
         match analyzer.node(*self) {
             Node::Context(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be Context but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be Context but it was: {e:?}"),
         }
     }
 

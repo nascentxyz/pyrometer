@@ -67,18 +67,14 @@ impl ContextVarNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a ContextVar {
         match analyzer.node(*self) {
             Node::ContextVar(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be ContextVar but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be ContextVar but it was: {e:?}"),
         }
     }
 
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut ContextVar {
         match analyzer.node_mut(*self) {
             Node::ContextVar(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be ContextVar but it was: {e:?}"
-            ),
+            e => panic!("Node type confusion: expected node to be ContextVar but it was: {e:?}"),
         }
     }
 
