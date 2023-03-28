@@ -187,7 +187,6 @@ impl Analyzer {
             .map_err(|err| err.to_string())
             .expect("Remappings file not found");
 
-        println!("remappings file: {remappings_file:?}");
         self.remappings = remappings_file
             .lines()
             .map(|x| x.trim())
