@@ -13,7 +13,7 @@ use shared::{
 use std::collections::BTreeSet;
 
 use ethers_core::types::{I256, U256};
-use petgraph::{visit::EdgeRef, Direction};
+
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}

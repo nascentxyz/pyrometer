@@ -509,7 +509,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         panic!("input has fork - need to flatten")
                     }
                 } else {
-                    panic!("Length mismatch: {:?} {:?}", inputs, params);
+                    panic!("Length mismatch: {inputs:?} {params:?}");
                 }
             }
             _ => todo!("here"),
@@ -871,7 +871,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             })
                             .collect::<Vec<_>>()
                             .join(", ");
-                        let _ = write!(mod_name, "{}", args_str);
+                        let _ = write!(mod_name, "{args_str}");
                     }
                     let _ = write!(mod_name, "");
                     self.user_types()

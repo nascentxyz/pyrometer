@@ -187,7 +187,7 @@ impl Analyzer {
             .map_err(|err| err.to_string())
             .expect("Remappings file not found");
 
-        println!("remappings file: {:?}", remappings_file);
+        println!("remappings file: {remappings_file:?}");
         self.remappings = remappings_file
             .lines()
             .map(|x| x.trim())
@@ -366,7 +366,7 @@ impl Analyzer {
                 let canonical = fs::canonicalize(&remapped).unwrap();
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", canonical)
+                    panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
@@ -406,7 +406,7 @@ impl Analyzer {
                 let canonical = fs::canonicalize(&remapped).unwrap();
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", canonical)
+                    panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
