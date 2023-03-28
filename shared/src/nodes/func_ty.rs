@@ -26,8 +26,7 @@ impl FunctionNode {
         match analyzer.node(*self) {
             Node::Function(func) => func,
             e => panic!(
-                "Node type confusion: expected node to be Function but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Function but it was: {e:?}"
             ),
         }
     }
@@ -70,8 +69,7 @@ impl FunctionNode {
         match analyzer.node_mut(*self) {
             Node::Function(func) => func,
             e => panic!(
-                "Node type confusion: expected node to be Function but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Function but it was: {e:?}"
             ),
         }
     }
@@ -239,8 +237,8 @@ impl AsDotStr for FunctionNode {
             .attributes
             .iter()
             .map(|attr| match attr {
-                FunctionAttribute::Mutability(inner) => format!("{}", inner),
-                FunctionAttribute::Visibility(inner) => format!("{}", inner),
+                FunctionAttribute::Mutability(inner) => format!("{inner}"),
+                FunctionAttribute::Visibility(inner) => format!("{inner}"),
                 FunctionAttribute::Virtual(_) => "virtual".to_string(),
                 FunctionAttribute::Immutable(_) => "immutable".to_string(),
                 FunctionAttribute::Override(_, _) => "override".to_string(),
@@ -379,7 +377,7 @@ impl AsDotStr for FunctionParamNode {
             "{}{}{}",
             var_ty.as_dot_str(analyzer),
             if let Some(stor) = &self.underlying(analyzer).storage {
-                format!(" {} ", stor)
+                format!(" {stor} ")
             } else {
                 "".to_string()
             },
@@ -397,8 +395,7 @@ impl FunctionParamNode {
         match analyzer.node(*self) {
             Node::FunctionParam(param) => param,
             e => panic!(
-                "Node type confusion: expected node to be FunctionParam but it was: {:?}",
-                e
+                "Node type confusion: expected node to be FunctionParam but it was: {e:?}"
             ),
         }
     }
@@ -490,7 +487,7 @@ impl AsDotStr for FunctionReturnNode {
             "{}{}{}",
             var_ty.as_dot_str(analyzer),
             if let Some(stor) = &self.underlying(analyzer).storage {
-                format!(" {} ", stor)
+                format!(" {stor} ")
             } else {
                 "".to_string()
             },
@@ -508,8 +505,7 @@ impl FunctionReturnNode {
         match analyzer.node(*self) {
             Node::FunctionReturn(ret) => ret,
             e => panic!(
-                "Node type confusion: expected node to be FunctionParam but it was: {:?}",
-                e
+                "Node type confusion: expected node to be FunctionParam but it was: {e:?}"
             ),
         }
     }

@@ -32,8 +32,7 @@ impl ContractNode {
         match analyzer.node(*self) {
             Node::Contract(func) => func,
             e => panic!(
-                "Node type confusion: expected node to be Contract but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Contract but it was: {e:?}"
             ),
         }
     }
@@ -123,7 +122,7 @@ impl Contract {
         con.base.iter().for_each(|base| {
             let inherited_name = &base.name.identifiers[0].name;
             for entry in imports.iter().filter_map(|import| import.0) {
-                println!("{:?}", entry);
+                println!("{entry:?}");
                 for contract in analyzer.search_children(entry, &Edge::Contract).into_iter() {
                     let name = ContractNode::from(contract).name(analyzer);
                     if &name == inherited_name {

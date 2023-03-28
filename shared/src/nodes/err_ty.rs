@@ -10,8 +10,7 @@ impl ErrorNode {
         match analyzer.node(*self) {
             Node::Error(err) => err,
             e => panic!(
-                "Node type confusion: expected node to be Var but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Var but it was: {e:?}"
             ),
         }
     }

@@ -59,7 +59,7 @@ impl RangeElem<Concrete> for Dynamic {
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             }),
             e => {
-                println!("dynamic {:?}", e);
+                println!("dynamic {e:?}");
                 Elem::Dynamic(*self)
             }
         }
@@ -80,7 +80,7 @@ impl RangeElem<Concrete> for Dynamic {
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             }),
             e => {
-                println!("dynamic {:?}", e);
+                println!("dynamic {e:?}");
                 Elem::Dynamic(*self)
             }
         }
@@ -508,7 +508,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             (Self::Concrete(a), Self::Concrete(b)) => {
                 let ord = a.range_ord(b);
                 if ord.is_none() {
-                    println!("couldnt compare: {:?} {:?}", a, b);
+                    println!("couldnt compare: {a:?} {b:?}");
                 }
 
                 ord

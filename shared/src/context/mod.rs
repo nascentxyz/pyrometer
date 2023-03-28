@@ -1,7 +1,7 @@
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
 use crate::ContractNode;
-use crate::FunctionParamNode;
+
 use crate::GraphLike;
 use crate::{Edge, Node, NodeIdx};
 use petgraph::{visit::EdgeRef, Direction};
@@ -281,8 +281,7 @@ impl ContextNode {
         match analyzer.node_mut(*self) {
             Node::Context(c) => c,
             e => panic!(
-                "Node type confusion: expected node to be Context but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Context but it was: {e:?}"
             ),
         }
     }
@@ -292,8 +291,7 @@ impl ContextNode {
         match analyzer.node(*self) {
             Node::Context(c) => c,
             e => panic!(
-                "Node type confusion: expected node to be Context but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Context but it was: {e:?}"
             ),
         }
     }

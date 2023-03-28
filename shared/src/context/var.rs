@@ -68,8 +68,7 @@ impl ContextVarNode {
         match analyzer.node(*self) {
             Node::ContextVar(c) => c,
             e => panic!(
-                "Node type confusion: expected node to be ContextVar but it was: {:?}",
-                e
+                "Node type confusion: expected node to be ContextVar but it was: {e:?}"
             ),
         }
     }
@@ -78,8 +77,7 @@ impl ContextVarNode {
         match analyzer.node_mut(*self) {
             Node::ContextVar(c) => c,
             e => panic!(
-                "Node type confusion: expected node to be ContextVar but it was: {:?}",
-                e
+                "Node type confusion: expected node to be ContextVar but it was: {e:?}"
             ),
         }
     }
@@ -698,7 +696,7 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(_) => {}
-            e => panic!("wasnt builtin: {:?}", e),
+            e => panic!("wasnt builtin: {e:?}"),
         }
     }
 
@@ -736,7 +734,7 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(_) => {}
-            e => panic!("wasnt builtin or concrete: {:?}", e),
+            e => panic!("wasnt builtin or concrete: {e:?}"),
         }
     }
 
@@ -756,7 +754,7 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(_) => {}
-            e => panic!("wasnt builtin or concrete: {:?}", e),
+            e => panic!("wasnt builtin or concrete: {e:?}"),
         }
     }
 

@@ -29,8 +29,7 @@ impl EnumNode {
         match analyzer.node(*self) {
             Node::Enum(e) => e,
             e => panic!(
-                "Node type confusion: expected node to be Contract but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Contract but it was: {e:?}"
             ),
         }
     }

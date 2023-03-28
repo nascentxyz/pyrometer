@@ -16,8 +16,7 @@ impl BlockNode {
         match analyzer.node(*self) {
             Node::Block(st) => st,
             e => panic!(
-                "Node type confusion: expected node to be Msg but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Msg but it was: {e:?}"
             ),
         }
     }

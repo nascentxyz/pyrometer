@@ -281,8 +281,7 @@ impl VarType {
         match self {
             Self::BuiltIn(node, _) => node.array_underlying_ty(analyzer),
             e => panic!(
-                "Node type confusion: expected node to be VarType::Array but it was: {:?}",
-                e
+                "Node type confusion: expected node to be VarType::Array but it was: {e:?}"
             ),
         }
     }
@@ -358,8 +357,7 @@ impl BuiltInNode {
         match analyzer.node(*self) {
             Node::Builtin(b) => b,
             e => panic!(
-                "Node type confusion: expected node to be Builtin but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Builtin but it was: {e:?}"
             ),
         }
     }
@@ -391,8 +389,7 @@ impl BuiltInNode {
                 }),
             ),
             e => panic!(
-                "Node type confusion: expected node to be Builtin::Array but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Builtin::Array but it was: {e:?}"
             ),
         }
     }
@@ -537,9 +534,9 @@ impl Builtin {
             Payable => "payable".to_string(),
             Bool => "bool".to_string(),
             String => "string".to_string(),
-            Int(size) => format!("int{}", size),
-            Uint(size) => format!("uint{}", size),
-            Bytes(size) => format!("bytes{}", size),
+            Int(size) => format!("int{size}"),
+            Uint(size) => format!("uint{size}"),
+            Bytes(size) => format!("bytes{size}"),
             Rational => "rational".to_string(),
             DynamicBytes => "bytes".to_string(),
             Array(v_ty) => format!("{}[]", v_ty.as_string(analyzer)),

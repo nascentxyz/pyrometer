@@ -18,8 +18,7 @@ impl MsgNode {
         match analyzer.node(*self) {
             Node::Msg(st) => st,
             e => panic!(
-                "Node type confusion: expected node to be Msg but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Msg but it was: {e:?}"
             ),
         }
     }

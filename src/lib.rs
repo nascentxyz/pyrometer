@@ -3,7 +3,7 @@ use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::Import;
-use std::path::{Component, Path};
+use std::path::{Path};
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
@@ -379,7 +379,7 @@ impl Analyzer {
                 ));
                 inner_sources
             }
-            Import::Rename(import_path, elems, _) => {
+            Import::Rename(import_path, _elems, _) => {
                 let remapping = self
                     .remappings
                     .iter()

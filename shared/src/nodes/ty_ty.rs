@@ -12,8 +12,7 @@ impl TyNode {
         match analyzer.node(*self) {
             Node::Ty(ty) => ty,
             e => panic!(
-                "Node type confusion: expected node to be Ty but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Ty but it was: {e:?}"
             ),
         }
     }

@@ -16,8 +16,7 @@ impl StructNode {
         match analyzer.node(*self) {
             Node::Struct(st) => st,
             e => panic!(
-                "Node type confusion: expected node to be Struct but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Struct but it was: {e:?}"
             ),
         }
     }
@@ -124,8 +123,7 @@ impl FieldNode {
         match analyzer.node(*self) {
             Node::Field(field) => field,
             e => panic!(
-                "Node type confusion: expected node to be Field but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Field but it was: {e:?}"
             ),
         }
     }

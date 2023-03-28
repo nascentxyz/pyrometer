@@ -12,8 +12,7 @@ impl ConcreteNode {
         match analyzer.node(*self) {
             Node::Concrete(c) => c,
             e => panic!(
-                "Node type confusion: expected node to be Concrete but it was: {:?}",
-                e
+                "Node type confusion: expected node to be Concrete but it was: {e:?}"
             ),
         }
     }
@@ -614,7 +613,7 @@ impl Concrete {
                 "0x{}",
                 b.0.iter()
                     .take(*size as usize)
-                    .map(|byte| format!("{:02x}", byte))
+                    .map(|byte| format!("{byte:02x}"))
                     .collect::<Vec<_>>()
                     .join("")
             ),
@@ -646,14 +645,14 @@ impl Concrete {
                         if val < &pow2 {
                             let diff = pow2 - val;
                             if diff < cutoff {
-                                return format!("2**{} - {}", size, diff);
+                                return format!("2**{size} - {diff}");
                             }
                         } else if *val == pow2 {
-                            return format!("2**{}", size);
+                            return format!("2**{size}");
                         } else {
                             let diff = val - pow2;
                             if diff < cutoff {
-                                return format!("2**{} + {}", size, diff);
+                                return format!("2**{size} + {diff}");
                             }
                         }
                     }
@@ -690,14 +689,14 @@ impl Concrete {
                     "0x{}",
                     b.0.iter()
                         .take(*size as usize)
-                        .map(|byte| format!("{:02x}", byte))
+                        .map(|byte| format!("{byte:02x}"))
                         .collect::<Vec<_>>()
                         .join("")
                 )
             }
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
-            Concrete::Address(a) => format!("{:?}", a),
+            Concrete::Address(a) => format!("{a:?}"),
             Concrete::DynBytes(a) => {
                 if a.is_empty() {
                     "0x".to_string()
