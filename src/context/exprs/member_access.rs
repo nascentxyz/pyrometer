@@ -13,7 +13,7 @@ use shared::{
 use std::collections::BTreeSet;
 
 use ethers_core::types::{I256, U256};
-use petgraph::{visit::EdgeRef, Direction};
+
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
@@ -97,7 +97,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
-                    return self.builin_member_access(loc, ctx, *bn, ContextVarNode::from(member_idx).is_storage(self), ident);
+                    return self.builin_member_access(
+                        loc,
+                        ctx,
+                        *bn,
+                        ContextVarNode::from(member_idx).is_storage(self),
+                        ident,
+                    );
                 }
                 e => todo!("member access: {:?}, {:?}", e, ident),
             },
@@ -439,7 +445,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             Node::Builtin(ref _b) => {
-                return self.builin_member_access(loc, ctx, BuiltInNode::from(member_idx), false, ident);
+                return self.builin_member_access(
+                    loc,
+                    ctx,
+                    BuiltInNode::from(member_idx),
+                    false,
+                    ident,
+                );
             }
             e => todo!("{:?}", e),
         }
@@ -452,11 +464,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         ctx: ContextNode,
         node: BuiltInNode,
         is_storage: bool,
-        ident: &Identifier
+        ident: &Identifier,
     ) -> ExprRet {
         if let Some(ret) = self.library_func_search(ctx, node.0.into(), ident) {
             ret
-         } else {
+        } else {
             match node.underlying(self).clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                     // TODO: handle address(x).call/delegatecall, etc

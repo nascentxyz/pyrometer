@@ -128,7 +128,7 @@ impl SolcRange {
                 })
             }
             e => {
-                println!("from: {:?}", e);
+                println!("from: {e:?}");
                 None
             }
         }

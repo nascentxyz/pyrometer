@@ -18,12 +18,13 @@ use shared::{
 };
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::Command;
 
 use shared::nodes::FunctionNode;
 
 use shared::Edge;
-use std::env::temp_dir;
+use std::env::{self, temp_dir};
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -31,6 +32,8 @@ use std::fs;
 struct Args {
     #[clap(value_hint = ValueHint::FilePath, value_name = "PATH")]
     pub path: String,
+    #[clap(long, short)]
+    pub remappings: Option<String>,
     #[clap(long, short)]
     pub contracts: Vec<String>,
     #[clap(long, short)]
@@ -114,9 +117,16 @@ fn main() {
 
     let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
 
-    let mut analyzer = Analyzer::default();
+    let mut analyzer = Analyzer {
+        root: env::current_dir().unwrap(),
+        ..Default::default()
+    };
+    if args.remappings.is_some() {
+        let remappings = args.remappings.unwrap();
+        analyzer.set_remappings_and_root(remappings);
+    }
     let t0 = std::time::Instant::now();
-    let (maybe_entry, mut all_sources) = analyzer.parse(&sol);
+    let (maybe_entry, mut all_sources) = analyzer.parse(&sol, &PathBuf::from(args.path.clone()));
     let _parse_time = t0.elapsed().as_millis();
     all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();

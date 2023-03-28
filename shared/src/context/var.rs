@@ -67,20 +67,14 @@ impl ContextVarNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a ContextVar {
         match analyzer.node(*self) {
             Node::ContextVar(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be ContextVar but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be ContextVar but it was: {e:?}"),
         }
     }
 
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut ContextVar {
         match analyzer.node_mut(*self) {
             Node::ContextVar(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be ContextVar but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be ContextVar but it was: {e:?}"),
         }
     }
 
@@ -488,10 +482,7 @@ impl ContextVarNode {
         ctx: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Self {
-        let new_underlying = self
-            .underlying(analyzer)
-            .clone()
-            .as_tmp(loc, ctx, analyzer);
+        let new_underlying = self.underlying(analyzer).clone().as_tmp(loc, ctx, analyzer);
         analyzer.add_node(Node::ContextVar(new_underlying)).into()
     }
 
@@ -504,20 +495,12 @@ impl ContextVarNode {
         self.cast_from_ty(to_ty, analyzer);
     }
 
-    pub fn literal_cast_from(
-        &self,
-        other: &Self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) {
+    pub fn literal_cast_from(&self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         let to_ty = other.ty(analyzer).clone();
         self.literal_cast_from_ty(to_ty, analyzer);
     }
 
-    pub fn cast_from_ty(
-        &self,
-        to_ty: VarType,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) {
+    pub fn cast_from_ty(&self, to_ty: VarType, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         let from_ty = self.ty(analyzer).clone();
         if !from_ty.ty_eq(&to_ty, analyzer) {
             if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer) {
@@ -558,10 +541,7 @@ impl ContextVarNode {
         }
     }
 
-    pub fn try_increase_size(
-        &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) {
+    pub fn try_increase_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         let from_ty = self.ty(analyzer).clone();
         self.cast_from_ty(from_ty.max_size(analyzer), analyzer);
     }
@@ -651,12 +631,7 @@ impl ContextVar {
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
         new_tmp.is_tmp = true;
-        new_tmp.name = format!(
-            "tmp{}_{}({})",
-            self.name,
-            ctx.new_tmp(analyzer),
-            self.name
-        );
+        new_tmp.name = format!("tmp{}_{}({})", self.name, ctx.new_tmp(analyzer), self.name);
         new_tmp
     }
 
@@ -717,7 +692,7 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(_) => {}
-            e => panic!("wasnt builtin: {:?}", e),
+            e => panic!("wasnt builtin: {e:?}"),
         }
     }
 
@@ -755,7 +730,7 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(_) => {}
-            e => panic!("wasnt builtin or concrete: {:?}", e),
+            e => panic!("wasnt builtin or concrete: {e:?}"),
         }
     }
 
@@ -775,7 +750,7 @@ impl ContextVar {
                 }
             }
             VarType::Concrete(_) => {}
-            e => panic!("wasnt builtin or concrete: {:?}", e),
+            e => panic!("wasnt builtin or concrete: {e:?}"),
         }
     }
 

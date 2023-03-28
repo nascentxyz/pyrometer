@@ -3,12 +3,14 @@ use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::Import;
+use std::path::Path;
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
     FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
     Using, UsingList, VariableDefinition,
 };
+use std::path::PathBuf;
 use std::{collections::HashMap, fs};
 
 use petgraph::{graph::*, Directed};
@@ -21,7 +23,8 @@ use context::*;
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
-    pub remappings: HashMap<String, String>,
+    pub root: PathBuf,
+    pub remappings: Vec<(String, String)>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
@@ -35,6 +38,7 @@ pub struct Analyzer {
 impl Default for Analyzer {
     fn default() -> Self {
         let mut a = Self {
+            root: Default::default(),
             remappings: Default::default(),
             file_no: 0,
             msg: MsgNode(0),
@@ -174,9 +178,29 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
+    pub fn set_remappings_and_root(&mut self, remappings_path: String) {
+        self.root = PathBuf::from(&remappings_path)
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let remappings_file = fs::read_to_string(remappings_path)
+            .map_err(|err| err.to_string())
+            .expect("Remappings file not found");
+
+        println!("remappings file: {remappings_file:?}");
+        self.remappings = remappings_file
+            .lines()
+            .map(|x| x.trim())
+            .filter(|x| !x.is_empty())
+            .map(|x| x.split_once('=').expect("Invalid remapping"))
+            .map(|(name, path)| (name.to_owned(), path.to_owned()))
+            .collect();
+    }
+
     pub fn parse(
         &mut self,
         src: &str,
+        current_path: &PathBuf,
     ) -> (
         Option<NodeIdx>,
         Vec<(Option<NodeIdx>, String, String, usize)>,
@@ -186,8 +210,13 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                let (funcs, usings) =
-                    self.parse_source_unit(source_unit, file_no, parent, &mut imported);
+                let (funcs, usings) = self.parse_source_unit(
+                    source_unit,
+                    file_no,
+                    parent,
+                    &mut imported,
+                    current_path,
+                );
                 usings.into_iter().for_each(|(using, scope_node)| {
                     self.parse_using(&using, scope_node);
                 });
@@ -223,6 +252,7 @@ impl Analyzer {
         file_no: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
+        current_path: &PathBuf,
     ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
@@ -237,6 +267,7 @@ impl Analyzer {
                     unit_part,
                     parent,
                     imported,
+                    current_path,
                 );
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
@@ -251,6 +282,7 @@ impl Analyzer {
         unit_part: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
+        current_path: &PathBuf,
     ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use SourceUnitPart::*;
 
@@ -300,7 +332,7 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(import) => imported.extend(self.parse_import(import)),
+            ImportDirective(import) => imported.extend(self.parse_import(import, current_path)),
         }
         (sup_node, func_nodes, usings)
     }
@@ -308,33 +340,79 @@ impl Analyzer {
     pub fn parse_import(
         &mut self,
         import: &Import,
+        current_path: &Path,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
-            Import::Plain(path, _) => {
-                // println!("path: {:?}", path);
-                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", path.string)
+            Import::Plain(import_path, _) => {
+                let remapping = self
+                    .remappings
+                    .iter()
+                    .find(|x| import_path.string.starts_with(&x.0));
+
+                let remapped = if let Some((name, path)) = remapping {
+                    self.root.join(path).join(
+                        import_path
+                            .string
+                            .replacen(name, "", 1)
+                            .trim_start_matches('/'),
+                    )
+                } else {
+                    current_path
+                        .parent()
+                        .unwrap()
+                        .join(import_path.string.clone())
+                };
+
+                let canonical = fs::canonicalize(&remapped).unwrap();
+
+                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol);
-                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                inner_sources.push((
+                    maybe_entry,
+                    remapped.to_str().unwrap().to_owned(),
+                    sol.to_string(),
+                    file_no,
+                ));
                 inner_sources
             }
-            Import::Rename(path, elems, _) => {
-                println!(
-                    "path: {:?}, elems: {:?}, curr: {:?}",
-                    path,
-                    elems,
-                    std::env::current_dir()
-                );
-                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", path.string)
+            Import::Rename(import_path, _elems, _) => {
+                let remapping = self
+                    .remappings
+                    .iter()
+                    .find(|x| import_path.string.starts_with(&x.0));
+
+                let remapped = if let Some((name, path)) = remapping {
+                    self.root.join(path).join(
+                        import_path
+                            .string
+                            .replacen(name, "", 1)
+                            .trim_start_matches('/'),
+                    )
+                } else {
+                    current_path
+                        .parent()
+                        .unwrap()
+                        .join(import_path.string.clone())
+                };
+
+                let canonical = fs::canonicalize(&remapped).unwrap();
+
+                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol);
-                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                inner_sources.push((
+                    maybe_entry,
+                    remapped.to_str().unwrap().to_owned(),
+                    sol.to_string(),
+                    file_no,
+                ));
                 inner_sources
             }
             e => todo!("import {:?}", e),

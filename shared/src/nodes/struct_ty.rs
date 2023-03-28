@@ -15,10 +15,7 @@ impl StructNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Struct {
         match analyzer.node(*self) {
             Node::Struct(st) => st,
-            e => panic!(
-                "Node type confusion: expected node to be Struct but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Struct but it was: {e:?}"),
         }
     }
 
@@ -123,10 +120,7 @@ impl FieldNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Field {
         match analyzer.node(*self) {
             Node::Field(field) => field,
-            e => panic!(
-                "Node type confusion: expected node to be Field but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Field but it was: {e:?}"),
         }
     }
 

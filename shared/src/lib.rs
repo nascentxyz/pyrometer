@@ -68,7 +68,7 @@ pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
         Var(_v) => VarNode::from(idx).as_dot_str(analyzer),
         Ty(_t) => TyNode::from(idx).as_dot_str(analyzer),
         // Concrete(c) => c.as_human_string(),
-        e => format!("{:?}", e),
+        e => format!("{e:?}"),
     }
 }
 

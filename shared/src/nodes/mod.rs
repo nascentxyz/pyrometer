@@ -171,7 +171,11 @@ impl VarType {
         }
     }
 
-    pub fn try_literal_cast(self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Option<Self> {
+    pub fn try_literal_cast(
+        self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<Self> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer) {
@@ -179,7 +183,7 @@ impl VarType {
                 } else {
                     None
                 }
-            },
+            }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
                 let c = from_c.underlying(analyzer).clone();
                 let b = to_bn.underlying(analyzer);
@@ -276,10 +280,9 @@ impl VarType {
     pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
         match self {
             Self::BuiltIn(node, _) => node.array_underlying_ty(analyzer),
-            e => panic!(
-                "Node type confusion: expected node to be VarType::Array but it was: {:?}",
-                e
-            ),
+            e => {
+                panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
+            }
         }
     }
 
@@ -353,10 +356,7 @@ impl BuiltInNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Builtin {
         match analyzer.node(*self) {
             Node::Builtin(b) => b,
-            e => panic!(
-                "Node type confusion: expected node to be Builtin but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Builtin but it was: {e:?}"),
         }
     }
 
@@ -386,10 +386,9 @@ impl BuiltInNode {
                     exclusions: vec![],
                 }),
             ),
-            e => panic!(
-                "Node type confusion: expected node to be Builtin::Array but it was: {:?}",
-                e
-            ),
+            e => {
+                panic!("Node type confusion: expected node to be Builtin::Array but it was: {e:?}")
+            }
         }
     }
 
@@ -533,9 +532,9 @@ impl Builtin {
             Payable => "payable".to_string(),
             Bool => "bool".to_string(),
             String => "string".to_string(),
-            Int(size) => format!("int{}", size),
-            Uint(size) => format!("uint{}", size),
-            Bytes(size) => format!("bytes{}", size),
+            Int(size) => format!("int{size}"),
+            Uint(size) => format!("uint{size}"),
+            Bytes(size) => format!("bytes{size}"),
             Rational => "rational".to_string(),
             DynamicBytes => "bytes".to_string(),
             Array(v_ty) => format!("{}[]", v_ty.as_string(analyzer)),

@@ -1,8 +1,6 @@
 use crate::Builtin;
 use crate::{AnalyzerLike, Function, FunctionParam, FunctionReturn};
-use solang_parser::pt::{
-    FunctionAttribute, Identifier, Loc, StorageLocation, Visibility,
-};
+use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};
 use std::collections::HashMap;
 
 macro_rules! builtin_fn {

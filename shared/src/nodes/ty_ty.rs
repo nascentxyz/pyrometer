@@ -11,10 +11,7 @@ impl TyNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Ty {
         match analyzer.node(*self) {
             Node::Ty(ty) => ty,
-            e => panic!(
-                "Node type confusion: expected node to be Ty but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Ty but it was: {e:?}"),
         }
     }
 }

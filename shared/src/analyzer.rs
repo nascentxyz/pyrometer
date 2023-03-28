@@ -114,8 +114,8 @@ pub trait GraphLike {
                 ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
-                        Edge::Context(edge) => format!("label = \"{:?}\"", edge),
-                        e => format!("label = \"{:?}\"", e),
+                        Edge::Context(edge) => format!("label = \"{edge:?}\""),
+                        e => format!("label = \"{e:?}\""),
                     }
                 },
                 &|_graph, (idx, node_ref)| {
@@ -189,8 +189,8 @@ pub trait GraphLike {
                 ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
-                        Edge::Context(edge) => format!("label = \"{:?}\"", edge),
-                        e => format!("label = \"{:?}\"", e),
+                        Edge::Context(edge) => format!("label = \"{edge:?}\""),
+                        e => format!("label = \"{e:?}\""),
                     }
                 },
                 &|_graph, (idx, node_ref)| {
@@ -272,8 +272,8 @@ pub trait GraphLike {
                 ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
-                        Edge::Context(edge) => format!("label = \"{:?}\"", edge),
-                        e => format!("label = \"{:?}\"", e),
+                        Edge::Context(edge) => format!("label = \"{edge:?}\""),
+                        e => format!("label = \"{e:?}\""),
                     }
                 },
                 &|_graph, (idx, node_ref)| {

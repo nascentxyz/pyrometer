@@ -11,10 +11,7 @@ impl ConcreteNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Concrete {
         match analyzer.node(*self) {
             Node::Concrete(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be Concrete but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Concrete but it was: {e:?}"),
         }
     }
 
@@ -190,23 +187,26 @@ impl Concrete {
 
     pub fn literal_cast(self, builtin: Builtin) -> Option<Self> {
         match self {
-            Concrete::Uint(_, val) => {
-                match builtin {
-                    Builtin::Bytes(size) => {
-                        let mask = if size == 32 {
-                            U256::MAX
-                        } else {
-                            U256::from(2).pow((size as u16 * 8).into()) - 1
-                        };
+            Concrete::Uint(_, val) => match builtin {
+                Builtin::Bytes(size) => {
+                    let mask = if size == 32 {
+                        U256::MAX
+                    } else {
+                        U256::from(2).pow((size as u16 * 8).into()) - 1
+                    };
 
-
-                        let h = H256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
-                        Some(Concrete::Bytes(size, h))
-                    } 
-                    _ => self.cast(builtin)
+                    let h = H256::from_slice(
+                        &(val & mask)
+                            .0
+                            .iter()
+                            .flat_map(|v| v.to_le_bytes())
+                            .collect::<Vec<_>>()[..],
+                    );
+                    Some(Concrete::Bytes(size, h))
                 }
-            }
-            _ => self.cast(builtin)
+                _ => self.cast(builtin),
+            },
+            _ => self.cast(builtin),
         }
     }
 
@@ -611,7 +611,7 @@ impl Concrete {
                 "0x{}",
                 b.0.iter()
                     .take(*size as usize)
-                    .map(|byte| format!("{:02x}", byte))
+                    .map(|byte| format!("{byte:02x}"))
                     .collect::<Vec<_>>()
                     .join("")
             ),
@@ -643,14 +643,14 @@ impl Concrete {
                         if val < &pow2 {
                             let diff = pow2 - val;
                             if diff < cutoff {
-                                return format!("2**{} - {}", size, diff);
+                                return format!("2**{size} - {diff}");
                             }
                         } else if *val == pow2 {
-                            return format!("2**{}", size);
+                            return format!("2**{size}");
                         } else {
                             let diff = val - pow2;
                             if diff < cutoff {
-                                return format!("2**{} + {}", size, diff);
+                                return format!("2**{size} + {diff}");
                             }
                         }
                     }
@@ -687,14 +687,14 @@ impl Concrete {
                     "0x{}",
                     b.0.iter()
                         .take(*size as usize)
-                        .map(|byte| format!("{:02x}", byte))
+                        .map(|byte| format!("{byte:02x}"))
                         .collect::<Vec<_>>()
                         .join("")
                 )
             }
             Concrete::String(s) => s.to_string(),
             Concrete::Bool(b) => b.to_string(),
-            Concrete::Address(a) => format!("{:?}", a),
+            Concrete::Address(a) => format!("{a:?}"),
             Concrete::DynBytes(a) => {
                 if a.is_empty() {
                     "0x".to_string()

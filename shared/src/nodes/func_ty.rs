@@ -25,10 +25,7 @@ impl FunctionNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Function {
         match analyzer.node(*self) {
             Node::Function(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Function but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Function but it was: {e:?}"),
         }
     }
 
@@ -69,10 +66,7 @@ impl FunctionNode {
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut Function {
         match analyzer.node_mut(*self) {
             Node::Function(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Function but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Function but it was: {e:?}"),
         }
     }
 
@@ -239,8 +233,8 @@ impl AsDotStr for FunctionNode {
             .attributes
             .iter()
             .map(|attr| match attr {
-                FunctionAttribute::Mutability(inner) => format!("{}", inner),
-                FunctionAttribute::Visibility(inner) => format!("{}", inner),
+                FunctionAttribute::Mutability(inner) => format!("{inner}"),
+                FunctionAttribute::Visibility(inner) => format!("{inner}"),
                 FunctionAttribute::Virtual(_) => "virtual".to_string(),
                 FunctionAttribute::Immutable(_) => "immutable".to_string(),
                 FunctionAttribute::Override(_, _) => "override".to_string(),
@@ -379,7 +373,7 @@ impl AsDotStr for FunctionParamNode {
             "{}{}{}",
             var_ty.as_dot_str(analyzer),
             if let Some(stor) = &self.underlying(analyzer).storage {
-                format!(" {} ", stor)
+                format!(" {stor} ")
             } else {
                 "".to_string()
             },
@@ -396,10 +390,7 @@ impl FunctionParamNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a FunctionParam {
         match analyzer.node(*self) {
             Node::FunctionParam(param) => param,
-            e => panic!(
-                "Node type confusion: expected node to be FunctionParam but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be FunctionParam but it was: {e:?}"),
         }
     }
 
@@ -490,7 +481,7 @@ impl AsDotStr for FunctionReturnNode {
             "{}{}{}",
             var_ty.as_dot_str(analyzer),
             if let Some(stor) = &self.underlying(analyzer).storage {
-                format!(" {} ", stor)
+                format!(" {stor} ")
             } else {
                 "".to_string()
             },
@@ -507,10 +498,7 @@ impl FunctionReturnNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a FunctionReturn {
         match analyzer.node(*self) {
             Node::FunctionReturn(ret) => ret,
-            e => panic!(
-                "Node type confusion: expected node to be FunctionParam but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be FunctionParam but it was: {e:?}"),
         }
     }
 
