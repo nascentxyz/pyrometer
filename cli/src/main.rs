@@ -117,10 +117,10 @@ fn main() {
 
     let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
 
-    let mut analyzer = Analyzer::default();
-    analyzer.root = env::current_dir().unwrap();
+    let mut analyzer = Analyzer { root: env::current_dir().unwrap(), ..Default::default() };
     if args.remappings.is_some() {
-        analyzer.set_remappings(args.remappings.unwrap());
+        let remappings = args.remappings.unwrap();
+        analyzer.set_remappings_and_root(remappings);
     }
     let t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) = analyzer.parse(&sol, &PathBuf::from(args.path.clone()));

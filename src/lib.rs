@@ -1,3 +1,4 @@
+use std::path::{Component, Path};
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
@@ -177,11 +178,13 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
-    pub fn set_remappings(&mut self, remappings_path: String) {
+    pub fn set_remappings_and_root(&mut self, remappings_path: String) {
+        self.root = PathBuf::from(&remappings_path).parent().unwrap().to_path_buf();
         let remappings_file = fs::read_to_string(remappings_path)
             .map_err(|err| err.to_string())
             .expect("Remappings file not found");
 
+        println!("remappings file: {:?}", remappings_file);
         self.remappings = remappings_file
             .lines()
             .map(|x| x.trim())
@@ -261,7 +264,7 @@ impl Analyzer {
                     unit_part,
                     parent,
                     imported,
-                    &current_path,
+                    current_path,
                 );
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
@@ -326,7 +329,7 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(import) => imported.extend(self.parse_import(import, &current_path)),
+            ImportDirective(import) => imported.extend(self.parse_import(import, current_path)),
         }
         (sup_node, func_nodes, usings)
     }
@@ -334,12 +337,10 @@ impl Analyzer {
     pub fn parse_import(
         &mut self,
         import: &Import,
-        current_path: &PathBuf,
+        current_path: &Path,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(import_path, _) => {
-                // println!("import_path: {:?}", import_path);
-
                 let remapping = self
                     .remappings
                     .iter()
@@ -348,7 +349,7 @@ impl Analyzer {
                 let remapped = if let Some((name, path)) = remapping {
                     self.root
                         .join(path)
-                        .join(import_path.string.replacen(name, "", 1))
+                        .join(import_path.string.replacen(name, "", 1).trim_start_matches('/'))
                 } else {
                     current_path
                         .parent()
@@ -674,4 +675,31 @@ impl Analyzer {
         let ty = Ty::new(self, ty_def.clone());
         TyNode(self.add_node(ty).index())
     }
+}
+
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ret.pop();
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
 }
