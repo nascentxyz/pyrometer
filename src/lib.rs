@@ -380,22 +380,18 @@ impl Analyzer {
                 inner_sources
             }
             Import::Rename(import_path, elems, _) => {
-                println!(
-                    "import_path: {:?}, elems: {:?}, curr: {:?}",
-                    import_path,
-                    elems,
-                    std::env::current_dir()
-                );
-
                 let remapping = self
                     .remappings
                     .iter()
                     .find(|x| import_path.string.starts_with(&x.0));
 
                 let remapped = if let Some((name, path)) = remapping {
-                    self.root
-                        .join(path)
-                        .join(import_path.string.replacen(name, "", 1))
+                    self.root.join(path).join(
+                        import_path
+                            .string
+                            .replacen(name, "", 1)
+                            .trim_start_matches('/'),
+                    )
                 } else {
                     current_path
                         .parent()
