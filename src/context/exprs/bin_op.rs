@@ -30,7 +30,6 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
         self.op_match(loc, &lhs_paths, &rhs_paths, op, assign)
-
     }
 
     fn op_match(
@@ -93,42 +92,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
             }
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (ExprRet::Fork(world1, world2), rhs @ ExprRet::Single(..)) => {
-                ExprRet::Fork(
-                    Box::new(self.op_match(
-                        loc,
-                        world1,
-                        rhs,
-                        op,
-                        assign
-                    )),
-                    Box::new(self.op_match(
-                        loc,
-                        world2,
-                        rhs,
-                        op,
-                        assign
-                    )),
-                )
-            }
-            (lhs @ ExprRet::Single(..), ExprRet::Fork(world1, world2)) => {
-                ExprRet::Fork(
-                    Box::new(self.op_match(
-                        loc,
-                        lhs,
-                        world1,
-                        op,
-                        assign
-                    )),
-                    Box::new(self.op_match(
-                        loc,
-                        lhs,
-                        world2,
-                        op,
-                        assign
-                    )),
-                )
-            }
+            (ExprRet::Fork(world1, world2), rhs @ ExprRet::Single(..)) => ExprRet::Fork(
+                Box::new(self.op_match(loc, world1, rhs, op, assign)),
+                Box::new(self.op_match(loc, world2, rhs, op, assign)),
+            ),
+            (lhs @ ExprRet::Single(..), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
+                Box::new(self.op_match(loc, lhs, world1, op, assign)),
+                Box::new(self.op_match(loc, lhs, world2, op, assign)),
+            ),
             (l, r) => todo!("here other: {l:?} {r:?}"),
         }
     }
@@ -144,7 +115,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> ExprRet {
-        tracing::trace!("binary op: {} {} {}, assign: {}", lhs_cvar.display_name(self), op.to_string(), rhs_cvar.display_name(self), assign);
+        tracing::trace!(
+            "binary op: {} {} {}, assign: {}",
+            lhs_cvar.display_name(self),
+            op.to_string(),
+            rhs_cvar.display_name(self),
+            assign
+        );
         let new_lhs = if assign {
             self.advance_var_in_ctx(lhs_cvar, loc, ctx)
         } else {
@@ -490,11 +467,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 new_rhs.range(self),
             ) {
                 let zero = Elem::from(Concrete::from(U256::zero()));
-                let zero_range = SolcRange::new(
-                    zero.clone(),
-                    zero.clone(),
-                    vec![],
-                );
+                let zero_range = SolcRange::new(zero.clone(), zero.clone(), vec![]);
                 // We have to check if the the lhs and the right hand side contain the zero range.
                 // If they both do, we have to set the minimum to zero due to 0**0 = 1, but 0**x = 0.
                 // This is technically a slight widening of the interval and could be improved.

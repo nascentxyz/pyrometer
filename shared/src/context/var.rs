@@ -29,7 +29,7 @@ impl AsDotStr for ContextVarNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
 
-        let range_str = if let Some(mut r) = underlying.ty.range(analyzer) {
+        let range_str = if let Some(r) = underlying.ty.range(analyzer) {
             format!(
                 "[{}, {}]",
                 r.evaled_range_min(analyzer)
@@ -266,32 +266,36 @@ impl ContextVarNode {
         }
     }
 
-    pub fn cache_range(
-        &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) {
+    pub fn cache_range(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         if let Some(mut range) = self.range(analyzer) {
             range.cache_eval(analyzer);
-            self.set_range(analyzer, range);    
+            self.set_range(analyzer, range);
         }
     }
 
-    pub fn set_range(
-        &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-        new_range: SolcRange,
-    ) {
+    pub fn set_range(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), new_range: SolcRange) {
         let underlying = self.underlying_mut(analyzer);
         underlying.set_range(new_range);
     }
 
-    #[tracing::instrument(level="trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         new_min: Elem<Concrete>,
     ) {
-        tracing::trace!("setting range minimum: {}, current: {}, new: {}", self.display_name(analyzer), self.evaled_range_min(analyzer).unwrap().to_range_string(false, analyzer).s, new_min.minimize(analyzer).to_range_string(false, analyzer).s);
+        tracing::trace!(
+            "setting range minimum: {}, current: {}, new: {}",
+            self.display_name(analyzer),
+            self.evaled_range_min(analyzer)
+                .unwrap()
+                .to_range_string(false, analyzer)
+                .s,
+            new_min
+                .minimize(analyzer)
+                .to_range_string(false, analyzer)
+                .s
+        );
         if self.is_concrete(analyzer) {
             let mut new_ty = self.ty(analyzer).clone();
             new_ty.concrete_to_builtin(analyzer);
@@ -305,13 +309,21 @@ impl ContextVarNode {
         self.cache_range(analyzer);
     }
 
-    #[tracing::instrument(level="trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_max(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         new_max: Elem<Concrete>,
     ) {
-        tracing::trace!("setting range maximum: {}, current: {}, new: {}", self.display_name(analyzer), self.evaled_range_max(analyzer).unwrap().to_range_string(true, analyzer).s, new_max.maximize(analyzer).to_range_string(true, analyzer).s);
+        tracing::trace!(
+            "setting range maximum: {}, current: {}, new: {}",
+            self.display_name(analyzer),
+            self.evaled_range_max(analyzer)
+                .unwrap()
+                .to_range_string(true, analyzer)
+                .s,
+            new_max.maximize(analyzer).to_range_string(true, analyzer).s
+        );
         if self.is_concrete(analyzer) {
             let mut new_ty = self.ty(analyzer).clone();
             new_ty.concrete_to_builtin(analyzer);
@@ -720,7 +732,7 @@ impl ContextVar {
         }
     }
 
-    #[tracing::instrument(level="trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
             VarType::BuiltIn(_, ref mut maybe_range) => {

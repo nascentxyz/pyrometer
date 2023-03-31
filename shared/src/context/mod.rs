@@ -159,7 +159,11 @@ impl Context {
                 if is_fork {
                     format!("fork-{}", parent_ctx.underlying(analyzer).forks.len())
                 } else {
-                    format!("{}-{}", fn_name, parent_ctx.underlying(analyzer).children.len())
+                    format!(
+                        "{}-{}",
+                        fn_name,
+                        parent_ctx.underlying(analyzer).children.len()
+                    )
                 }
             ),
             is_fork,

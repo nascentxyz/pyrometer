@@ -61,11 +61,7 @@ impl From<bool> for SolcRange {
             val: Concrete::Bool(b),
             loc: Loc::Implicit,
         });
-        Self::new(
-            val.clone(),
-            val,
-            vec![],
-        )
+        Self::new(val.clone(), val, vec![])
     }
 }
 
@@ -76,7 +72,7 @@ impl SolcRange {
             min_cached: None,
             max,
             max_cached: None,
-            exclusions
+            exclusions,
         }
     }
 
@@ -93,11 +89,7 @@ impl SolcRange {
             val: Concrete::Bool(true),
             loc: Loc::Implicit,
         });
-        Self::new(
-            min,
-            max,
-            vec![],
-        )
+        Self::new(min, max, vec![])
     }
     pub fn from(c: Concrete) -> Option<Self> {
         match c {
@@ -133,11 +125,7 @@ impl SolcRange {
                     val,
                     loc: Loc::Implicit,
                 }));
-                Some(SolcRange::new(
-                    r.clone(),
-                    r,
-                    vec![],
-                ))
+                Some(SolcRange::new(r.clone(), r, vec![]))
             }
             e => {
                 println!("from: {e:?}");
@@ -396,11 +384,7 @@ impl SolcRange {
 
     pub fn div_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         let elem = Elem::Dynamic(Dynamic::new(other.into(), loc));
-        Self::new(
-            self.min / elem.clone(),
-            self.max / elem,
-            self.exclusions,
-        )
+        Self::new(self.min / elem.clone(), self.max / elem, self.exclusions)
     }
 
     pub fn shl_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
@@ -447,21 +431,13 @@ impl SolcRange {
     pub fn eq_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         let min = self.min.eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         let max = self.max.eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
-        Self::new(
-            min.clone().max(max.clone()),
-            min.max(max),
-            self.exclusions,
-        )
+        Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 
     pub fn neq_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
         let min = self.min.neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
         let max = self.max.neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
-        Self::new(
-            min.clone().max(max.clone()),
-            min.max(max),
-            self.exclusions,
-        )
+        Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 }
 

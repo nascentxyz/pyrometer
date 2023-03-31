@@ -10,10 +10,7 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
         match &*ident.name {
             "msg" => Some(ExprRet::Single((ctx, self.msg().into()))),
             "block" => Some(ExprRet::Single((ctx, self.block().into()))),
-            "abi" => {
-                Some(ExprRet::Multi(vec![]))
-
-            },
+            "abi" => Some(ExprRet::Multi(vec![])),
             "_" => {
                 #[allow(clippy::manual_map)]
                 if let Some(mod_state) = &ctx.underlying(self).modifier_state.clone() {

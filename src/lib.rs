@@ -432,7 +432,14 @@ impl Analyzer {
         contract_def: &ContractDefinition,
         imports: &[(Option<NodeIdx>, String, String, usize)],
     ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
-        tracing::trace!("Parsing contract {}", if let Some(ident) = &contract_def.name { ident.name.clone() } else { "interface".to_string() });
+        tracing::trace!(
+            "Parsing contract {}",
+            if let Some(ident) = &contract_def.name {
+                ident.name.clone()
+            } else {
+                "interface".to_string()
+            }
+        );
         use ContractPart::*;
 
         let contract = Contract::from_w_imports(contract_def.clone(), imports, self);

@@ -331,7 +331,7 @@ impl RangeDiv<Concrete> for RangeConcrete<Concrete> {
                         loc: self.loc,
                     }))
                 }
-            },
+            }
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v)) => {
                     if neg_v == &I256::from(0) {

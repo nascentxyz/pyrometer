@@ -204,7 +204,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     recursion_ops,
                 )
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx);
@@ -287,7 +287,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         rhs_op: RangeOp,
         recursion_ops: (RangeOp, RangeOp),
     ) -> Option<ContextVarNode> {
-        tracing::trace!("require: {} {} {}", new_lhs.display_name(self), op.to_string(), new_rhs.display_name(self));
+        tracing::trace!(
+            "require: {} {} {}",
+            new_lhs.display_name(self),
+            op.to_string(),
+            new_rhs.display_name(self)
+        );
         let mut any_unsat = false;
         let mut tmp_cvar = None;
 
@@ -496,7 +501,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     }
 
     /// Given a const var and a nonconst range, update the range based on the op
-    #[tracing::instrument(level="trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     fn update_nonconst_from_const(
         &mut self,
         loc: Loc,

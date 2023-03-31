@@ -103,14 +103,15 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                         .range(self)
                         .expect("No lhs rnage")
                         .range_exclusions();
-                    SolcRange::new(
-                        elem.clone(),
-                        elem,
-                        exclusions,
-                    )
+                    SolcRange::new(elem.clone(), elem, exclusions)
                 };
 
-                tracing::trace!("cmp: {} {} {}", lhs_cvar.name(self), op.to_string(), rhs_cvar.name(self));
+                tracing::trace!(
+                    "cmp: {} {} {}",
+                    lhs_cvar.name(self),
+                    op.to_string(),
+                    rhs_cvar.name(self)
+                );
 
                 let out_var = ContextVar {
                     loc: Some(loc),
@@ -209,11 +210,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     rhs: Box::new(Elem::Null),
                 });
 
-                return SolcRange::new(
-                    val.clone(),
-                    val,
-                    lhs_range.exclusions,
-                );
+                return SolcRange::new(val.clone(), val, lhs_range.exclusions);
             }
         }
 
@@ -226,11 +223,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
             val: Concrete::Bool(true),
             loc,
         };
-        SolcRange::new(
-            Elem::Concrete(min),
-            Elem::Concrete(max),
-            vec![],
-        )
+        SolcRange::new(Elem::Concrete(min), Elem::Concrete(max), vec![])
     }
 
     fn range_eval(

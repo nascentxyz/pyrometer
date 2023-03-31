@@ -1,4 +1,3 @@
-use tracing_subscriber::prelude::*;
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
@@ -12,21 +11,20 @@ use pyrometer::{
     Analyzer,
 };
 use shared::nodes::Concrete;
+use shared::nodes::FunctionNode;
 use shared::range::SolcRange;
+use shared::Edge;
 use shared::{
     analyzer::{GraphLike, Search},
     nodes::ContractNode,
 };
-use shared::nodes::FunctionNode;
-use shared::Edge;
+use tracing_subscriber::prelude::*;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use std::env::{self};
 use std::fs;
-
-use tracing_subscriber::{layer::Context, Layer};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -54,7 +52,6 @@ struct Args {
     #[clap(long, short)]
     pub write_query: Vec<String>,
 }
-
 
 pub fn subscriber() {
     tracing_subscriber::Registry::default()

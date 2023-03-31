@@ -12,7 +12,7 @@ use solang_parser::pt::VariableDeclaration;
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
 use shared::{analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, Edge, Node, NodeIdx};
-use solang_parser::pt::{Expression, Identifier, Loc, Statement};
+use solang_parser::pt::{Expression, Loc, Statement};
 
 pub mod func;
 use func::*;
@@ -123,8 +123,10 @@ impl ExprRet {
                     self
                 }
             }
-            ExprRet::Fork(lhs, rhs) => ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten())),
-            _ => self
+            ExprRet::Fork(lhs, rhs) => {
+                ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten()))
+            }
+            _ => self,
         }
     }
 }
@@ -390,8 +392,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     if let Some(parent) = parent_ctx {
                         let forks = ContextNode::from(parent.into()).live_forks(self);
                         if forks.is_empty() {
-                            let paths =
-                                self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into())).flatten();
+                            let paths = self
+                                .parse_ctx_expr(ret_expr, ContextNode::from(parent.into()))
+                                .flatten();
                             self.return_match(loc, &paths);
                         } else {
                             forks.into_iter().for_each(|parent| {
@@ -982,13 +985,11 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
-
         // println!("rhs_range: {:?}", rhs_cvar.range(self));
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
         );
-
 
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
         if !lhs_cvar.ty_eq(&rhs_cvar, self) {

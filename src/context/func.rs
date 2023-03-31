@@ -1,4 +1,3 @@
-use crate::context::exprs::Variable;
 use crate::context::exprs::Array;
 use crate::context::exprs::MemberAccess;
 use crate::context::exprs::Require;
@@ -35,7 +34,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 if let Variable(Identifier { name, .. }) = &**member_expr {
                     if name == "abi" {
                         let func_name = format!("abi.{}", ident.name);
-                        let as_fn = self.builtin_fns().get(&func_name).unwrap_or_else(|| panic!("No builtin function with name {}", func_name));
+                        let as_fn = self
+                            .builtin_fns()
+                            .get(&func_name)
+                            .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
                         let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
                         return self.intrinsic_func_call(loc, input_exprs, fn_node.into(), ctx);
                     }
@@ -335,7 +337,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             Node::Function(underlying) => {
                 if let Some(func_name) = &underlying.name {
                     match &*func_name.name {
-                        "abi.encode" | "abi.encodePacked" | "abi.encodeCall" | "abi.encodeWithSignature" => {
+                        "abi.encode"
+                        | "abi.encodePacked"
+                        | "abi.encodeCall"
+                        | "abi.encodeWithSignature" => {
                             // currently we dont support concrete abi encoding, TODO
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
@@ -374,12 +379,12 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
                             let var = ContextVar::new_from_builtin(
                                 *loc,
-                                self.builtin_or_add(Builtin::Bytes(32)).into(), 
+                                self.builtin_or_add(Builtin::Bytes(32)).into(),
                                 self,
                             );
                             let cvar = self.add_node(Node::ContextVar(var));
                             ExprRet::Single((ctx, cvar))
-                        },
+                        }
                         "ecrecover" => {
                             input_exprs.iter().for_each(|expr| {
                                 // we want to parse even though we dont need the variables here
@@ -698,7 +703,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             // update any requirements
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
-            
+
             self.ctx_rets(callee_ctx)
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
@@ -726,21 +731,16 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             assert!(forks.len() == 2);
             let w1 = self.ctx_rets(forks[0]);
             let w2 = self.ctx_rets(forks[1]);
-            ExprRet::Fork(
-                Box::new(w1),
-                Box::new(w2),
-            )
+            ExprRet::Fork(Box::new(w1), Box::new(w2))
         } else {
             let rets = ctx
-                    .underlying(self)
-                    .ret
-                    .clone()
-                    .into_iter()
-                    .map(|(_, node)| ExprRet::Single((ctx, node.into())))
-                    .collect();
-            ExprRet::Multi(
-                rets
-            )
+                .underlying(self)
+                .ret
+                .clone()
+                .into_iter()
+                .map(|(_, node)| ExprRet::Single((ctx, node.into())))
+                .collect();
+            ExprRet::Multi(rets)
         }
     }
 

@@ -69,11 +69,15 @@ pub trait GraphLike {
             .expect("Index not in graph")
     }
 
-    fn open_dot(&self) where Self: std::marker::Sized, Self: AnalyzerLike {
-        use std::io::Write;
-        use std::process::Command;
+    fn open_dot(&self)
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
         use std::env::temp_dir;
         use std::fs;
+        use std::io::Write;
+        use std::process::Command;
         let mut dir = temp_dir();
         let file_name = "dot.dot";
         dir.push(file_name);

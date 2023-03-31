@@ -774,13 +774,21 @@ pub trait ExecOp<T> {
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
     fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<Concrete> {
-
         let lhs_min = self.lhs.minimize(analyzer);
         let lhs_max = self.lhs.maximize(analyzer);
         let rhs_min = self.rhs.minimize(analyzer);
         let rhs_max = self.rhs.maximize(analyzer);
 
-        tracing::trace!("executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}", self.lhs, self.op.to_string(), self.rhs, lhs_min, lhs_max, rhs_min, rhs_max);
+        tracing::trace!(
+            "executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}",
+            self.lhs,
+            self.op.to_string(),
+            self.rhs,
+            lhs_min,
+            lhs_max,
+            rhs_min,
+            rhs_max
+        );
 
         let lhs_min_neg = lhs_min.pre_evaled_is_negative();
         let lhs_max_neg = lhs_max.pre_evaled_is_negative();

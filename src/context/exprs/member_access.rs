@@ -75,7 +75,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         ident.name
                     );
 
-                    tracing::trace!("Contract member access: {}.{}", con_node.maybe_name(self).unwrap_or_else(|| "interface".to_string()), ident.name);
+                    tracing::trace!(
+                        "Contract member access: {}.{}",
+                        con_node
+                            .maybe_name(self)
+                            .unwrap_or_else(|| "interface".to_string()),
+                        ident.name
+                    );
                     if let Some(func) = con_node
                         .funcs(self)
                         .into_iter()
@@ -718,7 +724,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 let parent_name = parent.name(self);
                 let parent_display_name = parent.display_name(self);
 
-                tracing::trace!("Index access: {}[{}]", parent_display_name, ContextVarNode::from(*idx).display_name(self));
+                tracing::trace!(
+                    "Index access: {}[{}]",
+                    parent_display_name,
+                    ContextVarNode::from(*idx).display_name(self)
+                );
                 let parent_ty = dyn_builtin;
                 let parent_stor = parent
                     .storage(self)
@@ -733,8 +743,6 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     &parent_ty,
                     ContextVarNode::from(*idx),
                 );
-
-                
 
                 let idx_node = self.add_node(Node::ContextVar(indexed_var));
                 self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));

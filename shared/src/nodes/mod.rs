@@ -269,7 +269,7 @@ impl VarType {
         &self,
         analyzer: &impl AnalyzerLike,
     ) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
-        self.range(analyzer).map(|mut range| {
+        self.range(analyzer).map(|range| {
             (
                 range.evaled_range_min(analyzer),
                 range.evaled_range_max(analyzer),
@@ -464,8 +464,10 @@ impl Builtin {
             Mapping { key, value, .. } => {
                 let key_idx = analyzer.parse_expr(&key);
                 let val_idx = analyzer.parse_expr(&value);
-                let key_var_ty = VarType::try_from_idx(analyzer, key_idx).expect("Bad parsing of map type");
-                let val_var_ty = VarType::try_from_idx(analyzer, val_idx).expect("Bad parsing of map type");
+                let key_var_ty =
+                    VarType::try_from_idx(analyzer, key_idx).expect("Bad parsing of map type");
+                let val_var_ty =
+                    VarType::try_from_idx(analyzer, val_idx).expect("Bad parsing of map type");
                 Some(Builtin::Mapping(key_var_ty, val_var_ty))
             }
             Function {
