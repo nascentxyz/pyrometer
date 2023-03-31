@@ -12,7 +12,7 @@ use solang_parser::pt::VariableDeclaration;
 use crate::VarType;
 use petgraph::{visit::EdgeRef, Direction};
 use shared::{analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, Edge, Node, NodeIdx};
-use solang_parser::pt::{Expression, Loc, Statement};
+use solang_parser::pt::{Expression, Identifier, Loc, Statement};
 
 pub mod func;
 use func::*;
@@ -46,7 +46,12 @@ impl ExprRet {
     }
 
     pub fn is_single(&self) -> bool {
-        matches!(self, ExprRet::Single(_))
+        match self {
+            ExprRet::Single(_inner) => true,
+            ExprRet::SingleLiteral(_inner) => true,
+            ExprRet::Multi(inner) => inner.len() == 1,
+            _ => false,
+        }
     }
 
     pub fn has_fork(&self) -> bool {
@@ -106,6 +111,21 @@ impl ExprRet {
             _ => {}
         }
         idxs
+    }
+
+    pub fn flatten(self) -> Self {
+        match self {
+            ExprRet::Single((_, _)) | ExprRet::SingleLiteral((_, _)) => self,
+            ExprRet::Multi(ref inner) => {
+                if inner.len() == 1 {
+                    inner[0].to_owned().flatten()
+                } else {
+                    self
+                }
+            }
+            ExprRet::Fork(lhs, rhs) => ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten())),
+            _ => self
+        }
     }
 }
 
@@ -342,12 +362,28 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 // TODO: We cheat in loops by just widening so breaks dont matter yet
             }
             Assembly {
-                loc: _,
+                loc,
                 dialect: _,
                 flags: _,
                 block: _yul_block,
             } => {
-                todo!("assembly not supported")
+                // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about any variables anymore.
+                // We should evaluate what variables are modified and consider mstores and sstores.
+                let ctx = ContextNode::from(
+                    parent_ctx
+                        .expect("No context for variable definition?")
+                        .into(),
+                );
+                let vars = ctx.local_vars(self);
+                vars.iter().for_each(|var| {
+                    // widen to max range
+                    let latest_var = var.latest_version(self);
+                    if let Some(r) = latest_var.underlying(self).ty.default_range(self) {
+                        let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx);
+                        new_var.set_range_min(self, r.min);
+                        new_var.set_range_max(self, r.max);
+                    }
+                });
             }
             Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
@@ -355,11 +391,11 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         let forks = ContextNode::from(parent.into()).live_forks(self);
                         if forks.is_empty() {
                             let paths =
-                                self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into()));
+                                self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into())).flatten();
                             self.return_match(loc, &paths);
                         } else {
                             forks.into_iter().for_each(|parent| {
-                                let paths = self.parse_ctx_expr(ret_expr, parent);
+                                let paths = self.parse_ctx_expr(ret_expr, parent).flatten();
                                 self.return_match(loc, &paths);
                                 // match paths {
                                 //     ExprRet::CtxKilled => {}
@@ -457,17 +493,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             }
             ExprRet::Multi(rets) => {
                 rets.iter().for_each(|expr_ret| {
-                    let (ctx, expr) = expr_ret.expect_single();
-                    self.add_edge(
-                        ContextVarNode::from(expr).latest_version(self),
-                        ctx,
-                        Edge::Context(ContextEdge::Return),
-                    );
-                    ctx.add_return_node(
-                        *loc,
-                        ContextVarNode::from(expr).latest_version(self),
-                        self,
-                    );
+                    self.return_match(loc, expr_ret);
                 });
             }
             ExprRet::Fork(world1, world2) => {
@@ -623,6 +649,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
         // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
@@ -955,11 +982,13 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
+
         // println!("rhs_range: {:?}", rhs_cvar.range(self));
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
         );
+
 
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
         if !lhs_cvar.ty_eq(&rhs_cvar, self) {

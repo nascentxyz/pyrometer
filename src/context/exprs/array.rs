@@ -38,6 +38,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
         self.index_into_array_inner(loc, inner_tys, index_tys)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn index_into_array_inner(
         &mut self,
         loc: Loc,
@@ -48,23 +49,25 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
             (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) | (ExprRet::Single((ctx, parent)), ExprRet::SingleLiteral((_rhs_ctx, index))) => {
-                let index = ContextVarNode::from(index);
+
+                let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).first_version(self);
-                let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
-                let index = index.latest_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx);
-
-
-                self.handle_require_inner(
-                    loc,
-                    &ExprRet::Single((ctx, len_var.latest_version(self).into())),
-                    &ExprRet::Single((ctx, idx.latest_version(self).into())),
-                    RangeOp::Gt,
-                    RangeOp::Lt,
-                    (RangeOp::Lte, RangeOp::Gte),
-                );
+                if !parent.is_mapping(self) {
+                    let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
+                    self.handle_require_inner(
+                        loc,
+                        &ExprRet::Single((ctx, len_var.latest_version(self).into())),
+                        &ExprRet::Single((ctx, idx.latest_version(self).into())),
+                        RangeOp::Gt,
+                        RangeOp::Lt,
+                        (RangeOp::Lte, RangeOp::Gte),
+                    );
+                }
 
                 let name = format!("{}[{}]", parent.name(self), index.name(self));
+                tracing::trace!("indexing: {}", name);
+
                 if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name) {
                     let index_var = index_var.latest_version(self);
                     let index_var = self.advance_var_in_ctx(index_var, loc, ctx);
@@ -82,7 +85,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,
-                        ty: parent.ty(self).clone().array_underlying_ty(self),
+                        ty: parent.ty(self).clone().dynamic_underlying_ty(self),
                     };
 
                     let idx_node = self.add_node(Node::ContextVar(index_var));

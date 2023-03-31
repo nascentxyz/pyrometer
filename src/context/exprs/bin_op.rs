@@ -27,113 +27,114 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx);
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
+        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
+        self.op_match(loc, &lhs_paths, &rhs_paths, op, assign)
+
+    }
+
+    fn op_match(
+        &mut self,
+        loc: Loc,
+        lhs_paths: &ExprRet,
+        rhs_paths: &ExprRet,
+        op: RangeOp,
+        assign: bool,
+    ) -> ExprRet {
         match (lhs_paths, rhs_paths) {
-            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
-                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
+            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 lhs_cvar.try_increase_size(self);
                 rhs_cvar.try_increase_size(self);
-                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
-                if lhs_ctx != rhs_ctx {
-                    ExprRet::Multi(vec![
-                        all_vars,
-                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
-                    ])
-                } else {
-                    all_vars
-                }
+                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
-            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
-                ContextVarNode::from(lhs).cast_from(&ContextVarNode::from(rhs), self);
-                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
-                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
-                if lhs_ctx != rhs_ctx {
-                    ExprRet::Multi(vec![
-                        all_vars,
-                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
-                    ])
-                } else {
-                    all_vars
-                }
+            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self);
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
-                ContextVarNode::from(rhs).cast_from(&ContextVarNode::from(lhs), self);
-                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
-                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
-                if lhs_ctx != rhs_ctx {
-                    ExprRet::Multi(vec![
-                        all_vars,
-                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
-                    ])
-                } else {
-                    all_vars
-                }
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
+                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
-                let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
-                let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
-                if lhs_ctx != rhs_ctx {
-                    ExprRet::Multi(vec![
-                        all_vars,
-                        self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
-                    ])
-                } else {
-                    all_vars
-                }
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
                 rhs_sides
                     .iter()
                     .map(|expr_ret| {
-                        let (rhs_ctx, rhs) = expr_ret.expect_single();
-                        let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
+                        let (_rhs_ctx, rhs) = expr_ret.expect_single();
+                        let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                         let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
-                        let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
-                        if lhs_ctx != rhs_ctx {
-                            ExprRet::Multi(vec![
-                                all_vars,
-                                self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
-                            ])
-                        } else {
-                            all_vars
-                        }
+                        self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
                     })
                     .collect(),
             ),
-            (ExprRet::Multi(lhs_sides), ExprRet::Single((rhs_ctx, rhs))) => ExprRet::Multi(
+            (ExprRet::Multi(lhs_sides), ExprRet::Single((_rhs_ctx, rhs))) => ExprRet::Multi(
                 lhs_sides
                     .iter()
                     .map(|expr_ret| {
                         let (lhs_ctx, lhs) = expr_ret.expect_single();
                         let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
-                        let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
-                        let all_vars = self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign);
-                        if lhs_ctx != rhs_ctx {
-                            ExprRet::Multi(vec![
-                                all_vars,
-                                self.op(loc, lhs_cvar, rhs_cvar, rhs_ctx, op, assign),
-                            ])
-                        } else {
-                            all_vars
-                        }
+                        let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                        self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign)
                     })
                     .collect(),
             ),
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
-                todo!("here: {lhs_sides:?} {rhs_sides:?}")
+                todo!("here multi: {lhs_sides:?} {rhs_sides:?}")
             }
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (l, r) => todo!("here: {l:?} {r:?}"),
+            (ExprRet::Fork(world1, world2), rhs @ ExprRet::Single(..)) => {
+                ExprRet::Fork(
+                    Box::new(self.op_match(
+                        loc,
+                        world1,
+                        rhs,
+                        op,
+                        assign
+                    )),
+                    Box::new(self.op_match(
+                        loc,
+                        world2,
+                        rhs,
+                        op,
+                        assign
+                    )),
+                )
+            }
+            (lhs @ ExprRet::Single(..), ExprRet::Fork(world1, world2)) => {
+                ExprRet::Fork(
+                    Box::new(self.op_match(
+                        loc,
+                        lhs,
+                        world1,
+                        op,
+                        assign
+                    )),
+                    Box::new(self.op_match(
+                        loc,
+                        lhs,
+                        world2,
+                        op,
+                        assign
+                    )),
+                )
+            }
+            (l, r) => todo!("here other: {l:?} {r:?}"),
         }
     }
 
     /// Execute a binary operation after parsing the expressions
+    #[tracing::instrument(level = "trace", skip_all)]
     fn op(
         &mut self,
         loc: Loc,
@@ -143,7 +144,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> ExprRet {
-        // println!("op: {:?}, {:?} {:?}", op, lhs_cvar.display_name(self), rhs_cvar.display_name(self));
+        tracing::trace!("binary op: {} {} {}, assign: {}", lhs_cvar.display_name(self), op.to_string(), rhs_cvar.display_name(self), assign);
         let new_lhs = if assign {
             self.advance_var_in_ctx(lhs_cvar, loc, ctx)
         } else {
@@ -489,11 +490,11 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 new_rhs.range(self),
             ) {
                 let zero = Elem::from(Concrete::from(U256::zero()));
-                let zero_range = SolcRange {
-                    min: zero.clone(),
-                    max: zero.clone(),
-                    exclusions: vec![],
-                };
+                let zero_range = SolcRange::new(
+                    zero.clone(),
+                    zero.clone(),
+                    vec![],
+                );
                 // We have to check if the the lhs and the right hand side contain the zero range.
                 // If they both do, we have to set the minimum to zero due to 0**0 = 1, but 0**x = 0.
                 // This is technically a slight widening of the interval and could be improved.

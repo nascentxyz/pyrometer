@@ -15,7 +15,9 @@ use solang_parser::pt::Identifier;
 impl<T> Variable for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 
 pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> ExprRet {
+        tracing::trace!("Getting variable: {}", &ident.name);
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
             let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);
             ExprRet::Single((ctx, var.0.into()))

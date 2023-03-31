@@ -269,7 +269,7 @@ impl VarType {
         &self,
         analyzer: &impl AnalyzerLike,
     ) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
-        self.range(analyzer).map(|range| {
+        self.range(analyzer).map(|mut range| {
             (
                 range.evaled_range_min(analyzer),
                 range.evaled_range_max(analyzer),
@@ -277,9 +277,18 @@ impl VarType {
         })
     }
 
-    pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
+    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
         match self {
-            Self::BuiltIn(node, _) => node.array_underlying_ty(analyzer),
+            Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
+            e => {
+                panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
+            }
+        }
+    }
+
+    pub fn is_mapping(&self, analyzer: &impl AnalyzerLike) -> bool {
+        match self {
+            Self::BuiltIn(node, _) => node.is_mapping(analyzer),
             e => {
                 panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
             }
@@ -375,20 +384,29 @@ impl BuiltInNode {
         analyzer.builtin_or_add(m).into()
     }
 
-    pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
+    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
         match self.underlying(analyzer) {
             Builtin::Array(v_ty) => v_ty.clone(),
+            Builtin::Mapping(_, v_ty) => v_ty.clone(),
             Builtin::DynamicBytes => VarType::BuiltIn(
                 analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
-                Some(SolcRange {
-                    min: Elem::from(Concrete::from(vec![0x00])),
-                    max: Elem::from(Concrete::from(vec![0xff])),
-                    exclusions: vec![],
-                }),
+                Some(SolcRange::new(
+                    Elem::from(Concrete::from(vec![0x00])),
+                    Elem::from(Concrete::from(vec![0xff])),
+                    vec![],
+                )),
             ),
+
             e => {
                 panic!("Node type confusion: expected node to be Builtin::Array but it was: {e:?}")
             }
+        }
+    }
+
+    pub fn is_mapping(&self, analyzer: &impl AnalyzerLike) -> bool {
+        match self.underlying(analyzer) {
+            Builtin::Mapping(_, _) => true,
+            _ => false,
         }
     }
 
@@ -443,6 +461,13 @@ impl Builtin {
             Bytes(size) => Some(Builtin::Bytes(size)),
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
+            Mapping { key, value, .. } => {
+                let key_idx = analyzer.parse_expr(&key);
+                let val_idx = analyzer.parse_expr(&value);
+                let key_var_ty = VarType::try_from_idx(analyzer, key_idx).expect("Bad parsing of map type");
+                let val_var_ty = VarType::try_from_idx(analyzer, val_idx).expect("Bad parsing of map type");
+                Some(Builtin::Mapping(key_var_ty, val_var_ty))
+            }
             Function {
                 params,
                 attributes: _,

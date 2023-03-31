@@ -69,6 +69,30 @@ pub trait GraphLike {
             .expect("Index not in graph")
     }
 
+    fn open_dot(&self) where Self: std::marker::Sized, Self: AnalyzerLike {
+        use std::io::Write;
+        use std::process::Command;
+        use std::env::temp_dir;
+        use std::fs;
+        let mut dir = temp_dir();
+        let file_name = "dot.dot";
+        dir.push(file_name);
+
+        let mut file = fs::File::create(dir.clone()).unwrap();
+        file.write_all(self.dot_str().as_bytes()).unwrap();
+        Command::new("dot")
+            .arg("-Tsvg")
+            .arg(dir)
+            .arg("-o")
+            .arg("dot.svg")
+            .output()
+            .expect("failed to execute process");
+        Command::new("open")
+            .arg("dot.svg")
+            .output()
+            .expect("failed to execute process");
+    }
+
     fn add_edge(
         &mut self,
         from_node: impl Into<NodeIdx>,

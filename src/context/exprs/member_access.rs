@@ -19,6 +19,7 @@ use solang_parser::pt::{Expression, Identifier, Loc};
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
     /// Gets the array type
+    #[tracing::instrument(level = "trace", skip_all)]
     fn member_access(
         &mut self,
         loc: Loc,
@@ -38,6 +39,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         ContextVarNode::from(member_idx).name(self),
                         ident.name
                     );
+                    tracing::trace!("Struct member access: {}", name);
                     if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                         return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
                     } else if let Some(field) = struct_node.find_field(self, ident) {
@@ -72,6 +74,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             .collect::<Vec<_>>(),
                         ident.name
                     );
+
+                    tracing::trace!("Contract member access: {}.{}", con_node.maybe_name(self).unwrap_or_else(|| "interface".to_string()), ident.name);
                     if let Some(func) = con_node
                         .funcs(self)
                         .into_iter()
@@ -109,6 +113,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
             },
             Node::Msg(_msg) => {
                 let name = format!("msg.{}", ident.name);
+                tracing::trace!("Msg Env member access: {}", name);
+
                 if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                     return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
                 } else {
@@ -256,7 +262,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             Node::Block(_b) => {
-                let name = format!("msg.{}", ident.name);
+                let name = format!("block.{}", ident.name);
+                tracing::trace!("Block Env member access: {}", name);
                 if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                     return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
                 } else {
@@ -695,6 +702,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         self.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn match_index_access(
         &mut self,
         index_paths: &ExprRet,
@@ -703,13 +711,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         dyn_builtin: BuiltInNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        println!("match index access");
         match index_paths {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
             ExprRet::Single((_index_ctx, idx)) => {
                 let parent = parent.first_version(self);
                 let parent_name = parent.name(self);
                 let parent_display_name = parent.display_name(self);
+
+                tracing::trace!("Index access: {}[{}]", parent_display_name, ContextVarNode::from(*idx).display_name(self));
                 let parent_ty = dyn_builtin;
                 let parent_stor = parent
                     .storage(self)
@@ -724,6 +733,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     &parent_ty,
                     ContextVarNode::from(*idx),
                 );
+
+                
 
                 let idx_node = self.add_node(Node::ContextVar(indexed_var));
                 self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
@@ -740,6 +751,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         self.match_length(loc, elem, true)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn tmp_length(
         &mut self,
         arr: ContextVarNode,
@@ -748,6 +760,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
     ) -> ContextVarNode {
         let arr = arr.first_version(self);
         let name = format!("{}.length", arr.name(self));
+        tracing::trace!("Length access: {}", name);
         if let Some(attr_var) = array_ctx.var_by_name_or_recurse(self, &name) {
             attr_var.latest_version(self)
         } else {
@@ -790,6 +803,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn match_length(&mut self, loc: Loc, elem_path: ExprRet, update_len_bound: bool) -> ExprRet {
         match elem_path {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
@@ -801,6 +815,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 );
                 let arr = ContextVarNode::from(arr).first_version(self);
                 let name = format!("{}.length", arr.name(self));
+                tracing::trace!("Length access: {}", name);
                 if let Some(len_var) = array_ctx.var_by_name_or_recurse(self, &name) {
                     let len_var = len_var.latest_version(self);
                     let new_len = self.advance_var_in_ctx(len_var, loc, array_ctx);

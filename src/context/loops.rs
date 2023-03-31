@@ -9,16 +9,21 @@ use solang_parser::pt::Expression;
 
 impl<T> Looper for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn for_loop(
         &mut self,
         loc: Loc,
         ctx: ContextNode,
-        _maybe_init: &Option<Box<Statement>>,
+        maybe_init: &Option<Box<Statement>>,
         _maybe_limiter: &Option<Box<Expression>>,
         _maybe_post: &Option<Box<Statement>>,
         maybe_body: &Option<Box<Statement>>,
     ) {
         // TODO: improve this
+        if let Some(initer) = maybe_init {
+            self.parse_ctx_statement(initer, false, Some(ctx));
+        }
+
         if let Some(body) = maybe_body {
             let subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
                 ctx, loc, false, None, false, self, None,

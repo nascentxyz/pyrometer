@@ -157,7 +157,7 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
         contract_name: String,
         func_name: String,
         storage_var_name: String,
-        target: SolcRange,
+        mut target: SolcRange,
     ) -> Option<StorageRangeReport> {
         // perform analysis on the func for the storage var
         // collect bound changes of the var
@@ -181,7 +181,7 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
         let ctx = FunctionNode::from(func).body_ctx(self);
 
         let terminals = ctx.terminal_child_list(self);
-        for analysis in terminals
+        for mut analysis in terminals
             .iter()
             .map(|child| {
                 let mut parents = child.parent_list(self);
@@ -197,8 +197,8 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
             .filter(|analysis| terminals.contains(&analysis.ctx))
             .filter(|analysis| !analysis.ctx.is_killed(self))
         {
-            if let Some(last) = analysis.bound_changes.iter().last() {
-                if last.1.contains(&target, self) {
+            if let Some(last) = analysis.bound_changes.iter_mut().last() {
+                if last.1.contains(&mut target, self) {
                     return Some(StorageRangeReport {
                         target,
                         write_loc: Some(last.0.clone()),

@@ -322,31 +322,49 @@ pub trait RangeDiv<T, Rhs = Self> {
 impl RangeDiv<Concrete> for RangeConcrete<Concrete> {
     fn range_div(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
-            (Some(lhs_val), Some(rhs_val)) => Some(Elem::Concrete(RangeConcrete {
-                val: self.val.u256_as_original(lhs_val / rhs_val),
-                loc: self.loc,
-            })),
+            (Some(lhs_val), Some(rhs_val)) => {
+                if rhs_val == 0.into() {
+                    None
+                } else {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: self.val.u256_as_original(lhs_val / rhs_val),
+                        loc: self.loc,
+                    }))
+                }
+            },
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(
-                            *lhs_size,
-                            I256::from_raw(val / neg_v.into_raw()) * I256::from(-1i32),
-                        ),
-                        loc: self.loc,
-                    }))
+                    if neg_v == &I256::from(0) {
+                        None
+                    } else {
+                        Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(
+                                *lhs_size,
+                                I256::from_raw(val / neg_v.into_raw()) * I256::from(-1i32),
+                            ),
+                            loc: self.loc,
+                        }))
+                    }
                 }
                 (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, *neg_v / I256::from_raw(*val)),
-                        loc: self.loc,
-                    }))
+                    if val == &U256::from(0) {
+                        None
+                    } else {
+                        Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*lhs_size, *neg_v / I256::from_raw(*val)),
+                            loc: self.loc,
+                        }))
+                    }
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, *l / *r),
-                        loc: self.loc,
-                    }))
+                    if r == &I256::from(0) {
+                        None
+                    } else {
+                        Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(*lhs_size, *l / *r),
+                            loc: self.loc,
+                        }))
+                    }
                 }
                 _ => None,
             },
@@ -1114,7 +1132,7 @@ impl RangeCast<Concrete> for Elem<Concrete> {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_cast(b),
             (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
             (Elem::Concrete(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
-            e => panic!("here: {e:?}"),
+            _e => None,
         }
     }
 }

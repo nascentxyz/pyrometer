@@ -1,3 +1,4 @@
+use tracing_subscriber::prelude::*;
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
@@ -16,16 +17,16 @@ use shared::{
     analyzer::{GraphLike, Search},
     nodes::ContractNode,
 };
-use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::Command;
-
 use shared::nodes::FunctionNode;
-
 use shared::Edge;
-use std::env::{self, temp_dir};
+
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+
+use std::env::{self};
 use std::fs;
+
+use tracing_subscriber::{layer::Context, Layer};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -54,7 +55,16 @@ struct Args {
     pub write_query: Vec<String>,
 }
 
+
+pub fn subscriber() {
+    tracing_subscriber::Registry::default()
+        .with(tracing_subscriber::filter::EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer())
+        .init()
+}
+
 fn main() {
+    subscriber();
     let args = Args::parse();
     let path_str = args.path.to_string();
     let verbosity = args.verbosity;
@@ -222,11 +232,11 @@ fn main() {
             split[0].to_string(),
             split[1].to_string(),
             split[2].to_string(),
-            SolcRange {
-                min: Concrete::Bool(true).into(),
-                max: Concrete::Bool(true).into(),
-                exclusions: vec![],
-            },
+            SolcRange::new(
+                Concrete::Bool(true).into(),
+                Concrete::Bool(true).into(),
+                vec![],
+            ),
         ) {
             report.print_reports(&mut source_map, &analyzer);
         }
@@ -238,22 +248,6 @@ fn main() {
     // println!("total time: {:?}ms", t0.elapsed().as_millis());
 
     if args.open_dot {
-        let mut dir = temp_dir();
-        let file_name = "dot.dot";
-        dir.push(file_name);
-
-        let mut file = fs::File::create(dir.clone()).unwrap();
-        file.write_all(analyzer.dot_str().as_bytes()).unwrap();
-        Command::new("dot")
-            .arg("-Tjpeg")
-            .arg(dir)
-            .arg("-o")
-            .arg("dot.jpeg")
-            .output()
-            .expect("failed to execute process");
-        Command::new("open")
-            .arg("dot.jpeg")
-            .output()
-            .expect("failed to execute process");
+        analyzer.open_dot()
     }
 }

@@ -1,3 +1,4 @@
+use crate::context::exprs::Variable;
 use crate::context::exprs::Array;
 use crate::context::exprs::MemberAccess;
 use crate::context::exprs::Require;
@@ -20,6 +21,7 @@ use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
 
 impl<T> FuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn fn_call_expr(
         &mut self,
         ctx: ContextNode,
@@ -30,6 +32,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
+                if let Variable(Identifier { name, .. }) = &**member_expr {
+                    if name == "abi" {
+                        let func_name = format!("abi.{}", ident.name);
+                        let as_fn = self.builtin_fns().get(&func_name).unwrap_or_else(|| panic!("No builtin function with name {}", func_name));
+                        let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                        return self.intrinsic_func_call(loc, input_exprs, fn_node.into(), ctx);
+                    }
+                }
                 let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
 
                 let inputs = match ContextVarNode::from(member).underlying(self).ty {
@@ -51,6 +61,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
 
                 let inputs = ExprRet::Multi(inputs);
                 if !inputs.has_literal() {
+                    // TODO: handle implicit upcast
                     let as_input_str = inputs.try_as_func_input_str(self);
 
                     let (_func_ctx, func_idx) = match self.parse_ctx_expr(
@@ -312,6 +323,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
     }
 
     /// Calls an intrinsic/builtin function call (casts, require, etc.)
+    #[tracing::instrument(level = "trace", skip_all)]
     fn intrinsic_func_call(
         &mut self,
         loc: &Loc,
@@ -323,6 +335,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             Node::Function(underlying) => {
                 if let Some(func_name) = &underlying.name {
                     match &*func_name.name {
+                        "abi.encode" | "abi.encodePacked" | "abi.encodeCall" | "abi.encodeWithSignature" => {
+                            // currently we dont support concrete abi encoding, TODO
+                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            ExprRet::Single((ctx, node))
+                        }
                         "require" | "assert" => {
                             self.handle_require(input_exprs, ctx);
                             ExprRet::Multi(vec![])
@@ -350,6 +370,16 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx);
                             self.match_assign_sides(*loc, &index, &new_elem)
                         }
+                        "keccak256" => {
+                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Bytes(32)).into(), 
+                                self,
+                            );
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            ExprRet::Single((ctx, cvar))
+                        },
                         "ecrecover" => {
                             input_exprs.iter().for_each(|expr| {
                                 // we want to parse even though we dont need the variables here
@@ -424,8 +454,27 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             Node::Builtin(ty) => {
                 // it is a cast
                 let ty = ty.clone();
-                let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-
+                let resp = self.parse_ctx_expr(&input_exprs[0], ctx).flatten();
+                // if !resp.is_single() {
+                //     println!("{}", self.dot_str());
+                // }
+                // Fork(
+                //     Fork(
+                //         Multi([
+                //             Single((ContextNode(2404), NodeIndex(2443))),
+                //             Single((ContextNode(2359), NodeIndex(2446)))
+                //         ]),
+                //         Multi([
+                //             Single((ContextNode(2405), NodeIndex(2449))),
+                //             Single((ContextNode(2359), NodeIndex(2452)))
+                //         ])
+                //     ),
+                //     Multi([
+                //         Single((ContextNode(2390), NodeIndex(2455))),
+                //         Single((ContextNode(2359), NodeIndex(2458)))
+                //     ])
+                // )
+                let (ctx, cvar) = resp.expect_single();
                 let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), self);
 
                 new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
@@ -517,6 +566,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
     }
 
     /// Checks if there are any modifiers and executes them prior to executing the function
+    #[tracing::instrument(level = "trace", skip_all)]
     fn func_call_inner(
         &mut self,
         entry_call: bool,
@@ -623,6 +673,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
     }
 
     /// Actually executes the function
+    #[tracing::instrument(level = "trace", skip_all)]
     fn execute_call_inner(
         &mut self,
         loc: Loc,
@@ -647,20 +698,13 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             // update any requirements
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
-
-            ExprRet::Multi(
-                callee_ctx
-                    .underlying(self)
-                    .ret
-                    .clone()
-                    .into_iter()
-                    .map(|(_, node)| ExprRet::Single((callee_ctx, node.into())))
-                    .collect(),
-            )
+            
+            self.ctx_rets(callee_ctx)
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
 
+            println!("\n\n HERERERERE \n\n");
             ExprRet::Multi(
                 func_node
                     .returns(self)
@@ -676,7 +720,32 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         }
     }
 
+    fn ctx_rets(&mut self, ctx: ContextNode) -> ExprRet {
+        let forks = ctx.forks(self);
+        if !forks.is_empty() {
+            assert!(forks.len() == 2);
+            let w1 = self.ctx_rets(forks[0]);
+            let w2 = self.ctx_rets(forks[1]);
+            ExprRet::Fork(
+                Box::new(w1),
+                Box::new(w2),
+            )
+        } else {
+            let rets = ctx
+                    .underlying(self)
+                    .ret
+                    .clone()
+                    .into_iter()
+                    .map(|(_, node)| ExprRet::Single((ctx, node.into())))
+                    .collect();
+            ExprRet::Multi(
+                rets
+            )
+        }
+    }
+
     /// Calls a modifier for a function
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_modifier_for_fn(
         &mut self,
         loc: Loc,
@@ -767,6 +836,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
     }
 
     /// Resumes the parent function of a modifier
+    #[tracing::instrument(level = "trace", skip_all)]
     fn resume_from_modifier(&mut self, ctx: ContextNode, modifier_state: ModifierState) -> ExprRet {
         // pass up the variable changes
         self.inherit_input_changes(

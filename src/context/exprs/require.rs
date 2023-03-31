@@ -211,11 +211,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx);
 
                 self.require(new_lhs, new_rhs, *lhs_ctx, loc, op, rhs_op, recursion_ops);
-                if lhs_ctx != rhs_ctx {
-                    let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *rhs_ctx);
-                    let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *rhs_ctx);
-                    self.require(new_lhs, new_rhs, *rhs_ctx, loc, op, rhs_op, recursion_ops);
-                }
+                // if lhs_ctx != rhs_ctx {
+                //     let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *rhs_ctx);
+                //     let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *rhs_ctx);
+                //     self.require(new_lhs, new_rhs, *rhs_ctx, loc, op, rhs_op, recursion_ops);
+                // }
             }
             (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides.iter().for_each(|expr_ret| {
@@ -276,6 +276,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     /// Updates the range bounds for the variables passed into the require function. If the lefthand side is a temporary value,
     /// it will recursively update the range bounds for the underlying variable
     #[allow(clippy::too_many_arguments)]
+    #[tracing::instrument(level = "trace", skip_all)]
     fn require(
         &mut self,
         new_lhs: ContextVarNode,
@@ -286,10 +287,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         rhs_op: RangeOp,
         recursion_ops: (RangeOp, RangeOp),
     ) -> Option<ContextVarNode> {
+        tracing::trace!("require: {} {} {}", new_lhs.display_name(self), op.to_string(), new_rhs.display_name(self));
         let mut any_unsat = false;
         let mut tmp_cvar = None;
-
-        // println!("lhs: {} - {:?}, rhs: {} - {:?}", new_lhs.display_name(self), new_lhs.is_const(self), new_rhs.display_name(self), new_rhs.is_const(self));
 
         if let Some(mut lhs_range) = new_lhs.underlying(self).ty.range(self) {
             let lhs_range_fn = SolcRange::dyn_fn_from_op(op);
@@ -439,7 +439,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         }
 
         if let Some(tmp) = new_lhs.tmp_of(self) {
-            if tmp.op.inverse().is_some() {
+            if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
                 self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)
             } else {
                 self.uninvertable_range_recursion(tmp, new_lhs, new_rhs, loc, ctx);
@@ -496,6 +496,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     }
 
     /// Given a const var and a nonconst range, update the range based on the op
+    #[tracing::instrument(level="trace", skip_all)]
     fn update_nonconst_from_const(
         &mut self,
         loc: Loc,
@@ -817,12 +818,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         loc: Loc,
         any_unsat: &mut bool,
     ) {
+        tracing::trace!("Recursing through range");
         // handle lhs
         let inverse = tmp_construction
             .op
             .inverse()
             .expect("impossible to not invert op");
         if !tmp_construction.lhs.is_const(self) {
+            tracing::trace!("handling lhs range recursion");
             let adjusted_gt_rhs = ContextVarNode::from(
                 self.op(
                     loc,
@@ -867,6 +870,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         // handle rhs
         if let Some(rhs) = tmp_construction.rhs {
             if !rhs.is_const(self) {
+                tracing::trace!("handling rhs range recursion");
                 let (needs_inverse, adjusted_gt_rhs) = match tmp_construction.op {
                     RangeOp::Sub => {
                         let concrete = ConcreteNode(

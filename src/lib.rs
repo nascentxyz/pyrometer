@@ -196,6 +196,7 @@ impl Analyzer {
             .collect();
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse(
         &mut self,
         src: &str,
@@ -204,6 +205,7 @@ impl Analyzer {
         Option<NodeIdx>,
         Vec<(Option<NodeIdx>, String, String, usize)>,
     ) {
+        // tracing::trace!("parsing: {:?}", current_path);
         let file_no = self.file_no;
         let mut imported = vec![];
         match solang_parser::parse(src, file_no) {
@@ -245,13 +247,14 @@ impl Analyzer {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_source_unit(
         &mut self,
         source_unit: SourceUnit,
         file_no: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-        current_path: &PathBuf,
+        current_path: &Path,
     ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
@@ -274,6 +277,7 @@ impl Analyzer {
         (all_funcs, all_usings)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_source_unit_part(
         &mut self,
         sup: &SourceUnitPart,
@@ -281,7 +285,7 @@ impl Analyzer {
         unit_part: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-        current_path: &PathBuf,
+        current_path: &Path,
     ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use SourceUnitPart::*;
 
@@ -336,6 +340,7 @@ impl Analyzer {
         (sup_node, func_nodes, usings)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_import(
         &mut self,
         import: &Import,
@@ -343,6 +348,7 @@ impl Analyzer {
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(import_path, _) => {
+                tracing::trace!("parse_import, path: {:?}", import_path);
                 let remapping = self
                     .remappings
                     .iter()
@@ -379,6 +385,7 @@ impl Analyzer {
                 inner_sources
             }
             Import::Rename(import_path, _elems, _) => {
+                tracing::trace!("parse_import, path: {:?}, Rename", import_path);
                 let remapping = self
                     .remappings
                     .iter()
@@ -418,11 +425,14 @@ impl Analyzer {
         }
     }
 
+    // #[tracing::instrument(name = "parse_contract_def", skip_all, fields(name = format!("{:?}", contract_def.name)))]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_contract_def(
         &mut self,
         contract_def: &ContractDefinition,
         imports: &[(Option<NodeIdx>, String, String, usize)],
     ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
+        tracing::trace!("Parsing contract {}", if let Some(ident) = &contract_def.name { ident.name.clone() } else { "interface".to_string() });
         use ContractPart::*;
 
         let contract = Contract::from_w_imports(contract_def.clone(), imports, self);
@@ -472,7 +482,9 @@ impl Analyzer {
         (con_node, func_nodes, usings)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_using(&mut self, using_def: &Using, scope_node: NodeIdx) {
+        tracing::trace!("Parsing \"using\" {:?}", using_def);
         let ty_idx = self.parse_expr(
             &using_def
                 .ty
@@ -550,7 +562,9 @@ impl Analyzer {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_enum_def(&mut self, enum_def: &EnumDefinition) -> EnumNode {
+        tracing::trace!("Parsing enum {:?}", enum_def);
         let enu = Enum::from(enum_def.clone());
         let name = enu.name.clone().expect("Enum was not named").name;
 
@@ -568,9 +582,12 @@ impl Analyzer {
         enu_node
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_struct_def(&mut self, struct_def: &StructDefinition) -> StructNode {
         let strukt = Struct::from(struct_def.clone());
+
         let name = strukt.name.clone().expect("Struct was not named").name;
+        tracing::trace!("Parsing struct {}", name);
 
         // check if we have an unresolved type by the same name
         let strukt_node: StructNode =
@@ -592,7 +609,9 @@ impl Analyzer {
         strukt_node
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_err_def(&mut self, err_def: &ErrorDefinition) -> ErrorNode {
+        tracing::trace!("Parsing error {:?}", err_def);
         let err_node = ErrorNode(self.add_node(Error::from(err_def.clone())).index());
         err_def.fields.iter().for_each(|field| {
             let param = ErrorParam::new(self, field.clone());
@@ -602,12 +621,14 @@ impl Analyzer {
         err_node
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_func_def(
         &mut self,
         func_def: &FunctionDefinition,
         con_node: Option<ContractNode>,
     ) -> FunctionNode {
         let func = Function::from(func_def.clone());
+        tracing::trace!("Parsing function {:?}", func.name.clone().unwrap().name);
         self.handle_func(func, con_node)
     }
 

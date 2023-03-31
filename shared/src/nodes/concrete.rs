@@ -569,6 +569,7 @@ impl Concrete {
                 Some(Concrete::Bytes(*size, h))
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0x00; 20]))),
+            Concrete::Bool(_) => Some(Concrete::Bool(false)),
             e => {
                 println!("was other: {e:?}");
                 None

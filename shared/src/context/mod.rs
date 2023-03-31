@@ -140,14 +140,14 @@ impl Context {
         analyzer: &impl AnalyzerLike,
         modifier_state: Option<ModifierState>,
     ) -> Self {
-        let (ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
+        let (fn_name, ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
             if fn_ext {
-                (Some(fn_call), None)
+                (fn_call.name(analyzer), Some(fn_call), None)
             } else {
-                (None, Some(fn_call))
+                (fn_call.name(analyzer), None, Some(fn_call))
             }
         } else {
-            (None, None)
+            ("anonymous_fn_call".to_string(), None, None)
         };
 
         Context {
@@ -157,9 +157,9 @@ impl Context {
                 "{}.{}",
                 parent_ctx.underlying(analyzer).path,
                 if is_fork {
-                    format!("fork.{}", parent_ctx.underlying(analyzer).forks.len())
+                    format!("fork-{}", parent_ctx.underlying(analyzer).forks.len())
                 } else {
-                    format!("child.{}", parent_ctx.underlying(analyzer).children.len())
+                    format!("{}-{}", fn_name, parent_ctx.underlying(analyzer).children.len())
                 }
             ),
             is_fork,
@@ -497,6 +497,7 @@ impl ContextNode {
 
     /// Returns a vector of variable dependencies for this context
     pub fn add_ctx_dep(&self, dep: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
+        tracing::trace!("Adding ctx dependency: {}", dep.display_name(analyzer));
         if dep.is_symbolic(analyzer) {
             let dep_name = dep.name(analyzer);
             let underlying = self.underlying_mut(analyzer);

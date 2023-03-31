@@ -12,6 +12,8 @@ ethers-core = "*"
 ariadne = "0.2.0"
 shared = { path = "./shared" }
 hex = "0.4.3"
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-subscriber = "0.3"
 
 [workspace]
 members = ["cli", "shared"]

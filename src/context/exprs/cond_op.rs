@@ -6,6 +6,7 @@ use solang_parser::pt::{Expression, Loc, Statement};
 
 impl<T> CondOp for T where T: AnalyzerLike<Expr = Expression> + Require + Sized {}
 pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cond_op_stmt(
         &mut self,
         loc: Loc,
@@ -46,6 +47,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
 
     /// When we have a conditional operator, we create a fork in the context. One side of the fork is
     /// if the expression is true, the other is if it is false.
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cond_op_expr(
         &mut self,
         loc: Loc,
@@ -54,6 +56,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
         false_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
+        tracing::trace!("conditional operator");
         let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
             ctx, loc, true, None, false, self, None,
         ))));
@@ -127,6 +130,8 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
         let if_expr = match if_expr {
             Expression::Equal(_loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
             Expression::And(_loc, lhs, rhs) => Expression::And(loc, lhs, rhs),
+            Expression::Or(_loc, lhs, rhs) => Expression::Or(loc, lhs, rhs),
+            Expression::Not(_loc, lhs) => Expression::Not(loc, lhs),
             Expression::NotEqual(_loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
             Expression::Less(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
             Expression::More(_loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
