@@ -518,7 +518,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
         match input_paths {
-            ExprRet::Single((ctx, input_var)) => {
+            ExprRet::Single((ctx, input_var)) | ExprRet::SingleLiteral((ctx, input_var)) => {
                 // if we get a single var, we expect the func to only take a single
                 // variable
                 self.func_call_inner(
@@ -559,7 +559,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 Box::new(self.func_call(ctx, loc, &w1, func)),
                 Box::new(self.func_call(ctx, loc, &w2, func)),
             ),
-            _ => todo!("here"),
+            e => todo!("here: {:?}", e),
         }
     }
 
