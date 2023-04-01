@@ -65,15 +65,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::User(TypeNode::Contract(con_node)) => {
-                    println!(
-                        "funcs: {:?}, ident: {:?}",
-                        con_node
-                            .funcs(self)
-                            .iter()
-                            .map(|func| func.name(self))
-                            .collect::<Vec<_>>(),
-                        ident.name
-                    );
+                    // println!(
+                    //     "funcs: {:?}, ident: {:?}",
+                    //     con_node
+                    //         .funcs(self)
+                    //         .iter()
+                    //         .map(|func| func.name(self))
+                    //         .collect::<Vec<_>>(),
+                    //     ident.name
+                    // );
 
                     tracing::trace!(
                         "Contract member access: {}.{}",

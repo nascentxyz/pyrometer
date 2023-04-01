@@ -79,6 +79,9 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
             });
             ExprRet::Single((ctx, func_node))
         } else {
+            // println!("{}", self.dot_str());
+            // self.open_dot()
+            // panic!("Unresolved variable: {:?}", ident);
             let node = self.add_node(Node::Unresolved(ident.clone()));
             self.user_types_mut().insert(ident.name.clone(), node);
             ExprRet::Single((ctx, node))

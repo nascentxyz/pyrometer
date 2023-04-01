@@ -635,7 +635,7 @@ impl Analyzer {
         con_node: Option<ContractNode>,
     ) -> FunctionNode {
         let func = Function::from(func_def.clone());
-        tracing::trace!("Parsing function {:?}", func.name.clone().unwrap().name);
+        tracing::trace!("Parsing function {:?}", func.name.clone().unwrap_or_else(|| solang_parser::pt::Identifier { loc: solang_parser::pt::Loc::Implicit, name: "".to_string() }).name);
         self.handle_func(func, con_node)
     }
 

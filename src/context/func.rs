@@ -459,27 +459,11 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             Node::Builtin(ty) => {
                 // it is a cast
                 let ty = ty.clone();
-                let resp = self.parse_ctx_expr(&input_exprs[0], ctx).flatten();
-                // if !resp.is_single() {
-                //     println!("{}", self.dot_str());
-                // }
-                // Fork(
-                //     Fork(
-                //         Multi([
-                //             Single((ContextNode(2404), NodeIndex(2443))),
-                //             Single((ContextNode(2359), NodeIndex(2446)))
-                //         ]),
-                //         Multi([
-                //             Single((ContextNode(2405), NodeIndex(2449))),
-                //             Single((ContextNode(2359), NodeIndex(2452)))
-                //         ])
-                //     ),
-                //     Multi([
-                //         Single((ContextNode(2390), NodeIndex(2455))),
-                //         Single((ContextNode(2359), NodeIndex(2458)))
-                //     ])
-                // )
-                let (ctx, cvar) = resp.expect_single();
+                let (ctx, cvar) = match self.parse_ctx_expr(&input_exprs[0], ctx).flatten() {
+                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
+                    e => e.expect_single(),
+                };
+
                 let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), self);
 
                 new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
@@ -532,8 +516,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func: FunctionNode,
     ) -> ExprRet {
         let params = func.params(self);
+        let input_paths = input_paths.clone().flatten();
         match input_paths {
-            ExprRet::Single((_ctx, input_var)) => {
+            ExprRet::Single((ctx, input_var)) => {
                 // if we get a single var, we expect the func to only take a single
                 // variable
                 self.func_call_inner(
@@ -541,12 +526,12 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     ctx,
                     func,
                     loc,
-                    vec![ContextVarNode::from(*input_var).latest_version(self)],
+                    vec![ContextVarNode::from(input_var).latest_version(self)],
                     params,
                     None,
                 )
             }
-            ExprRet::Multi(inputs) => {
+            ExprRet::Multi(ref inputs) => {
                 // check if the inputs length matchs func params length
                 // if they do, check that none are forks
                 if inputs.len() == params.len() {
@@ -560,11 +545,17 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             .collect();
                         self.func_call_inner(false, ctx, func, loc, input_vars, params, None)
                     } else {
-                        panic!("input has fork - need to flatten")
+                        panic!("input has fork - need to flatten, {:?}, {:?}", params, input_paths.clone().flatten())
                     }
                 } else {
                     panic!("Length mismatch: {inputs:?} {params:?}");
                 }
+            }
+            ExprRet::Fork(w1, w2) => {
+                ExprRet::Fork(
+                    Box::new(self.func_call(ctx, loc, &w1, func)),
+                    Box::new(self.func_call(ctx, loc, &w2, func)),
+                )
             }
             _ => todo!("here"),
         }
