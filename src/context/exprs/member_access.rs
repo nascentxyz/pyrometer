@@ -1,4 +1,5 @@
 use crate::{context::exprs::variable::Variable, ContextBuilder, ExprRet, NodeIdx};
+use shared::analyzer::Search;
 use shared::range::elem_ty::Dynamic;
 use shared::range::elem_ty::Elem;
 use shared::range::Range;
@@ -9,9 +10,10 @@ use shared::{
     range::SolcRange,
     {Edge, Node},
 };
+use std::collections::BTreeSet;
 
 use ethers_core::types::{I256, U256};
-use petgraph::{visit::EdgeRef, Direction};
+
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
@@ -38,36 +40,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     );
                     if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                         return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
-                    } else {
-                        let field = self
-                            .graph()
-                            .edges_directed(struct_node.0.into(), Direction::Incoming)
-                            .filter(|edge| *edge.weight() == Edge::Field)
-                            .map(|edge| FieldNode::from(edge.source()))
-                            .collect::<Vec<FieldNode>>()
-                            .iter()
-                            .filter_map(|field_node| {
-                                let field = field_node.underlying(self);
-                                if field.name.as_ref().expect("field wasnt named").name
-                                    == ident.name
-                                {
-                                    Some(field)
-                                } else {
-                                    None
-                                }
-                            })
-                            .take(1)
-                            .next()
-                            .unwrap_or_else(|| {
-                                panic!(
-                                    "No field with name {:?} in struct: {:?}",
-                                    ident.name,
-                                    struct_node.name(self)
-                                )
-                            });
-                        if let Some(field_cvar) =
-                            ContextVar::maybe_new_from_field(self, loc, cvar, field.clone())
-                        {
+                    } else if let Some(field) = struct_node.find_field(self, ident) {
+                        if let Some(field_cvar) = ContextVar::maybe_new_from_field(
+                            self,
+                            loc,
+                            cvar,
+                            field.underlying(self).clone(),
+                        ) {
                             let fc_node = self.add_node(Node::ContextVar(field_cvar));
                             self.add_edge(
                                 fc_node,
@@ -77,46 +56,54 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                             return ExprRet::Single((ctx, fc_node));
                         }
+                    } else if let Some(ret) =
+                        self.library_func_search(ctx, struct_node.0.into(), ident)
+                    {
+                        return ret;
                     }
                 }
                 VarType::User(TypeNode::Contract(con_node)) => {
-                    // we can only access functions via this pattern
-                    // println!(
-                    //     "functions {:?}",
-                    //     con_node
-                    //         .funcs(self)
-                    //         .iter()
-                    //         .map(|func| func.name(self))
-                    //         .collect::<Vec<_>>()
-                    // );
-                    let funcs = con_node
+                    println!(
+                        "funcs: {:?}, ident: {:?}",
+                        con_node
+                            .funcs(self)
+                            .iter()
+                            .map(|func| func.name(self))
+                            .collect::<Vec<_>>(),
+                        ident.name
+                    );
+                    if let Some(func) = con_node
                         .funcs(self)
                         .into_iter()
-                        .filter(|func_node| {
-                            func_node
-                                .name(self)
-                                .starts_with(&format!("{}(", &ident.name))
-                        })
-                        .collect::<Vec<_>>();
-                    if funcs.is_empty() {
+                        .find(|func_node| func_node.name(self) == ident.name)
+                    {
+                        if let Some(func_cvar) =
+                            ContextVar::maybe_from_user_ty(self, loc, func.0.into())
+                        {
+                            let fn_node = self.add_node(Node::ContextVar(func_cvar));
+                            self.add_edge(
+                                fn_node,
+                                member_idx,
+                                Edge::Context(ContextEdge::FuncAccess),
+                            );
+                            return ExprRet::Single((ctx, fn_node));
+                        }
+                    } else {
                         panic!(
                             "No function with name {:?} in contract: {:?}",
                             ident.name,
                             con_node.name(self)
                         )
-                    } else if funcs.len() > 1 {
-                        panic!("Function lookup not unique")
-                    } else if let Some(func_cvar) =
-                        ContextVar::maybe_from_user_ty(self, loc, funcs[0].0.into())
-                    {
-                        let fn_node = self.add_node(Node::ContextVar(func_cvar));
-                        self.add_edge(fn_node, member_idx, Edge::Context(ContextEdge::FuncAccess));
-                        return ExprRet::Single((ctx, fn_node));
                     }
                 }
-                VarType::BuiltIn(..) => {
-                    // println!("member access {}", self.dot_str_no_tmps());
-                    todo!("member access {:?}", ident)
+                VarType::BuiltIn(bn, _) => {
+                    return self.builin_member_access(
+                        loc,
+                        ctx,
+                        *bn,
+                        ContextVarNode::from(member_idx).is_storage(self),
+                        ident,
+                    );
                 }
                 e => todo!("member access: {:?}, {:?}", e, ident),
             },
@@ -457,26 +444,69 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     return ExprRet::Single((ctx, cvar));
                 }
             }
-            Node::Builtin(ref b) => match b {
+            Node::Builtin(ref _b) => {
+                return self.builin_member_access(
+                    loc,
+                    ctx,
+                    BuiltInNode::from(member_idx),
+                    false,
+                    ident,
+                );
+            }
+            e => todo!("{:?}", e),
+        }
+        ExprRet::Single((ctx, member_idx))
+    }
+
+    fn builin_member_access(
+        &mut self,
+        loc: Loc,
+        ctx: ContextNode,
+        node: BuiltInNode,
+        is_storage: bool,
+        ident: &Identifier,
+    ) -> ExprRet {
+        if let Some(ret) = self.library_func_search(ctx, node.0.into(), ident) {
+            ret
+        } else {
+            match node.underlying(self).clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
+                    // TODO: handle address(x).call/delegatecall, etc
                     panic!("Unknown member access on address: {:?}", ident.name)
                 }
                 Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),
-                Builtin::String => panic!("Unknown member access on string: {:?}", ident.name),
+                Builtin::String => {
+                    panic!("Unknown member access on string: {:?}", ident.name)
+                }
                 Builtin::Bytes(size) => {
                     panic!("Unknown member access on bytes{}: {:?}", size, ident.name)
                 }
-                Builtin::Rational => panic!("Unknown member access on rational: {:?}", ident.name),
+                Builtin::Rational => {
+                    panic!("Unknown member access on rational: {:?}", ident.name)
+                }
                 Builtin::DynamicBytes => {
                     panic!("Unknown member access on bytes[]: {:?}", ident.name)
                 }
-                Builtin::Array(_) => panic!("Unknown member access on array[]: {:?}", ident.name),
+                Builtin::Array(_) => {
+                    if ident.name.starts_with("push") {
+                        if is_storage {
+                            let as_fn = self.builtin_fns().get("push").unwrap();
+                            let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                            ExprRet::Single((ctx, fn_node.into()))
+                        } else {
+                            panic!("Trying to push to nonstorage variable is not supported");
+                        }
+                    } else {
+                        panic!("Unknown member access on array[]: {:?}", ident.name)
+                    }
+                }
                 Builtin::Mapping(_, _) => {
                     panic!("Unknown member access on mapping: {:?}", ident.name)
                 }
-                Builtin::Func(_, _) => panic!("Unknown member access on func: {:?}", ident.name),
+                Builtin::Func(_, _) => {
+                    panic!("Unknown member access on func: {:?}", ident.name)
+                }
                 Builtin::Int(size) => {
-                    let size = *size;
                     let max = if size == 256 {
                         I256::MAX
                     } else {
@@ -493,6 +523,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                            ExprRet::Single((ctx, cvar))
                         }
                         "min" => {
                             let min = max * I256::from(-1i32);
@@ -505,50 +536,151 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                            ExprRet::Single((ctx, cvar))
                         }
                         e => panic!("Unknown type attribute on int{size}: {e:?}"),
                     }
                 }
-                Builtin::Uint(size) => {
-                    let size = *size;
-                    match &*ident.name {
-                        "max" => {
-                            let max = if size == 256 {
-                                U256::MAX
-                            } else {
-                                U256::from(2).pow(U256::from(size)) - 1
-                            };
-                            let c = Concrete::from(max);
-                            let node = self.add_node(Node::Concrete(c)).into();
-                            let mut var = ContextVar::new_from_concrete(loc, node, self);
-                            var.name = format!("int{size}.max");
-                            var.display_name = var.name.clone();
-                            var.is_tmp = true;
-                            var.is_symbolic = false;
-                            let cvar = self.add_node(Node::ContextVar(var));
-                            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            return ExprRet::Single((ctx, cvar));
-                        }
-                        "min" => {
-                            let min = U256::zero();
-                            let c = Concrete::from(min);
-                            let node = self.add_node(Node::Concrete(c)).into();
-                            let mut var = ContextVar::new_from_concrete(loc, node, self);
-                            var.name = format!("int{size}.min");
-                            var.display_name = var.name.clone();
-                            var.is_tmp = true;
-                            var.is_symbolic = false;
-                            let cvar = self.add_node(Node::ContextVar(var));
-                            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            return ExprRet::Single((ctx, cvar));
-                        }
-                        e => panic!("Unknown type attribute on int{size}: {e:?}"),
+                Builtin::Uint(size) => match &*ident.name {
+                    "max" => {
+                        let size = size;
+                        let max = if size == 256 {
+                            U256::MAX
+                        } else {
+                            U256::from(2).pow(U256::from(size)) - 1
+                        };
+                        let c = Concrete::from(max);
+                        let node = self.add_node(Node::Concrete(c)).into();
+                        let mut var = ContextVar::new_from_concrete(loc, node, self);
+                        var.name = format!("int{size}.max");
+                        var.display_name = var.name.clone();
+                        var.is_tmp = true;
+                        var.is_symbolic = false;
+                        let cvar = self.add_node(Node::ContextVar(var));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        ExprRet::Single((ctx, cvar))
                     }
-                }
-            },
-            e => todo!("{:?}", e),
+                    "min" => {
+                        let min = U256::zero();
+                        let c = Concrete::from(min);
+                        let node = self.add_node(Node::Concrete(c)).into();
+                        let mut var = ContextVar::new_from_concrete(loc, node, self);
+                        var.name = format!("int{size}.min");
+                        var.display_name = var.name.clone();
+                        var.is_tmp = true;
+                        var.is_symbolic = false;
+                        let cvar = self.add_node(Node::ContextVar(var));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        ExprRet::Single((ctx, cvar))
+                    }
+                    e => panic!("Unknown type attribute on uint{size}: {e:?}"),
+                },
+            }
         }
-        ExprRet::Single((ctx, member_idx))
+    }
+
+    fn library_func_search(
+        &mut self,
+        ctx: ContextNode,
+        ty: NodeIdx,
+        ident: &Identifier,
+    ) -> Option<ExprRet> {
+        if let Some(associated_contract) = ctx.maybe_associated_contract(self) {
+            // search for local library based functions
+            let using_func_children =
+                self.search_children(ty, &Edge::LibraryFunction(associated_contract.into()));
+            if let Some(found_fn) = using_func_children
+                .iter()
+                .find(|child| FunctionNode::from(**child).name(self) == ident.name)
+            {
+                let cvar = ContextVar::new_from_func(self, (*found_fn).into());
+                let cvar_node = self.add_node(Node::ContextVar(cvar));
+                return Some(ExprRet::Single((ctx, cvar_node)));
+            }
+
+            // search for local library contracts
+            let using_libs_children =
+                self.search_children(ty, &Edge::LibraryContract(associated_contract.into()));
+            if let Some(found_fn) = using_libs_children.iter().find_map(|lib_contract| {
+                ContractNode::from(*lib_contract)
+                    .funcs(self)
+                    .into_iter()
+                    .find(|func| func.name(self) == ident.name)
+            }) {
+                let cvar = ContextVar::new_from_func(self, found_fn);
+                let cvar_node = self.add_node(Node::ContextVar(cvar));
+                return Some(ExprRet::Single((ctx, cvar_node)));
+            }
+        }
+
+        // Search for global funcs
+        let source = ctx.associated_source(self);
+        let using_func_children = self.search_children(ty, &Edge::LibraryFunction(source));
+        if let Some(found_fn) = using_func_children
+            .iter()
+            .find(|child| FunctionNode::from(**child).name(self) == ident.name)
+        {
+            let cvar = ContextVar::new_from_func(self, (*found_fn).into());
+            let cvar_node = self.add_node(Node::ContextVar(cvar));
+            return Some(ExprRet::Single((ctx, cvar_node)));
+        }
+
+        // search for global library contracts
+        let using_libs_children = self.search_children(ty, &Edge::LibraryContract(source));
+        if let Some(found_fn) = using_libs_children.iter().find_map(|lib_contract| {
+            ContractNode::from(*lib_contract)
+                .funcs(self)
+                .into_iter()
+                .find(|func| func.name(self) == ident.name)
+        }) {
+            let cvar = ContextVar::new_from_func(self, found_fn);
+            let cvar_node = self.add_node(Node::ContextVar(cvar));
+            return Some(ExprRet::Single((ctx, cvar_node)));
+        }
+
+        None
+    }
+
+    fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> BTreeSet<FunctionNode> {
+        let mut funcs: BTreeSet<FunctionNode> = BTreeSet::new();
+        if let Some(associated_contract) = ctx.maybe_associated_contract(self) {
+            // search for local library based functions
+            funcs.extend(
+                self.search_children(ty, &Edge::LibraryFunction(associated_contract.into()))
+                    .into_iter()
+                    .map(FunctionNode::from)
+                    .collect::<Vec<_>>(),
+            );
+
+            // search for local library contracts
+            let using_libs_children =
+                self.search_children(ty, &Edge::LibraryContract(associated_contract.into()));
+            funcs.extend(
+                using_libs_children
+                    .iter()
+                    .flat_map(|lib_contract| ContractNode::from(*lib_contract).funcs(self))
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        // Search for global funcs
+        let source = ctx.associated_source(self);
+        funcs.extend(
+            self.search_children(ty, &Edge::LibraryFunction(source))
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>(),
+        );
+
+        let using_libs_children = self.search_children(ty, &Edge::LibraryContract(source));
+        funcs.extend(
+            using_libs_children
+                .iter()
+                .flat_map(|lib_contract| ContractNode::from(*lib_contract).funcs(self))
+                .collect::<BTreeSet<_>>(),
+        );
+
+        funcs
     }
 
     fn index_access(
@@ -571,7 +703,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         dyn_builtin: BuiltInNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        // println!("match index access");
+        println!("match index access");
         match index_paths {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
             ExprRet::Single((_index_ctx, idx)) => {
@@ -633,6 +765,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 ),
             };
             let len_node = self.add_node(Node::ContextVar(len_var));
+
             let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, array_ctx);
             if next_arr.underlying(self).ty.is_dyn_builtin(self) {
                 if let Some(r) = next_arr.range(self) {
@@ -646,7 +779,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                        next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                        next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                     }
                 }
             }

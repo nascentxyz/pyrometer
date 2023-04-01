@@ -1,9 +1,8 @@
+use crate::analyzer::GraphLike;
 use crate::AsDotStr;
-use crate::analyzer::{GraphLike};
 use crate::Node;
 use crate::NodeIdx;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
-
 
 /// An index in the graph that references a [`Enum`] node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -12,7 +11,8 @@ pub struct EnumNode(pub usize);
 impl AsDotStr for EnumNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
-        format!("enum {} {{ {} }}",
+        format!(
+            "enum {} {{ {} }}",
             if let Some(name) = &underlying.name {
                 name.name.clone()
             } else {
@@ -28,10 +28,7 @@ impl EnumNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Enum {
         match analyzer.node(*self) {
             Node::Enum(e) => e,
-            e => panic!(
-                "Node type confusion: expected node to be Contract but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Contract but it was: {e:?}"),
         }
     }
 

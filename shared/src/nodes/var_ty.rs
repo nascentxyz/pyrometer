@@ -1,7 +1,12 @@
-use crate::VarType;
 use crate::analyzer::AsDotStr;
-use crate::{analyzer::{GraphLike, AnalyzerLike}, Node, NodeIdx};
-use solang_parser::pt::{Identifier, Loc, VariableAttribute, VariableDefinition, Expression, Visibility};
+use crate::VarType;
+use crate::{
+    analyzer::{AnalyzerLike, GraphLike},
+    Node, NodeIdx,
+};
+use solang_parser::pt::{
+    Expression, Identifier, Loc, VariableAttribute, VariableDefinition, Visibility,
+};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct VarNode(pub usize);
@@ -10,10 +15,7 @@ impl VarNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Var {
         match analyzer.node(*self) {
             Node::Var(func) => func,
-            e => panic!(
-                "Node type confusion: expected node to be Var but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Var but it was: {e:?}"),
         }
     }
 
@@ -29,20 +31,26 @@ impl VarNode {
 impl AsDotStr for VarNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
-        format!("{}{} {}",
+        format!(
+            "{}{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
                 var_ty.as_dot_str(analyzer)
             } else {
                 "".to_string()
             },
-            underlying.attrs.iter().map(|attr| {
-                match attr {
-                    VariableAttribute::Visibility(vis) => format!(" {}", vis),
-                    VariableAttribute::Constant(_) => " constant".to_string(),
-                    VariableAttribute::Immutable(_) => " immutable".to_string(),
-                    VariableAttribute::Override(_, _) => " override".to_string(),
-                }
-            }).collect::<Vec<_>>().join(" "),
+            underlying
+                .attrs
+                .iter()
+                .map(|attr| {
+                    match attr {
+                        VariableAttribute::Visibility(vis) => format!(" {vis}"),
+                        VariableAttribute::Constant(_) => " constant".to_string(),
+                        VariableAttribute::Immutable(_) => " immutable".to_string(),
+                        VariableAttribute::Override(_, _) => " override".to_string(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
             if let Some(name) = &underlying.name {
                 name.name.clone()
             } else {
@@ -98,7 +106,10 @@ impl Var {
 
     pub fn is_public(&self) -> bool {
         self.attrs.iter().any(|var_attr| {
-            matches!(var_attr, VariableAttribute::Visibility(Visibility::Public(_)))
+            matches!(
+                var_attr,
+                VariableAttribute::Visibility(Visibility::Public(_))
+            )
         })
     }
 }

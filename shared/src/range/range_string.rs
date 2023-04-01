@@ -161,7 +161,7 @@ impl ToRangeString for RangeDyn<Concrete> {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{} ... {}", val_str_head, val_str_tail)
+            format!("{val_str_head} ... {val_str_tail}")
         } else {
             let displayed_vals = self
                 .val

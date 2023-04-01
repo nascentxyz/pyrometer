@@ -44,22 +44,24 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
         inner_paths: ExprRet,
         index_paths: ExprRet,
     ) -> ExprRet {
-        // println!("index into array");
         match (inner_paths, index_paths) {
             (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
             (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
             (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) | (ExprRet::Single((ctx, parent)), ExprRet::SingleLiteral((_rhs_ctx, index))) => {
                 let index = ContextVarNode::from(index);
                 let parent = ContextVarNode::from(parent).first_version(self);
-                let len_var = self.tmp_length(parent, ctx, loc);
+                let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
+                let index = index.latest_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx);
+
+
                 self.handle_require_inner(
                     loc,
-                    &ExprRet::Single((ctx, idx.into())),
-                    &ExprRet::Single((ctx, len_var.into())),
-                    RangeOp::Lt,
+                    &ExprRet::Single((ctx, len_var.latest_version(self).into())),
+                    &ExprRet::Single((ctx, idx.latest_version(self).into())),
                     RangeOp::Gt,
-                    (RangeOp::Gte, RangeOp::Lte),
+                    RangeOp::Lt,
+                    (RangeOp::Lte, RangeOp::Gte),
                 );
 
                 let name = format!("{}[{}]", parent.name(self), index.name(self));

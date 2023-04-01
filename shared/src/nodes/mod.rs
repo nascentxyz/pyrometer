@@ -1,14 +1,14 @@
 //! Solidity and EVM specific representations as nodes in the graph
-use solang_parser::pt::Expression;
-use crate::GraphLike;
-use crate::analyzer::AsDotStr;
-use crate::range::elem_ty::Elem;
-use crate::range::elem::RangeElem;
-use crate::range::SolcRange;
-use crate::range::Range;
 use crate::analyzer::AnalyzerLike;
+use crate::analyzer::AsDotStr;
+use crate::range::elem::RangeElem;
+use crate::range::elem_ty::Elem;
+use crate::range::Range;
+use crate::range::SolcRange;
+use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
+use solang_parser::pt::Expression;
 use solang_parser::pt::Type;
 
 mod contract_ty;
@@ -49,9 +49,8 @@ impl VarType {
     pub fn is_dyn_builtin(&self, analyzer: &impl GraphLike) -> bool {
         match self {
             Self::BuiltIn(node, _) => node.is_dyn(analyzer),
-            _ => false
+            _ => false,
         }
-
     }
 
     pub fn concrete_to_builtin(&mut self, analyzer: &mut impl AnalyzerLike) {
@@ -61,35 +60,35 @@ impl VarType {
                 crate::Concrete::Uint(ref size, _) => {
                     let new_ty = VarType::BuiltIn(
                         BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(*size))),
-                        SolcRange::from(c)
+                        SolcRange::from(c),
                     );
                     *self = new_ty;
                 }
                 crate::Concrete::Int(ref size, _) => {
                     let new_ty = VarType::BuiltIn(
                         BuiltInNode::from(analyzer.builtin_or_add(Builtin::Int(*size))),
-                        SolcRange::from(c)
+                        SolcRange::from(c),
                     );
                     *self = new_ty;
                 }
                 crate::Concrete::Bool(_) => {
                     let new_ty = VarType::BuiltIn(
                         BuiltInNode::from(analyzer.builtin_or_add(Builtin::Bool)),
-                        SolcRange::from(c)
+                        SolcRange::from(c),
                     );
                     *self = new_ty;
                 }
                 crate::Concrete::Address(_) => {
                     let new_ty = VarType::BuiltIn(
                         BuiltInNode::from(analyzer.builtin_or_add(Builtin::Address)),
-                        SolcRange::from(c)
+                        SolcRange::from(c),
                     );
                     *self = new_ty;
                 }
                 crate::Concrete::Bytes(ref s, _) => {
                     let new_ty = VarType::BuiltIn(
                         BuiltInNode::from(analyzer.builtin_or_add(Builtin::Bytes(*s))),
-                        SolcRange::from(c)
+                        SolcRange::from(c),
                     );
                     *self = new_ty;
                 }
@@ -141,7 +140,11 @@ impl VarType {
         }
     }
 
-    pub fn try_cast(self, other: &Self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Option<Self> {
+    pub fn try_cast(
+        self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<Self> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer) {
@@ -149,7 +152,7 @@ impl VarType {
                 } else {
                     None
                 }
-            },
+            }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
                 let c = from_c.underlying(analyzer).clone();
                 let b = to_bn.underlying(analyzer);
@@ -168,11 +171,42 @@ impl VarType {
         }
     }
 
+    pub fn try_literal_cast(
+        self,
+        other: &Self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<Self> {
+        match (self, other) {
+            (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
+                if from_bn.implicitly_castable_to(to_bn, analyzer) {
+                    Some(Self::BuiltIn(*to_bn, sr))
+                } else {
+                    None
+                }
+            }
+            (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
+                let c = from_c.underlying(analyzer).clone();
+                let b = to_bn.underlying(analyzer);
+                let casted = c.literal_cast(b.clone())?;
+                let node = analyzer.add_node(Node::Concrete(casted));
+                Some(Self::Concrete(node.into()))
+            }
+            (Self::Concrete(from_c), Self::Concrete(to_c)) => {
+                let c = from_c.underlying(analyzer).clone();
+                let to_c = to_c.underlying(analyzer);
+                let casted = c.literal_cast_from(to_c)?;
+                let node = analyzer.add_node(Node::Concrete(casted));
+                Some(Self::Concrete(node.into()))
+            }
+            _ => None,
+        }
+    }
+
     pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         match (self, other) {
             (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
                 from_bn.implicitly_castable_to(to_bn, analyzer)
-            },
+            }
             (Self::Concrete(from_c), Self::BuiltIn(_to_bn, _)) => {
                 todo!("here, {from_c:?}")
             }
@@ -185,10 +219,8 @@ impl VarType {
             Self::BuiltIn(from_bn, _r) => {
                 let bn = from_bn.max_size(analyzer);
                 Self::BuiltIn(bn, SolcRange::try_from_builtin(bn.underlying(analyzer)))
-            },
-            Self::Concrete(from_c) => {
-                Self::Concrete(from_c.max_size(analyzer))
             }
+            Self::Concrete(from_c) => Self::Concrete(from_c.max_size(analyzer)),
             _ => self.clone(),
         }
     }
@@ -229,63 +261,59 @@ impl VarType {
     pub fn func_node(&self, _analyzer: &impl AnalyzerLike) -> Option<FunctionNode> {
         match self {
             Self::User(TypeNode::Func(func_node)) => Some(*func_node),
-            _ => None
+            _ => None,
         }
     }
 
-    pub fn evaled_range(&self, analyzer: &impl AnalyzerLike) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
-        self.range(analyzer).map(|range| (
+    pub fn evaled_range(
+        &self,
+        analyzer: &impl AnalyzerLike,
+    ) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
+        self.range(analyzer).map(|range| {
+            (
                 range.evaled_range_min(analyzer),
                 range.evaled_range_max(analyzer),
-            ))
+            )
+        })
     }
 
     pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
         match self {
-            Self::BuiltIn(node, _) => {
-                node.array_underlying_ty(analyzer)
-            },
-            e => panic!(
-                "Node type confusion: expected node to be VarType::Array but it was: {:?}",
-                e
-            ),
+            Self::BuiltIn(node, _) => node.array_underlying_ty(analyzer),
+            e => {
+                panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
+            }
         }
     }
 
     pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         match (self, other) {
             (VarType::User(s), VarType::User(o)) => s == o,
-            (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => s.underlying(analyzer) == o.underlying(analyzer),
+            (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
+                s.underlying(analyzer) == o.underlying(analyzer)
+            }
             (VarType::Concrete(s), VarType::Concrete(o)) => {
                 s.underlying(analyzer).equivalent_ty(o.underlying(analyzer))
             }
-            _ => false
+            _ => false,
         }
     }
 
     pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
         match self {
             VarType::User(ty_node) => ty_node.as_string(analyzer),
-            VarType::BuiltIn(bn, _) => {
-                match analyzer.node(*bn) {
-                    Node::Builtin(bi) => bi.as_string(analyzer),
-                    _ => unreachable!()
-                }
+            VarType::BuiltIn(bn, _) => match analyzer.node(*bn) {
+                Node::Builtin(bi) => bi.as_string(analyzer),
+                _ => unreachable!(),
             },
-            VarType::Concrete(c) => {
-                c.underlying(analyzer).as_builtin().as_string(analyzer)
-            },
+            VarType::Concrete(c) => c.underlying(analyzer).as_builtin().as_string(analyzer),
         }
     }
 
     pub fn is_int(&self, analyzer: &impl GraphLike) -> bool {
         match self {
-            VarType::BuiltIn(bn, _) => {
-                bn.underlying(analyzer).is_int()
-            },
-            VarType::Concrete(c) => {
-                c.underlying(analyzer).is_int()
-            },
+            VarType::BuiltIn(bn, _) => bn.underlying(analyzer).is_int(),
+            VarType::Concrete(c) => c.underlying(analyzer).is_int(),
             _ => false,
         }
     }
@@ -328,10 +356,7 @@ impl BuiltInNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Builtin {
         match analyzer.node(*self) {
             Node::Builtin(b) => b,
-            e => panic!(
-                "Node type confusion: expected node to be Builtin but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Builtin but it was: {e:?}"),
         }
     }
 
@@ -341,7 +366,8 @@ impl BuiltInNode {
     }
 
     pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
-        self.underlying(analyzer).implicitly_castable_to(other.underlying(analyzer))
+        self.underlying(analyzer)
+            .implicitly_castable_to(other.underlying(analyzer))
     }
 
     pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Self {
@@ -351,16 +377,18 @@ impl BuiltInNode {
 
     pub fn array_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
         match self.underlying(analyzer) {
-            Builtin::Array(v_ty) => {
-                v_ty.clone()
-            },
-            Builtin::DynamicBytes => {
-                VarType::BuiltIn(analyzer.builtin_or_add(Builtin::Bytes(1)).into(), Some(SolcRange { min: Elem::from(Concrete::from(vec![0x00])), max: Elem::from(Concrete::from(vec![0xff])), exclusions: vec![]}))
-            },
-            e => panic!(
-                "Node type confusion: expected node to be Builtin::Array but it was: {:?}",
-                e
+            Builtin::Array(v_ty) => v_ty.clone(),
+            Builtin::DynamicBytes => VarType::BuiltIn(
+                analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
+                Some(SolcRange {
+                    min: Elem::from(Concrete::from(vec![0x00])),
+                    max: Elem::from(Concrete::from(vec![0xff])),
+                    exclusions: vec![],
+                }),
             ),
+            e => {
+                panic!("Node type confusion: expected node to be Builtin::Array but it was: {e:?}")
+            }
         }
     }
 
@@ -399,7 +427,10 @@ pub enum Builtin {
 }
 
 impl Builtin {
-    pub fn try_from_ty(ty: Type, analyzer: &mut impl AnalyzerLike<Expr = Expression>) -> Option<Builtin> {
+    pub fn try_from_ty(
+        ty: Type,
+        analyzer: &mut impl AnalyzerLike<Expr = Expression>,
+    ) -> Option<Builtin> {
         use Type::*;
         match ty {
             Address => Some(Builtin::Address),
@@ -412,17 +443,34 @@ impl Builtin {
             Bytes(size) => Some(Builtin::Bytes(size)),
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
-            Function { params, attributes: _, returns } => {
-                let inputs = params.iter().filter_map(|(_, param)| param.as_ref()).map(|param| {
-                    analyzer.parse_expr(&param.ty)
-                }).collect::<Vec<_>>();
-                let inputs = inputs.iter().map(|idx| VarType::try_from_idx(analyzer, *idx).expect("Couldn't parse param")).collect::<Vec<_>>();
+            Function {
+                params,
+                attributes: _,
+                returns,
+            } => {
+                let inputs = params
+                    .iter()
+                    .filter_map(|(_, param)| param.as_ref())
+                    .map(|param| analyzer.parse_expr(&param.ty))
+                    .collect::<Vec<_>>();
+                let inputs = inputs
+                    .iter()
+                    .map(|idx| VarType::try_from_idx(analyzer, *idx).expect("Couldn't parse param"))
+                    .collect::<Vec<_>>();
                 let mut outputs = vec![];
                 if let Some((params, _attrs)) = returns {
-                    let tmp_outputs = params.iter().filter_map(|(_, param)| param.as_ref()).map(|param| {
-                        analyzer.parse_expr(&param.ty)
-                    }).collect::<Vec<_>>();
-                    outputs = tmp_outputs.iter().map(|idx| VarType::try_from_idx(analyzer, *idx).expect("Couldn't parse output param")).collect::<Vec<_>>();
+                    let tmp_outputs = params
+                        .iter()
+                        .filter_map(|(_, param)| param.as_ref())
+                        .map(|param| analyzer.parse_expr(&param.ty))
+                        .collect::<Vec<_>>();
+                    outputs = tmp_outputs
+                        .iter()
+                        .map(|idx| {
+                            VarType::try_from_idx(analyzer, *idx)
+                                .expect("Couldn't parse output param")
+                        })
+                        .collect::<Vec<_>>();
                 }
                 Some(Builtin::Func(inputs, outputs))
             }
@@ -431,7 +479,10 @@ impl Builtin {
     }
 
     pub fn is_dyn(&self) -> bool {
-        matches!(self, Builtin::DynamicBytes | Builtin::Array(..) | Builtin::Mapping(..) | Builtin::String)
+        matches!(
+            self,
+            Builtin::DynamicBytes | Builtin::Array(..) | Builtin::Mapping(..) | Builtin::String
+        )
     }
 
     pub fn num_size(&self) -> Option<u16> {
@@ -441,7 +492,7 @@ impl Builtin {
             _ => None,
         }
     }
-    
+
     pub fn is_int(&self) -> bool {
         matches!(self, Builtin::Int(_))
     }
@@ -456,32 +507,20 @@ impl Builtin {
             (Rational, Rational) => true,
             (DynamicBytes, DynamicBytes) => true,
             (String, String) => true,
-            (Uint(from_size), Uint(to_size)) => {
-                from_size <= to_size
-            }
-            (Int(from_size), Int(to_size)) => {
-                from_size <= to_size
-            }
-            (Bytes(from_size), Bytes(to_size)) => {
-                from_size <= to_size
-            }
-            _ => false            
+            (Uint(from_size), Uint(to_size)) => from_size <= to_size,
+            (Int(from_size), Int(to_size)) => from_size <= to_size,
+            (Bytes(from_size), Bytes(to_size)) => from_size <= to_size,
+            _ => false,
         }
     }
 
     pub fn max_size(&self) -> Self {
         use Builtin::*;
         match self {
-            Uint(_) => {
-                Uint(256)
-            }
-            Int(_from_size) => {
-                Uint(256)
-            }
-            Bytes(_from_size) => {
-                Uint(32)
-            }
-            _ => self.clone()
+            Uint(_) => Uint(256),
+            Int(_from_size) => Uint(256),
+            Bytes(_from_size) => Uint(32),
+            _ => self.clone(),
         }
     }
 
@@ -493,15 +532,30 @@ impl Builtin {
             Payable => "payable".to_string(),
             Bool => "bool".to_string(),
             String => "string".to_string(),
-            Int(size) => format!("int{}", size),
-            Uint(size) => format!("uint{}", size),
-            Bytes(size) => format!("bytes{}", size),
+            Int(size) => format!("int{size}"),
+            Uint(size) => format!("uint{size}"),
+            Bytes(size) => format!("bytes{size}"),
             Rational => "rational".to_string(),
             DynamicBytes => "bytes".to_string(),
             Array(v_ty) => format!("{}[]", v_ty.as_string(analyzer)),
-            Mapping(key_ty, v_ty) => format!("mapping ({} => {})", key_ty.as_string(analyzer), v_ty.as_string(analyzer)),
-            Func(inputs, outputs) => format!("function({}) returns ({})",
-                inputs.iter().map(|input| input.as_string(analyzer)).collect::<Vec<_>>().join(", "), outputs.iter().map(|output| output.as_string(analyzer)).collect::<Vec<_>>().join(", "))
+            Mapping(key_ty, v_ty) => format!(
+                "mapping ({} => {})",
+                key_ty.as_string(analyzer),
+                v_ty.as_string(analyzer)
+            ),
+            Func(inputs, outputs) => format!(
+                "function({}) returns ({})",
+                inputs
+                    .iter()
+                    .map(|input| input.as_string(analyzer))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                outputs
+                    .iter()
+                    .map(|output| output.as_string(analyzer))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
@@ -549,7 +603,7 @@ impl Builtin {
 
 // #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 // pub enum DynBuiltin {
-    
+
 // }
 
 // impl DynBuiltin {

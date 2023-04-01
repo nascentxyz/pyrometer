@@ -1,10 +1,10 @@
-use ethers_core::types::Address;
-use ethers_core::types::U256;
-use ethers_core::types::H256;
-use crate::GraphLike;
 use crate::analyzer::AsDotStr;
+use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
+use ethers_core::types::Address;
+use ethers_core::types::H256;
+use ethers_core::types::U256;
 
 /// An index in the graph that references a Block node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -15,10 +15,7 @@ impl BlockNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Block {
         match analyzer.node(*self) {
             Node::Block(st) => st,
-            e => panic!(
-                "Node type confusion: expected node to be Msg but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Msg but it was: {e:?}"),
         }
     }
 }

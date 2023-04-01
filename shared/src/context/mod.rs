@@ -1,14 +1,13 @@
-use std::collections::BTreeMap;
-use crate::FunctionParamNode;
-use crate::ContractNode;
-use crate::GraphLike;
-use petgraph::{Direction, visit::EdgeRef};
-use crate::{Node, NodeIdx, Edge};
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
-use solang_parser::pt::Loc;
-use std::collections::HashMap;
+use crate::ContractNode;
 
+use crate::GraphLike;
+use crate::{Edge, Node, NodeIdx};
+use petgraph::{visit::EdgeRef, Direction};
+use solang_parser::pt::Loc;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 mod var;
 pub use var::*;
@@ -46,28 +45,30 @@ pub enum ContextEdge {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModifierState {
-    pub entry_call: bool,
     pub num: usize,
     pub loc: Loc,
     pub parent_fn: FunctionNode,
+    pub parent_caller_ctx: ContextNode,
     pub parent_ctx: ContextNode,
-    pub inputs: Vec<ContextVarNode>,
-    pub params: Vec<FunctionParamNode>,
     pub renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
 }
 
 impl ModifierState {
     pub fn new(
-        entry_call: bool,
         num: usize,
         loc: Loc,
         parent_fn: FunctionNode,
         parent_ctx: ContextNode,
-        inputs: Vec<ContextVarNode>,
-        params: Vec<FunctionParamNode>
+        parent_caller_ctx: ContextNode,
+        renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
     ) -> Self {
         Self {
-            entry_call, num, loc, parent_fn, parent_ctx, inputs, params, renamed_inputs: Default::default(),
+            num,
+            loc,
+            parent_fn,
+            parent_ctx,
+            parent_caller_ctx,
+            renamed_inputs,
         }
     }
 }
@@ -103,7 +104,7 @@ pub struct Context {
     pub loc: Loc,
     /// The return node and the return location
     pub ret: Vec<(Loc, ContextVarNode)>,
-    /// Range adjustments to occur after the statement finishes. Useful for post in/decrement 
+    /// Range adjustments to occur after the statement finishes. Useful for post in/decrement
     pub post_statement_range_adjs: Vec<(ContextVarNode, Loc, bool)>,
 }
 
@@ -211,26 +212,39 @@ impl ContextNode {
 
     /// Gets the associated contract for the function for the context
     pub fn associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> ContractNode {
-        self.associated_fn(analyzer).contract(analyzer).expect("No associated contract for context")
+        self.associated_fn(analyzer)
+            .contract(analyzer)
+            .expect("No associated contract for context")
     }
 
     /// Tries to get the associated function for the context
-    pub fn maybe_associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> Option<ContractNode> {
+    pub fn maybe_associated_contract(
+        &self,
+        analyzer: &(impl GraphLike + Search),
+    ) -> Option<ContractNode> {
         self.associated_fn(analyzer).contract(analyzer)
     }
 
-    pub fn associated_source(&self, analyzer: &impl GraphLike) -> Option<NodeIdx> {
-        analyzer.search_for_ancestor(self.0.into(), &Edge::Part)
+    pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
+        analyzer
+            .search_for_ancestor(self.0.into(), &Edge::Part)
+            .expect("No associated source?")
+    }
+
+    pub fn associated_source_unit_part(&self, analyzer: &impl GraphLike) -> NodeIdx {
+        self.associated_fn(analyzer)
+            .associated_source_unit_part(analyzer)
     }
 
     /// Gets all visible functions
     pub fn visible_funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         // TODO: filter privates
-        if let Some(source) = self.associated_source(analyzer) {
-            analyzer.search_children(source, &Edge::Func).into_iter().map(FunctionNode::from).collect::<Vec<_>>()
-        } else {
-            vec![]
-        }
+        let source = self.associated_source(analyzer);
+        analyzer
+            .search_children(source, &Edge::Func)
+            .into_iter()
+            .map(FunctionNode::from)
+            .collect::<Vec<_>>()
     }
 
     /// Gets the associated function for the context
@@ -245,7 +259,11 @@ impl ContextNode {
             Some(fn_ctrt) => {
                 if let Some(self_ctrt) = self.associated_fn(analyzer).contract(analyzer) {
                     Some(self_ctrt) != Some(fn_ctrt)
-                    && !self_ctrt.underlying(analyzer).inherits.iter().any(|inherited| *inherited == fn_ctrt)    
+                        && !self_ctrt
+                            .underlying(analyzer)
+                            .inherits
+                            .iter()
+                            .any(|inherited| *inherited == fn_ctrt)
                 } else {
                     false
                 }
@@ -262,10 +280,7 @@ impl ContextNode {
     pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> &'a mut Context {
         match analyzer.node_mut(*self) {
             Node::Context(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be Context but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Context but it was: {e:?}"),
         }
     }
 
@@ -273,10 +288,7 @@ impl ContextNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Context {
         match analyzer.node(*self) {
             Node::Context(c) => c,
-            e => panic!(
-                "Node type confusion: expected node to be Context but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Context but it was: {e:?}"),
         }
     }
 
@@ -298,7 +310,11 @@ impl ContextNode {
             .next()
     }
 
-    pub fn var_by_name_or_recurse(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
+    pub fn var_by_name_or_recurse(
+        &self,
+        analyzer: &impl GraphLike,
+        name: &str,
+    ) -> Option<ContextVarNode> {
         if let Some(var) = analyzer
             .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
             .into_iter()
@@ -312,8 +328,9 @@ impl ContextNode {
                 }
             })
             .take(1)
-            .next() {
-                Some(var)
+            .next()
+        {
+            Some(var)
         } else if let Some(parent) = self.underlying(analyzer).parent_ctx {
             parent.var_by_name_or_recurse(analyzer, name)
         } else {
@@ -332,7 +349,9 @@ impl ContextNode {
 
     /// Gets all variables associated with a context
     pub fn local_vars(&self, analyzer: &impl AnalyzerLike) -> Vec<ContextVarNode> {
-        analyzer.graph().edges_directed(self.0.into(), Direction::Incoming)
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
             .filter_map(|edge| {
                 if edge.weight() == &Edge::Context(ContextEdge::Variable) {
                     Some(edge.source())
@@ -350,7 +369,8 @@ impl ContextNode {
         analyzer: &impl AnalyzerLike,
         name: &str,
     ) -> Option<ContextVarNode> {
-        self.var_by_name(analyzer, name).map(|var| var.latest_version(analyzer))
+        self.var_by_name(analyzer, name)
+            .map(|var| var.latest_version(analyzer))
     }
 
     /// Reads the current temporary counter and increments the counter
@@ -433,9 +453,11 @@ impl ContextNode {
         if context.forks.is_empty() {
             vec![*self]
         } else {
-            context.forks.iter().flat_map(|fork| {
-                fork.terminal_child_list(analyzer)
-            }).collect()
+            context
+                .forks
+                .iter()
+                .flat_map(|fork| fork.terminal_child_list(analyzer))
+                .collect()
         }
     }
 
@@ -444,9 +466,11 @@ impl ContextNode {
         if context.children.is_empty() {
             vec![*self]
         } else {
-            context.children.iter().flat_map(|child| {
-                child.returning_child_list(analyzer)
-            }).collect()
+            context
+                .children
+                .iter()
+                .flat_map(|child| child.returning_child_list(analyzer))
+                .collect()
         }
     }
 

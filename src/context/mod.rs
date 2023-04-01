@@ -57,6 +57,14 @@ impl ExprRet {
         }
     }
 
+    pub fn has_literal(&self) -> bool {
+        match self {
+            ExprRet::SingleLiteral(..) => true,
+            ExprRet::Multi(multis) => multis.iter().any(|expr_ret| expr_ret.has_literal()),
+            _ => false,
+        }
+    }
+
     pub fn expect_multi(self) -> Vec<ExprRet> {
         match self {
             ExprRet::Multi(inner) => inner,
@@ -68,7 +76,8 @@ impl ExprRet {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let (_, idx) = inner;
-                let var_ty = VarType::try_from_idx(analyzer, *idx).expect("Non-typeable as type");
+                let var_ty = VarType::try_from_idx(analyzer, *idx)
+                    .unwrap_or_else(|| panic!("Non-typeable as type: {:?}", analyzer.node(*idx)));
                 var_ty.as_dot_str(analyzer)
             }
             ExprRet::Multi(inner) if !self.has_fork() => {
@@ -152,8 +161,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             } => {
                 let parent = parent_ctx.expect("Free floating contexts shouldn't happen");
                 let mut entry_loc = None;
+                let mut mods_set = false;
                 let ctx_node = match self.node(parent) {
                     Node::Function(fn_node) => {
+                        mods_set = fn_node.modifiers_set;
                         entry_loc = Some(fn_node.loc);
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
@@ -231,6 +242,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     });
 
                 if let Some(fn_loc) = entry_loc {
+                    if !mods_set {
+                        let parent = FunctionNode::from(parent.into());
+                        self.set_modifiers(parent, ctx_node.into());
+                    }
                     self.func_call_inner(
                         true,
                         ctx_node.into(),
@@ -475,7 +490,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                rhs_cvar.cast_from_ty(ty, self);
+                rhs_cvar.literal_cast_from_ty(ty, self);
                 self.match_var_def(
                     var_decl,
                     loc,
@@ -486,27 +501,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::Single((rhs_ctx, rhs)))) => {
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                // if let VarType::Array(_, ref mut range) = ty {
-                //     *range = Some(self.tmp_length(ContextVarNode::from(*rhs), *rhs_ctx, loc))
-                // }
-
-                // if ty.is_dyn_builtin(self) {
-                //     if let Some(r) = ContextVarNode::from(ty).range(self) {
-                //         let mut min = r.range_min().clone();
-                //         let mut max = r.range_max().clone();
-
-                //         if let Some(rd) = min.maybe_range_dyn() {
-                //             rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                //             next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
-                //         }
-
-                //         if let Some(rd) = max.maybe_range_dyn() {
-                //             rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                //             next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                //         }
-                //     }
-                // }
-
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
@@ -634,7 +628,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             // literals
-            NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, false),
+            NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
             StringLiteral(lits) => ExprRet::Multi(
                 lits.iter()
@@ -642,12 +636,14 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     .collect(),
             ),
             BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
-            HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b, false),
+            HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexLiteral(hexes) => self.hex_literals(ctx, hexes),
-            RationalNumberLiteral(_, _, _, _) => todo!("Rational literal"),
-            UnaryMinus(_loc, expr) => match &**expr {
-                NumberLiteral(loc, int, exp) => self.number_literal(ctx, *loc, int, exp, true),
-                HexNumberLiteral(loc, b) => self.hex_num_literal(ctx, *loc, b, true),
+            RationalNumberLiteral(_, _, _, _, _) => todo!("Rational literal"),
+            Negate(_loc, expr) => match &**expr {
+                NumberLiteral(loc, int, exp, _unit) => {
+                    self.number_literal(ctx, *loc, int, exp, true)
+                }
+                HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, true),
                 e => todo!("UnaryMinus unexpected rhs: {e:?}"),
             },
             UnaryPlus(_loc, e) => todo!("UnaryPlus unexpected rhs: {e:?}"),
@@ -751,107 +747,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             FunctionCallBlock(_loc, _func_expr, _input_exprs) => todo!("Function call block"),
             NamedFunctionCall(_loc, _func_expr, _input_exprs) => todo!("Named function call"),
             FunctionCall(loc, func_expr, input_exprs) => {
-                match &**func_expr {
-                    MemberAccess(loc, _member_expr, _ident) => {
-                        let (_func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
-                            ExprRet::Single((ctx, idx)) => (ctx, idx),
-                            m @ ExprRet::Multi(_) => m.expect_single(),
-                            ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                            e => todo!("got fork in func call: {:?}", e),
-                        };
-
-                        let inputs = ExprRet::Multi(
-                            input_exprs
-                                .iter()
-                                .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                .collect(),
-                        );
-
-                        self.func_call(
-                            ctx,
-                            *loc,
-                            &inputs,
-                            ContextVarNode::from(func_idx)
-                                .ty(self)
-                                .func_node(self)
-                                .expect(""),
-                        )
-                    }
-                    Variable(ident) => {
-                        // It is a function call, check if we have the ident in scope
-                        let funcs = ctx.visible_funcs(self);
-                        // filter down all funcs to those that match
-                        let possible_funcs = funcs
-                            .iter()
-                            .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
-                            .collect::<Vec<_>>();
-
-                        if possible_funcs.is_empty() {
-                            // this is a builtin, cast, or unknown function?
-                            let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
-                                ExprRet::Single((ctx, idx)) => (ctx, idx),
-                                m @ ExprRet::Multi(_) => m.expect_single(),
-                                ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                                e => todo!("got fork in func call: {:?}", e),
-                            };
-                            self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
-                        } else if possible_funcs.len() == 1 {
-                            let inputs = ExprRet::Multi(
-                                input_exprs
-                                    .iter()
-                                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                    .collect(),
-                            );
-                            self.setup_fn_call(
-                                &ident.loc,
-                                &inputs,
-                                (*possible_funcs[0]).into(),
-                                ctx,
-                            )
-                        } else {
-                            // this is the annoying case due to function overloading & type inference on number literals
-                            let lits = input_exprs
-                                .iter()
-                                .map(|expr| {
-                                    match expr {
-                                        UnaryMinus(_, expr) => {
-                                            // negative number potentially
-                                            matches!(**expr, NumberLiteral(..) | HexLiteral(..))
-                                        }
-                                        NumberLiteral(..) | HexLiteral(..) => true,
-                                        _ => false,
-                                    }
-                                })
-                                .collect();
-                            let inputs = ExprRet::Multi(
-                                input_exprs
-                                    .iter()
-                                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                    .collect(),
-                            );
-
-                            if let Some(func) = self.disambiguate_fn_call(
-                                &ident.name,
-                                lits,
-                                &inputs,
-                                &possible_funcs,
-                            ) {
-                                self.setup_fn_call(loc, &inputs, func.into(), ctx)
-                            } else {
-                                ExprRet::CtxKilled
-                            }
-                        }
-                    }
-                    _ => {
-                        let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
-                            ExprRet::Single((ctx, idx)) => (ctx, idx),
-                            m @ ExprRet::Multi(_) => m.expect_single(),
-                            ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                            e => todo!("got fork in func call: {:?}", e),
-                        };
-                        self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
-                    }
-                }
+                self.fn_call_expr(ctx, loc, func_expr, input_exprs)
             }
             // member
             New(_loc, expr) => self.parse_ctx_expr(expr, ctx),
@@ -901,7 +797,6 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 }
             }
             Parenthesis(_loc, expr) => self.parse_ctx_expr(expr, ctx),
-            Unit(_, _, _) => todo!("Unit"),
         }
     }
 
@@ -986,7 +881,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                rhs_cvar.cast_from(&lhs_cvar, self);
+                rhs_cvar.literal_cast_from(&lhs_cvar, self);
                 self.assign(loc, lhs_cvar, rhs_cvar, *rhs_ctx)
             }
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
@@ -1060,6 +955,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
+        // println!("rhs_range: {:?}", rhs_cvar.range(self));
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
@@ -1120,7 +1016,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         loc: Loc,
         ctx: ContextNode,
     ) -> ContextVarNode {
-        assert_eq!(None, cvar_node.next_version(self));
+        if let Some(cvar) = cvar_node.next_version(self) {
+            panic!("Not latest version of: {}", cvar.display_name(self));
+        }
         let mut new_cvar = cvar_node.latest_version(self).underlying(self).clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));

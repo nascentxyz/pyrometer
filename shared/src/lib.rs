@@ -1,22 +1,22 @@
-use std::collections::HashMap;
 use crate::analyzer::GraphLike;
 use crate::context::ContextVarNode;
+use std::collections::HashMap;
 
 use crate::context::ContextNode;
 
-use crate::analyzer::AsDotStr;
 use crate::analyzer::AnalyzerLike;
+use crate::analyzer::AsDotStr;
 use crate::{
-    context::{ContextEdge, ContextVar, Context},
-    nodes::*
+    context::{Context, ContextEdge, ContextVar},
+    nodes::*,
 };
-use petgraph::{graph::*};
-use solang_parser::pt::Identifier;
 use lazy_static::lazy_static;
+use petgraph::graph::*;
+use solang_parser::pt::Identifier;
 
-pub mod nodes;
 pub mod analyzer;
 pub mod context;
+pub mod nodes;
 pub mod range;
 
 pub type NodeIdx = NodeIndex<usize>;
@@ -49,7 +49,6 @@ pub enum Node {
     Block(Block),
 }
 
-
 pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
     use crate::Node::*;
     match analyzer.node(idx) {
@@ -58,7 +57,7 @@ pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
         ContextFork => "Context Fork".to_string(),
         FunctionCall => "Function Call".to_string(),
         Builtin(bi) => bi.as_string(analyzer),
-        VarType(v_ty) => v_ty.as_dot_str(analyzer), 
+        VarType(v_ty) => v_ty.as_dot_str(analyzer),
         Contract(_c) => ContractNode::from(idx).as_dot_str(analyzer),
         Function(_f) => FunctionNode::from(idx).as_dot_str(analyzer),
         FunctionParam(_fp) => FunctionParamNode::from(idx).as_dot_str(analyzer),
@@ -69,7 +68,7 @@ pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
         Var(_v) => VarNode::from(idx).as_dot_str(analyzer),
         Ty(_t) => TyNode::from(idx).as_dot_str(analyzer),
         // Concrete(c) => c.as_human_string(),
-        e => format!("{:?}", e)
+        e => format!("{e:?}"),
     }
 }
 
@@ -84,7 +83,7 @@ impl Node {
             Function(_f) => TOKYO_NIGHT_COLORS.get("cyan").unwrap(),
             Struct(_s) => TOKYO_NIGHT_COLORS.get("yellow").unwrap(),
             Enum(_e) => TOKYO_NIGHT_COLORS.get("yellow").unwrap(),
-            _ => TOKYO_NIGHT_COLORS.get("default").unwrap()
+            _ => TOKYO_NIGHT_COLORS.get("default").unwrap(),
         };
         c.to_string()
     }
@@ -109,7 +108,6 @@ lazy_static! {
     };
 }
 
-
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Edge {
     Part,
@@ -132,4 +130,6 @@ pub enum Edge {
     FallbackFunc,
     Constructor,
     ReceiveFunc,
+    LibraryContract(NodeIdx),
+    LibraryFunction(NodeIdx),
 }

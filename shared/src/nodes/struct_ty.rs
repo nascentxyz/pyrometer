@@ -1,12 +1,12 @@
-use crate::GraphLike;
-use petgraph::{Direction, visit::EdgeRef};
-use crate::analyzer::AsDotStr;
-use crate::VarType;
 use crate::analyzer::AnalyzerLike;
-use crate::Node;
+use crate::analyzer::AsDotStr;
 use crate::Edge;
+use crate::GraphLike;
+use crate::Node;
 use crate::NodeIdx;
-use solang_parser::pt::{Identifier, Loc, StructDefinition, VariableDeclaration, Expression};
+use crate::VarType;
+use petgraph::{visit::EdgeRef, Direction};
+use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableDeclaration};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct StructNode(pub usize);
@@ -15,10 +15,7 @@ impl StructNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Struct {
         match analyzer.node(*self) {
             Node::Struct(st) => st,
-            e => panic!(
-                "Node type confusion: expected node to be Struct but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Struct but it was: {e:?}"),
         }
     }
 
@@ -44,21 +41,32 @@ impl StructNode {
             .map(|edge| FieldNode::from(edge.source()))
             .collect()
     }
-}
 
+    pub fn find_field(&self, analyzer: &impl GraphLike, ident: &Identifier) -> Option<FieldNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Field == *edge.weight())
+            .map(|edge| FieldNode::from(edge.source()))
+            .find(|field_node| field_node.name(analyzer) == ident.name)
+    }
+}
 
 impl AsDotStr for StructNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
-        format!("struct {} {{ {} }}",
+        format!(
+            "struct {} {{ {} }}",
             if let Some(name) = &underlying.name {
                 name.name.clone()
             } else {
                 "".to_string()
             },
-            self.fields(analyzer).iter().map(|field_node| {
-                field_node.as_dot_str(analyzer)
-            }).collect::<Vec<_>>().join("; ")
+            self.fields(analyzer)
+                .iter()
+                .map(|field_node| { field_node.as_dot_str(analyzer) })
+                .collect::<Vec<_>>()
+                .join("; ")
         )
     }
 }
@@ -112,10 +120,7 @@ impl FieldNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Field {
         match analyzer.node(*self) {
             Node::Field(field) => field,
-            e => panic!(
-                "Node type confusion: expected node to be Field but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Field but it was: {e:?}"),
         }
     }
 
@@ -131,7 +136,8 @@ impl FieldNode {
 impl AsDotStr for FieldNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
         let underlying = self.underlying(analyzer);
-        format!("{} {}",
+        format!(
+            "{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
                 var_ty.as_dot_str(analyzer)
             } else {
@@ -172,7 +178,10 @@ impl From<Field> for Node {
 }
 
 impl Field {
-    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, var_def: VariableDeclaration) -> Field {
+    pub fn new(
+        analyzer: &mut impl AnalyzerLike<Expr = Expression>,
+        var_def: VariableDeclaration,
+    ) -> Field {
         let ty_idx = analyzer.parse_expr(&var_def.ty);
         Field {
             loc: var_def.loc,

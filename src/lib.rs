@@ -3,12 +3,14 @@ use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::Import;
+use std::path::Path;
 
 use solang_parser::pt::{
     ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
     FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
-    VariableDefinition,
+    Using, UsingList, VariableDefinition,
 };
+use std::path::PathBuf;
 use std::{collections::HashMap, fs};
 
 use petgraph::{graph::*, Directed};
@@ -21,7 +23,8 @@ use context::*;
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
-    pub remappings: HashMap<String, String>,
+    pub root: PathBuf,
+    pub remappings: Vec<(String, String)>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
@@ -35,6 +38,7 @@ pub struct Analyzer {
 impl Default for Analyzer {
     fn default() -> Self {
         let mut a = Self {
+            root: Default::default(),
             remappings: Default::default(),
             file_no: 0,
             msg: MsgNode(0),
@@ -158,7 +162,7 @@ impl AnalyzerLike for Analyzer {
                 // }
                 0.into()
             }
-            NumberLiteral(_loc, int, exp) => {
+            NumberLiteral(_loc, int, exp, _unit) => {
                 let int = U256::from_dec_str(int).unwrap();
                 let val = if !exp.is_empty() {
                     let exp = U256::from_dec_str(exp).unwrap();
@@ -174,9 +178,28 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
+    pub fn set_remappings_and_root(&mut self, remappings_path: String) {
+        self.root = PathBuf::from(&remappings_path)
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let remappings_file = fs::read_to_string(remappings_path)
+            .map_err(|err| err.to_string())
+            .expect("Remappings file not found");
+
+        self.remappings = remappings_file
+            .lines()
+            .map(|x| x.trim())
+            .filter(|x| !x.is_empty())
+            .map(|x| x.split_once('=').expect("Invalid remapping"))
+            .map(|(name, path)| (name.to_owned(), path.to_owned()))
+            .collect();
+    }
+
     pub fn parse(
         &mut self,
         src: &str,
+        current_path: &PathBuf,
     ) -> (
         Option<NodeIdx>,
         Vec<(Option<NodeIdx>, String, String, usize)>,
@@ -186,11 +209,19 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                let funcs = self.parse_source_unit(source_unit, file_no, parent, &mut imported);
+                let (funcs, usings) = self.parse_source_unit(
+                    source_unit,
+                    file_no,
+                    parent,
+                    &mut imported,
+                    current_path,
+                );
+                usings.into_iter().for_each(|(using, scope_node)| {
+                    self.parse_using(&using, scope_node);
+                });
                 funcs.iter().for_each(|func| {
                     // add params now that parsing is done
                     func.set_params_and_ret(self);
-                    func.set_modifiers(self);
                     let name = func.name(self);
                     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
                         let underlying = func.underlying(self).clone();
@@ -220,23 +251,27 @@ impl Analyzer {
         file_no: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-    ) -> Vec<FunctionNode> {
+        current_path: &PathBuf,
+    ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         let mut all_funcs = vec![];
+        let mut all_usings = vec![];
         source_unit
             .0
             .iter()
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
-                let (_sup, funcs) = self.parse_source_unit_part(
+                let (_sup, funcs, usings) = self.parse_source_unit_part(
                     source_unit_part,
                     file_no,
                     unit_part,
                     parent,
                     imported,
+                    current_path,
                 );
                 all_funcs.extend(funcs);
+                all_usings.extend(usings);
             });
-        all_funcs
+        (all_funcs, all_usings)
     }
 
     pub fn parse_source_unit_part(
@@ -246,19 +281,22 @@ impl Analyzer {
         unit_part: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-    ) -> (NodeIdx, Vec<FunctionNode>) {
+        current_path: &PathBuf,
+    ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use SourceUnitPart::*;
 
         let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
         self.add_edge(sup_node, parent, Edge::Part);
 
         let mut func_nodes = vec![];
+        let mut usings = vec![];
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs) = self.parse_contract_def(def, imported);
+                let (node, funcs, con_usings) = self.parse_contract_def(def, imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
+                usings.extend(con_usings);
             }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(def);
@@ -290,44 +328,90 @@ impl Analyzer {
             }
             EventDefinition(_def) => todo!(),
             Annotation(_anno) => todo!(),
-            Using(_using) => todo!(),
+            Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(import) => imported.extend(self.parse_import(import)),
+            ImportDirective(import) => imported.extend(self.parse_import(import, current_path)),
         }
-        (sup_node, func_nodes)
+        (sup_node, func_nodes, usings)
     }
 
     pub fn parse_import(
         &mut self,
         import: &Import,
+        current_path: &Path,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
-            Import::Plain(path, _) => {
-                // println!("path: {:?}", path);
-                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", path.string)
+            Import::Plain(import_path, _) => {
+                let remapping = self
+                    .remappings
+                    .iter()
+                    .find(|x| import_path.string.starts_with(&x.0));
+
+                let remapped = if let Some((name, path)) = remapping {
+                    self.root.join(path).join(
+                        import_path
+                            .string
+                            .replacen(name, "", 1)
+                            .trim_start_matches('/'),
+                    )
+                } else {
+                    current_path
+                        .parent()
+                        .unwrap()
+                        .join(import_path.string.clone())
+                };
+
+                let canonical = fs::canonicalize(&remapped).unwrap();
+
+                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol);
-                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                inner_sources.push((
+                    maybe_entry,
+                    remapped.to_str().unwrap().to_owned(),
+                    sol.to_string(),
+                    file_no,
+                ));
                 inner_sources
             }
-            Import::Rename(path, elems, _) => {
-                println!(
-                    "path: {:?}, elems: {:?}, curr: {:?}",
-                    path,
-                    elems,
-                    std::env::current_dir()
-                );
-                let sol = fs::read_to_string(path.string.clone()).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {:?}", path.string)
+            Import::Rename(import_path, _elems, _) => {
+                let remapping = self
+                    .remappings
+                    .iter()
+                    .find(|x| import_path.string.starts_with(&x.0));
+
+                let remapped = if let Some((name, path)) = remapping {
+                    self.root.join(path).join(
+                        import_path
+                            .string
+                            .replacen(name, "", 1)
+                            .trim_start_matches('/'),
+                    )
+                } else {
+                    current_path
+                        .parent()
+                        .unwrap()
+                        .join(import_path.string.clone())
+                };
+
+                let canonical = fs::canonicalize(&remapped).unwrap();
+
+                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
+                    panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol);
-                inner_sources.push((maybe_entry, path.string.clone(), sol.to_string(), file_no));
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                inner_sources.push((
+                    maybe_entry,
+                    remapped.to_str().unwrap().to_owned(),
+                    sol.to_string(),
+                    file_no,
+                ));
                 inner_sources
             }
             e => todo!("import {:?}", e),
@@ -338,7 +422,7 @@ impl Analyzer {
         &mut self,
         contract_def: &ContractDefinition,
         imports: &[(Option<NodeIdx>, String, String, usize)],
-    ) -> (ContractNode, Vec<FunctionNode>) {
+    ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
         use ContractPart::*;
 
         let contract = Contract::from_w_imports(contract_def.clone(), imports, self);
@@ -347,6 +431,7 @@ impl Analyzer {
         inherits.iter().for_each(|contract_node| {
             self.add_edge(*contract_node, con_node, Edge::InheritedContract);
         });
+        let mut usings = vec![];
 
         let mut func_nodes = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
@@ -379,12 +464,90 @@ impl Analyzer {
             }
             EventDefinition(_def) => {}
             Annotation(_anno) => todo!(),
-            Using(_using) => todo!(),
+            Using(using) => usings.push((*using.clone(), con_node.0.into())),
             StraySemicolon(_loc) => todo!(),
         });
         self.user_types
             .insert(con_node.name(self), con_node.0.into());
-        (con_node, func_nodes)
+        (con_node, func_nodes, usings)
+    }
+
+    pub fn parse_using(&mut self, using_def: &Using, scope_node: NodeIdx) {
+        let ty_idx = self.parse_expr(
+            &using_def
+                .ty
+                .clone()
+                .expect("No type defined for using statement"),
+        );
+        match &using_def.list {
+            UsingList::Library(ident_paths) => {
+                ident_paths.identifiers.iter().for_each(|ident| {
+                    if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
+                        self.add_edge(
+                            *hopefully_contract,
+                            ty_idx,
+                            Edge::LibraryContract(scope_node),
+                        );
+                    } else {
+                        panic!("Cannot find library contract {}", ident.name);
+                    }
+                });
+            }
+            UsingList::Functions(vec_ident_paths) => {
+                vec_ident_paths.iter().for_each(|ident_paths| {
+                    if ident_paths.path.identifiers.len() == 2 {
+                        if let Some(hopefully_contract) =
+                            self.user_types.get(&ident_paths.path.identifiers[0].name)
+                        {
+                            if let Some(func) = ContractNode::from(*hopefully_contract)
+                                .funcs(self)
+                                .iter()
+                                .find(|func| {
+                                    func.name(self)
+                                        .starts_with(&ident_paths.path.identifiers[1].name)
+                                })
+                            {
+                                self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                            } else {
+                                panic!(
+                                    "Cannot find library function {}.{}",
+                                    ident_paths.path.identifiers[0].name,
+                                    ident_paths.path.identifiers[1].name
+                                );
+                            }
+                        } else {
+                            panic!(
+                                "Cannot find library contract {}",
+                                ident_paths.path.identifiers[0].name
+                            );
+                        }
+                    } else {
+                        // looking for free floating function
+                        let funcs = match self.node(scope_node) {
+                            Node::Contract(_) => self.search_children(
+                                ContractNode::from(scope_node).associated_source(self),
+                                &Edge::Func,
+                            ),
+                            Node::SourceUnit(..) => self.search_children(scope_node, &Edge::Func),
+                            _ => unreachable!(),
+                        };
+                        if let Some(func) = funcs.iter().find(|func| {
+                            FunctionNode::from(**func)
+                                .name(self)
+                                .starts_with(&ident_paths.path.identifiers[0].name)
+                        }) {
+                            self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                        } else {
+                            panic!(
+                                "Cannot find library function {}",
+                                ident_paths.path.identifiers[0].name
+                            );
+                        }
+                    }
+                });
+            }
+            UsingList::Error(..) => todo!(),
+        }
     }
 
     pub fn parse_enum_def(&mut self, enum_def: &EnumDefinition) -> EnumNode {
@@ -494,42 +657,6 @@ impl Analyzer {
         }
     }
 
-    // fn named_fn_internal(&mut self, func: Function, func_def: &FunctionDefinition) -> FunctionNode {
-    // let name = func
-    //     .name
-    //     .as_ref()
-    //     .expect("Function was not named")
-    //     .name
-    //     .clone();
-    // let func_node: FunctionNode =
-    //     if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-    //         let unresolved = self.node_mut(user_ty_node);
-    //         *unresolved = Node::Function(func);
-    //         user_ty_node.into()
-    //     } else {
-    //         let node = self.add_node(func);
-    //         self.user_types.insert(name.to_string(), node);
-    //         node.into()
-    //     };
-
-    // func_def.params.iter().for_each(|(_loc, input)| {
-    //     if let Some(input) = input {
-    //         let param = FunctionParam::new(self, input.clone());
-    //         let input_node = self.add_node(param);
-    //         self.add_edge(input_node, func_node, Edge::FunctionParam);
-    //     }
-    // });
-    // func_def.returns.iter().for_each(|(_loc, output)| {
-    //     if let Some(output) = output {
-    //         let ret = FunctionReturn::new(self, output.clone());
-    //         let output_node = self.add_node(ret);
-    //         self.add_edge(output_node, func_node, Edge::FunctionReturn);
-    //     }
-    // });
-
-    // func_node
-    // }
-
     pub fn parse_var_def(
         &mut self,
         var_def: &VariableDefinition,
@@ -548,58 +675,5 @@ impl Analyzer {
     pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {
         let ty = Ty::new(self, ty_def.clone());
         TyNode(self.add_node(ty).index())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::analyzers::ReportConfig;
-    use crate::context::analyzers::bounds::BoundAnalyzer;
-    use shared::context::{ContextEdge, ContextNode};
-
-    #[test]
-    fn it_works() {
-        let sol = r###"
-contract Storage {
-    uint256 c;
-
-    function b5(uint64 x) public  {
-        address a = address(uint160(1));
-
-        int256 b = int256(1);
-        b -= 10000;
-
-        c = uint256(int256(uint256(x)) - b);
-        c += 10 + 20;
-
-    }
-}"###;
-        let mut analyzer = Analyzer::default();
-        let t0 = std::time::Instant::now();
-        let (maybe_entry, _sources) = analyzer.parse(sol);
-        let entry = maybe_entry.unwrap();
-        let file_mapping = vec![(0usize, "test.sol".to_string())].into_iter().collect();
-        println!("parse time: {:?}", t0.elapsed().as_nanos());
-        println!("{}", analyzer.dot_str_no_tmps_for_ctx("b5".to_string()));
-        let contexts = analyzer.search_children(entry, &crate::Edge::Context(ContextEdge::Context));
-        for context in contexts.into_iter() {
-            let config = ReportConfig {
-                eval_bounds: true,
-                simplify_bounds: false,
-                show_tmps: false,
-                show_consts: true,
-                show_subctxs: true,
-                show_initial_bounds: true,
-                show_all_lines: true,
-            };
-            let ctx = ContextNode::from(context);
-
-            let analysis =
-                analyzer.bounds_for_var(None, &file_mapping, ctx, "a".to_string(), config, false);
-            println!("{analysis:#?}");
-            // analysis.print_reports(("test.sol".to_string(), &sol), &analyzer);
-        }
-        println!("total analyze time: {:?}", t0.elapsed().as_nanos());
     }
 }

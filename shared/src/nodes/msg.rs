@@ -1,14 +1,14 @@
-use crate::AnalyzerLike;
-use solang_parser::pt::Loc;
-use crate::ContextVar;
-use crate::Concrete;
-use crate::Builtin;
-use ethers_core::types::Address;
-use ethers_core::types::U256;
-use crate::GraphLike;
 use crate::analyzer::AsDotStr;
+use crate::AnalyzerLike;
+use crate::Builtin;
+use crate::Concrete;
+use crate::ContextVar;
+use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
+use ethers_core::types::Address;
+use ethers_core::types::U256;
+use solang_parser::pt::Loc;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct MsgNode(pub usize);
@@ -17,14 +17,10 @@ impl MsgNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Msg {
         match analyzer.node(*self) {
             Node::Msg(st) => st,
-            e => panic!(
-                "Node type confusion: expected node to be Msg but it was: {:?}",
-                e
-            ),
+            e => panic!("Node type confusion: expected node to be Msg but it was: {e:?}"),
         }
     }
 }
-
 
 impl AsDotStr for MsgNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
@@ -56,7 +52,12 @@ pub struct Msg {
 }
 
 impl Msg {
-    pub fn context_var_from_str(&self, elem: &str, loc: Loc, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> ContextVar {
+    pub fn context_var_from_str(
+        &self,
+        elem: &str,
+        loc: Loc,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> ContextVar {
         let (node, name) = match elem {
             "data" => {
                 if let Some(d) = self.data.clone() {
@@ -90,7 +91,7 @@ impl Msg {
                     var.display_name = "msg.sender".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var
+                    return var;
                 }
             }
             "sig" => {
@@ -107,7 +108,7 @@ impl Msg {
                     var.display_name = "msg.sig".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var
+                    return var;
                 }
             }
             "value" => {
@@ -141,7 +142,7 @@ impl Msg {
                     var.display_name = "tx.origin".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var
+                    return var;
                 }
             }
             "gasprice" => {
@@ -158,7 +159,7 @@ impl Msg {
                     var.display_name = "tx.gasprice".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var
+                    return var;
                 }
             }
             "gaslimit" => {

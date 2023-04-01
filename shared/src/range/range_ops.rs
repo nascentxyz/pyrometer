@@ -95,12 +95,10 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                     }))
                 } else {
                     match self.val {
-                        Concrete::Int(size, val) => {
-                            Some(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Int(size, val.saturating_sub(I256::from_raw(rhs_val))),
-                                loc: self.loc,
-                            }))
-                        },
+                        Concrete::Int(size, val) => Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(size, val.saturating_sub(I256::from_raw(rhs_val))),
+                            loc: self.loc,
+                        })),
                         _ => {
                             // TODO: this should cause a revert
                             let val = lhs_val.saturating_sub(rhs_val);
@@ -324,12 +322,10 @@ pub trait RangeDiv<T, Rhs = Self> {
 impl RangeDiv<Concrete> for RangeConcrete<Concrete> {
     fn range_div(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
-            (Some(lhs_val), Some(rhs_val)) => {
-                Some(Elem::Concrete(RangeConcrete {
-                    val: self.val.u256_as_original(lhs_val / rhs_val),
-                    loc: self.loc,
-                }))
-            },
+            (Some(lhs_val), Some(rhs_val)) => Some(Elem::Concrete(RangeConcrete {
+                val: self.val.u256_as_original(lhs_val / rhs_val),
+                loc: self.loc,
+            })),
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v)) => {
                     Some(Elem::Concrete(RangeConcrete {
@@ -753,9 +749,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                     }))
                 } else {
                     Some(Elem::Concrete(RangeConcrete {
-                        val: self.val.u256_as_original(
-                            (lhs_val << rhs_val).min(max),
-                        ),
+                        val: self.val.u256_as_original((lhs_val << rhs_val).min(max)),
                         loc: self.loc,
                     }))
                 }
@@ -789,7 +783,6 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                             loc: self.loc,
                         }))
                     } else {
-
                         let raw = I256::from_raw(abs.into_raw() << val);
                         let as_int = if raw == I256::MIN {
                             raw
@@ -797,10 +790,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                             I256::from(-1i32) * raw
                         };
                         Some(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(
-                                *lhs_size,
-                                as_int.max(min),
-                            ),
+                            val: Concrete::Int(*lhs_size, as_int.max(min)),
                             loc: self.loc,
                         }))
                     }
@@ -822,9 +812,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                     }))
                 } else {
                     Some(Elem::Concrete(RangeConcrete {
-                        val: self
-                            .val
-                            .u256_as_original(lhs_val >> rhs_val),
+                        val: self.val.u256_as_original(lhs_val >> rhs_val),
                         loc: self.loc,
                     }))
                 }
@@ -846,14 +834,12 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         };
                         let min = max * I256::from(-1i32);
 
-
                         let (abs, is_min) = neg_v.overflowing_abs();
                         let bits = if is_min {
                             255
                         } else {
                             255 - abs.leading_zeros()
                         };
-
 
                         if val >= &U256::from(bits) {
                             Some(Elem::Concrete(RangeConcrete {

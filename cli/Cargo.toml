@@ -11,9 +11,6 @@ pyrometer = { path = "../" }
 shared = { path = "../shared" }
 ariadne = "0.2.0"
 
-[profile.release]
-debug = true
-
 [[bin]]
 name = "pyrometer"
 path = "src/main.rs"

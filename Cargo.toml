@@ -7,8 +7,14 @@ edition = "2021"
 
 [dependencies]
 petgraph = "0.6.2"
-solang-parser = { version = "0.2.1", features = ["pt-serde"] }
+solang-parser = { version = "0.2.3", features = ["pt-serde"] }
 ethers-core = "*"
 ariadne = "0.2.0"
 shared = { path = "./shared" }
 hex = "0.4.3"
+
+[workspace]
+members = ["cli", "shared"]
+
+[profile.release.package.cli]
+debug = true
