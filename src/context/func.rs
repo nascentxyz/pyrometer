@@ -545,18 +545,20 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             .collect();
                         self.func_call_inner(false, ctx, func, loc, input_vars, params, None)
                     } else {
-                        panic!("input has fork - need to flatten, {:?}, {:?}", params, input_paths.clone().flatten())
+                        panic!(
+                            "input has fork - need to flatten, {:?}, {:?}",
+                            params,
+                            input_paths.clone().flatten()
+                        )
                     }
                 } else {
                     panic!("Length mismatch: {inputs:?} {params:?}");
                 }
             }
-            ExprRet::Fork(w1, w2) => {
-                ExprRet::Fork(
-                    Box::new(self.func_call(ctx, loc, &w1, func)),
-                    Box::new(self.func_call(ctx, loc, &w2, func)),
-                )
-            }
+            ExprRet::Fork(w1, w2) => ExprRet::Fork(
+                Box::new(self.func_call(ctx, loc, &w1, func)),
+                Box::new(self.func_call(ctx, loc, &w2, func)),
+            ),
             _ => todo!("here"),
         }
     }

@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use std::sync::Mutex;
-use crate::FunctionNode;
 use crate::as_dot_str;
 use crate::range::Range;
 use crate::BlockNode;
+use crate::FunctionNode;
 use crate::MsgNode;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::context::ContextVarNode;
 use crate::range::range_string::ToRangeString;
@@ -110,7 +110,13 @@ pub trait GraphLike {
             .add_edge(from_node.into(), to_node.into(), edge.into());
     }
 
-    fn func_cluster_str(&self, func_node: FunctionNode, cluster_num: usize, handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>, handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>) -> String {
+    fn func_cluster_str(
+        &self,
+        func_node: FunctionNode,
+        cluster_num: usize,
+        handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
+        handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
+    ) -> String {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
                 Node::ContextVar(_cvar) => {
@@ -128,7 +134,8 @@ pub trait GraphLike {
         let g = &G { graph: &new_graph };
         let children = g.children(func_node.0.into());
         let children_edges = g.children_edges(func_node.0.into());
-        format!("    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
+        format!(
+            "    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
             cluster_num,
             "        bgcolor=\"#545e87\"",
             format!(
@@ -137,25 +144,30 @@ pub trait GraphLike {
                 as_dot_str(func_node.0.into(), g).replace('\"', "\'"),
                 self.node(NodeIdx::from(func_node.0)).dot_str_color()
             ),
-            children.iter().map(|child| {
-                handled_nodes.lock().unwrap().insert(*child);
-                format!(
-                    "        {} [label = \"{}\", color = \"{}\"]\n",
-                    petgraph::graph::GraphIndex::index(child),
-                    as_dot_str(*child, g).replace('\"', "\'"),
-                    self.node(*child).dot_str_color()
-                )
-            }).collect::<Vec<_>>().join(""),
-            children_edges.iter().filter(|(_, _, _, idx)| {
-                !handled_edges.lock().unwrap().contains(idx)
-            }).map(|(from, to, edge, idx)| {
-                handled_edges.lock().unwrap().insert(*idx);
-                let from = petgraph::graph::GraphIndex::index(from);
-                let to = petgraph::graph::GraphIndex::index(to);
-                format!(
-                    "        {from:} -> {to:} [label = \"{edge:?}\"]\n",
-                )
-            }).collect::<Vec<_>>().join(""),
+            children
+                .iter()
+                .map(|child| {
+                    handled_nodes.lock().unwrap().insert(*child);
+                    format!(
+                        "        {} [label = \"{}\", color = \"{}\"]\n",
+                        petgraph::graph::GraphIndex::index(child),
+                        as_dot_str(*child, g).replace('\"', "\'"),
+                        self.node(*child).dot_str_color()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(""),
+            children_edges
+                .iter()
+                .filter(|(_, _, _, idx)| { !handled_edges.lock().unwrap().contains(idx) })
+                .map(|(from, to, edge, idx)| {
+                    handled_edges.lock().unwrap().insert(*idx);
+                    let from = petgraph::graph::GraphIndex::index(from);
+                    let to = petgraph::graph::GraphIndex::index(to);
+                    format!("        {from:} -> {to:} [label = \"{edge:?}\"]\n",)
+                })
+                .collect::<Vec<_>>()
+                .join(""),
         )
     }
 
@@ -172,41 +184,55 @@ pub trait GraphLike {
         dot_str.push(raw_start_str.to_string());
         let handled_edges = Arc::new(Mutex::new(BTreeSet::new()));
         let handled_nodes = Arc::new(Mutex::new(BTreeSet::new()));
-        let (nodes, edges) = (self.graph().node_indices().collect::<Vec<_>>(), self.graph().edge_indices().collect::<Vec<_>>());
+        let (nodes, edges) = (
+            self.graph().node_indices().collect::<Vec<_>>(),
+            self.graph().edge_indices().collect::<Vec<_>>(),
+        );
         let mut cluster_num = 0;
-        let nodes_str = nodes.iter().filter_map(|node| {
-            if !handled_nodes.lock().unwrap().contains(node) {
-                match self.node(*node) {
-                    Node::Function(_) => {
-                        cluster_num += 1;
-                        Some(self.func_cluster_str(FunctionNode::from(*node), cluster_num, handled_nodes.clone(), handled_edges.clone()))
-                    }
-                    n => {
-                        Some(format!(
+        let nodes_str = nodes
+            .iter()
+            .filter_map(|node| {
+                if !handled_nodes.lock().unwrap().contains(node) {
+                    match self.node(*node) {
+                        Node::Function(_) => {
+                            cluster_num += 1;
+                            Some(self.func_cluster_str(
+                                FunctionNode::from(*node),
+                                cluster_num,
+                                handled_nodes.clone(),
+                                handled_edges.clone(),
+                            ))
+                        }
+                        n => Some(format!(
                             "{} [label = \"{}\", color = \"{}\"]",
                             petgraph::graph::GraphIndex::index(node),
                             as_dot_str(*node, self).replace('\"', "\'"),
                             n.dot_str_color()
-                        ))
+                        )),
                     }
+                } else {
+                    None
                 }
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>().join("\n    ");
-        let edges_str = edges.into_iter().filter_map(|edge| {
-            if !handled_edges.lock().unwrap().contains(&edge) {
-                let (from, to) = self.graph().edge_endpoints(edge).unwrap();
-                let from = from.index();
-                let to = to.index();
-                Some(format!(
-                    "{from:} -> {to:} [label = \"{:?}\"]",
-                    self.graph().edge_weight(edge).unwrap()
-                ))
-            } else {
-                None
-            }
-        }).collect::<Vec<_>>().join("\n    ");
+            })
+            .collect::<Vec<_>>()
+            .join("\n    ");
+        let edges_str = edges
+            .into_iter()
+            .filter_map(|edge| {
+                if !handled_edges.lock().unwrap().contains(&edge) {
+                    let (from, to) = self.graph().edge_endpoints(edge).unwrap();
+                    let from = from.index();
+                    let to = to.index();
+                    Some(format!(
+                        "{from:} -> {to:} [label = \"{:?}\"]",
+                        self.graph().edge_weight(edge).unwrap()
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n    ");
 
         dot_str.push(nodes_str);
         dot_str.push(edges_str);
@@ -463,10 +489,8 @@ pub trait Search: GraphLike {
     /// Gets all children recursively
     fn children(&self, start: NodeIdx) -> BTreeSet<NodeIdx> {
         let edges = self.graph().edges_directed(start, Direction::Incoming);
-        let mut this_children: BTreeSet<NodeIdx> = edges
-            .clone()
-            .map(|edge| edge.source())
-            .collect();
+        let mut this_children: BTreeSet<NodeIdx> =
+            edges.clone().map(|edge| edge.source()).collect();
 
         this_children.extend(
             edges
@@ -477,7 +501,10 @@ pub trait Search: GraphLike {
     }
 
     /// Gets all children edges recursively
-    fn children_edges(&self, start: NodeIdx) -> BTreeSet<(NodeIdx, NodeIdx, Edge, EdgeIndex<usize>)> {
+    fn children_edges(
+        &self,
+        start: NodeIdx,
+    ) -> BTreeSet<(NodeIdx, NodeIdx, Edge, EdgeIndex<usize>)> {
         let edges = self.graph().edges_directed(start, Direction::Incoming);
         let mut this_children_edges: BTreeSet<(NodeIdx, NodeIdx, Edge, EdgeIndex<usize>)> = edges
             .clone()
