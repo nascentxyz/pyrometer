@@ -1,3 +1,5 @@
+use std::ffi::OsString;
+use std::collections::BTreeSet;
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
@@ -25,6 +27,8 @@ use context::*;
 pub struct Analyzer {
     pub root: PathBuf,
     pub remappings: Vec<(String, String)>,
+    pub imported_srcs: BTreeSet<OsString>,
+    pub final_pass_items: Vec<(Vec<FunctionNode>, Vec<(Using, NodeIdx)>)>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
@@ -40,6 +44,8 @@ impl Default for Analyzer {
         let mut a = Self {
             root: Default::default(),
             remappings: Default::default(),
+            imported_srcs: Default::default(),
+            final_pass_items: Default::default(),
             file_no: 0,
             msg: MsgNode(0),
             block: BlockNode(0),
@@ -200,7 +206,8 @@ impl Analyzer {
     pub fn parse(
         &mut self,
         src: &str,
-        current_path: &PathBuf,
+        current_path: &Path,
+        entry: bool,
     ) -> (
         Option<NodeIdx>,
         Vec<(Option<NodeIdx>, String, String, usize)>,
@@ -211,40 +218,50 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
-                let (funcs, usings) = self.parse_source_unit(
+                let final_pass_part = self.parse_source_unit(
                     source_unit,
                     file_no,
                     parent,
                     &mut imported,
                     current_path,
                 );
-                usings.into_iter().for_each(|(using, scope_node)| {
-                    self.parse_using(&using, scope_node);
-                });
-                funcs.iter().for_each(|func| {
-                    // add params now that parsing is done
-                    func.set_params_and_ret(self);
-                    let name = func.name(self);
-                    if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-                        let underlying = func.underlying(self).clone();
-                        let unresolved = self.node_mut(user_ty_node);
-                        *unresolved = Node::Function(underlying);
-                    } else {
-                        self.user_types
-                            .insert(name.to_string(), NodeIdx::from(*func));
-                    }
-                });
-
-                funcs.into_iter().for_each(|func| {
-                    if let Some(body) = &func.underlying(self).body.clone() {
-                        self.parse_ctx_statement(body, false, Some(func));
-                    }
-                });
+                self.final_pass_items.push(final_pass_part);
+                if entry {
+                    self.final_pass();
+                }
 
                 (Some(parent), imported)
             }
             Err(e) => panic!("FAIL to parse, {e:?}"),
         }
+    }
+
+    pub fn final_pass(&mut self) {
+        let elems = self.final_pass_items.clone();
+        elems.into_iter().for_each(|(funcs, usings)| {
+            usings.into_iter().for_each(|(using, scope_node)| {
+                self.parse_using(&using, scope_node);
+            });
+            funcs.iter().for_each(|func| {
+                // add params now that parsing is done
+                func.set_params_and_ret(self);
+                let name = func.name(self);
+                if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+                    let underlying = func.underlying(self).clone();
+                    let unresolved = self.node_mut(user_ty_node);
+                    *unresolved = Node::Function(underlying);
+                } else {
+                    self.user_types
+                        .insert(name.to_string(), NodeIdx::from(*func));
+                }
+            });
+
+            funcs.into_iter().for_each(|func| {
+                if let Some(body) = &func.underlying(self).body.clone() {
+                    self.parse_ctx_statement(body, false, Some(func));
+                }
+            });
+        });
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -369,13 +386,18 @@ impl Analyzer {
                 };
 
                 let canonical = fs::canonicalize(&remapped).unwrap();
+                let canonical_str_path = canonical.as_os_str();
+                if self.imported_srcs.contains(canonical_str_path) {
+                    return vec![]
+                }
+                self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
                     panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
                 inner_sources.push((
                     maybe_entry,
                     remapped.to_str().unwrap().to_owned(),
@@ -405,14 +427,21 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
+                
+
                 let canonical = fs::canonicalize(&remapped).unwrap();
+                let canonical_str_path = canonical.as_os_str();
+                if self.imported_srcs.contains(canonical_str_path) {
+                    return vec![]
+                }
+                self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
                     panic!("Could not find file for dependency: {canonical:?}")
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
-                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped);
+                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
                 inner_sources.push((
                     maybe_entry,
                     remapped.to_str().unwrap().to_owned(),

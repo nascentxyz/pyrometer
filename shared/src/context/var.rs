@@ -1015,4 +1015,27 @@ impl ContextVar {
             None
         }
     }
+
+    pub fn new_from_func_ret(ctx: ContextNode, analyzer: &mut (impl GraphLike + AnalyzerLike), ret: FunctionReturn) -> Option<Self> {
+        let (is_tmp, name) = if let Some(name) = ret.name {
+            (false, name.name)
+        } else {
+            (true, format!("tmp_func_ret_{}", ctx.new_tmp(analyzer)))
+        };
+
+        if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
+            Some(ContextVar {
+                loc: Some(ret.loc),
+                name: name.clone(),
+                display_name: name,
+                storage: ret.storage,
+                is_tmp,
+                tmp_of: None,
+                is_symbolic: true,
+                ty,
+            })
+        } else {
+            None
+        }
+    }
 }

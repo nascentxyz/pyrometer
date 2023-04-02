@@ -62,6 +62,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 };
 
                 let inputs = ExprRet::Multi(inputs);
+                let func_str = format!("{}.{}({})", ContextVarNode::from(member).display_name(self), ident, inputs.as_flat_vec().iter().map(|cnode| ContextVarNode::from(*cnode).display_name(self)).collect::<Vec<_>>().join(", "));
                 if !inputs.has_literal() {
                     // TODO: handle implicit upcast
                     let as_input_str = inputs.try_as_func_input_str(self);
@@ -97,6 +98,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                                 .ty(self)
                                 .func_node(self)
                                 .expect(""),
+                            Some(func_str),
                         )
                     }
                 } else {
@@ -139,10 +141,11 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         })
                         .collect();
 
+
                     if let Some(func) =
                         self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs[..])
                     {
-                        self.setup_fn_call(loc, &inputs, func.into(), ctx)
+                        self.setup_fn_call(loc, &inputs, func.into(), ctx, Some(func_str))
                     } else {
                         panic!(
                             "Could not disambiguate function call: {}, {:?}",
@@ -177,7 +180,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             .map(|expr| self.parse_ctx_expr(expr, ctx))
                             .collect(),
                     );
-                    self.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx)
+                    self.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
                 } else {
                     // this is the annoying case due to function overloading & type inference on number literals
                     let lits = input_exprs
@@ -203,7 +206,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     if let Some(func) =
                         self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
                     {
-                        self.setup_fn_call(loc, &inputs, func.into(), ctx)
+                        self.setup_fn_call(loc, &inputs, func.into(), ctx, None)
                     } else {
                         ExprRet::CtxKilled
                     }
@@ -295,6 +298,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         inputs: &ExprRet,
         func_idx: NodeIdx,
         ctx: ContextNode,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         // if we have a single match thats our function
         let mut var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
@@ -318,7 +322,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         let new_cvarnode = self.add_node(Node::ContextVar(var));
         self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
         if let Some(func_node) = ContextVarNode::from(new_cvarnode).ty(self).func_node(self) {
-            self.func_call(ctx, *loc, inputs, func_node)
+            self.func_call(ctx, *loc, inputs, func_node, func_call_str)
         } else {
             unreachable!()
         }
@@ -361,8 +365,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             let arr = ContextVarNode::from(arr).latest_version(self);
                             // get length
                             let len = self.tmp_length(arr, arr_ctx, *loc);
-
-                            println!("array: {:?}", arr.underlying(self));
 
                             let len_as_idx = len.as_tmp(*loc, ctx, self);
                             // set length as index
@@ -514,6 +516,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         loc: Loc,
         input_paths: &ExprRet,
         func: FunctionNode,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -529,6 +532,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     vec![ContextVarNode::from(input_var).latest_version(self)],
                     params,
                     None,
+                    func_call_str
                 )
             }
             ExprRet::Multi(ref inputs) => {
@@ -543,7 +547,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                                 ContextVarNode::from(var).latest_version(self)
                             })
                             .collect();
-                        self.func_call_inner(false, ctx, func, loc, input_vars, params, None)
+                        self.func_call_inner(false, ctx, func, loc, input_vars, params, None, func_call_str)
                     } else {
                         panic!(
                             "input has fork - need to flatten, {:?}, {:?}",
@@ -556,8 +560,8 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             ExprRet::Fork(w1, w2) => ExprRet::Fork(
-                Box::new(self.func_call(ctx, loc, &w1, func)),
-                Box::new(self.func_call(ctx, loc, &w2, func)),
+                Box::new(self.func_call(ctx, loc, &w1, func, func_call_str.clone())),
+                Box::new(self.func_call(ctx, loc, &w2, func, func_call_str)),
             ),
             e => todo!("here: {:?}", e),
         }
@@ -574,6 +578,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         inputs: Vec<ContextVarNode>,
         params: Vec<FunctionParamNode>,
         modifier_state: Option<ModifierState>,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         let fn_ext = ctx.is_fn_ext(func_node, self);
         let callee_ctx = if entry_call {
@@ -655,18 +660,18 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 // use the next modifier
                 let mut mstate = mod_state;
                 mstate.num += 1;
-                self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate)
+                self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate, func_call_str)
             } else {
                 // out of modifiers, execute the actual function call
-                self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs)
+                self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs, func_call_str)
             }
         } else if !mods.is_empty() {
             // we have modifiers and havent executed them, start the process of executing them
             let state = ModifierState::new(0, loc, func_node, callee_ctx, ctx, renamed_inputs);
-            self.call_modifier_for_fn(loc, callee_ctx, func_node, state)
+            self.call_modifier_for_fn(loc, callee_ctx, func_node, state, func_call_str)
         } else {
             // no modifiers, just execute the function
-            self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs)
+            self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs, func_call_str)
         }
     }
 
@@ -679,6 +684,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         callee_ctx: ContextNode,
         func_node: FunctionNode,
         renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         if let Some(body) = func_node.underlying(self).body.clone() {
             // add return nodes into the subctx
@@ -701,17 +707,21 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
-
-            println!("\n\n HERERERERE \n\n");
             ExprRet::Multi(
                 func_node
                     .returns(self)
                     .iter()
-                    .filter_map(|ret| {
+                    .map(|ret| {
                         let underlying = ret.underlying(self);
-                        let var = ContextVar::maybe_new_from_func_ret(self, underlying.clone())?;
+                        let mut var = ContextVar::new_from_func_ret(callee_ctx, self, underlying.clone()).expect("No type for return variable?");
+                        if let Some(func_call) = &func_call_str {
+                            var.name = format!("{}_{}", func_call, callee_ctx.new_tmp(self));
+                            var.display_name = func_call.to_string();
+                        }
                         let node = self.add_node(Node::ContextVar(var));
-                        Some(ExprRet::Single((caller_ctx, node)))
+                        self.add_edge(node, callee_ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(node, callee_ctx, Edge::Context(ContextEdge::Return));
+                        ExprRet::Single((caller_ctx, node))
                     })
                     .collect(),
             )
@@ -721,10 +731,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
     fn ctx_rets(&mut self, ctx: ContextNode) -> ExprRet {
         let forks = ctx.forks(self);
         if !forks.is_empty() {
-            assert!(forks.len() == 2);
-            let w1 = self.ctx_rets(forks[0]);
-            let w2 = self.ctx_rets(forks[1]);
-            ExprRet::Fork(Box::new(w1), Box::new(w2))
+            assert!(forks.len() % 2 == 0);
+            ExprRet::Multi(
+                forks.chunks(2).map(|fork_pairs| {
+                    let w1 = self.ctx_rets(fork_pairs[0]);
+                    let w2 = self.ctx_rets(fork_pairs[1]);
+                    ExprRet::Fork(Box::new(w1), Box::new(w2))
+                }).collect()
+            )
         } else {
             let rets = ctx
                 .underlying(self)
@@ -745,6 +759,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_ctx: ContextNode,
         func_node: FunctionNode,
         mod_state: ModifierState,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         let mod_node = func_node.modifiers(self)[mod_state.num];
         let mod_ctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
@@ -825,6 +840,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             mod_ctx,
             mod_node,
             renamed_inputs,
+            func_call_str,
         )
     }
 
@@ -847,6 +863,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             modifier_state.parent_ctx,
             modifier_state.parent_fn,
             modifier_state.renamed_inputs,
+            None
         )
     }
 

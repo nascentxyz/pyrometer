@@ -110,9 +110,9 @@ pub trait GraphLike {
             .add_edge(from_node.into(), to_node.into(), edge.into());
     }
 
-    fn func_cluster_str(
+    fn cluster_str(
         &self,
-        func_node: FunctionNode,
+        node: NodeIdx,
         cluster_num: usize,
         handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
         handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
@@ -132,44 +132,118 @@ pub trait GraphLike {
         );
 
         let g = &G { graph: &new_graph };
-        let children = g.children(func_node.0.into());
-        let children_edges = g.children_edges(func_node.0.into());
+        let children = g.children(node);
+        let children_edges = g.children_edges(node);
+        let mut cn = cluster_num + 1;
+        let child_node_str = children
+            .iter()
+            .map(|child| {
+                { handled_nodes.lock().unwrap().insert(*child); }
+                let post_str = match self.node(*child) {
+                    Node::Context(_) => {
+                        cn += 2;
+                        self.cluster_str(*child, cn, handled_nodes.clone(), handled_edges.clone())
+                    },
+                    _ => "".to_string()
+                };
+
+                format!(
+                    "        {} [label = \"{}\", color = \"{}\"]\n{}\n",
+                    petgraph::graph::GraphIndex::index(child),
+                    as_dot_str(*child, g).replace('\"', "\'"),
+                    self.node(*child).dot_str_color(),
+                    post_str
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        let edge_str = children_edges
+            .iter()
+            .filter(|(_, _, _, idx)| { !handled_edges.lock().unwrap().contains(idx) })
+            .map(|(from, to, edge, idx)| {
+                handled_edges.lock().unwrap().insert(*idx);
+                let from = petgraph::graph::GraphIndex::index(from);
+                let to = petgraph::graph::GraphIndex::index(to);
+                format!("        {from:} -> {to:} [label = \"{edge:?}\"]\n",)
+            })
+            .collect::<Vec<_>>()
+            .join("");
         format!(
             "    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
             cluster_num,
-            "        bgcolor=\"#545e87\"",
+            if cluster_num % 2 == 0 { "        bgcolor=\"#545e87\"" } else {  "        bgcolor=\"#1a1b26\"" },
             format!(
                 "        {} [label = \"{}\", color = \"{}\"]\n",
-                func_node.0,
-                as_dot_str(func_node.0.into(), g).replace('\"', "\'"),
-                self.node(NodeIdx::from(func_node.0)).dot_str_color()
+                node.index(),
+                as_dot_str(node, g).replace('\"', "\'"),
+                self.node(node).dot_str_color()
             ),
-            children
-                .iter()
-                .map(|child| {
-                    handled_nodes.lock().unwrap().insert(*child);
-                    format!(
-                        "        {} [label = \"{}\", color = \"{}\"]\n",
-                        petgraph::graph::GraphIndex::index(child),
-                        as_dot_str(*child, g).replace('\"', "\'"),
-                        self.node(*child).dot_str_color()
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join(""),
-            children_edges
-                .iter()
-                .filter(|(_, _, _, idx)| { !handled_edges.lock().unwrap().contains(idx) })
-                .map(|(from, to, edge, idx)| {
-                    handled_edges.lock().unwrap().insert(*idx);
-                    let from = petgraph::graph::GraphIndex::index(from);
-                    let to = petgraph::graph::GraphIndex::index(to);
-                    format!("        {from:} -> {to:} [label = \"{edge:?}\"]\n",)
-                })
-                .collect::<Vec<_>>()
-                .join(""),
+            child_node_str,
+            edge_str,
         )
     }
+
+    // fn ctx_cluster_str(
+    //     &self,
+    //     ctx_node: ContextNode,
+    //     cluster_num: usize,
+    //     handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
+    //     handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
+    // ) -> String {
+    //     let new_graph = self.graph().filter_map(
+    //         |_idx, node| match node {
+    //             Node::ContextVar(_cvar) => {
+    //                 // if !cvar.is_symbolic {
+    //                 //     None
+    //                 // } else {
+    //                 Some(node.clone())
+    //                 // }
+    //             }
+    //             _ => Some(node.clone()),
+    //         },
+    //         |_idx, edge| Some(*edge),
+    //     );
+
+    //     let g = &G { graph: &new_graph };
+    //     let children = g.children(ctx_node.0.into());
+    //     let children_edges = g.children_edges(ctx_node.0.into());
+    //     format!(
+    //         "    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
+    //         cluster_num,
+    //         if cluster_num % 2 == 0 { "        bgcolor=\"#545e87\"" } else {  "        bgcolor=\"#1a1b26\"" },
+    //         format!(
+    //             "        {} [label = \"{}\", color = \"{}\"]\n",
+    //             func_node.0,
+    //             as_dot_str(func_node.0.into(), g).replace('\"', "\'"),
+    //             self.node(NodeIdx::from(func_node.0)).dot_str_color()
+    //         ),
+    //         children
+    //             .iter()
+    //             .map(|child| {
+    //                 handled_nodes.lock().unwrap().insert(*child);
+    //                 format!(
+    //                     "        {} [label = \"{}\", color = \"{}\"]\n",
+    //                     petgraph::graph::GraphIndex::index(child),
+    //                     as_dot_str(*child, g).replace('\"', "\'"),
+    //                     self.node(*child).dot_str_color()
+    //                 )
+    //             })
+    //             .collect::<Vec<_>>()
+    //             .join(""),
+    //         children_edges
+    //             .iter()
+    //             .filter(|(_, _, _, idx)| { !handled_edges.lock().unwrap().contains(idx) })
+    //             .map(|(from, to, edge, idx)| {
+    //                 handled_edges.lock().unwrap().insert(*idx);
+    //                 let from = petgraph::graph::GraphIndex::index(from);
+    //                 let to = petgraph::graph::GraphIndex::index(to);
+    //                 format!("        {from:} -> {to:} [label = \"{edge:?}\"]\n",)
+    //             })
+    //             .collect::<Vec<_>>()
+    //             .join(""),
+    //     )
+    // }
 
     fn dot_str(&self) -> String
     where
@@ -195,9 +269,9 @@ pub trait GraphLike {
                 if !handled_nodes.lock().unwrap().contains(node) {
                     match self.node(*node) {
                         Node::Function(_) => {
-                            cluster_num += 1;
-                            Some(self.func_cluster_str(
-                                FunctionNode::from(*node),
+                            cluster_num += 2;
+                            Some(self.cluster_str(
+                                *node,
                                 cluster_num,
                                 handled_nodes.clone(),
                                 handled_edges.clone(),
