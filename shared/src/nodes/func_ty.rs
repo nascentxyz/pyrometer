@@ -417,7 +417,8 @@ impl FunctionParamNode {
     }
 
     pub fn ty_str(&self, analyzer: &'_ impl GraphLike) -> String {
-        let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).ty).expect("Non-typeable as type");
+        let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).ty)
+            .expect("Non-typeable as type");
         var_ty.as_dot_str(analyzer)
     }
 

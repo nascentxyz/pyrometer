@@ -1,10 +1,10 @@
-use std::ffi::OsString;
-use std::collections::BTreeSet;
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::pt::Import;
+use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::path::Path;
 
 use solang_parser::pt::{
@@ -388,7 +388,7 @@ impl Analyzer {
                 let canonical = fs::canonicalize(&remapped).unwrap();
                 let canonical_str_path = canonical.as_os_str();
                 if self.imported_srcs.contains(canonical_str_path) {
-                    return vec![]
+                    return vec![];
                 }
                 self.imported_srcs.insert(canonical_str_path.into());
 
@@ -427,12 +427,10 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                
-
                 let canonical = fs::canonicalize(&remapped).unwrap();
                 let canonical_str_path = canonical.as_os_str();
                 if self.imported_srcs.contains(canonical_str_path) {
-                    return vec![]
+                    return vec![];
                 }
                 self.imported_srcs.insert(canonical_str_path.into());
 

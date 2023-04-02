@@ -1,7 +1,7 @@
 use crate::as_dot_str;
 use crate::range::Range;
 use crate::BlockNode;
-use crate::FunctionNode;
+
 use crate::MsgNode;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -138,13 +138,15 @@ pub trait GraphLike {
         let child_node_str = children
             .iter()
             .map(|child| {
-                { handled_nodes.lock().unwrap().insert(*child); }
+                {
+                    handled_nodes.lock().unwrap().insert(*child);
+                }
                 let post_str = match self.node(*child) {
                     Node::Context(_) => {
                         cn += 2;
                         self.cluster_str(*child, cn, handled_nodes.clone(), handled_edges.clone())
-                    },
-                    _ => "".to_string()
+                    }
+                    _ => "".to_string(),
                 };
 
                 format!(
@@ -160,7 +162,7 @@ pub trait GraphLike {
 
         let edge_str = children_edges
             .iter()
-            .filter(|(_, _, _, idx)| { !handled_edges.lock().unwrap().contains(idx) })
+            .filter(|(_, _, _, idx)| !handled_edges.lock().unwrap().contains(idx))
             .map(|(from, to, edge, idx)| {
                 handled_edges.lock().unwrap().insert(*idx);
                 let from = petgraph::graph::GraphIndex::index(from);
@@ -172,7 +174,11 @@ pub trait GraphLike {
         format!(
             "    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
             cluster_num,
-            if cluster_num % 2 == 0 { "        bgcolor=\"#545e87\"" } else {  "        bgcolor=\"#1a1b26\"" },
+            if cluster_num % 2 == 0 {
+                "        bgcolor=\"#545e87\""
+            } else {
+                "        bgcolor=\"#1a1b26\""
+            },
             format!(
                 "        {} [label = \"{}\", color = \"{}\"]\n",
                 node.index(),

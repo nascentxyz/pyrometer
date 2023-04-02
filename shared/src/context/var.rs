@@ -1016,7 +1016,11 @@ impl ContextVar {
         }
     }
 
-    pub fn new_from_func_ret(ctx: ContextNode, analyzer: &mut (impl GraphLike + AnalyzerLike), ret: FunctionReturn) -> Option<Self> {
+    pub fn new_from_func_ret(
+        ctx: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        ret: FunctionReturn,
+    ) -> Option<Self> {
         let (is_tmp, name) = if let Some(name) = ret.name {
             (false, name.name)
         } else {

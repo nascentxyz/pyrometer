@@ -62,7 +62,17 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 };
 
                 let inputs = ExprRet::Multi(inputs);
-                let func_str = format!("{}.{}({})", ContextVarNode::from(member).display_name(self), ident, inputs.as_flat_vec().iter().map(|cnode| ContextVarNode::from(*cnode).display_name(self)).collect::<Vec<_>>().join(", "));
+                let func_str = format!(
+                    "{}.{}({})",
+                    ContextVarNode::from(member).display_name(self),
+                    ident,
+                    inputs
+                        .as_flat_vec()
+                        .iter()
+                        .map(|cnode| ContextVarNode::from(*cnode).display_name(self))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
                 if !inputs.has_literal() {
                     // TODO: handle implicit upcast
                     let as_input_str = inputs.try_as_func_input_str(self);
@@ -140,7 +150,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                             }
                         })
                         .collect();
-
 
                     if let Some(func) =
                         self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs[..])
@@ -532,7 +541,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     vec![ContextVarNode::from(input_var).latest_version(self)],
                     params,
                     None,
-                    func_call_str
+                    func_call_str,
                 )
             }
             ExprRet::Multi(ref inputs) => {
@@ -547,7 +556,16 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                                 ContextVarNode::from(var).latest_version(self)
                             })
                             .collect();
-                        self.func_call_inner(false, ctx, func, loc, input_vars, params, None, func_call_str)
+                        self.func_call_inner(
+                            false,
+                            ctx,
+                            func,
+                            loc,
+                            input_vars,
+                            params,
+                            None,
+                            func_call_str,
+                        )
                     } else {
                         panic!(
                             "input has fork - need to flatten, {:?}, {:?}",
@@ -663,7 +681,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate, func_call_str)
             } else {
                 // out of modifiers, execute the actual function call
-                self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs, func_call_str)
+                self.execute_call_inner(
+                    loc,
+                    ctx,
+                    callee_ctx,
+                    func_node,
+                    renamed_inputs,
+                    func_call_str,
+                )
             }
         } else if !mods.is_empty() {
             // we have modifiers and havent executed them, start the process of executing them
@@ -671,7 +696,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             self.call_modifier_for_fn(loc, callee_ctx, func_node, state, func_call_str)
         } else {
             // no modifiers, just execute the function
-            self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs, func_call_str)
+            self.execute_call_inner(
+                loc,
+                ctx,
+                callee_ctx,
+                func_node,
+                renamed_inputs,
+                func_call_str,
+            )
         }
     }
 
@@ -713,7 +745,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     .iter()
                     .map(|ret| {
                         let underlying = ret.underlying(self);
-                        let mut var = ContextVar::new_from_func_ret(callee_ctx, self, underlying.clone()).expect("No type for return variable?");
+                        let mut var =
+                            ContextVar::new_from_func_ret(callee_ctx, self, underlying.clone())
+                                .expect("No type for return variable?");
                         if let Some(func_call) = &func_call_str {
                             var.name = format!("{}_{}", func_call, callee_ctx.new_tmp(self));
                             var.display_name = func_call.to_string();
@@ -733,11 +767,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         if !forks.is_empty() {
             assert!(forks.len() % 2 == 0);
             ExprRet::Multi(
-                forks.chunks(2).map(|fork_pairs| {
-                    let w1 = self.ctx_rets(fork_pairs[0]);
-                    let w2 = self.ctx_rets(fork_pairs[1]);
-                    ExprRet::Fork(Box::new(w1), Box::new(w2))
-                }).collect()
+                forks
+                    .chunks(2)
+                    .map(|fork_pairs| {
+                        let w1 = self.ctx_rets(fork_pairs[0]);
+                        let w2 = self.ctx_rets(fork_pairs[1]);
+                        ExprRet::Fork(Box::new(w1), Box::new(w2))
+                    })
+                    .collect(),
             )
         } else {
             let rets = ctx
@@ -863,7 +900,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             modifier_state.parent_ctx,
             modifier_state.parent_fn,
             modifier_state.renamed_inputs,
-            None
+            None,
         )
     }
 
