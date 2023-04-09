@@ -1,6 +1,4 @@
-use crate::context::exprs::Array;
-use crate::context::exprs::MemberAccess;
-use crate::context::exprs::Require;
+use crate::context::func_call::{intrinsic_call::IntrinsicFuncCaller, internal_call::InternalFuncCaller, namespaced_call::NameSpaceFuncCaller};
 use crate::context::ContextBuilder;
 use crate::ExprRet;
 use shared::analyzer::AsDotStr;
@@ -8,18 +6,41 @@ use shared::analyzer::GraphLike;
 use shared::context::*;
 use std::collections::BTreeMap;
 
-use shared::range::elem_ty::Dynamic;
-
 use shared::range::Range;
-use shared::range::{elem_ty::Elem, SolcRange};
-use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation};
+use shared::range::{elem_ty::Elem};
+use solang_parser::pt::{Expression, Loc, StorageLocation, NamedArgument};
 
 use crate::VarType;
 
 use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
 
+pub mod namespaced_call;
+pub mod internal_call;
+pub mod intrinsic_call;
+
 impl<T> FuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn named_fn_call_expr(
+        &mut self,
+        ctx: ContextNode,
+        loc: &Loc,
+        func_expr: &Expression,
+        input_exprs: &[NamedArgument],
+    ) -> ExprRet {
+        use solang_parser::pt::Expression::*;
+        match func_expr {
+            MemberAccess(loc, member_expr, ident) => {
+                self.call_name_spaced_named_func(ctx, loc, member_expr, ident, input_exprs)   
+            }
+            Variable(ident) => {
+                self.call_internal_named_func(ctx, loc, ident, input_exprs)
+            }
+            e => {
+                panic!("Cannot call intrinsic functions with named arguments. Call: {e:?}")
+            }
+        }
+    }
     #[tracing::instrument(level = "trace", skip_all)]
     fn fn_call_expr(
         &mut self,
@@ -31,195 +52,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                if let Variable(Identifier { name, .. }) = &**member_expr {
-                    if name == "abi" {
-                        let func_name = format!("abi.{}", ident.name);
-                        let as_fn = self
-                            .builtin_fns()
-                            .get(&func_name)
-                            .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
-                        let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
-                        return self.intrinsic_func_call(loc, input_exprs, fn_node.into(), ctx);
-                    }
-                }
-                let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
-
-                let inputs = match ContextVarNode::from(member).underlying(self).ty {
-                    VarType::User(TypeNode::Contract(_)) => input_exprs
-                        .iter()
-                        .map(|expr| self.parse_ctx_expr(expr, ctx))
-                        .collect::<Vec<_>>(),
-                    _ => {
-                        let mut inputs = vec![ExprRet::Single((mem_ctx, member))];
-                        inputs.extend(
-                            input_exprs
-                                .iter()
-                                .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                .collect::<Vec<_>>(),
-                        );
-                        inputs
-                    }
-                };
-
-                let inputs = ExprRet::Multi(inputs);
-                let func_str = format!(
-                    "{}.{}({})",
-                    ContextVarNode::from(member).display_name(self),
-                    ident,
-                    inputs
-                        .as_flat_vec()
-                        .iter()
-                        .map(|cnode| ContextVarNode::from(*cnode).display_name(self))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-                if !inputs.has_literal() {
-                    // TODO: handle implicit upcast
-                    let as_input_str = inputs.try_as_func_input_str(self);
-
-                    let (_func_ctx, func_idx) = match self.parse_ctx_expr(
-                        &MemberAccess(
-                            *loc,
-                            member_expr.clone(),
-                            Identifier {
-                                loc: ident.loc,
-                                name: format!("{}{}", ident.name, as_input_str),
-                            },
-                        ),
-                        ctx,
-                    ) {
-                        ExprRet::Single((ctx, idx)) => (ctx, idx),
-                        m @ ExprRet::Multi(_) => m.expect_single(),
-                        ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                        e => todo!("got fork in func call: {:?}", e),
-                    };
-
-                    if matches!(self.node(func_idx), Node::Function(..)) {
-                        // intrinsic
-                        let mut inputs: Vec<Expression> = vec![*member_expr.clone()];
-                        inputs.extend(input_exprs.to_vec());
-                        self.intrinsic_func_call(loc, &inputs, func_idx, ctx)
-                    } else {
-                        self.func_call(
-                            ctx,
-                            *loc,
-                            &inputs,
-                            ContextVarNode::from(func_idx)
-                                .ty(self)
-                                .func_node(self)
-                                .unwrap_or_else(|| panic!("expected a function node, was: {:?}", self.node(func_idx))),
-                            Some(func_str),
-                        )
-                    }
-                } else {
-                    // we need to disambiguate the literals
-                    let ty = &ContextVarNode::from(member).underlying(self).ty;
-                    let possible_funcs: Vec<FunctionNode> = match ty {
-                        VarType::User(TypeNode::Contract(con_node)) => con_node.funcs(self),
-                        VarType::BuiltIn(bn, _) => self
-                            .possible_library_funcs(ctx, bn.0.into())
-                            .into_iter()
-                            .collect::<Vec<_>>(),
-                        VarType::Concrete(cnode) => {
-                            let b = cnode.underlying(self).as_builtin();
-                            let bn = self.builtin_or_add(b);
-                            self.possible_library_funcs(ctx, bn)
-                                .into_iter()
-                                .collect::<Vec<_>>()
-                        }
-                        VarType::User(TypeNode::Struct(sn)) => self
-                            .possible_library_funcs(ctx, sn.0.into())
-                            .into_iter()
-                            .collect::<Vec<_>>(),
-                        VarType::User(TypeNode::Enum(en)) => self
-                            .possible_library_funcs(ctx, en.0.into())
-                            .into_iter()
-                            .collect::<Vec<_>>(),
-                        VarType::User(TypeNode::Func(_)) => todo!(),
-                    };
-                    let lits = input_exprs
-                        .iter()
-                        .map(|expr| {
-                            match expr {
-                                Negate(_, expr) => {
-                                    // negative number potentially
-                                    matches!(**expr, NumberLiteral(..) | HexLiteral(..))
-                                }
-                                NumberLiteral(..) | HexLiteral(..) => true,
-                                _ => false,
-                            }
-                        })
-                        .collect();
-
-                    if let Some(func) =
-                        self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs[..])
-                    {
-                        self.setup_fn_call(loc, &inputs, func.into(), ctx, Some(func_str))
-                    } else {
-                        panic!(
-                            "Could not disambiguate function call: {}, {:?}",
-                            ident.name, inputs
-                        )
-                    }
-                }
+                self.call_name_spaced_func(ctx, loc, member_expr, ident, input_exprs)   
             }
             Variable(ident) => {
-                // It is a function call, check if we have the ident in scope
-                let funcs = ctx.visible_funcs(self);
-                // filter down all funcs to those that match
-                let possible_funcs = funcs
-                    .iter()
-                    .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
-                    .copied()
-                    .collect::<Vec<_>>();
-
-                if possible_funcs.is_empty() {
-                    // this is a builtin, cast, or unknown function?
-                    let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
-                        ExprRet::Single((ctx, idx)) => (ctx, idx),
-                        m @ ExprRet::Multi(_) => m.expect_single(),
-                        ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                        e => todo!("got fork in func call: {:?}", e),
-                    };
-                    self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
-                } else if possible_funcs.len() == 1 {
-                    let inputs = ExprRet::Multi(
-                        input_exprs
-                            .iter()
-                            .map(|expr| self.parse_ctx_expr(expr, ctx))
-                            .collect(),
-                    );
-                    self.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
-                } else {
-                    // this is the annoying case due to function overloading & type inference on number literals
-                    let lits = input_exprs
-                        .iter()
-                        .map(|expr| {
-                            match expr {
-                                Negate(_, expr) => {
-                                    // negative number potentially
-                                    matches!(**expr, NumberLiteral(..) | HexLiteral(..))
-                                }
-                                NumberLiteral(..) | HexLiteral(..) => true,
-                                _ => false,
-                            }
-                        })
-                        .collect();
-                    let inputs = ExprRet::Multi(
-                        input_exprs
-                            .iter()
-                            .map(|expr| self.parse_ctx_expr(expr, ctx))
-                            .collect(),
-                    );
-
-                    if let Some(func) =
-                        self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
-                    {
-                        self.setup_fn_call(loc, &inputs, func.into(), ctx, None)
-                    } else {
-                        ExprRet::CtxKilled
-                    }
-                }
+                self.call_internal_func(ctx, loc, ident, func_expr, input_exprs)
             }
             _ => {
                 let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
@@ -334,231 +170,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             self.func_call(ctx, *loc, inputs, func_node, func_call_str)
         } else {
             unreachable!()
-        }
-    }
-
-    /// Calls an intrinsic/builtin function call (casts, require, etc.)
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn intrinsic_func_call(
-        &mut self,
-        loc: &Loc,
-        input_exprs: &[Expression],
-        func_idx: NodeIdx,
-        ctx: ContextNode,
-    ) -> ExprRet {
-        match self.node(func_idx) {
-            Node::Function(underlying) => {
-                if let Some(func_name) = &underlying.name {
-                    match &*func_name.name {
-                        "abi.decode" => {
-                            println!("{:#?}", input_exprs);
-                            // we skip the first because that is what is being decoded.
-                            // TODO: check if we have a concrete bytes value 
-                            let ret = self.parse_ctx_expr(&input_exprs[1], ctx);
-                            fn match_decode(loc: &Loc, ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> ExprRet {
-                                match ret {
-                                    ExprRet::Single((ctx, expect_builtin)) => {
-                                        match analyzer.node(expect_builtin) {
-                                            Node::Builtin(_) => {
-                                                let var = ContextVar::new_from_builtin(*loc, expect_builtin.into(), analyzer);
-                                                let node = analyzer.add_node(Node::ContextVar(var));
-                                                analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                                                ExprRet::Single((ctx, node))
-                                            }
-                                            Node::ContextVar(cvar) => {
-                                                let bn = analyzer.builtin_or_add(cvar.ty.as_builtin(analyzer)).into();
-                                                let var = ContextVar::new_from_builtin(*loc, bn, analyzer);
-                                                let node = analyzer.add_node(Node::ContextVar(var));
-                                                analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                                                ExprRet::Single((ctx, node))
-                                            }
-                                            e => todo!("Unhandled type in abi.decode: {e:?}")
-                                        }
-                                    }
-                                    ExprRet::Multi(inner) => {
-                                        ExprRet::Multi(inner.iter().map(|i| match_decode(loc, i.clone(), analyzer)).collect())
-                                    }
-                                    e => panic!("This is invalid solidity: {:?}", e)
-                                }
-                            }
-                            match_decode(loc, ret, self)
-                        }
-                        "abi.encode"
-                        | "abi.encodePacked"
-                        | "abi.encodeCall"
-                        | "abi.encodeWithSignature" => {
-                            // currently we dont support concrete abi encoding, TODO
-                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
-                            let node = self.add_node(Node::ContextVar(cvar));
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ExprRet::Single((ctx, node))
-                        }
-                        "delegatecall"
-                        | "staticcall"
-                        | "call" => {
-                            // TODO: try to be smarter based on the address input
-                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
-                            let node = self.add_node(Node::ContextVar(cvar));
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ExprRet::Single((ctx, node))
-                        }
-                        "require" | "assert" => {
-                            self.handle_require(input_exprs, ctx);
-                            ExprRet::Multi(vec![])
-                        }
-                        "type" => ExprRet::Single(
-                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single(),
-                        ),
-                        "push" => {
-                            let (arr_ctx, arr) =
-                                self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-                            let arr = ContextVarNode::from(arr).latest_version(self);
-                            // get length
-                            let len = self.tmp_length(arr, arr_ctx, *loc);
-
-                            let len_as_idx = len.as_tmp(*loc, ctx, self);
-                            // set length as index
-                            let index = self.index_into_array_inner(
-                                *loc,
-                                ExprRet::Single((arr_ctx, arr.latest_version(self).into())),
-                                ExprRet::Single((arr_ctx, len_as_idx.latest_version(self).into())),
-                            );
-                            // assign index to new_elem
-                            let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx);
-                            self.match_assign_sides(*loc, &index, &new_elem)
-                        }
-                        "keccak256" => {
-                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-                            let var = ContextVar::new_from_builtin(
-                                *loc,
-                                self.builtin_or_add(Builtin::Bytes(32)).into(),
-                                self,
-                            );
-                            let cvar = self.add_node(Node::ContextVar(var));
-                            ExprRet::Single((ctx, cvar))
-                        }
-                        "ecrecover" => {
-                            input_exprs.iter().for_each(|expr| {
-                                // we want to parse even though we dont need the variables here
-                                let _ = self.parse_ctx_expr(expr, ctx);
-                            });
-                            let var = ContextVar::new_from_builtin(
-                                *loc,
-                                self.builtin_or_add(Builtin::Address).into(),
-                                self,
-                            );
-                            let cvar = self.add_node(Node::ContextVar(var));
-                            ExprRet::Single((ctx, cvar))
-                        }
-                        e => todo!("builtin function: {:?}", e),
-                    }
-                } else {
-                    panic!("unnamed builtin?")
-                }
-            }
-            Node::Builtin(Builtin::Array(_)) => {
-                // create a new list
-                let (ctx, len_cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-                let ty = VarType::try_from_idx(self, func_idx);
-
-                let new_arr = ContextVar {
-                    loc: Some(*loc),
-                    name: format!("tmp_arr{}", ctx.new_tmp(self)),
-                    display_name: "arr".to_string(),
-                    storage: None,
-                    is_tmp: true,
-                    is_symbolic: false,
-                    tmp_of: None,
-                    ty: ty.expect("No type for node"),
-                };
-
-                let arr = ContextVarNode::from(self.add_node(Node::ContextVar(new_arr)));
-
-                let len_var = ContextVar {
-                    loc: Some(*loc),
-                    name: arr.name(self) + ".length",
-                    display_name: arr.display_name(self) + ".length",
-                    storage: None,
-                    is_tmp: true,
-                    tmp_of: None,
-                    is_symbolic: true,
-                    ty: ContextVarNode::from(len_cvar).underlying(self).ty.clone(),
-                };
-
-                let len_cvar = self.add_node(Node::ContextVar(len_var));
-                self.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
-                self.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
-                self.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess));
-
-                // update the length
-                if let Some(r) = arr.range(self) {
-                    let min = r.evaled_range_min(self);
-                    let max = r.evaled_range_max(self);
-
-                    if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
-                    }
-
-                    if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                    }
-                }
-
-                ExprRet::Single((ctx, arr.into()))
-            }
-            Node::Builtin(ty) => {
-                // it is a cast
-                let ty = ty.clone();
-                let (ctx, cvar) = match self.parse_ctx_expr(&input_exprs[0], ctx).flatten() {
-                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                    e => e.expect_single(),
-                };
-
-                let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), self);
-
-                new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
-
-                // cast the ranges
-                println!("{}: {:?}", ContextVarNode::from(cvar).display_name(self), ty);
-                if let Some(r) = ContextVarNode::from(cvar).range(self) {
-                    let curr_range = SolcRange::try_from_builtin(&ty).expect("No default range");
-                    new_var.set_range_min(self, r.range_min().cast(curr_range.range_min()));
-                    new_var.set_range_max(self, r.range_max().cast(curr_range.range_max()));
-                    // cast the range exclusions - TODO: verify this is correct
-                    let mut exclusions = r.range_exclusions();
-                    exclusions.iter_mut().for_each(|range| {
-                        *range = range.clone().cast(curr_range.range_min());
-                    });
-                    new_var.set_range_exclusions(self, exclusions);
-                } else {
-                    // todo!("unable to cast: {:?}, {ty:?}", self.node(cvar))
-                }
-                ExprRet::Single((ctx, new_var.into()))
-            }
-            Node::ContextVar(_c) => {
-                // its a user type
-                // TODO: figure out if we actually need to do anything?
-                let _inputs: Vec<_> = input_exprs
-                    .iter()
-                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                    .collect();
-
-                ExprRet::Single((ctx, func_idx))
-            }
-            Node::Contract(_) => {
-                // TODO: figure out if we need to do anything
-                let _inputs: Vec<_> = input_exprs
-                    .iter()
-                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                    .collect();
-
-                ExprRet::Single((ctx, func_idx))
-            }
-            e => todo!("{:?}", e),
         }
     }
 

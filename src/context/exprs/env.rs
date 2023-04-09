@@ -1,4 +1,4 @@
-use crate::context::func::FuncCaller;
+use crate::context::func_call::FuncCaller;
 use crate::{context::ContextNode, AnalyzerLike, ExprRet};
 use solang_parser::pt::Expression;
 

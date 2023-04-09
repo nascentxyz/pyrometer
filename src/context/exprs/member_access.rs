@@ -18,6 +18,51 @@ use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
+    fn visible_member_funcs(
+        &mut self,
+        ctx: ContextNode,
+        member_idx: NodeIdx
+    ) -> Vec<FunctionNode> {
+        match self.node(member_idx) {
+            Node::ContextVar(cvar) => match &cvar.ty {
+                VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
+                VarType::BuiltIn(bn, _) => self
+                    .possible_library_funcs(ctx, bn.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                VarType::Concrete(cnode) => {
+                    let b = cnode.underlying(self).as_builtin();
+                    let bn = self.builtin_or_add(b);
+                    self.possible_library_funcs(ctx, bn)
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                }
+                VarType::User(TypeNode::Struct(sn), _) => self
+                    .possible_library_funcs(ctx, sn.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                VarType::User(TypeNode::Enum(en), _) => self
+                    .possible_library_funcs(ctx, en.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                VarType::User(TypeNode::Func(func_node), _) => self
+                    .possible_library_funcs(ctx, func_node.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            }
+            Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
+            Node::Concrete(_)
+            | Node::Struct(_)
+            | Node::Function(_)
+            | Node::Enum(_)
+            | Node::Builtin(_) => self
+                .possible_library_funcs(ctx, member_idx)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            _ => todo!()
+        }
+    }
+
     /// Gets the array type
     #[tracing::instrument(level = "trace", skip_all)]
     fn member_access(
@@ -33,7 +78,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         let (_, member_idx) = self.parse_ctx_expr(member_expr, ctx).expect_single();
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
-                VarType::User(TypeNode::Struct(struct_node)) => {
+                VarType::User(TypeNode::Struct(struct_node), _) => {
                     let name = format!(
                         "{}.{}",
                         ContextVarNode::from(member_idx).name(self),
@@ -64,7 +109,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         return ret;
                     }
                 }
-                VarType::User(TypeNode::Contract(con_node)) => {
+                VarType::User(TypeNode::Contract(con_node), _) => {
                     // println!(
                     //     "funcs: {:?}, ident: {:?}",
                     //     con_node
@@ -107,7 +152,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
-                    return self.builin_member_access(
+                    return self.builtin_member_access(
                         loc,
                         ctx,
                         *bn,
@@ -458,7 +503,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             Node::Builtin(ref _b) => {
-                return self.builin_member_access(
+                return self.builtin_member_access(
                     loc,
                     ctx,
                     BuiltInNode::from(member_idx),
@@ -471,7 +516,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         ExprRet::Single((ctx, member_idx))
     }
 
-    fn builin_member_access(
+    fn builtin_member_access(
         &mut self,
         loc: Loc,
         ctx: ContextNode,
@@ -484,8 +529,31 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         } else {
             match node.underlying(self).clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                    // TODO: handle address(x).call/delegatecall, etc
-                    panic!("Unknown member access on address: {:?}", ident.name)
+                    println!("HERE \n\n");
+                    match &*ident.name {
+                        "delegatecall(address, bytes)" | "call(address, bytes)" | "staticcall(address, bytes)" => {
+                            // TODO: check if the address is known to be a certain type and the function signature is known
+                            // and call into the function
+                            let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
+                            let func = self.builtin_fns().get(builtin_name).unwrap();
+                            let (inputs, outputs) = self
+                                .builtin_fn_inputs()
+                                .get(builtin_name)
+                                .expect("builtin func but no inputs")
+                                .clone();
+                            let func_node = self.add_node(Node::Function(func.clone()));
+                            inputs.into_iter().for_each(|input| {
+                                let input_node = self.add_node(input);
+                                self.add_edge(input_node, func_node, Edge::FunctionParam);
+                            });
+                            outputs.into_iter().for_each(|output| {
+                                let output_node = self.add_node(output);
+                                self.add_edge(output_node, func_node, Edge::FunctionReturn);
+                            });
+                            ExprRet::Single((ctx, func_node))
+                        }
+                        _ => panic!("Unknown member access on address: {:?}", ident.name)
+                    }
                 }
                 Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),
                 Builtin::String => {
@@ -523,7 +591,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     let max = if size == 256 {
                         I256::MAX
                     } else {
-                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - 1.into()
+                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1)
                     };
                     match &*ident.name {
                         "max" => {

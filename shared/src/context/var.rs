@@ -1,3 +1,4 @@
+use crate::StructNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::Elem;
@@ -690,7 +691,25 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: true,
-            ty: VarType::User(TypeNode::Contract(contract_node)),
+            ty: VarType::User(TypeNode::Contract(contract_node), SolcRange::try_from_builtin(&Builtin::Address)),
+        }
+    }
+
+    pub fn new_from_struct(
+        loc: Loc,
+        struct_node: StructNode,
+        ctx: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Self {
+        ContextVar {
+            loc: Some(loc),
+            name: format!("tmp_struct_{}_{}", ctx.new_tmp(analyzer), struct_node.name(analyzer)),
+            display_name: struct_node.name(analyzer),
+            storage: Some(StorageLocation::Memory(Loc::Implicit)),
+            is_tmp: false,
+            tmp_of: None,
+            is_symbolic: true,
+            ty: VarType::User(TypeNode::Struct(struct_node), None),
         }
     }
 
@@ -709,6 +728,13 @@ impl ContextVar {
 
     pub fn fallback_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
         match &self.ty {
+            VarType::User(TypeNode::Contract(_), ref maybe_range) => {
+                if let Some(range) = maybe_range {
+                    Some(range.clone())
+                } else {
+                    SolcRange::try_from_builtin(&Builtin::Address)
+                }
+            }
             VarType::BuiltIn(bn, ref maybe_range) => {
                 if let Some(range) = maybe_range {
                     Some(range.clone())
@@ -724,7 +750,8 @@ impl ContextVar {
 
     pub fn set_range(&mut self, new_range: SolcRange) {
         match &mut self.ty {
-            VarType::BuiltIn(_, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 *maybe_range = Some(new_range);
             }
             VarType::Concrete(_) => {}
@@ -735,7 +762,8 @@ impl ContextVar {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
-            VarType::BuiltIn(_, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_min(new_min);
                 } else {
@@ -755,7 +783,8 @@ impl ContextVar {
         fallback_range: Option<SolcRange>,
     ) -> bool {
         match &mut self.ty {
-            VarType::BuiltIn(_, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_min(new_min);
                     true
@@ -773,7 +802,8 @@ impl ContextVar {
 
     pub fn set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
-            VarType::BuiltIn(_, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_max(new_max);
                 } else {
@@ -793,7 +823,8 @@ impl ContextVar {
         fallback_range: Option<SolcRange>,
     ) {
         match &mut self.ty {
-            VarType::BuiltIn(_, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_exclusions(new_exclusions);
                 } else {
@@ -813,7 +844,8 @@ impl ContextVar {
         fallback_range: Option<SolcRange>,
     ) -> bool {
         match &mut self.ty {
-            VarType::BuiltIn(_bn, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_max(new_max);
                     true
@@ -835,7 +867,8 @@ impl ContextVar {
         fallback_range: Option<SolcRange>,
     ) -> bool {
         match &mut self.ty {
-            VarType::BuiltIn(_bn, ref mut maybe_range) => {
+            VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_exclusions(new_exclusions);
                     true
@@ -967,7 +1000,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: false,
-            ty: VarType::User(TypeNode::Func(func)),
+            ty: VarType::User(TypeNode::Func(func), None),
         }
     }
 

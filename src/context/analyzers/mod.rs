@@ -16,7 +16,7 @@ impl<T> ContextAnalyzer for T where
 {
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct LocSpan(pub Loc);
 
 impl Default for LocSpan {

@@ -14,8 +14,10 @@ use petgraph::{visit::EdgeRef, Direction};
 use shared::{analyzer::AnalyzerLike, nodes::*, range::elem::RangeOp, Edge, Node, NodeIdx};
 use solang_parser::pt::{Expression, Loc, Statement};
 
-pub mod func;
-use func::*;
+// pub mod func;
+// use func::*;
+pub mod func_call;
+use func_call::*;
 
 pub mod loops;
 use loops::*;
@@ -36,6 +38,26 @@ pub enum ExprRet {
 }
 
 impl ExprRet {
+    pub fn debug_str(&self, analyzer: &impl GraphLike) -> String {
+        match self {
+            ExprRet::Single((_, inner)) | ExprRet::SingleLiteral((_, inner)) => {
+                match analyzer.node(*inner) {
+                    Node::ContextVar(_) => {
+                        ContextVarNode::from(*inner).display_name(analyzer).to_string()
+                    }
+                    e => format!("{:?}", e)
+                }
+            }
+            ExprRet::Multi(inner) => {
+                format!("[{}]", inner.iter().map(|i| i.debug_str(analyzer)).collect::<Vec<_>>().join(", "))
+            }
+            ExprRet::Fork(w1, w2) => {
+                format!("({} || {})", w1.debug_str(analyzer), w2.debug_str(analyzer))
+            }
+            ExprRet::CtxKilled => "CtxKilled".to_string(),
+        }
+    }
+    
     pub fn expect_single(&self) -> (ContextNode, NodeIdx) {
         match self {
             ExprRet::Single(inner) => *inner,
@@ -123,32 +145,36 @@ impl ExprRet {
                     ExprRet::Multi(inner.into_iter().map(|i| i.flatten()).collect())
                 }
             }
-            ExprRet::Fork(lhs, rhs) => match (&*lhs, &*rhs) {
-                (ExprRet::Multi(lhs_inner), ExprRet::Multi(rhs_inner)) => {
-                    match (lhs_inner.is_empty(), rhs_inner.is_empty()) {
-                        (true, true) => ExprRet::Multi(vec![]),
-                        (true, _) => rhs.flatten(),
-                        (_, true) => lhs.flatten(),
-                        (_, _) => ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten())),
+            ExprRet::Fork(lhs, rhs) => {
+                match (&*lhs, &*rhs) {
+                    (ExprRet::Multi(lhs_inner), ExprRet::Multi(rhs_inner)) => {
+                        match (lhs_inner.is_empty(), rhs_inner.is_empty()) {
+                            (true, true) => ExprRet::Multi(vec![]),
+                            (true, _) => rhs.flatten(),
+                            (_, true) => lhs.flatten(),
+                            (_, _) => ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten())),
+                        }
                     }
-                }
-                (ExprRet::Multi(lhs_inner), _) => {
-                    if lhs_inner.is_empty() {
-                        rhs.flatten()
-                    } else {
+                    (ExprRet::Multi(lhs_inner), _) => {
+                        if lhs_inner.is_empty() {
+                            rhs.flatten()
+                        } else {
+                            ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten()))
+                        }
+                    }
+                    (_, ExprRet::Multi(rhs_inner)) => {
+                        if rhs_inner.is_empty() {
+                            lhs.flatten()
+                        } else {
+                            ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten()))
+                        }
+                    }
+                    (_, _) => {
                         ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten()))
                     }
                 }
-                (_, ExprRet::Multi(rhs_inner)) => {
-                    if rhs_inner.is_empty() {
-                        lhs.flatten()
-                    } else {
-                        ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten()))
-                    }
-                }
-                (_, _) => ExprRet::Fork(Box::new(lhs.flatten()), Box::new(rhs.flatten())),
-            },
-            _ => self,
+            }
+            _ => self
         }
     }
 }
@@ -415,9 +441,8 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     if let Some(parent) = parent_ctx {
                         let forks = ContextNode::from(parent.into()).live_forks(self);
                         if forks.is_empty() {
-                            let paths = self
-                                .parse_ctx_expr(ret_expr, ContextNode::from(parent.into()))
-                                .flatten();
+                            let paths =
+                                self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into())).flatten();
                             self.return_match(loc, &paths);
                         } else {
                             forks.into_iter().for_each(|parent| {
@@ -468,9 +493,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                     }
                 }
             }
-            RevertNamedArgs(_loc, _maybe_err_path, _named_args) => {
-                todo!("revert named args")
-            }
+            RevertNamedArgs(_loc, _maybe_err_path, _named_args) => { todo!("revert named args")}
             Emit(_loc, _emit_expr) => {}
             Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
             Error(_loc) => {}
@@ -680,7 +703,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> ExprRet {
         use Expression::*;
-        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
+        println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
@@ -772,7 +795,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             AssignOr(loc, lhs_expr, rhs_expr) => {
                 self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, true)
             }
-            Complement(_loc, _expr) => todo!("Complement"),
+            BitwiseNot(loc, lhs_expr) => {
+                todo!("Bitwise not")
+                // self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitNot, false)
+            }
 
             // assign
             Assign(loc, lhs_expr, rhs_expr) => self.assign_exprs(*loc, lhs_expr, rhs_expr, ctx),
@@ -800,7 +826,9 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
 
             // Function calls
             FunctionCallBlock(_loc, _func_expr, _input_exprs) => todo!("Function call block"),
-            NamedFunctionCall(_loc, _func_expr, _input_exprs) => todo!("Named function call"),
+            NamedFunctionCall(loc, func_expr, input_args) => {
+                self.named_fn_call_expr(ctx, loc, func_expr, input_args)
+            }
             FunctionCall(loc, func_expr, input_exprs) => {
                 self.fn_call_expr(ctx, loc, func_expr, input_exprs)
             }
@@ -1010,21 +1038,25 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> ExprRet {
+
         // println!("rhs_range: {:?}", rhs_cvar.range(self));
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
         );
 
+
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
         if !lhs_cvar.ty_eq(&rhs_cvar, self) {
+            let cast_to_min = lhs_cvar.range_min(self).unwrap_or_else(|| panic!("No range during cast? {:?}", lhs_cvar.underlying(self)));
+            let cast_to_max = lhs_cvar.range_max(self).unwrap_or_else(|| panic!("No range during cast? {:?}", lhs_cvar.underlying(self)));
             let _ = new_lhs.try_set_range_min(
                 self,
-                new_lower_bound.cast(lhs_cvar.range_min(self).expect("No range during cast?")),
+                new_lower_bound.cast(cast_to_min),
             );
             let _ = new_lhs.try_set_range_max(
                 self,
-                new_upper_bound.cast(lhs_cvar.range_max(self).expect("No range during cast?")),
+                new_upper_bound.cast(cast_to_max),
             );
         } else {
             let _ = new_lhs.try_set_range_min(self, new_lower_bound);

@@ -1,3 +1,4 @@
+use crate::StructNode;
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
 use crate::ContractNode;
@@ -196,6 +197,13 @@ impl Context {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CtxTree {
+    pub node: ContextNode,
+    pub lhs: Option<Box<CtxTree>>,
+    pub rhs: Option<Box<CtxTree>>,
+}
+
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 /// A wrapper of a node index that corresponds to a [`Context`]
 pub struct ContextNode(pub usize);
@@ -203,6 +211,15 @@ impl ContextNode {
     /// The path of the underlying context
     pub fn path(&self, analyzer: &impl GraphLike) -> String {
         self.underlying(analyzer).path.clone()
+    }
+
+    pub fn into_ctx_tree(&self, analyzer: &(impl GraphLike + AnalyzerLike)) -> CtxTree {
+        let forks = self.forks(analyzer);
+        CtxTree {
+            node: *self,
+            lhs: if !forks.is_empty() { Some(Box::new(forks[0].into_ctx_tree(analyzer))) } else { None },
+            rhs: if !forks.is_empty() { Some(Box::new(forks[1].into_ctx_tree(analyzer))) } else { None },
+        }
     }
 
     /// *All* subcontexts (including subcontexts of subcontexts, recursively)
@@ -248,6 +265,17 @@ impl ContextNode {
             .search_children(source, &Edge::Func)
             .into_iter()
             .map(FunctionNode::from)
+            .collect::<Vec<_>>()
+    }
+
+    /// Gets all visible structs
+    pub fn visible_structs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<StructNode> {
+        // TODO: filter privates
+        let source = self.associated_source(analyzer);
+        analyzer
+            .search_children(source, &Edge::Struct)
+            .into_iter()
+            .map(StructNode::from)
             .collect::<Vec<_>>()
     }
 

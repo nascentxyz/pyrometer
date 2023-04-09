@@ -177,7 +177,7 @@ impl SolcRange {
                     ))
                 } else {
                     let max: I256 =
-                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - 1.into();
+                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1);
                     let min = max * I256::from(-1i32);
                     Some(SolcRange::new(
                         Elem::Concrete(RangeConcrete {
@@ -203,7 +203,7 @@ impl SolcRange {
                 }),
                 vec![],
             )),
-            Builtin::Address => Some(SolcRange::new(
+            Builtin::Address | Builtin::Payable | Builtin::AddressPayable => Some(SolcRange::new(
                 Elem::Concrete(RangeConcrete {
                     val: Concrete::Address(Address::from_slice(&[0x00; 20])),
                     loc: Loc::Implicit,

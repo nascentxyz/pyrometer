@@ -22,6 +22,7 @@ mod builtin_fns;
 pub mod context;
 // pub mod range;
 use context::*;
+pub use shared;
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
@@ -385,7 +386,7 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                let canonical = fs::canonicalize(&remapped).unwrap();
+                let canonical = fs::canonicalize(&remapped).unwrap_or_else(|_| panic!("Could not find file: {remapped:?}"));
                 let canonical_str_path = canonical.as_os_str();
                 if self.imported_srcs.contains(canonical_str_path) {
                     return vec![];
@@ -592,7 +593,7 @@ impl Analyzer {
                     }
                 });
             }
-            UsingList::Error(..) => todo!(),
+            UsingList::Error => todo!(),
         }
     }
 

@@ -1,3 +1,5 @@
+use crate::analyzers::LocSpan;
+use solang_parser::pt::Loc;
 use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
 use shared::{
     analyzer::{AnalyzerLike, Search},
@@ -43,7 +45,310 @@ impl Default for BoundAnalysis {
 static MIN_COLOR: Color = Color::Fixed(111);
 static MAX_COLOR: Color = Color::Fixed(106);
 
+#[derive(PartialEq, Eq, Clone)]
+pub struct AnalysisItem {
+    pub init: bool,
+    pub order: i32,
+    pub name: String,
+    pub loc: LocStrSpan,
+    pub storage: Option<StorageLocation>,
+    pub ctx: ContextNode,
+    pub ctx_conditionals: Vec<(String, Vec<RangePart>)>,
+    pub parts: Vec<RangePart>,
+    pub unsat: bool,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub struct StrippedAnalysisItem {
+    pub init: bool,
+    pub order: i32,
+    pub name: String,
+    pub loc: LocSpan,
+    // pub storage: Option<StorageLocation>,
+    pub ctx: ContextNode,
+    pub ctx_conditionals: Vec<(String, Vec<RangePart>)>,
+    pub parts: Vec<RangePart>,
+    pub unsat: bool,
+}
+
+impl From<AnalysisItem> for StrippedAnalysisItem {
+    fn from(ai: AnalysisItem) -> Self {
+        Self {
+            init: ai.init,
+            order: ai.order,
+            name: ai.name,
+            loc: LocSpan(ai.loc.1),
+            // storage: ai.storage,
+            ctx: ai.ctx,
+            ctx_conditionals: ai.ctx_conditionals,
+            parts: ai.parts,
+            unsat: ai.unsat,
+        }
+    }
+}
+
+impl PartialOrd for StrippedAnalysisItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for StrippedAnalysisItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.loc.0.cmp(&other.loc.0)
+    }
+}
+
+#[derive(Default, Clone, Debug, Hash)]
+pub struct OrderedAnalysis {
+    pub analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>>
+}
+
+impl OrderedAnalysis {
+    pub fn from_bound_analysis(ba: BoundAnalysis, analyzer: &(impl AnalyzerLike + Search)) -> Self {
+        let mut analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>> = Default::default();
+        if let Some(init) = ba.init_item(analyzer) {
+            let source: usize = *LocSpan(init.loc.1).source();
+            let mut set = BTreeSet::new();
+            set.insert(init.into());
+            analyses.insert(source, set);
+        }
+        ba.bound_changes
+            .iter()
+            .enumerate()
+            .for_each(|(i, bound_change)| {
+                let (parts, unsat) = ba.range_parts(analyzer, &bound_change.1);
+                let item = StrippedAnalysisItem {
+                    init: false,
+                    name: ba.var_display_name.clone(),
+                    loc: LocSpan(bound_change.0.1),
+                    order: i as i32,
+                    // storage: ba.storage.clone(),
+                    ctx: ba.ctx,
+                    ctx_conditionals: ba.conditionals(analyzer),
+                    parts,
+                    unsat
+                };
+
+                let entry = analyses.entry(*LocSpan(bound_change.0.1).source()).or_default();
+                entry.insert(item);
+            });
+        Self { analyses }
+    }
+
+    pub fn from_func_analysis(fvba: FunctionVarsBoundAnalysis, analyzer: &(impl AnalyzerLike + Search)) -> Self {
+        let mut analyses = Self::default();
+        fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
+            bas.iter().for_each(|ba| {
+                analyses.extend(Self::from_bound_analysis(ba.clone(), analyzer));
+            })
+        });
+        analyses
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        other.analyses.into_iter().for_each(|(key, set)| {
+            let entry = self.analyses.entry(key).or_default();
+            entry.extend(set);
+        });
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
+pub enum RangePart {
+    Equal(String),
+    Inclusion(String, String),
+    Exclusion(Vec<RangePart>),
+}
+
+impl RangePart {
+    pub fn to_cli_string(self) -> String {
+        match self {
+            RangePart::Equal(val) => format!(" == {}", val),
+            RangePart::Inclusion(min, max) => format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR)),
+            RangePart::Exclusion(parts) => format!("&& ∉ {{{}}}", parts.into_iter().map(|p| p.to_cli_string()).collect::<Vec<_>>().join(", ")).fg(Color::Red).to_string(),
+        }
+    }
+
+    pub fn to_normal_string(&self) -> String {
+        match self {
+            e @ RangePart::Equal(_) => format!(" == {}", e.to_string()),
+            e @ RangePart::Inclusion(..) => format!(" ∈ {}", e.to_string()),
+            e @ RangePart::Exclusion(_) => format!("&& ∉ {{{}}}", e.to_string()),
+        }
+    }
+}
+
+impl Into<Label<LocStrSpan>> for AnalysisItem {
+    fn into(self) -> ariadne::Label<LocStrSpan> {
+        let (color, order, priority) = if self.init {
+            (Color::Magenta, self.order, -1)
+        } else {
+            (
+                match self.storage {
+                    Some(StorageLocation::Memory(..)) => Color::Blue,
+                    Some(StorageLocation::Storage(..)) => Color::Green,
+                    Some(StorageLocation::Calldata(..)) => Color::White,
+                    None => Color::Cyan,
+                },
+                self.order,
+                0
+            )
+
+        };
+
+        Label::new(self.loc)
+            .with_message(format!(
+                "{}\"{}\"{}{}",
+                match self.storage {
+                    Some(StorageLocation::Memory(..)) => "Memory var ",
+                    Some(StorageLocation::Storage(..)) => "Storage var ",
+                    Some(StorageLocation::Calldata(..)) => "Calldata var ",
+                    None => "",
+                },
+                self.name,
+                self.parts.into_iter().map(|part| part.to_cli_string()).collect::<Vec<_>>().join(" "),
+                if self.unsat {
+                    " - unsatisfiable range, unreachable".fg(Color::Red)
+                } else {
+                    "".fg(Color::Red)
+                }
+            ))
+            .with_color(color)
+            .with_order(order)
+            .with_priority(priority)
+    }
+}
+
+impl ToString for StrippedAnalysisItem {
+    fn to_string(&self) -> String {
+        format!(
+            "{}{}{}",
+            // match self.storage {
+            //     Some(StorageLocation::Memory(..)) => "Memory var ",
+            //     Some(StorageLocation::Storage(..)) => "Storage var ",
+            //     Some(StorageLocation::Calldata(..)) => "Calldata var ",
+            //     None => "",
+            // },
+            self.name,
+            self.parts.iter().map(|part| part.to_normal_string()).collect::<Vec<_>>().join(" "),
+            if self.unsat {
+                " - unsatisfiable range, unreachable"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+impl ToString for RangePart {
+    fn to_string(&self) -> String {
+        match self {
+            RangePart::Equal(inner) => inner.to_string(),
+            RangePart::Inclusion(min, max) => format!("[ {}, {} ]", min, max),
+            RangePart::Exclusion(inner) => format!("{{{}}}", inner.iter().map(|part| part.to_string()).collect::<Vec<_>>().join(", ")),
+        }
+    }
+}
+
 impl BoundAnalysis {
+    pub fn conditionals(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<(String, Vec<RangePart>)> {
+        let deps = self.ctx.ctx_deps(analyzer);
+        let deps = deps
+            .values()
+            .map(|var| (var.display_name(analyzer), var))
+            .collect::<BTreeMap<_, _>>();
+        // create the bound strings
+        deps
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_name, cvar))| {
+                let range = cvar.range(analyzer)?;
+                let parts = self.range_parts(analyzer, &range).0;
+                Some((cvar.display_name(analyzer), parts))
+            }).collect()
+    }
+    pub fn range_parts(&self, analyzer: &(impl AnalyzerLike + Search), range: &SolcRange) -> (Vec<RangePart>, bool) {
+        let mut parts = vec![];
+        let min = if self.report_config.eval_bounds {
+            range
+                .evaled_range_min(analyzer)
+                .to_range_string(false, analyzer)
+                .s
+        } else if self.report_config.simplify_bounds {
+            range
+                .simplified_range_min(analyzer)
+                .to_range_string(false, analyzer)
+                .s
+        } else {
+            range.range_min().to_range_string(false, analyzer).s
+        };
+        let max = if self.report_config.eval_bounds {
+            range
+                .evaled_range_max(analyzer)
+                .to_range_string(true, analyzer)
+                .s
+        } else if self.report_config.simplify_bounds {
+            range
+                .simplified_range_max(analyzer)
+                .to_range_string(true, analyzer)
+                .s
+        } else {
+            range.range_max().to_range_string(true, analyzer).s
+        };
+
+        if min == max {
+            parts.push(RangePart::Equal(min));
+        } else {
+            parts.push(RangePart::Inclusion(min, max));
+        }
+
+        let range_excl = range.range_exclusions();
+        if !range_excl.is_empty() {
+            parts.push(
+                RangePart::Exclusion(range_excl
+                    .iter()
+                    .map(|range| {
+                        let min = range.to_range_string(false, analyzer).s;
+                        let max = range.to_range_string(true, analyzer).s;
+
+                        if min == max {
+                            RangePart::Equal(min)
+                        } else {
+                            RangePart::Inclusion(min, max)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                )
+            );
+        }
+        let unsat = range.unsat(analyzer);
+        (parts, unsat)
+    }
+
+    pub fn init_item(&self, analyzer: &(impl AnalyzerLike + Search)) -> Option<AnalysisItem> {
+        let mut parts = vec![];
+        let mut unsat = false;
+        if let Some(init_range) = &self.var_def.1 {
+            (parts, unsat) = self.range_parts(analyzer, init_range)
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(AnalysisItem {
+                init: true,
+                order: -1,
+                name: self.var_display_name.clone(),
+                loc: self.var_def.0.clone(),
+                storage: self.storage.clone(),
+                ctx: self.ctx,
+                ctx_conditionals: self.conditionals(analyzer),
+                parts,
+                unsat
+            })
+        }
+    }
+
     pub fn flatten_by_ctx(mut self) -> BTreeMap<ContextNode, BoundAnalysis> {
         let mut map =
             self.sub_ctxs
@@ -135,83 +440,8 @@ impl ReportDisplay for BoundAnalysis {
     }
     fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
         let mut labels = if self.report_config.show_initial_bounds {
-            if let Some(init_range) = &self.var_def.1 {
-                let min = if self.report_config.eval_bounds {
-                    init_range
-                        .evaled_range_min(analyzer)
-                        .to_range_string(false, analyzer)
-                        .s
-                } else if self.report_config.simplify_bounds {
-                    init_range
-                        .simplified_range_min(analyzer)
-                        .to_range_string(false, analyzer)
-                        .s
-                } else {
-                    init_range.range_min().to_range_string(false, analyzer).s
-                };
-                let max = if self.report_config.eval_bounds {
-                    init_range
-                        .evaled_range_max(analyzer)
-                        .to_range_string(true, analyzer)
-                        .s
-                } else if self.report_config.simplify_bounds {
-                    init_range
-                        .simplified_range_max(analyzer)
-                        .to_range_string(true, analyzer)
-                        .s
-                } else {
-                    init_range.range_max().to_range_string(true, analyzer).s
-                };
-
-                let range_excl = init_range.range_exclusions();
-                let mut range_excl_str = range_excl
-                    .iter()
-                    .map(|range| {
-                        let min = range.to_range_string(false, analyzer).s;
-                        let max = range.to_range_string(true, analyzer).s;
-
-                        if min == max {
-                            min
-                        } else {
-                            format!("[ {min}, {max} ]")
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                range_excl_str = if !range_excl_str.is_empty() {
-                    format!("&& ∉ {{{range_excl_str}}}")
-                        .fg(Color::Red)
-                        .to_string()
-                } else {
-                    "".to_string().fg(Color::Red).to_string()
-                };
-
-                let r_str = if min == max {
-                    format!(" == {}", min.fg(MAX_COLOR))
-                } else {
-                    format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR),)
-                };
-                vec![Label::new(self.var_def.0.clone())
-                    .with_message(format!(
-                        "{}\"{}\"{}{}{}",
-                        match self.storage {
-                            Some(StorageLocation::Memory(..)) => "Memory var ",
-                            Some(StorageLocation::Storage(..)) => "Storage var ",
-                            Some(StorageLocation::Calldata(..)) => "Calldata var ",
-                            None => "",
-                        },
-                        self.var_display_name,
-                        r_str,
-                        range_excl_str,
-                        if init_range.unsat(analyzer) {
-                            " - unsatisfiable range, unreachable".fg(Color::Red)
-                        } else {
-                            "".fg(Color::Red)
-                        }
-                    ))
-                    .with_color(Color::Magenta)
-                    .with_order(-1)
-                    .with_priority(-1)]
+            if let Some(init_item) = self.init_item(analyzer) {
+                vec![init_item.into()]
             } else {
                 vec![]
             }
@@ -224,94 +454,18 @@ impl ReportDisplay for BoundAnalysis {
                 .iter()
                 .enumerate()
                 .map(|(i, bound_change)| {
-                    let min = if self.report_config.eval_bounds {
-                        bound_change
-                            .1
-                            .evaled_range_min(analyzer)
-                            .to_range_string(false, analyzer)
-                            .s
-                    } else if self.report_config.simplify_bounds {
-                        bound_change
-                            .1
-                            .simplified_range_min(analyzer)
-                            .to_range_string(false, analyzer)
-                            .s
-                    } else {
-                        bound_change
-                            .1
-                            .range_min()
-                            .to_range_string(false, analyzer)
-                            .s
-                    };
-
-                    let max = if self.report_config.eval_bounds {
-                        bound_change
-                            .1
-                            .evaled_range_max(analyzer)
-                            .to_range_string(true, analyzer)
-                            .s
-                    } else if self.report_config.simplify_bounds {
-                        bound_change
-                            .1
-                            .simplified_range_max(analyzer)
-                            .to_range_string(true, analyzer)
-                            .s
-                    } else {
-                        bound_change.1.range_max().to_range_string(true, analyzer).s
-                    };
-
-                    let range_excl = bound_change.1.range_exclusions();
-                    let mut range_excl_str = range_excl
-                        .iter()
-                        .map(|range| {
-                            let min = range.to_range_string(false, analyzer).s;
-                            let max = range.to_range_string(true, analyzer).s;
-                            if min == max {
-                                min
-                            } else {
-                                format!("[ {min}, {max} ]")
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    range_excl_str = if !range_excl_str.is_empty() {
-                        format!("&& ∉ {{{range_excl_str}}}")
-                            .fg(Color::Red)
-                            .to_string()
-                    } else {
-                        "".to_string().fg(Color::Red).to_string()
-                    };
-
-                    let label = Label::new(bound_change.0.clone())
-                        .with_message(format!(
-                            "{}\"{}\"{} {}{}",
-                            match self.storage {
-                                Some(StorageLocation::Memory(..)) => "Memory var ",
-                                Some(StorageLocation::Storage(..)) => "Storage var ",
-                                Some(StorageLocation::Calldata(..)) => "Calldata var ",
-                                None => "",
-                            },
-                            self.var_display_name,
-                            if min == max {
-                                format!(" == {}", min.fg(MAX_COLOR))
-                            } else {
-                                format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR),)
-                            },
-                            if bound_change.1.unsat(analyzer) {
-                                "- unsatisfiable range, unreachable".fg(Color::Red)
-                            } else {
-                                "".fg(Color::Red)
-                            },
-                            range_excl_str
-                        ))
-                        .with_order(i as i32);
-
-                    match self.storage {
-                        Some(StorageLocation::Memory(..)) => label.with_color(Color::Blue),
-                        Some(StorageLocation::Storage(..)) => label.with_color(Color::Green),
-                        Some(StorageLocation::Calldata(..)) => label.with_color(Color::White),
-                        None => label.with_color(Color::Cyan),
-                    }
+                    let (parts, unsat) = self.range_parts(analyzer, &bound_change.1);
+                    AnalysisItem {
+                        init: false,
+                        name: self.var_display_name.clone(),
+                        loc: bound_change.0.clone(),
+                        order: i as i32,
+                        storage: self.storage.clone(),
+                        ctx: self.ctx,
+                        ctx_conditionals: self.conditionals(analyzer),
+                        parts,
+                        unsat
+                    }.into()
                 })
                 .collect::<Vec<_>>(),
         );
@@ -562,8 +716,7 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionVarsBoundAnalysis<'a> {
-    pub file_mapping: &'a BTreeMap<usize, String>,
+pub struct FunctionVarsBoundAnalysis {
     pub ctx_loc: LocStrSpan,
     pub ctx: ContextNode,
     pub ctx_killed: Option<LocStrSpan>,
@@ -571,14 +724,37 @@ pub struct FunctionVarsBoundAnalysis<'a> {
     pub vars_by_ctx: BTreeMap<ContextNode, Vec<BoundAnalysis>>,
 }
 
-impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
+impl<'a> FunctionVarsBoundAnalysis {
+    pub fn as_cli_compat(self, file_mapping: &'a BTreeMap<usize, String>) -> CLIFunctionVarsBoundAnalysis<'a> {
+        CLIFunctionVarsBoundAnalysis::new(file_mapping, self)
+    }
+}
+
+pub struct CLIFunctionVarsBoundAnalysis<'a> {
+    pub file_mapping: &'a BTreeMap<usize, String>,
+    pub func_var_bound_analysis: FunctionVarsBoundAnalysis,
+}
+
+impl<'a> CLIFunctionVarsBoundAnalysis<'a> {
+    pub fn new(
+        file_mapping: &'a BTreeMap<usize, String>,
+        func_var_bound_analysis: FunctionVarsBoundAnalysis
+    ) -> Self {
+        Self {
+            file_mapping,
+            func_var_bound_analysis,
+        }
+    }
+}
+
+impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
         format!(
             "Bounds for function: {}",
-            format!("function {}", self.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
+            format!("function {}", self.func_var_bound_analysis.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
         )
     }
 
@@ -589,8 +765,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
     fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.report_kind(),
-            self.ctx_loc.source(),
-            self.ctx_loc.start(),
+            self.func_var_bound_analysis.ctx_loc.source(),
+            self.func_var_bound_analysis.ctx_loc.start(),
         )
         .with_message(self.msg(analyzer))
         .with_config(
@@ -601,7 +777,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
         );
 
         report.add_labels(self.labels(analyzer));
-        if let Some(killed_span) = &self.ctx_killed {
+        if let Some(killed_span) = &self.func_var_bound_analysis.ctx_killed {
             report = report.with_label(
                 Label::new(killed_span.clone())
                     .with_message("Execution guaranteed to revert here!".fg(Color::Red))
@@ -617,7 +793,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
         let mut called_external_fns = BTreeSet::new();
 
         reports.extend(
-            self.vars_by_ctx
+            self.func_var_bound_analysis.vars_by_ctx
                 .iter()
                 .map(|(ctx, analyses)| {
                     // sort by display name instead of normal name
@@ -631,12 +807,12 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         .iter()
                         .enumerate()
                         .filter_map(|(i, (_name, cvar))| {
-                            let min = if self.report_config.eval_bounds {
+                            let min = if self.func_var_bound_analysis.report_config.eval_bounds {
                                 cvar.range(analyzer)?
                                     .evaled_range_min(analyzer)
                                     .to_range_string(false, analyzer)
                                     .s
-                            } else if self.report_config.simplify_bounds {
+                            } else if self.func_var_bound_analysis.report_config.simplify_bounds {
                                 cvar.range(analyzer)?
                                     .simplified_range_min(analyzer)
                                     .to_range_string(false, analyzer)
@@ -648,12 +824,12 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                                     .s
                             };
 
-                            let max = if self.report_config.eval_bounds {
+                            let max = if self.func_var_bound_analysis.report_config.eval_bounds {
                                 cvar.range(analyzer)?
                                     .evaled_range_max(analyzer)
                                     .to_range_string(true, analyzer)
                                     .s
-                            } else if self.report_config.simplify_bounds {
+                            } else if self.func_var_bound_analysis.report_config.simplify_bounds {
                                 cvar.range(analyzer)?
                                     .simplified_range_max(analyzer)
                                     .to_range_string(true, analyzer)
@@ -685,8 +861,8 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
                         .join("");
                     let mut report = Report::build(
                         self.report_kind(),
-                        self.ctx_loc.source(),
-                        self.ctx_loc.start(),
+                        self.func_var_bound_analysis.ctx_loc.source(),
+                        self.func_var_bound_analysis.ctx_loc.start(),
                     )
                     .with_message(format!(
                         "Bounds for subcontext: {}{}{}",
@@ -711,7 +887,7 @@ impl<'a> ReportDisplay for FunctionVarsBoundAnalysis<'a> {
 
                     report.add_labels(labels);
 
-                    if let Some(killed_span) = &self.ctx_killed {
+                    if let Some(killed_span) = &self.func_var_bound_analysis.ctx_killed {
                         report = report.with_label(
                             Label::new(killed_span.clone())
                                 .with_message("Execution guaranteed to revert here!".fg(Color::Red))
@@ -967,7 +1143,6 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             .collect::<BTreeMap<ContextNode, Vec<BoundAnalysis>>>();
 
         FunctionVarsBoundAnalysis {
-            file_mapping,
             ctx_loc: LocStrSpan::new(file_mapping, ctx.underlying(self).loc),
             ctx,
             ctx_killed: ctx
@@ -976,6 +1151,7 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             vars_by_ctx: analyses,
             report_config,
         }
-        // todo!()
     }
 }
+
+
