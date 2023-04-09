@@ -386,7 +386,8 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                let canonical = fs::canonicalize(&remapped).unwrap_or_else(|_| panic!("Could not find file: {remapped:?}"));
+                let canonical = fs::canonicalize(&remapped)
+                    .unwrap_or_else(|_| panic!("Could not find file: {remapped:?}"));
                 let canonical_str_path = canonical.as_os_str();
                 if self.imported_srcs.contains(canonical_str_path) {
                     return vec![];

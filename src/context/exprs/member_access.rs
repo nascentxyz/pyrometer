@@ -18,11 +18,7 @@ use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
-    fn visible_member_funcs(
-        &mut self,
-        ctx: ContextNode,
-        member_idx: NodeIdx
-    ) -> Vec<FunctionNode> {
+    fn visible_member_funcs(&mut self, ctx: ContextNode, member_idx: NodeIdx) -> Vec<FunctionNode> {
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
@@ -49,7 +45,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     .possible_library_funcs(ctx, func_node.0.into())
                     .into_iter()
                     .collect::<Vec<_>>(),
-            }
+            },
             Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
             Node::Concrete(_)
             | Node::Struct(_)
@@ -59,7 +55,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 .possible_library_funcs(ctx, member_idx)
                 .into_iter()
                 .collect::<Vec<_>>(),
-            _ => todo!()
+            _ => todo!(),
         }
     }
 
@@ -531,7 +527,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                     println!("HERE \n\n");
                     match &*ident.name {
-                        "delegatecall(address, bytes)" | "call(address, bytes)" | "staticcall(address, bytes)" => {
+                        "delegatecall(address, bytes)"
+                        | "call(address, bytes)"
+                        | "staticcall(address, bytes)" => {
                             // TODO: check if the address is known to be a certain type and the function signature is known
                             // and call into the function
                             let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
@@ -552,7 +550,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             });
                             ExprRet::Single((ctx, func_node))
                         }
-                        _ => panic!("Unknown member access on address: {:?}", ident.name)
+                        _ => panic!("Unknown member access on address: {:?}", ident.name),
                     }
                 }
                 Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),

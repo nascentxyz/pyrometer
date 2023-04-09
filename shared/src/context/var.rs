@@ -1,4 +1,3 @@
-use crate::StructNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::Elem;
@@ -14,6 +13,7 @@ use crate::Concrete;
 use crate::ContractNode;
 use crate::FunctionNode;
 use crate::GraphLike;
+use crate::StructNode;
 use crate::TypeNode;
 use crate::{
     analyzer::Search, context::ContextNode, nodes::ConcreteNode, range::elem::RangeOp, ContextEdge,
@@ -691,7 +691,10 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: true,
-            ty: VarType::User(TypeNode::Contract(contract_node), SolcRange::try_from_builtin(&Builtin::Address)),
+            ty: VarType::User(
+                TypeNode::Contract(contract_node),
+                SolcRange::try_from_builtin(&Builtin::Address),
+            ),
         }
     }
 
@@ -703,7 +706,11 @@ impl ContextVar {
     ) -> Self {
         ContextVar {
             loc: Some(loc),
-            name: format!("tmp_struct_{}_{}", ctx.new_tmp(analyzer), struct_node.name(analyzer)),
+            name: format!(
+                "tmp_struct_{}_{}",
+                ctx.new_tmp(analyzer),
+                struct_node.name(analyzer)
+            ),
             display_name: struct_node.name(analyzer),
             storage: Some(StorageLocation::Memory(Loc::Implicit)),
             is_tmp: false,

@@ -1,7 +1,7 @@
-use crate::StructNode;
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
 use crate::ContractNode;
+use crate::StructNode;
 
 use crate::GraphLike;
 use crate::{Edge, Node, NodeIdx};
@@ -217,8 +217,16 @@ impl ContextNode {
         let forks = self.forks(analyzer);
         CtxTree {
             node: *self,
-            lhs: if !forks.is_empty() { Some(Box::new(forks[0].into_ctx_tree(analyzer))) } else { None },
-            rhs: if !forks.is_empty() { Some(Box::new(forks[1].into_ctx_tree(analyzer))) } else { None },
+            lhs: if !forks.is_empty() {
+                Some(Box::new(forks[0].into_ctx_tree(analyzer)))
+            } else {
+                None
+            },
+            rhs: if !forks.is_empty() {
+                Some(Box::new(forks[1].into_ctx_tree(analyzer)))
+            } else {
+                None
+            },
         }
     }
 

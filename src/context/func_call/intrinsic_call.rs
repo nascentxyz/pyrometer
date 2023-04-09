@@ -1,11 +1,26 @@
-use shared::{context::*, Edge, Node, NodeIdx, nodes::{Builtin, VarType}, range::{Range, SolcRange, elem_ty::{Elem, Dynamic}}, analyzer::{GraphLike, AnalyzerLike}};
-use crate::{ExprRet, context::{ContextBuilder, exprs::{MemberAccess, Require, Array}}};
+use crate::{
+    context::{
+        exprs::{Array, MemberAccess, Require},
+        ContextBuilder,
+    },
+    ExprRet,
+};
+use shared::{
+    analyzer::{AnalyzerLike, GraphLike},
+    context::*,
+    nodes::{Builtin, VarType},
+    range::{
+        elem_ty::{Dynamic, Elem},
+        Range, SolcRange,
+    },
+    Edge, Node, NodeIdx,
+};
 
-use solang_parser::pt::{Loc, Expression};
+use solang_parser::pt::{Expression, Loc};
 
-impl<T> IntrinsicFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike  {}
-pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike  {
-	/// Calls an intrinsic/builtin function call (casts, require, etc.)
+impl<T> IntrinsicFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
+pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike {
+    /// Calls an intrinsic/builtin function call (casts, require, etc.)
     #[tracing::instrument(level = "trace", skip_all)]
     fn intrinsic_func_call(
         &mut self,
@@ -20,32 +35,55 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     match &*func_name.name {
                         "abi.decode" => {
                             // we skip the first because that is what is being decoded.
-                            // TODO: check if we have a concrete bytes value 
+                            // TODO: check if we have a concrete bytes value
                             let ret = self.parse_ctx_expr(&input_exprs[1], ctx);
-                            fn match_decode(loc: &Loc, ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> ExprRet {
+                            fn match_decode(
+                                loc: &Loc,
+                                ret: ExprRet,
+                                analyzer: &mut (impl GraphLike + AnalyzerLike),
+                            ) -> ExprRet {
                                 match ret {
                                     ExprRet::Single((ctx, expect_builtin)) => {
                                         match analyzer.node(expect_builtin) {
                                             Node::Builtin(_) => {
-                                                let var = ContextVar::new_from_builtin(*loc, expect_builtin.into(), analyzer);
+                                                let var = ContextVar::new_from_builtin(
+                                                    *loc,
+                                                    expect_builtin.into(),
+                                                    analyzer,
+                                                );
                                                 let node = analyzer.add_node(Node::ContextVar(var));
-                                                analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                                analyzer.add_edge(
+                                                    node,
+                                                    ctx,
+                                                    Edge::Context(ContextEdge::Variable),
+                                                );
                                                 ExprRet::Single((ctx, node))
                                             }
                                             Node::ContextVar(cvar) => {
-                                                let bn = analyzer.builtin_or_add(cvar.ty.as_builtin(analyzer)).into();
-                                                let var = ContextVar::new_from_builtin(*loc, bn, analyzer);
+                                                let bn = analyzer
+                                                    .builtin_or_add(cvar.ty.as_builtin(analyzer))
+                                                    .into();
+                                                let var = ContextVar::new_from_builtin(
+                                                    *loc, bn, analyzer,
+                                                );
                                                 let node = analyzer.add_node(Node::ContextVar(var));
-                                                analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                                analyzer.add_edge(
+                                                    node,
+                                                    ctx,
+                                                    Edge::Context(ContextEdge::Variable),
+                                                );
                                                 ExprRet::Single((ctx, node))
                                             }
-                                            e => todo!("Unhandled type in abi.decode: {e:?}")
+                                            e => todo!("Unhandled type in abi.decode: {e:?}"),
                                         }
                                     }
-                                    ExprRet::Multi(inner) => {
-                                        ExprRet::Multi(inner.iter().map(|i| match_decode(loc, i.clone(), analyzer)).collect())
-                                    }
-                                    e => panic!("This is invalid solidity: {:?}", e)
+                                    ExprRet::Multi(inner) => ExprRet::Multi(
+                                        inner
+                                            .iter()
+                                            .map(|i| match_decode(loc, i.clone(), analyzer))
+                                            .collect(),
+                                    ),
+                                    e => panic!("This is invalid solidity: {:?}", e),
                                 }
                             }
                             match_decode(loc, ret, self)
@@ -61,9 +99,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             ExprRet::Single((ctx, node))
                         }
-                        "delegatecall"
-                        | "staticcall"
-                        | "call" => {
+                        "delegatecall" | "staticcall" | "call" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);

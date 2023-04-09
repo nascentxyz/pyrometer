@@ -109,7 +109,10 @@ impl VarType {
                 node.into(),
                 SolcRange::try_from_builtin(b),
             )),
-            Node::Contract(_) => Some(VarType::User(TypeNode::Contract(node.into()), SolcRange::try_from_builtin(&Builtin::Address))),
+            Node::Contract(_) => Some(VarType::User(
+                TypeNode::Contract(node.into()),
+                SolcRange::try_from_builtin(&Builtin::Address),
+            )),
             Node::Function(_) => Some(VarType::User(TypeNode::Func(node.into()), None)),
             Node::Struct(_) => Some(VarType::User(TypeNode::Struct(node.into()), None)),
             Node::Enum(_) => Some(VarType::User(TypeNode::Enum(node.into()), None)),
@@ -141,22 +144,18 @@ impl VarType {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Contract(cn), _)) => {
                 match from_bn.underlying(analyzer) {
-                    Builtin::Address
-                    | Builtin::AddressPayable
-                    | Builtin::Payable => {
+                    Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                         Some(Self::User(TypeNode::Contract(*cn), sr))
                     }
-                    _ => None
+                    _ => None,
                 }
             }
-            (Self::User(TypeNode::Contract(cn), sr), Self::BuiltIn(to_bn, _)) => {
+            (Self::User(TypeNode::Contract(_cn), sr), Self::BuiltIn(to_bn, _)) => {
                 match to_bn.underlying(analyzer) {
-                    Builtin::Address
-                    | Builtin::AddressPayable
-                    | Builtin::Payable => {
+                    Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                         Some(Self::BuiltIn(*to_bn, sr))
                     }
-                    _ => None
+                    _ => None,
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
@@ -484,10 +483,8 @@ impl Builtin {
             Mapping { key, value, .. } => {
                 let key_idx = analyzer.parse_expr(&key);
                 let val_idx = analyzer.parse_expr(&value);
-                let key_var_ty =
-                    VarType::try_from_idx(analyzer, key_idx)?;
-                let val_var_ty =
-                    VarType::try_from_idx(analyzer, val_idx)?;
+                let key_var_ty = VarType::try_from_idx(analyzer, key_idx)?;
+                let val_var_ty = VarType::try_from_idx(analyzer, val_idx)?;
                 Some(Builtin::Mapping(key_var_ty, val_var_ty))
             }
             Function {

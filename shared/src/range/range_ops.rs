@@ -50,7 +50,8 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
                         let max = if *lhs_size == 256 {
                             I256::MAX
                         } else {
-                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - I256::from(1)
+                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1))
+                                - I256::from(1)
                         };
                         let min = max * I256::from(-1i32);
                         Some(Elem::Concrete(RangeConcrete {
@@ -848,7 +849,8 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         let max = if *lhs_size == 256 {
                             I256::MAX
                         } else {
-                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - I256::from(1)
+                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1))
+                                - I256::from(1)
                         };
                         let min = max * I256::from(-1i32);
 

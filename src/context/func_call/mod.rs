@@ -1,4 +1,7 @@
-use crate::context::func_call::{intrinsic_call::IntrinsicFuncCaller, internal_call::InternalFuncCaller, namespaced_call::NameSpaceFuncCaller};
+use crate::context::func_call::{
+    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
+    namespaced_call::NameSpaceFuncCaller,
+};
 use crate::context::ContextBuilder;
 use crate::ExprRet;
 use shared::analyzer::AsDotStr;
@@ -6,17 +9,17 @@ use shared::analyzer::GraphLike;
 use shared::context::*;
 use std::collections::BTreeMap;
 
+use shared::range::elem_ty::Elem;
 use shared::range::Range;
-use shared::range::{elem_ty::Elem};
-use solang_parser::pt::{Expression, Loc, StorageLocation, NamedArgument};
+use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
 
 use crate::VarType;
 
 use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
 
-pub mod namespaced_call;
 pub mod internal_call;
 pub mod intrinsic_call;
+pub mod namespaced_call;
 
 impl<T> FuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
@@ -31,11 +34,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                self.call_name_spaced_named_func(ctx, loc, member_expr, ident, input_exprs)   
+                self.call_name_spaced_named_func(ctx, loc, member_expr, ident, input_exprs)
             }
-            Variable(ident) => {
-                self.call_internal_named_func(ctx, loc, ident, input_exprs)
-            }
+            Variable(ident) => self.call_internal_named_func(ctx, loc, ident, input_exprs),
             e => {
                 panic!("Cannot call intrinsic functions with named arguments. Call: {e:?}")
             }
@@ -52,11 +53,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                self.call_name_spaced_func(ctx, loc, member_expr, ident, input_exprs)   
+                self.call_name_spaced_func(ctx, loc, member_expr, ident, input_exprs)
             }
-            Variable(ident) => {
-                self.call_internal_func(ctx, loc, ident, func_expr, input_exprs)
-            }
+            Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, input_exprs),
             _ => {
                 let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
                     ExprRet::Single((ctx, idx)) => (ctx, idx),

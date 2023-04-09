@@ -1,15 +1,20 @@
-
-use solang_parser::pt::{Loc, Identifier, Expression, Expression::{Negate, HexLiteral, NumberLiteral}, NamedArgument};
 use crate::{
-    ExprRet,
     func_call::{intrinsic_call::IntrinsicFuncCaller, FuncCaller},
-    ContextBuilder,
+    ContextBuilder, ExprRet,
 };
-use shared::{Edge, Node, context::{ContextVarNode, ContextVar, ContextNode, ContextEdge,}, analyzer::{AnalyzerLike, GraphLike}};
+use shared::{
+    analyzer::{AnalyzerLike, GraphLike},
+    context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
+    Edge, Node,
+};
+use solang_parser::pt::{
+    Expression,
+    Expression::{HexLiteral, Negate, NumberLiteral},
+    Identifier, Loc, NamedArgument,
+};
 
-
-impl<T> InternalFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike  {}
-pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike  {
+impl<T> InternalFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
+pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike {
     fn call_internal_named_func(
         &mut self,
         ctx: ContextNode,
@@ -34,7 +39,9 @@ pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLik
                         false
                     } else {
                         params.iter().all(|param| {
-                            input_args.iter().any(|input| input.name.name == param.name(self))
+                            input_args
+                                .iter()
+                                .any(|input| input.name.name == param.name(self))
                         })
                     }
                 }
@@ -58,7 +65,9 @@ pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLik
                             false
                         } else {
                             fields.iter().all(|field| {
-                                input_args.iter().any(|input| input.name.name == field.name(self))
+                                input_args
+                                    .iter()
+                                    .any(|input| input.name.name == field.name(self))
                             })
                         }
                     }
@@ -79,23 +88,19 @@ pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLik
                         *loc,
                         ContextVarNode::from(cvar).underlying(self),
                         field.underlying(self).clone(),
-                    ).expect("Invalid struct field");
+                    )
+                    .expect("Invalid struct field");
 
                     let fc_node = self.add_node(Node::ContextVar(field_cvar));
-                    self.add_edge(
-                        fc_node,
-                        cvar,
-                        Edge::Context(ContextEdge::AttrAccess),
-                    );
+                    self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
                     self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                     let field_as_ret = ExprRet::Single((ctx, fc_node));
-                    let input = input_args.iter().find(|arg| arg.name.name == field.name(self)).expect("No field in struct in struct construction");
+                    let input = input_args
+                        .iter()
+                        .find(|arg| arg.name.name == field.name(self))
+                        .expect("No field in struct in struct construction");
                     let assignment = self.parse_ctx_expr(&input.expr, ctx);
-                    self.match_assign_sides(
-                        *loc,
-                        &field_as_ret,
-                        &assignment
-                    );
+                    self.match_assign_sides(*loc, &field_as_ret, &assignment);
                 });
                 ExprRet::Single((ctx, cvar))
             } else {
@@ -104,13 +109,19 @@ pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLik
         } else if possible_funcs.len() == 1 {
             let func = possible_funcs[0];
             let params = func.params(self);
-            let inputs = ExprRet::Multi(params
+            let inputs = ExprRet::Multi(
+                params
                     .iter()
                     .map(|param| {
-                        let input = input_args.iter().find(|arg| arg.name.name == param.name(self)).expect("No parameter with named provided in named parameter function call");
+                        let input = input_args
+                            .iter()
+                            .find(|arg| arg.name.name == param.name(self))
+                            .expect(
+                                "No parameter with named provided in named parameter function call",
+                            );
                         self.parse_ctx_expr(&input.expr, ctx)
                     })
-                    .collect()
+                    .collect(),
             );
             self.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
         } else {
@@ -118,9 +129,9 @@ pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLik
         }
     }
 
-	fn call_internal_func(
-		&mut self,
-		ctx: ContextNode,
+    fn call_internal_func(
+        &mut self,
+        ctx: ContextNode,
         loc: &Loc,
         ident: &Identifier,
         func_expr: &Expression,

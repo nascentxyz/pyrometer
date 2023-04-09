@@ -174,12 +174,16 @@ fn main() {
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
-                        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config).as_cli_compat(&file_mapping);
+                        let analysis = analyzer
+                            .bounds_for_all(&file_mapping, ctx, config)
+                            .as_cli_compat(&file_mapping);
                         analysis.print_reports(&mut source_map, &analyzer);
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
-                let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config).as_cli_compat(&file_mapping);
+                let analysis = analyzer
+                    .bounds_for_all(&file_mapping, ctx, config)
+                    .as_cli_compat(&file_mapping);
                 analysis.print_reports(&mut source_map, &analyzer);
             }
         }
@@ -194,12 +198,16 @@ fn main() {
                     if !args.funcs.is_empty() {
                         if args.funcs.contains(&func.name(&analyzer)) {
                             let ctx = func.body_ctx(&analyzer);
-                            let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config).as_cli_compat(&file_mapping);
+                            let analysis = analyzer
+                                .bounds_for_all(&file_mapping, ctx, config)
+                                .as_cli_compat(&file_mapping);
                             analysis.print_reports(&mut source_map, &analyzer);
                         }
                     } else {
                         let ctx = func.body_ctx(&analyzer);
-                        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config).as_cli_compat(&file_mapping);
+                        let analysis = analyzer
+                            .bounds_for_all(&file_mapping, ctx, config)
+                            .as_cli_compat(&file_mapping);
                         analysis.print_reports(&mut source_map, &analyzer);
                     }
                 }

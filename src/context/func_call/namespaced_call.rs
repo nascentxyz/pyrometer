@@ -1,44 +1,46 @@
 use crate::{
-	ExprRet,
-	context::{
-		func_call::intrinsic_call::IntrinsicFuncCaller,
-		exprs::MemberAccess,
-		func_call::FuncCaller,
-		ContextBuilder
-	}
+    context::{
+        exprs::MemberAccess, func_call::intrinsic_call::IntrinsicFuncCaller, func_call::FuncCaller,
+        ContextBuilder,
+    },
+    ExprRet,
 };
 
 use shared::context::ContextVarNode;
 
+use shared::{
+    analyzer::{AnalyzerLike, GraphLike},
+    context::ContextNode,
+    nodes::*,
+    Node,
+};
+use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
-use solang_parser::pt::{Loc, Identifier, Expression, NamedArgument};
-use shared::{context::ContextNode, analyzer::{AnalyzerLike, GraphLike}, nodes::*, Node};
-
-impl<T> NameSpaceFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike  {}
-pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike  {
-	fn call_name_spaced_named_func(
-		&mut self,
-		ctx: ContextNode,
-        loc: &Loc,
+impl<T> NameSpaceFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
+pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike {
+    fn call_name_spaced_named_func(
+        &mut self,
+        ctx: ContextNode,
+        _loc: &Loc,
         member_expr: &Expression,
-        ident: &Identifier,
-        input_args: &[NamedArgument],
+        _ident: &Identifier,
+        _input_args: &[NamedArgument],
     ) -> ExprRet {
-        let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
+        let (_mem_ctx, _member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
 
         todo!("here");
     }
 
-	fn call_name_spaced_func(
-		&mut self,
-		ctx: ContextNode,
+    fn call_name_spaced_func(
+        &mut self,
+        ctx: ContextNode,
         loc: &Loc,
         member_expr: &Expression,
         ident: &Identifier,
         input_exprs: &[Expression],
     ) -> ExprRet {
-    	use solang_parser::pt::Expression::*;
-		if let Variable(Identifier { name, .. }) = member_expr {
+        use solang_parser::pt::Expression::*;
+        if let Variable(Identifier { name, .. }) = member_expr {
             if name == "abi" {
                 let func_name = format!("abi.{}", ident.name);
                 let as_fn = self
@@ -115,7 +117,9 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     ContextVarNode::from(func_idx)
                         .ty(self)
                         .func_node(self)
-                        .unwrap_or_else(|| panic!("expected a function node, was: {:?}", self.node(func_idx))),
+                        .unwrap_or_else(|| {
+                            panic!("expected a function node, was: {:?}", self.node(func_idx))
+                        }),
                     Some(func_str),
                 )
             }

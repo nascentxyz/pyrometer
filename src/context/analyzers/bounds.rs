@@ -1,11 +1,11 @@
 use crate::analyzers::LocSpan;
-use solang_parser::pt::Loc;
 use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
 use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
     range::{range_string::*, Range, RangeEval, SolcRange},
 };
+
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
 use solang_parser::pt::{CodeLocation, StorageLocation};
@@ -101,7 +101,7 @@ impl Ord for StrippedAnalysisItem {
 
 #[derive(Default, Clone, Debug, Hash)]
 pub struct OrderedAnalysis {
-    pub analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>>
+    pub analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>>,
 }
 
 impl OrderedAnalysis {
@@ -121,22 +121,27 @@ impl OrderedAnalysis {
                 let item = StrippedAnalysisItem {
                     init: false,
                     name: ba.var_display_name.clone(),
-                    loc: LocSpan(bound_change.0.1),
+                    loc: LocSpan(bound_change.0 .1),
                     order: i as i32,
                     // storage: ba.storage.clone(),
                     ctx: ba.ctx,
                     ctx_conditionals: ba.conditionals(analyzer),
                     parts,
-                    unsat
+                    unsat,
                 };
 
-                let entry = analyses.entry(*LocSpan(bound_change.0.1).source()).or_default();
+                let entry = analyses
+                    .entry(*LocSpan(bound_change.0 .1).source())
+                    .or_default();
                 entry.insert(item);
             });
         Self { analyses }
     }
 
-    pub fn from_func_analysis(fvba: FunctionVarsBoundAnalysis, analyzer: &(impl AnalyzerLike + Search)) -> Self {
+    pub fn from_func_analysis(
+        fvba: FunctionVarsBoundAnalysis,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) -> Self {
         let mut analyses = Self::default();
         fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
             bas.iter().for_each(|ba| {
@@ -165,8 +170,19 @@ impl RangePart {
     pub fn to_cli_string(self) -> String {
         match self {
             RangePart::Equal(val) => format!(" == {}", val),
-            RangePart::Inclusion(min, max) => format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR)),
-            RangePart::Exclusion(parts) => format!("&& ∉ {{{}}}", parts.into_iter().map(|p| p.to_cli_string()).collect::<Vec<_>>().join(", ")).fg(Color::Red).to_string(),
+            RangePart::Inclusion(min, max) => {
+                format!(" ∈ [ {}, {} ]", min.fg(MIN_COLOR), max.fg(MAX_COLOR))
+            }
+            RangePart::Exclusion(parts) => format!(
+                "&& ∉ {{{}}}",
+                parts
+                    .into_iter()
+                    .map(|p| p.to_cli_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+            .fg(Color::Red)
+            .to_string(),
         }
     }
 
@@ -192,9 +208,8 @@ impl Into<Label<LocStrSpan>> for AnalysisItem {
                     None => Color::Cyan,
                 },
                 self.order,
-                0
+                0,
             )
-
         };
 
         Label::new(self.loc)
@@ -207,7 +222,11 @@ impl Into<Label<LocStrSpan>> for AnalysisItem {
                     None => "",
                 },
                 self.name,
-                self.parts.into_iter().map(|part| part.to_cli_string()).collect::<Vec<_>>().join(" "),
+                self.parts
+                    .into_iter()
+                    .map(|part| part.to_cli_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
                 if self.unsat {
                     " - unsatisfiable range, unreachable".fg(Color::Red)
                 } else {
@@ -231,7 +250,11 @@ impl ToString for StrippedAnalysisItem {
             //     None => "",
             // },
             self.name,
-            self.parts.iter().map(|part| part.to_normal_string()).collect::<Vec<_>>().join(" "),
+            self.parts
+                .iter()
+                .map(|part| part.to_normal_string())
+                .collect::<Vec<_>>()
+                .join(" "),
             if self.unsat {
                 " - unsatisfiable range, unreachable"
             } else {
@@ -246,29 +269,43 @@ impl ToString for RangePart {
         match self {
             RangePart::Equal(inner) => inner.to_string(),
             RangePart::Inclusion(min, max) => format!("[ {}, {} ]", min, max),
-            RangePart::Exclusion(inner) => format!("{{{}}}", inner.iter().map(|part| part.to_string()).collect::<Vec<_>>().join(", ")),
+            RangePart::Exclusion(inner) => format!(
+                "{{{}}}",
+                inner
+                    .iter()
+                    .map(|part| part.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
 
 impl BoundAnalysis {
-    pub fn conditionals(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<(String, Vec<RangePart>)> {
+    pub fn conditionals(
+        &self,
+        analyzer: &(impl AnalyzerLike + Search),
+    ) -> Vec<(String, Vec<RangePart>)> {
         let deps = self.ctx.ctx_deps(analyzer);
         let deps = deps
             .values()
             .map(|var| (var.display_name(analyzer), var))
             .collect::<BTreeMap<_, _>>();
         // create the bound strings
-        deps
-            .iter()
+        deps.iter()
             .enumerate()
-            .filter_map(|(i, (_name, cvar))| {
+            .filter_map(|(_i, (_name, cvar))| {
                 let range = cvar.range(analyzer)?;
                 let parts = self.range_parts(analyzer, &range).0;
                 Some((cvar.display_name(analyzer), parts))
-            }).collect()
+            })
+            .collect()
     }
-    pub fn range_parts(&self, analyzer: &(impl AnalyzerLike + Search), range: &SolcRange) -> (Vec<RangePart>, bool) {
+    pub fn range_parts(
+        &self,
+        analyzer: &(impl AnalyzerLike + Search),
+        range: &SolcRange,
+    ) -> (Vec<RangePart>, bool) {
         let mut parts = vec![];
         let min = if self.report_config.eval_bounds {
             range
@@ -305,8 +342,8 @@ impl BoundAnalysis {
 
         let range_excl = range.range_exclusions();
         if !range_excl.is_empty() {
-            parts.push(
-                RangePart::Exclusion(range_excl
+            parts.push(RangePart::Exclusion(
+                range_excl
                     .iter()
                     .map(|range| {
                         let min = range.to_range_string(false, analyzer).s;
@@ -318,9 +355,8 @@ impl BoundAnalysis {
                             RangePart::Inclusion(min, max)
                         }
                     })
-                    .collect::<Vec<_>>()
-                )
-            );
+                    .collect::<Vec<_>>(),
+            ));
         }
         let unsat = range.unsat(analyzer);
         (parts, unsat)
@@ -344,7 +380,7 @@ impl BoundAnalysis {
                 ctx: self.ctx,
                 ctx_conditionals: self.conditionals(analyzer),
                 parts,
-                unsat
+                unsat,
             })
         }
     }
@@ -464,8 +500,9 @@ impl ReportDisplay for BoundAnalysis {
                         ctx: self.ctx,
                         ctx_conditionals: self.conditionals(analyzer),
                         parts,
-                        unsat
-                    }.into()
+                        unsat,
+                    }
+                    .into()
                 })
                 .collect::<Vec<_>>(),
         );
@@ -725,7 +762,10 @@ pub struct FunctionVarsBoundAnalysis {
 }
 
 impl<'a> FunctionVarsBoundAnalysis {
-    pub fn as_cli_compat(self, file_mapping: &'a BTreeMap<usize, String>) -> CLIFunctionVarsBoundAnalysis<'a> {
+    pub fn as_cli_compat(
+        self,
+        file_mapping: &'a BTreeMap<usize, String>,
+    ) -> CLIFunctionVarsBoundAnalysis<'a> {
         CLIFunctionVarsBoundAnalysis::new(file_mapping, self)
     }
 }
@@ -738,7 +778,7 @@ pub struct CLIFunctionVarsBoundAnalysis<'a> {
 impl<'a> CLIFunctionVarsBoundAnalysis<'a> {
     pub fn new(
         file_mapping: &'a BTreeMap<usize, String>,
-        func_var_bound_analysis: FunctionVarsBoundAnalysis
+        func_var_bound_analysis: FunctionVarsBoundAnalysis,
     ) -> Self {
         Self {
             file_mapping,
@@ -754,7 +794,13 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
         format!(
             "Bounds for function: {}",
-            format!("function {}", self.func_var_bound_analysis.ctx.associated_fn_name(analyzer)).fg(Color::Cyan)
+            format!(
+                "function {}",
+                self.func_var_bound_analysis
+                    .ctx
+                    .associated_fn_name(analyzer)
+            )
+            .fg(Color::Cyan)
         )
     }
 
@@ -793,7 +839,8 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         let mut called_external_fns = BTreeSet::new();
 
         reports.extend(
-            self.func_var_bound_analysis.vars_by_ctx
+            self.func_var_bound_analysis
+                .vars_by_ctx
                 .iter()
                 .map(|(ctx, analyses)| {
                     // sort by display name instead of normal name
@@ -1153,5 +1200,3 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
         }
     }
 }
-
-
