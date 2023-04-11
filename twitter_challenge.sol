@@ -1,4 +1,3 @@
-
 interface IERC20 {
     function transfer(address, uint256) returns (bool);
     function transferFrom(address, address, uint256) returns (bool);

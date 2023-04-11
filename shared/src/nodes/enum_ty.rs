@@ -1,5 +1,7 @@
 use crate::analyzer::GraphLike;
+use crate::range::SolcRange;
 use crate::AsDotStr;
+use crate::Concrete;
 use crate::Node;
 use crate::NodeIdx;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
@@ -40,6 +42,29 @@ impl EnumNode {
             .expect("Unnamed contract")
             .name
     }
+
+    pub fn variants(&self, analyzer: &impl GraphLike) -> Vec<String> {
+        self.underlying(analyzer).variants()
+    }
+
+    pub fn maybe_default_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+        let variants = self.variants(analyzer);
+        if !variants.is_empty() {
+            let min = Concrete::from(variants.first().unwrap().clone()).into();
+            let max = Concrete::from(variants.last().unwrap().clone()).into();
+            Some(SolcRange::new(min, max, vec![]))
+        } else {
+            None
+        }
+    }
+
+    pub fn range_from_variant(&self, variant: String, analyzer: &impl GraphLike) -> SolcRange {
+        let variants = self.variants(analyzer);
+        assert!(variants.contains(&variant));
+        let min = Concrete::from(variant.clone()).into();
+        let max = Concrete::from(variant).into();
+        SolcRange::new(min, max, vec![])
+    }
 }
 
 impl From<EnumNode> for NodeIdx {
@@ -60,6 +85,15 @@ pub struct Enum {
     pub loc: Loc,
     pub name: Option<Identifier>,
     pub values: Vec<Option<Identifier>>,
+}
+
+impl Enum {
+    pub fn variants(&self) -> Vec<String> {
+        self.values
+            .iter()
+            .map(|ident| ident.clone().unwrap().name)
+            .collect()
+    }
 }
 
 impl From<Enum> for Node {

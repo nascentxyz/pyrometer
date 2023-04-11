@@ -198,6 +198,33 @@ pub fn builtin_fns() -> HashMap<String, Function> {
                 Loc::Builtin,
             )))],
         ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "delegatecall".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "call".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "staticcall".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
     ];
     funcs
         .into_iter()
@@ -453,6 +480,81 @@ pub fn builtin_fns_inputs(
             }],
         ),
         ("abi.encodeCall", vec![], vec![]),
+        (
+            "delegatecall",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Address),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                    order: 1,
+                    storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                    name: None,
+                },
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                name: None,
+            }],
+        ),
+        (
+            "call",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Address),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                    order: 1,
+                    storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                    name: None,
+                },
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                name: None,
+            }],
+        ),
+        (
+            "staticcall",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Address),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                    order: 1,
+                    storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                    name: None,
+                },
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                name: None,
+            }],
+        ),
     ];
 
     funcs

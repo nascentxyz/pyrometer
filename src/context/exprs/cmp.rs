@@ -22,11 +22,15 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         self.not_inner(loc, lhs)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn not_inner(&mut self, loc: Loc, lhs_expr: ExprRet) -> ExprRet {
         match lhs_expr {
             ExprRet::CtxKilled => lhs_expr,
             ExprRet::Single((ctx, lhs)) | ExprRet::SingleLiteral((ctx, lhs)) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
+
+                tracing::trace!("not: {}", lhs_cvar.display_name(self));
+
                 let range = self.not_eval(ctx, loc, lhs_cvar);
 
                 let out_var = ContextVar {
@@ -63,11 +67,12 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx);
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
+        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cmp_inner(
         &mut self,
         loc: Loc,
@@ -98,12 +103,15 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                         .range(self)
                         .expect("No lhs rnage")
                         .range_exclusions();
-                    SolcRange {
-                        min: elem.clone(),
-                        max: elem,
-                        exclusions,
-                    }
+                    SolcRange::new(elem.clone(), elem, exclusions)
                 };
+
+                tracing::trace!(
+                    "cmp: {} {} {}",
+                    lhs_cvar.name(self),
+                    op.to_string(),
+                    rhs_cvar.name(self)
+                );
 
                 let out_var = ContextVar {
                     loc: Some(loc),
@@ -182,6 +190,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                 Box::new(self.cmp_inner(loc, l, op, world1)),
                 Box::new(self.cmp_inner(loc, l, op, world2)),
             ),
+            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_)) => ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, world1, op, r)),
+                Box::new(self.cmp_inner(loc, world2, op, r)),
+            ),
             (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
                 Box::new(self.cmp_inner(loc, m, op, world1)),
                 Box::new(self.cmp_inner(loc, m, op, world2)),
@@ -202,11 +214,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     rhs: Box::new(Elem::Null),
                 });
 
-                return SolcRange {
-                    min: val.clone(),
-                    max: val,
-                    exclusions: lhs_range.exclusions,
-                };
+                return SolcRange::new(val.clone(), val, lhs_range.exclusions);
             }
         }
 
@@ -219,11 +227,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
             val: Concrete::Bool(true),
             loc,
         };
-        SolcRange {
-            min: Elem::Concrete(min),
-            max: Elem::Concrete(max),
-            exclusions: vec![],
-        }
+        SolcRange::new(Elem::Concrete(min), Elem::Concrete(max), vec![])
     }
 
     fn range_eval(

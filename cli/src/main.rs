@@ -11,20 +11,19 @@ use pyrometer::{
     Analyzer,
 };
 use shared::nodes::Concrete;
+use shared::nodes::FunctionNode;
 use shared::range::SolcRange;
+use shared::Edge;
 use shared::{
     analyzer::{GraphLike, Search},
     nodes::ContractNode,
 };
+use tracing_subscriber::prelude::*;
+
 use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
 
-use shared::nodes::FunctionNode;
-
-use shared::Edge;
-use std::env::{self, temp_dir};
+use std::env::{self};
 use std::fs;
 
 #[derive(Parser, Debug)]
@@ -54,7 +53,15 @@ struct Args {
     pub write_query: Vec<String>,
 }
 
+pub fn subscriber() {
+    tracing_subscriber::Registry::default()
+        .with(tracing_subscriber::filter::EnvFilter::from_default_env())
+        .with(tracing_subscriber::fmt::layer())
+        .init()
+}
+
 fn main() {
+    subscriber();
     let args = Args::parse();
     let path_str = args.path.to_string();
     let verbosity = args.verbosity;
@@ -126,7 +133,8 @@ fn main() {
         analyzer.set_remappings_and_root(remappings);
     }
     let t0 = std::time::Instant::now();
-    let (maybe_entry, mut all_sources) = analyzer.parse(&sol, &PathBuf::from(args.path.clone()));
+    let (maybe_entry, mut all_sources) =
+        analyzer.parse(&sol, &PathBuf::from(args.path.clone()), true);
     let _parse_time = t0.elapsed().as_millis();
     all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
@@ -166,12 +174,16 @@ fn main() {
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
-                        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                        let analysis = analyzer
+                            .bounds_for_all(&file_mapping, ctx, config)
+                            .as_cli_compat(&file_mapping);
                         analysis.print_reports(&mut source_map, &analyzer);
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
-                let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                let analysis = analyzer
+                    .bounds_for_all(&file_mapping, ctx, config)
+                    .as_cli_compat(&file_mapping);
                 analysis.print_reports(&mut source_map, &analyzer);
             }
         }
@@ -186,12 +198,16 @@ fn main() {
                     if !args.funcs.is_empty() {
                         if args.funcs.contains(&func.name(&analyzer)) {
                             let ctx = func.body_ctx(&analyzer);
-                            let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                            let analysis = analyzer
+                                .bounds_for_all(&file_mapping, ctx, config)
+                                .as_cli_compat(&file_mapping);
                             analysis.print_reports(&mut source_map, &analyzer);
                         }
                     } else {
                         let ctx = func.body_ctx(&analyzer);
-                        let analysis = analyzer.bounds_for_all(&file_mapping, ctx, config);
+                        let analysis = analyzer
+                            .bounds_for_all(&file_mapping, ctx, config)
+                            .as_cli_compat(&file_mapping);
                         analysis.print_reports(&mut source_map, &analyzer);
                     }
                 }
@@ -222,38 +238,18 @@ fn main() {
             split[0].to_string(),
             split[1].to_string(),
             split[2].to_string(),
-            SolcRange {
-                min: Concrete::Bool(true).into(),
-                max: Concrete::Bool(true).into(),
-                exclusions: vec![],
-            },
+            SolcRange::new(
+                Concrete::Bool(true).into(),
+                Concrete::Bool(true).into(),
+                vec![],
+            ),
         ) {
             report.print_reports(&mut source_map, &analyzer);
         }
         println!();
     });
 
-    // println!("parse time: {:?}ms", parse_time);
-    // println!("analyzer time: {:?}ms", t1.elapsed().as_millis());
-    // println!("total time: {:?}ms", t0.elapsed().as_millis());
-
     if args.open_dot {
-        let mut dir = temp_dir();
-        let file_name = "dot.dot";
-        dir.push(file_name);
-
-        let mut file = fs::File::create(dir.clone()).unwrap();
-        file.write_all(analyzer.dot_str().as_bytes()).unwrap();
-        Command::new("dot")
-            .arg("-Tjpeg")
-            .arg(dir)
-            .arg("-o")
-            .arg("dot.jpeg")
-            .output()
-            .expect("failed to execute process");
-        Command::new("open")
-            .arg("dot.jpeg")
-            .output()
-            .expect("failed to execute process");
+        analyzer.open_dot()
     }
 }

@@ -5,6 +5,23 @@ contract Logical {
         require(!s);
     }
 
+    function cond_not(uint256 a) public {
+        bool s = a < 100;
+        if (!s) {
+            require(s);
+        }
+        require(s);
+    }
+
+    function cond_if(uint256 a) public {
+        bool s = a < 100;
+        if (s) {
+            require(s);
+        } else {
+            require(!s);    
+        }
+    }
+
     function and() public {
         uint256 a = 100;
         uint256 b = 1000;

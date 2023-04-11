@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();
-    let (maybe_entry, mut all_sources) = analyzer.parse(sol, &PathBuf::from(path_str.clone()));
+    let (maybe_entry, mut all_sources) =
+        analyzer.parse(sol, &PathBuf::from(path_str.clone()), true);
     all_sources.push((maybe_entry, path_str, sol.to_string(), 0));
     let entry = maybe_entry.unwrap();
     no_ctx_killed(analyzer, entry);
@@ -15,7 +16,8 @@ pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
 pub fn remapping_assert_no_ctx_killed(path_str: String, remapping_file: String, sol: &str) {
     let mut analyzer = Analyzer::default();
     analyzer.set_remappings_and_root(remapping_file);
-    let (maybe_entry, mut all_sources) = analyzer.parse(sol, &PathBuf::from(path_str.clone()));
+    let (maybe_entry, mut all_sources) =
+        analyzer.parse(sol, &PathBuf::from(path_str.clone()), true);
     all_sources.push((maybe_entry, path_str, sol.to_string(), 0));
     let entry = maybe_entry.unwrap();
     no_ctx_killed(analyzer, entry);

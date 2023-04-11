@@ -58,10 +58,7 @@ impl RangeElem<Concrete> for Dynamic {
                 val: concrete_node.underlying(analyzer).clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             }),
-            e => {
-                println!("dynamic {e:?}");
-                Elem::Dynamic(*self)
-            }
+            _e => Elem::Dynamic(*self),
         }
     }
 
@@ -79,10 +76,7 @@ impl RangeElem<Concrete> for Dynamic {
                 val: concrete_node.underlying(analyzer).clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             }),
-            e => {
-                println!("dynamic {e:?}");
-                Elem::Dynamic(*self)
-            }
+            _e => Elem::Dynamic(*self),
         }
     }
 
@@ -778,6 +772,17 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let lhs_max = self.lhs.maximize(analyzer);
         let rhs_min = self.rhs.minimize(analyzer);
         let rhs_max = self.rhs.maximize(analyzer);
+
+        tracing::trace!(
+            "executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}",
+            self.lhs,
+            self.op.to_string(),
+            self.rhs,
+            lhs_min,
+            lhs_max,
+            rhs_min,
+            rhs_max
+        );
 
         let lhs_min_neg = lhs_min.pre_evaled_is_negative();
         let lhs_max_neg = lhs_max.pre_evaled_is_negative();
@@ -1661,77 +1666,5 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 
     fn simplify_exec_op(&self, _maximize: bool, _analyzer: &impl GraphLike) -> Elem<Concrete> {
         todo!();
-        // let lhs = self.lhs.simplify(analyzer);
-        // let rhs = self.rhs.simplify(analyzer);
-        // match self.op {
-        // 	RangeOp::Add => {
-        // 		lhs.range_add(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Sub => {
-        // 		lhs.range_sub(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Mul => {
-        // 		lhs.range_mul(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Div => {
-        // 		lhs.range_div(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	// RangeOp::Mod => {
-        // 	// 	lhs.range_mod(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	// }
-        // 	RangeOp::Min => {
-        // 		lhs.range_min(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Max => {
-        // 		lhs.range_max(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Gt => {
-        // 		lhs.range_gt(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Lt => {
-        // 		lhs.range_lt(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Gte => {
-        // 		lhs.range_gte(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Lte => {
-        // 		lhs.range_lte(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Eq => {
-        // 		lhs.range_ord_eq(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Neq => {
-        // 		lhs.range_neq(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Shl => {
-        // 		lhs.range_shl(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Shr => {
-        // 		lhs.range_shr(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::And => {
-        // 		lhs.range_and(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Not => {
-        // 		assert!(matches!(rhs, Elem::Null));
-        // 		lhs.range_not().unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Cast => {
-        // 		lhs.range_cast(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::Exp => {
-        // 		lhs.range_exp(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::BitAnd => {
-        // 		lhs.range_bit_and(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::BitOr => {
-        // 		lhs.range_bit_or(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	RangeOp::BitXor => {
-        // 		lhs.range_bit_xor(&rhs).unwrap_or(Elem::Expr(self.clone()))
-        // 	}
-        // 	_ => Elem::Expr(self.clone())
-        // }
     }
 }

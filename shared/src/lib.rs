@@ -30,6 +30,7 @@ pub enum Node {
     FunctionCall,
     Builtin(Builtin),
     VarType(VarType),
+    Entry,
     SourceUnit(usize),
     SourceUnitPart(usize, usize),
     Contract(Contract),
@@ -110,6 +111,7 @@ lazy_static! {
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Edge {
+    Source,
     Part,
     Context(ContextEdge),
     Contract,

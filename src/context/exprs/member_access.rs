@@ -18,7 +18,49 @@ use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
+    fn visible_member_funcs(&mut self, ctx: ContextNode, member_idx: NodeIdx) -> Vec<FunctionNode> {
+        match self.node(member_idx) {
+            Node::ContextVar(cvar) => match &cvar.ty {
+                VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
+                VarType::BuiltIn(bn, _) => self
+                    .possible_library_funcs(ctx, bn.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                VarType::Concrete(cnode) => {
+                    let b = cnode.underlying(self).as_builtin();
+                    let bn = self.builtin_or_add(b);
+                    self.possible_library_funcs(ctx, bn)
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                }
+                VarType::User(TypeNode::Struct(sn), _) => self
+                    .possible_library_funcs(ctx, sn.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                VarType::User(TypeNode::Enum(en), _) => self
+                    .possible_library_funcs(ctx, en.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+                VarType::User(TypeNode::Func(func_node), _) => self
+                    .possible_library_funcs(ctx, func_node.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            },
+            Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
+            Node::Concrete(_)
+            | Node::Struct(_)
+            | Node::Function(_)
+            | Node::Enum(_)
+            | Node::Builtin(_) => self
+                .possible_library_funcs(ctx, member_idx)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            _ => todo!(),
+        }
+    }
+
     /// Gets the array type
+    #[tracing::instrument(level = "trace", skip_all)]
     fn member_access(
         &mut self,
         loc: Loc,
@@ -32,12 +74,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         let (_, member_idx) = self.parse_ctx_expr(member_expr, ctx).expect_single();
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
-                VarType::User(TypeNode::Struct(struct_node)) => {
+                VarType::User(TypeNode::Struct(struct_node), _) => {
                     let name = format!(
                         "{}.{}",
                         ContextVarNode::from(member_idx).name(self),
                         ident.name
                     );
+                    tracing::trace!("Struct member access: {}", name);
                     if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                         return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
                     } else if let Some(field) = struct_node.find_field(self, ident) {
@@ -62,14 +105,41 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         return ret;
                     }
                 }
-                VarType::User(TypeNode::Contract(con_node)) => {
-                    println!(
-                        "funcs: {:?}, ident: {:?}",
+                VarType::User(TypeNode::Enum(enum_node), _) => {
+                    let name = format!(
+                        "{}.{}",
+                        ContextVarNode::from(member_idx).name(self),
+                        ident.name
+                    );
+                    tracing::trace!("Enum member access: {}", name);
+
+                    if let Some(variant) = enum_node
+                        .variants(self)
+                        .iter()
+                        .find(|variant| **variant == name)
+                    {
+                        let var = ContextVar::new_from_enum_variant(
+                            self,
+                            ctx,
+                            loc,
+                            *enum_node,
+                            variant.to_string(),
+                        );
+                        let cvar = self.add_node(Node::ContextVar(var));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        return ExprRet::Single((ctx, cvar));
+                    } else if let Some(ret) =
+                        self.library_func_search(ctx, enum_node.0.into(), ident)
+                    {
+                        return ret;
+                    }
+                }
+                VarType::User(TypeNode::Contract(con_node), _) => {
+                    tracing::trace!(
+                        "Contract member access: {}.{}",
                         con_node
-                            .funcs(self)
-                            .iter()
-                            .map(|func| func.name(self))
-                            .collect::<Vec<_>>(),
+                            .maybe_name(self)
+                            .unwrap_or_else(|| "interface".to_string()),
                         ident.name
                     );
                     if let Some(func) = con_node
@@ -90,14 +160,19 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         }
                     } else {
                         panic!(
-                            "No function with name {:?} in contract: {:?}",
+                            "No function with name {:?} in contract: {:?}. Functions: [{:#?}]",
                             ident.name,
-                            con_node.name(self)
+                            con_node.name(self),
+                            con_node
+                                .funcs(self)
+                                .iter()
+                                .map(|func| func.name(self))
+                                .collect::<Vec<_>>()
                         )
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
-                    return self.builin_member_access(
+                    return self.builtin_member_access(
                         loc,
                         ctx,
                         *bn,
@@ -109,6 +184,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
             },
             Node::Msg(_msg) => {
                 let name = format!("msg.{}", ident.name);
+                tracing::trace!("Msg Env member access: {}", name);
+
                 if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                     return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
                 } else {
@@ -256,7 +333,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             Node::Block(_b) => {
-                let name = format!("msg.{}", ident.name);
+                let name = format!("block.{}", ident.name);
+                tracing::trace!("Block Env member access: {}", name);
                 if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
                     return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
                 } else {
@@ -445,7 +523,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
             Node::Builtin(ref _b) => {
-                return self.builin_member_access(
+                return self.builtin_member_access(
                     loc,
                     ctx,
                     BuiltInNode::from(member_idx),
@@ -458,7 +536,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         ExprRet::Single((ctx, member_idx))
     }
 
-    fn builin_member_access(
+    fn builtin_member_access(
         &mut self,
         loc: Loc,
         ctx: ContextNode,
@@ -471,8 +549,32 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         } else {
             match node.underlying(self).clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                    // TODO: handle address(x).call/delegatecall, etc
-                    panic!("Unknown member access on address: {:?}", ident.name)
+                    match &*ident.name {
+                        "delegatecall(address, bytes)"
+                        | "call(address, bytes)"
+                        | "staticcall(address, bytes)" => {
+                            // TODO: check if the address is known to be a certain type and the function signature is known
+                            // and call into the function
+                            let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
+                            let func = self.builtin_fns().get(builtin_name).unwrap();
+                            let (inputs, outputs) = self
+                                .builtin_fn_inputs()
+                                .get(builtin_name)
+                                .expect("builtin func but no inputs")
+                                .clone();
+                            let func_node = self.add_node(Node::Function(func.clone()));
+                            inputs.into_iter().for_each(|input| {
+                                let input_node = self.add_node(input);
+                                self.add_edge(input_node, func_node, Edge::FunctionParam);
+                            });
+                            outputs.into_iter().for_each(|output| {
+                                let output_node = self.add_node(output);
+                                self.add_edge(output_node, func_node, Edge::FunctionReturn);
+                            });
+                            ExprRet::Single((ctx, func_node))
+                        }
+                        _ => panic!("Unknown member access on address: {:?}", ident.name),
+                    }
                 }
                 Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),
                 Builtin::String => {
@@ -510,7 +612,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     let max = if size == 256 {
                         I256::MAX
                     } else {
-                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - 1.into()
+                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1)
                     };
                     match &*ident.name {
                         "max" => {
@@ -552,7 +654,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         let c = Concrete::from(max);
                         let node = self.add_node(Node::Concrete(c)).into();
                         let mut var = ContextVar::new_from_concrete(loc, node, self);
-                        var.name = format!("int{size}.max");
+                        var.name = format!("uint{size}.max");
                         var.display_name = var.name.clone();
                         var.is_tmp = true;
                         var.is_symbolic = false;
@@ -695,6 +797,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         self.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn match_index_access(
         &mut self,
         index_paths: &ExprRet,
@@ -703,13 +806,18 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         dyn_builtin: BuiltInNode,
         ctx: ContextNode,
     ) -> ExprRet {
-        println!("match index access");
         match index_paths {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
             ExprRet::Single((_index_ctx, idx)) => {
                 let parent = parent.first_version(self);
                 let parent_name = parent.name(self);
                 let parent_display_name = parent.display_name(self);
+
+                tracing::trace!(
+                    "Index access: {}[{}]",
+                    parent_display_name,
+                    ContextVarNode::from(*idx).display_name(self)
+                );
                 let parent_ty = dyn_builtin;
                 let parent_stor = parent
                     .storage(self)
@@ -740,6 +848,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         self.match_length(loc, elem, true)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn tmp_length(
         &mut self,
         arr: ContextVarNode,
@@ -748,6 +857,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
     ) -> ContextVarNode {
         let arr = arr.first_version(self);
         let name = format!("{}.length", arr.name(self));
+        tracing::trace!("Length access: {}", name);
         if let Some(attr_var) = array_ctx.var_by_name_or_recurse(self, &name) {
             attr_var.latest_version(self)
         } else {
@@ -790,6 +900,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn match_length(&mut self, loc: Loc, elem_path: ExprRet, update_len_bound: bool) -> ExprRet {
         match elem_path {
             ExprRet::CtxKilled => ExprRet::CtxKilled,
@@ -801,6 +912,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 );
                 let arr = ContextVarNode::from(arr).first_version(self);
                 let name = format!("{}.length", arr.name(self));
+                tracing::trace!("Length access: {}", name);
                 if let Some(len_var) = array_ctx.var_by_name_or_recurse(self, &name) {
                     let len_var = len_var.latest_version(self);
                     let new_len = self.advance_var_in_ctx(len_var, loc, array_ctx);

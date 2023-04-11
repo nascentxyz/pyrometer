@@ -1,6 +1,8 @@
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
 use crate::ContractNode;
+use crate::StructNode;
+use std::collections::BTreeSet;
 
 use crate::GraphLike;
 use crate::{Edge, Node, NodeIdx};
@@ -140,14 +142,14 @@ impl Context {
         analyzer: &impl AnalyzerLike,
         modifier_state: Option<ModifierState>,
     ) -> Self {
-        let (ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
+        let (fn_name, ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
             if fn_ext {
-                (Some(fn_call), None)
+                (fn_call.name(analyzer), Some(fn_call), None)
             } else {
-                (None, Some(fn_call))
+                (fn_call.name(analyzer), None, Some(fn_call))
             }
         } else {
-            (None, None)
+            ("anonymous_fn_call".to_string(), None, None)
         };
 
         Context {
@@ -157,9 +159,13 @@ impl Context {
                 "{}.{}",
                 parent_ctx.underlying(analyzer).path,
                 if is_fork {
-                    format!("fork.{}", parent_ctx.underlying(analyzer).forks.len())
+                    format!("fork-{}", parent_ctx.underlying(analyzer).forks.len())
                 } else {
-                    format!("child.{}", parent_ctx.underlying(analyzer).children.len())
+                    format!(
+                        "{}-{}",
+                        fn_name,
+                        parent_ctx.underlying(analyzer).children.len()
+                    )
                 }
             ),
             is_fork,
@@ -192,6 +198,13 @@ impl Context {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct CtxTree {
+    pub node: ContextNode,
+    pub lhs: Option<Box<CtxTree>>,
+    pub rhs: Option<Box<CtxTree>>,
+}
+
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 /// A wrapper of a node index that corresponds to a [`Context`]
 pub struct ContextNode(pub usize);
@@ -199,6 +212,23 @@ impl ContextNode {
     /// The path of the underlying context
     pub fn path(&self, analyzer: &impl GraphLike) -> String {
         self.underlying(analyzer).path.clone()
+    }
+
+    pub fn into_ctx_tree(&self, analyzer: &(impl GraphLike + AnalyzerLike)) -> CtxTree {
+        let forks = self.forks(analyzer);
+        CtxTree {
+            node: *self,
+            lhs: if !forks.is_empty() {
+                Some(Box::new(forks[0].into_ctx_tree(analyzer)))
+            } else {
+                None
+            },
+            rhs: if !forks.is_empty() {
+                Some(Box::new(forks[1].into_ctx_tree(analyzer)))
+            } else {
+                None
+            },
+        }
     }
 
     /// *All* subcontexts (including subcontexts of subcontexts, recursively)
@@ -213,7 +243,7 @@ impl ContextNode {
     /// Gets the associated contract for the function for the context
     pub fn associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> ContractNode {
         self.associated_fn(analyzer)
-            .contract(analyzer)
+            .maybe_associated_contract(analyzer)
             .expect("No associated contract for context")
     }
 
@@ -222,7 +252,8 @@ impl ContextNode {
         &self,
         analyzer: &(impl GraphLike + Search),
     ) -> Option<ContractNode> {
-        self.associated_fn(analyzer).contract(analyzer)
+        self.associated_fn(analyzer)
+            .maybe_associated_contract(analyzer)
     }
 
     pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
@@ -236,14 +267,141 @@ impl ContextNode {
             .associated_source_unit_part(analyzer)
     }
 
+    /// Gets visible functions
+    pub fn visible_modifiers(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+        // TODO: filter privates
+        let source = self.associated_source(analyzer);
+        if let Some(contract) = self.maybe_associated_contract(analyzer) {
+            let mut modifiers = contract.modifiers(analyzer);
+            // extend with free floating functions
+            modifiers.extend(
+                analyzer
+                    .search_children_depth(source, &Edge::Modifier, 1, 0)
+                    .into_iter()
+                    .map(FunctionNode::from)
+                    .collect::<Vec<_>>(),
+            );
+
+            // extend with inherited functions
+            let inherited_contracts =
+                analyzer.search_children(contract.0.into(), &Edge::InheritedContract);
+            // println!("inherited: [{:#?}]", inherited_contracts.iter().map(|i| ContractNode::from(*i).name(analyzer)).collect::<Vec<_>>());
+            modifiers.extend(
+                inherited_contracts
+                    .into_iter()
+                    .flat_map(|inherited_contract| {
+                        ContractNode::from(inherited_contract).modifiers(analyzer)
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let mut mapping: BTreeMap<String, BTreeSet<FunctionNode>> = BTreeMap::new();
+            for modifier in modifiers.iter() {
+                let entry = mapping.entry(modifier.name(analyzer)).or_default();
+                entry.insert(*modifier);
+            }
+            mapping
+                .into_values()
+                .map(|modifier_set| {
+                    let as_vec = modifier_set.iter().collect::<Vec<_>>();
+
+                    if as_vec.len() > 2 {
+                        panic!("3+ visible functions with the same name. This is invalid solidity")
+                    } else if as_vec.len() == 2 {
+                        as_vec[0].get_overriding(as_vec[1], analyzer)
+                    } else {
+                        *as_vec[0]
+                    }
+                })
+                .collect()
+        } else {
+            // we are in a free floating function, only look at free floating functions
+            let source = self.associated_source(analyzer);
+            analyzer
+                .search_children_depth(source, &Edge::Modifier, 1, 0)
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>()
+        }
+    }
+
+    /// Gets visible functions
+    pub fn visible_funcs(
+        &self,
+        analyzer: &(impl GraphLike + Search + AnalyzerLike),
+    ) -> Vec<FunctionNode> {
+        // TODO: filter privates
+        if let Some(contract) = self.maybe_associated_contract(analyzer) {
+            let mut funcs = contract.funcs(analyzer);
+            // extend with free floating functions
+            funcs.extend(
+                analyzer
+                    .search_children_depth(analyzer.entry(), &Edge::Func, 2, 0)
+                    .into_iter()
+                    .map(FunctionNode::from)
+                    .collect::<Vec<_>>(),
+            );
+
+            // extend with inherited functions
+            let inherited_contracts =
+                analyzer.search_children(contract.0.into(), &Edge::InheritedContract);
+            funcs.extend(
+                inherited_contracts
+                    .into_iter()
+                    .flat_map(|inherited_contract| {
+                        ContractNode::from(inherited_contract).funcs(analyzer)
+                    })
+                    .collect::<Vec<_>>(),
+            );
+
+            let mut mapping: BTreeMap<String, BTreeSet<FunctionNode>> = BTreeMap::new();
+            for func in funcs.iter() {
+                let entry = mapping.entry(func.name(analyzer)).or_default();
+                entry.insert(*func);
+            }
+            mapping
+                .into_values()
+                .map(|funcs_set| {
+                    let as_vec = funcs_set.iter().collect::<Vec<_>>();
+
+                    if as_vec.len() > 2 {
+                        panic!("3+ visible functions with the same name. This is invalid solidity")
+                    } else if as_vec.len() == 2 {
+                        as_vec[0].get_overriding(as_vec[1], analyzer)
+                    } else {
+                        *as_vec[0]
+                    }
+                })
+                .collect()
+        } else {
+            // we are in a free floating function, only look at free floating functions
+            analyzer
+                .search_children_depth(analyzer.entry(), &Edge::Func, 2, 0)
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>()
+        }
+    }
+
     /// Gets all visible functions
-    pub fn visible_funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+    pub fn source_funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         analyzer
             .search_children(source, &Edge::Func)
             .into_iter()
             .map(FunctionNode::from)
+            .collect::<Vec<_>>()
+    }
+
+    /// Gets all visible structs
+    pub fn visible_structs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<StructNode> {
+        // TODO: filter privates
+        let source = self.associated_source(analyzer);
+        analyzer
+            .search_children(source, &Edge::Struct)
+            .into_iter()
+            .map(StructNode::from)
             .collect::<Vec<_>>()
     }
 
@@ -254,10 +412,13 @@ impl ContextNode {
 
     /// Checks whether a function is external to the current context
     pub fn is_fn_ext(&self, fn_node: FunctionNode, analyzer: &(impl GraphLike + Search)) -> bool {
-        match fn_node.contract(analyzer) {
+        match fn_node.maybe_associated_contract(analyzer) {
             None => false,
             Some(fn_ctrt) => {
-                if let Some(self_ctrt) = self.associated_fn(analyzer).contract(analyzer) {
+                if let Some(self_ctrt) = self
+                    .associated_fn(analyzer)
+                    .maybe_associated_contract(analyzer)
+                {
                     Some(self_ctrt) != Some(fn_ctrt)
                         && !self_ctrt
                             .underlying(analyzer)
@@ -497,6 +658,7 @@ impl ContextNode {
 
     /// Returns a vector of variable dependencies for this context
     pub fn add_ctx_dep(&self, dep: ContextVarNode, analyzer: &mut impl AnalyzerLike) {
+        tracing::trace!("Adding ctx dependency: {}", dep.display_name(analyzer));
         if dep.is_symbolic(analyzer) {
             let dep_name = dep.name(analyzer);
             let underlying = self.underlying_mut(analyzer);

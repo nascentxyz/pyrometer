@@ -91,6 +91,30 @@ fn test_using() {
 }
 
 #[test]
+fn test_storage() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/storage.sol");
+    let sol = include_str!("./test_data/storage.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+fn test_named_func_call() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/named_func_call.sol");
+    let sol = include_str!("./test_data/named_func_call.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+fn test_func_override() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/func_override.sol");
+    let sol = include_str!("./test_data/func_override.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
 fn test_relative_import() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/relative_imports/relative_import.sol");

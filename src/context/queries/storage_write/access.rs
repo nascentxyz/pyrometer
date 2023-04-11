@@ -207,7 +207,7 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
     fn recurse(&self, ctx: ContextNode, storage_var_name: String) -> Vec<String> {
         if let Some(cvar) = ctx.var_by_name(self, &storage_var_name) {
             match cvar.ty(self) {
-                VarType::User(TypeNode::Struct(s_node)) => {
+                VarType::User(TypeNode::Struct(s_node), _) => {
                     let fields = s_node
                         .fields(self)
                         .iter()

@@ -1,4 +1,4 @@
-use crate::context::func::FuncCaller;
+use crate::context::func_call::FuncCaller;
 use crate::{context::ContextNode, AnalyzerLike, ExprRet};
 use solang_parser::pt::Expression;
 
@@ -10,7 +10,7 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
         match &*ident.name {
             "msg" => Some(ExprRet::Single((ctx, self.msg().into()))),
             "block" => Some(ExprRet::Single((ctx, self.block().into()))),
-            "abi" => todo!("abi"),
+            "abi" => Some(ExprRet::Multi(vec![])),
             "_" => {
                 #[allow(clippy::manual_map)]
                 if let Some(mod_state) = &ctx.underlying(self).modifier_state.clone() {
@@ -31,8 +31,4 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
             _e => None,
         }
     }
-
-    // fn gasleft(&mut self, ctx: ContextNode) -> ExprRet {
-
-    // }
 }

@@ -1,6 +1,7 @@
-use crate::context::exprs::Array;
-use crate::context::exprs::MemberAccess;
-use crate::context::exprs::Require;
+use crate::context::func_call::{
+    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
+    namespaced_call::NameSpaceFuncCaller,
+};
 use crate::context::ContextBuilder;
 use crate::ExprRet;
 use shared::analyzer::AsDotStr;
@@ -8,18 +9,39 @@ use shared::analyzer::GraphLike;
 use shared::context::*;
 use std::collections::BTreeMap;
 
-use shared::range::elem_ty::Dynamic;
-
 use shared::range::Range;
-use shared::range::{elem_ty::Elem, SolcRange};
-use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation};
+use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
 
 use crate::VarType;
 
 use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
 
+pub mod internal_call;
+pub mod intrinsic_call;
+pub mod namespaced_call;
+
 impl<T> FuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn named_fn_call_expr(
+        &mut self,
+        ctx: ContextNode,
+        loc: &Loc,
+        func_expr: &Expression,
+        input_exprs: &[NamedArgument],
+    ) -> ExprRet {
+        use solang_parser::pt::Expression::*;
+        match func_expr {
+            MemberAccess(loc, member_expr, ident) => {
+                self.call_name_spaced_named_func(ctx, loc, member_expr, ident, input_exprs)
+            }
+            Variable(ident) => self.call_internal_named_func(ctx, loc, ident, input_exprs),
+            e => {
+                panic!("Cannot call intrinsic functions with named arguments. Call: {e:?}")
+            }
+        }
+    }
+    #[tracing::instrument(level = "trace", skip_all)]
     fn fn_call_expr(
         &mut self,
         ctx: ContextNode,
@@ -30,172 +52,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
-
-                let inputs = match ContextVarNode::from(member).underlying(self).ty {
-                    VarType::User(TypeNode::Contract(_)) => input_exprs
-                        .iter()
-                        .map(|expr| self.parse_ctx_expr(expr, ctx))
-                        .collect::<Vec<_>>(),
-                    _ => {
-                        let mut inputs = vec![ExprRet::Single((mem_ctx, member))];
-                        inputs.extend(
-                            input_exprs
-                                .iter()
-                                .map(|expr| self.parse_ctx_expr(expr, ctx))
-                                .collect::<Vec<_>>(),
-                        );
-                        inputs
-                    }
-                };
-
-                let inputs = ExprRet::Multi(inputs);
-                if !inputs.has_literal() {
-                    let as_input_str = inputs.try_as_func_input_str(self);
-
-                    let (_func_ctx, func_idx) = match self.parse_ctx_expr(
-                        &MemberAccess(
-                            *loc,
-                            member_expr.clone(),
-                            Identifier {
-                                loc: ident.loc,
-                                name: format!("{}{}", ident.name, as_input_str),
-                            },
-                        ),
-                        ctx,
-                    ) {
-                        ExprRet::Single((ctx, idx)) => (ctx, idx),
-                        m @ ExprRet::Multi(_) => m.expect_single(),
-                        ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                        e => todo!("got fork in func call: {:?}", e),
-                    };
-
-                    if matches!(self.node(func_idx), Node::Function(..)) {
-                        // intrinsic
-                        let mut inputs: Vec<Expression> = vec![*member_expr.clone()];
-                        inputs.extend(input_exprs.to_vec());
-                        self.intrinsic_func_call(loc, &inputs, func_idx, ctx)
-                    } else {
-                        self.func_call(
-                            ctx,
-                            *loc,
-                            &inputs,
-                            ContextVarNode::from(func_idx)
-                                .ty(self)
-                                .func_node(self)
-                                .expect(""),
-                        )
-                    }
-                } else {
-                    // we need to disambiguate the literals
-                    let ty = &ContextVarNode::from(member).underlying(self).ty;
-                    let possible_funcs: Vec<FunctionNode> = match ty {
-                        VarType::User(TypeNode::Contract(con_node)) => con_node.funcs(self),
-                        VarType::BuiltIn(bn, _) => self
-                            .possible_library_funcs(ctx, bn.0.into())
-                            .into_iter()
-                            .collect::<Vec<_>>(),
-                        VarType::Concrete(cnode) => {
-                            let b = cnode.underlying(self).as_builtin();
-                            let bn = self.builtin_or_add(b);
-                            self.possible_library_funcs(ctx, bn)
-                                .into_iter()
-                                .collect::<Vec<_>>()
-                        }
-                        VarType::User(TypeNode::Struct(sn)) => self
-                            .possible_library_funcs(ctx, sn.0.into())
-                            .into_iter()
-                            .collect::<Vec<_>>(),
-                        VarType::User(TypeNode::Enum(en)) => self
-                            .possible_library_funcs(ctx, en.0.into())
-                            .into_iter()
-                            .collect::<Vec<_>>(),
-                        VarType::User(TypeNode::Func(_)) => todo!(),
-                    };
-                    let lits = input_exprs
-                        .iter()
-                        .map(|expr| {
-                            match expr {
-                                Negate(_, expr) => {
-                                    // negative number potentially
-                                    matches!(**expr, NumberLiteral(..) | HexLiteral(..))
-                                }
-                                NumberLiteral(..) | HexLiteral(..) => true,
-                                _ => false,
-                            }
-                        })
-                        .collect();
-
-                    if let Some(func) =
-                        self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs[..])
-                    {
-                        self.setup_fn_call(loc, &inputs, func.into(), ctx)
-                    } else {
-                        panic!(
-                            "Could not disambiguate function call: {}, {:?}",
-                            ident.name, inputs
-                        )
-                    }
-                }
+                self.call_name_spaced_func(ctx, loc, member_expr, ident, input_exprs)
             }
-            Variable(ident) => {
-                // It is a function call, check if we have the ident in scope
-                let funcs = ctx.visible_funcs(self);
-                // filter down all funcs to those that match
-                let possible_funcs = funcs
-                    .iter()
-                    .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
-                    .copied()
-                    .collect::<Vec<_>>();
-
-                if possible_funcs.is_empty() {
-                    // this is a builtin, cast, or unknown function?
-                    let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
-                        ExprRet::Single((ctx, idx)) => (ctx, idx),
-                        m @ ExprRet::Multi(_) => m.expect_single(),
-                        ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                        e => todo!("got fork in func call: {:?}", e),
-                    };
-                    self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
-                } else if possible_funcs.len() == 1 {
-                    let inputs = ExprRet::Multi(
-                        input_exprs
-                            .iter()
-                            .map(|expr| self.parse_ctx_expr(expr, ctx))
-                            .collect(),
-                    );
-                    self.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx)
-                } else {
-                    // this is the annoying case due to function overloading & type inference on number literals
-                    let lits = input_exprs
-                        .iter()
-                        .map(|expr| {
-                            match expr {
-                                Negate(_, expr) => {
-                                    // negative number potentially
-                                    matches!(**expr, NumberLiteral(..) | HexLiteral(..))
-                                }
-                                NumberLiteral(..) | HexLiteral(..) => true,
-                                _ => false,
-                            }
-                        })
-                        .collect();
-                    let inputs = ExprRet::Multi(
-                        input_exprs
-                            .iter()
-                            .map(|expr| self.parse_ctx_expr(expr, ctx))
-                            .collect(),
-                    );
-
-                    if let Some(func) =
-                        self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
-                    {
-                        self.setup_fn_call(loc, &inputs, func.into(), ctx)
-                    } else {
-                        ExprRet::CtxKilled
-                    }
-                }
-            }
+            Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, input_exprs),
             _ => {
                 let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
                     ExprRet::Single((ctx, idx)) => (ctx, idx),
@@ -238,7 +97,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         if !literals.iter().any(|i| *i) {
             None
         } else {
-            // println!("funcs: {:?}", funcs);
             let funcs = funcs
                 .iter()
                 .filter(|func| {
@@ -282,9 +140,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         inputs: &ExprRet,
         func_idx: NodeIdx,
         ctx: ContextNode,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         // if we have a single match thats our function
-        let mut var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
+        let var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
             Some(v) => v,
             None => panic!(
                 "Could not create context variable from user type: {:?}",
@@ -293,179 +152,21 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         };
 
         // TODO: this is probably wrong
-        if let Some(r) = var.fallback_range(self) {
-            if var.storage.is_some() {
-                if let Elem::Concrete(c) = r.range_max() {
-                    if let Some(size) = c.val.int_size() {
-                        var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
-                    }
-                }
-            }
-        }
+        // if let Some(r) = var.fallback_range(self) {
+        //     if var.storage.is_some() {
+        //         if let Elem::Concrete(c) = r.range_max() {
+        //             if let Some(size) = c.val.int_size() {
+        //                 var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
+        //             }
+        //         }
+        //     }
+        // }
         let new_cvarnode = self.add_node(Node::ContextVar(var));
         self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
         if let Some(func_node) = ContextVarNode::from(new_cvarnode).ty(self).func_node(self) {
-            self.func_call(ctx, *loc, inputs, func_node)
+            self.func_call(ctx, *loc, inputs, func_node, func_call_str)
         } else {
             unreachable!()
-        }
-    }
-
-    /// Calls an intrinsic/builtin function call (casts, require, etc.)
-    fn intrinsic_func_call(
-        &mut self,
-        loc: &Loc,
-        input_exprs: &[Expression],
-        func_idx: NodeIdx,
-        ctx: ContextNode,
-    ) -> ExprRet {
-        match self.node(func_idx) {
-            Node::Function(underlying) => {
-                if let Some(func_name) = &underlying.name {
-                    match &*func_name.name {
-                        "require" | "assert" => {
-                            self.handle_require(input_exprs, ctx);
-                            ExprRet::Multi(vec![])
-                        }
-                        "type" => ExprRet::Single(
-                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single(),
-                        ),
-                        "push" => {
-                            let (arr_ctx, arr) =
-                                self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-                            let arr = ContextVarNode::from(arr).latest_version(self);
-                            // get length
-                            let len = self.tmp_length(arr, arr_ctx, *loc);
-
-                            println!("array: {:?}", arr.underlying(self));
-
-                            let len_as_idx = len.as_tmp(*loc, ctx, self);
-                            // set length as index
-                            let index = self.index_into_array_inner(
-                                *loc,
-                                ExprRet::Single((arr_ctx, arr.latest_version(self).into())),
-                                ExprRet::Single((arr_ctx, len_as_idx.latest_version(self).into())),
-                            );
-                            // assign index to new_elem
-                            let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx);
-                            self.match_assign_sides(*loc, &index, &new_elem)
-                        }
-                        "ecrecover" => {
-                            input_exprs.iter().for_each(|expr| {
-                                // we want to parse even though we dont need the variables here
-                                let _ = self.parse_ctx_expr(expr, ctx);
-                            });
-                            let var = ContextVar::new_from_builtin(
-                                *loc,
-                                self.builtin_or_add(Builtin::Address).into(),
-                                self,
-                            );
-                            let cvar = self.add_node(Node::ContextVar(var));
-                            ExprRet::Single((ctx, cvar))
-                        }
-                        e => todo!("builtin function: {:?}", e),
-                    }
-                } else {
-                    panic!("unnamed builtin?")
-                }
-            }
-            Node::Builtin(Builtin::Array(_)) => {
-                // create a new list
-                let (ctx, len_cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-                let ty = VarType::try_from_idx(self, func_idx);
-
-                let new_arr = ContextVar {
-                    loc: Some(*loc),
-                    name: format!("tmp_arr{}", ctx.new_tmp(self)),
-                    display_name: "arr".to_string(),
-                    storage: None,
-                    is_tmp: true,
-                    is_symbolic: false,
-                    tmp_of: None,
-                    ty: ty.expect("No type for node"),
-                };
-
-                let arr = ContextVarNode::from(self.add_node(Node::ContextVar(new_arr)));
-
-                let len_var = ContextVar {
-                    loc: Some(*loc),
-                    name: arr.name(self) + ".length",
-                    display_name: arr.display_name(self) + ".length",
-                    storage: None,
-                    is_tmp: true,
-                    tmp_of: None,
-                    is_symbolic: true,
-                    ty: ContextVarNode::from(len_cvar).underlying(self).ty.clone(),
-                };
-
-                let len_cvar = self.add_node(Node::ContextVar(len_var));
-                self.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
-                self.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
-                self.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess));
-
-                // update the length
-                if let Some(r) = arr.range(self) {
-                    let min = r.evaled_range_min(self);
-                    let max = r.evaled_range_max(self);
-
-                    if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
-                    }
-
-                    if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                    }
-                }
-
-                ExprRet::Single((ctx, arr.into()))
-            }
-            Node::Builtin(ty) => {
-                // it is a cast
-                let ty = ty.clone();
-                let (ctx, cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
-
-                let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), self);
-
-                new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
-
-                // cast the ranges
-                if let Some(r) = ContextVarNode::from(cvar).range(self) {
-                    let curr_range = SolcRange::try_from_builtin(&ty).expect("No default range");
-                    new_var.set_range_min(self, r.range_min().cast(curr_range.range_min()));
-                    new_var.set_range_max(self, r.range_max().cast(curr_range.range_max()));
-                    // cast the range exclusions - TODO: verify this is correct
-                    let mut exclusions = r.range_exclusions();
-                    exclusions.iter_mut().for_each(|range| {
-                        *range = range.clone().cast(curr_range.range_min());
-                    });
-                    new_var.set_range_exclusions(self, exclusions);
-                } else {
-                    // todo!("unable to cast: {:?}, {ty:?}", self.node(cvar))
-                }
-                ExprRet::Single((ctx, new_var.into()))
-            }
-            Node::ContextVar(_c) => {
-                // its a user type
-                // TODO: figure out if we actually need to do anything?
-                let _inputs: Vec<_> = input_exprs
-                    .iter()
-                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                    .collect();
-
-                ExprRet::Single((ctx, func_idx))
-            }
-            Node::Contract(_) => {
-                // TODO: figure out if we need to do anything
-                let _inputs: Vec<_> = input_exprs
-                    .iter()
-                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                    .collect();
-
-                ExprRet::Single((ctx, func_idx))
-            }
-            e => todo!("{:?}", e),
         }
     }
 
@@ -476,10 +177,12 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         loc: Loc,
         input_paths: &ExprRet,
         func: FunctionNode,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         let params = func.params(self);
+        let input_paths = input_paths.clone().flatten();
         match input_paths {
-            ExprRet::Single((_ctx, input_var)) => {
+            ExprRet::Single((ctx, input_var)) | ExprRet::SingleLiteral((ctx, input_var)) => {
                 // if we get a single var, we expect the func to only take a single
                 // variable
                 self.func_call_inner(
@@ -487,12 +190,13 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     ctx,
                     func,
                     loc,
-                    vec![ContextVarNode::from(*input_var).latest_version(self)],
+                    vec![ContextVarNode::from(input_var).latest_version(self)],
                     params,
                     None,
+                    func_call_str,
                 )
             }
-            ExprRet::Multi(inputs) => {
+            ExprRet::Multi(ref inputs) => {
                 // check if the inputs length matchs func params length
                 // if they do, check that none are forks
                 if inputs.len() == params.len() {
@@ -504,19 +208,37 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                                 ContextVarNode::from(var).latest_version(self)
                             })
                             .collect();
-                        self.func_call_inner(false, ctx, func, loc, input_vars, params, None)
+                        self.func_call_inner(
+                            false,
+                            ctx,
+                            func,
+                            loc,
+                            input_vars,
+                            params,
+                            None,
+                            func_call_str,
+                        )
                     } else {
-                        panic!("input has fork - need to flatten")
+                        panic!(
+                            "input has fork - need to flatten, {:?}, {:?}",
+                            params,
+                            input_paths.clone().flatten()
+                        )
                     }
                 } else {
                     panic!("Length mismatch: {inputs:?} {params:?}");
                 }
             }
-            _ => todo!("here"),
+            ExprRet::Fork(w1, w2) => ExprRet::Fork(
+                Box::new(self.func_call(ctx, loc, &w1, func, func_call_str.clone())),
+                Box::new(self.func_call(ctx, loc, &w2, func, func_call_str)),
+            ),
+            e => todo!("here: {:?}", e),
         }
     }
 
     /// Checks if there are any modifiers and executes them prior to executing the function
+    #[tracing::instrument(level = "trace", skip_all)]
     fn func_call_inner(
         &mut self,
         entry_call: bool,
@@ -526,6 +248,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         inputs: Vec<ContextVarNode>,
         params: Vec<FunctionParamNode>,
         modifier_state: Option<ModifierState>,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         let fn_ext = ctx.is_fn_ext(func_node, self);
         let callee_ctx = if entry_call {
@@ -600,6 +323,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             })
             .collect::<BTreeMap<_, ContextVarNode>>();
 
+        if !func_node.modifiers_set(self) {
+            self.set_modifiers(func_node, ctx);
+        }
         let mods = func_node.modifiers(self);
         if let Some(mod_state) = modifier_state {
             // we are iterating through modifiers
@@ -607,22 +333,37 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                 // use the next modifier
                 let mut mstate = mod_state;
                 mstate.num += 1;
-                self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate)
+                self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate, func_call_str)
             } else {
                 // out of modifiers, execute the actual function call
-                self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs)
+                self.execute_call_inner(
+                    loc,
+                    ctx,
+                    callee_ctx,
+                    func_node,
+                    renamed_inputs,
+                    func_call_str,
+                )
             }
         } else if !mods.is_empty() {
             // we have modifiers and havent executed them, start the process of executing them
             let state = ModifierState::new(0, loc, func_node, callee_ctx, ctx, renamed_inputs);
-            self.call_modifier_for_fn(loc, callee_ctx, func_node, state)
+            self.call_modifier_for_fn(loc, callee_ctx, func_node, state, func_call_str)
         } else {
             // no modifiers, just execute the function
-            self.execute_call_inner(loc, ctx, callee_ctx, func_node, renamed_inputs)
+            self.execute_call_inner(
+                loc,
+                ctx,
+                callee_ctx,
+                func_node,
+                renamed_inputs,
+                func_call_str,
+            )
         }
     }
 
     /// Actually executes the function
+    #[tracing::instrument(level = "trace", skip_all)]
     fn execute_call_inner(
         &mut self,
         loc: Loc,
@@ -630,6 +371,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         callee_ctx: ContextNode,
         func_node: FunctionNode,
         renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         if let Some(body) = func_node.underlying(self).body.clone() {
             // add return nodes into the subctx
@@ -648,43 +390,75 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
 
-            ExprRet::Multi(
-                callee_ctx
-                    .underlying(self)
-                    .ret
-                    .clone()
-                    .into_iter()
-                    .map(|(_, node)| ExprRet::Single((callee_ctx, node.into())))
-                    .collect(),
-            )
+            self.ctx_rets(callee_ctx)
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
-
             ExprRet::Multi(
                 func_node
                     .returns(self)
                     .iter()
-                    .filter_map(|ret| {
+                    .map(|ret| {
                         let underlying = ret.underlying(self);
-                        let var = ContextVar::maybe_new_from_func_ret(self, underlying.clone())?;
+                        let mut var =
+                            ContextVar::new_from_func_ret(callee_ctx, self, underlying.clone())
+                                .expect("No type for return variable?");
+                        if let Some(func_call) = &func_call_str {
+                            var.name = format!("{}_{}", func_call, callee_ctx.new_tmp(self));
+                            var.display_name = func_call.to_string();
+                        }
                         let node = self.add_node(Node::ContextVar(var));
-                        Some(ExprRet::Single((caller_ctx, node)))
+                        self.add_edge(node, callee_ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(node, callee_ctx, Edge::Context(ContextEdge::Return));
+                        ExprRet::Single((caller_ctx, node))
                     })
                     .collect(),
             )
         }
     }
 
+    fn ctx_rets(&mut self, ctx: ContextNode) -> ExprRet {
+        let forks = ctx.forks(self);
+        if !forks.is_empty() {
+            assert!(forks.len() % 2 == 0);
+            ExprRet::Multi(
+                forks
+                    .chunks(2)
+                    .map(|fork_pairs| {
+                        let w1 = self.ctx_rets(fork_pairs[0]);
+                        let w2 = self.ctx_rets(fork_pairs[1]);
+                        ExprRet::Fork(Box::new(w1), Box::new(w2))
+                    })
+                    .collect(),
+            )
+        } else {
+            let rets = ctx
+                .underlying(self)
+                .ret
+                .clone()
+                .into_iter()
+                .map(|(_, node)| ExprRet::Single((ctx, node.into())))
+                .collect();
+            ExprRet::Multi(rets)
+        }
+    }
+
     /// Calls a modifier for a function
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_modifier_for_fn(
         &mut self,
         loc: Loc,
         func_ctx: ContextNode,
         func_node: FunctionNode,
         mod_state: ModifierState,
+        func_call_str: Option<String>,
     ) -> ExprRet {
         let mod_node = func_node.modifiers(self)[mod_state.num];
+        tracing::trace!(
+            "calling modifier {} for func {}",
+            mod_node.name(self),
+            func_node.name(self)
+        );
         let mod_ctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
             func_ctx,
             loc,
@@ -763,11 +537,14 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             mod_ctx,
             mod_node,
             renamed_inputs,
+            func_call_str,
         )
     }
 
     /// Resumes the parent function of a modifier
+    #[tracing::instrument(level = "trace", skip_all)]
     fn resume_from_modifier(&mut self, ctx: ContextNode, modifier_state: ModifierState) -> ExprRet {
+        tracing::trace!("resuming from modifier: {}", ctx.associated_fn_name(self));
         // pass up the variable changes
         self.inherit_input_changes(
             modifier_state.loc,
@@ -777,14 +554,29 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         );
         self.inherit_storage_changes(modifier_state.parent_ctx, ctx);
 
-        // actually execute the parent function
-        self.execute_call_inner(
-            modifier_state.loc,
-            modifier_state.parent_caller_ctx,
-            modifier_state.parent_ctx,
-            modifier_state.parent_fn,
-            modifier_state.renamed_inputs,
-        )
+        let mods = modifier_state.parent_fn.modifiers(self);
+        if modifier_state.num + 1 < mods.len() {
+            // use the next modifier
+            let mut mstate = modifier_state;
+            mstate.num += 1;
+            self.call_modifier_for_fn(
+                mods[mstate.num].underlying(self).loc,
+                ctx,
+                mstate.parent_fn,
+                mstate,
+                None,
+            )
+        } else {
+            // actually execute the parent function
+            self.execute_call_inner(
+                modifier_state.loc,
+                modifier_state.parent_caller_ctx,
+                modifier_state.parent_ctx,
+                modifier_state.parent_fn,
+                modifier_state.renamed_inputs,
+                None,
+            )
+        }
     }
 
     /// Inherit the input changes from a function call
@@ -874,9 +666,13 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         let _ = write!(mod_name, "{args_str}");
                     }
                     let _ = write!(mod_name, "");
-                    self.user_types()
-                        .get(&mod_name)
-                        .map(|idx| FunctionNode::from(*idx))
+
+                    // println!("func modifiers: {},\n{:?},\n{:#?},\n{}", func.name(self), mod_name, ctx.visible_modifiers(self), ctx.visible_modifiers(self)[0].name(self));
+                    let found: FunctionNode = *ctx
+                        .visible_modifiers(self)
+                        .iter()
+                        .find(|modifier| modifier.name(self) == mod_name)?;
+                    Some(found)
                 })
                 .collect();
             res
@@ -889,5 +685,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             .iter()
             .enumerate()
             .for_each(|(i, modifier)| self.add_edge(*modifier, func, Edge::FuncModifier(i)));
+        func.underlying_mut(self).modifiers_set = true;
     }
 }
