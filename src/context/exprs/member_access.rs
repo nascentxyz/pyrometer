@@ -105,17 +105,26 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         return ret;
                     }
                 }
-                VarType::User(TypeNode::Contract(con_node), _) => {
-                    // println!(
-                    //     "funcs: {:?}, ident: {:?}",
-                    //     con_node
-                    //         .funcs(self)
-                    //         .iter()
-                    //         .map(|func| func.name(self))
-                    //         .collect::<Vec<_>>(),
-                    //     ident.name
-                    // );
+                VarType::User(TypeNode::Enum(enum_node), _) => {
+                    let name = format!(
+                        "{}.{}",
+                        ContextVarNode::from(member_idx).name(self),
+                        ident.name
+                    );
+                    tracing::trace!("Enum member access: {}", name);
 
+                    if let Some(variant) = enum_node.variants(self).iter().find(|variant| **variant == name) {
+                        let var = ContextVar::new_from_enum_variant(self, ctx, loc, *enum_node, variant.to_string());
+                        let cvar = self.add_node(Node::ContextVar(var));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        return ExprRet::Single((ctx, cvar));
+                    } else if let Some(ret) =
+                        self.library_func_search(ctx, enum_node.0.into(), ident)
+                    {
+                        return ret;
+                    }
+                }
+                VarType::User(TypeNode::Contract(con_node), _) => {
                     tracing::trace!(
                         "Contract member access: {}.{}",
                         con_node
@@ -141,9 +150,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         }
                     } else {
                         panic!(
-                            "No function with name {:?} in contract: {:?}",
+                            "No function with name {:?} in contract: {:?}. Functions: [{:#?}]",
                             ident.name,
-                            con_node.name(self)
+                            con_node.name(self),
+                            con_node.funcs(self).iter().map(|func| func.name(self)).collect::<Vec<_>>()
                         )
                     }
                 }
@@ -525,7 +535,6 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         } else {
             match node.underlying(self).clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                    println!("HERE \n\n");
                     match &*ident.name {
                         "delegatecall(address, bytes)"
                         | "call(address, bytes)"
@@ -631,7 +640,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         let c = Concrete::from(max);
                         let node = self.add_node(Node::Concrete(c)).into();
                         let mut var = ContextVar::new_from_concrete(loc, node, self);
-                        var.name = format!("int{size}.max");
+                        var.name = format!("uint{size}.max");
                         var.display_name = var.name.clone();
                         var.is_tmp = true;
                         var.is_symbolic = false;

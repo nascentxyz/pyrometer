@@ -17,7 +17,7 @@ impl<T> Variable for T where T: AnalyzerLike<Expr = Expression> + Sized {}
 pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> ExprRet {
-        tracing::trace!("Getting variable: {}", &ident.name);
+        tracing::trace!("Getting variable: {}, loc: {:?}", &ident.name, ident.loc);
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
             let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);
             ExprRet::Single((ctx, var.0.into()))
@@ -50,15 +50,15 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
 
             // We assume a storage variable is 0 to start with
             // TODO: check if there is an initializer that we should take into account
-            if let Some(r) = var.fallback_range(self) {
-                if var.storage.is_some() {
-                    if let Elem::Concrete(c) = r.range_max() {
-                        if let Some(size) = c.val.int_size() {
-                            var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
-                        }
-                    }
-                }
-            }
+            // if let Some(r) = var.fallback_range(self) {
+            //     if var.storage.is_some() {
+            //         if let Elem::Concrete(c) = r.range_max() {
+            //             if let Some(size) = c.val.int_size() {
+            //                 var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
+            //             }
+            //         }
+            //     }
+            // }
             let new_cvarnode = self.add_node(Node::ContextVar(var));
             self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
             ExprRet::Single((ctx, new_cvarnode))
@@ -78,9 +78,11 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
                 self.add_edge(output_node, func_node, Edge::FunctionReturn);
             });
             ExprRet::Single((ctx, func_node))
+        } else if let Some(func) = ctx.visible_funcs(self).iter().find(|func| func.name(self) == ident.name) {
+            panic!("here");
         } else {
             // println!("{}", self.dot_str());
-            // self.open_dot()
+            // self.open_dot();
             // panic!("Unresolved variable: {:?}", ident);
             let node = self.add_node(Node::Unresolved(ident.clone()));
             self.user_types_mut().insert(ident.name.clone(), node);

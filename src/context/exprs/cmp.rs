@@ -67,8 +67,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx);
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx);
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
+        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
 
@@ -189,6 +189,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
             (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
                 Box::new(self.cmp_inner(loc, l, op, world1)),
                 Box::new(self.cmp_inner(loc, l, op, world2)),
+            ),
+            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_)) => ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, world1, op, r)),
+                Box::new(self.cmp_inner(loc, world2, op, r)),
             ),
             (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
                 Box::new(self.cmp_inner(loc, m, op, world1)),

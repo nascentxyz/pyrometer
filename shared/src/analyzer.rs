@@ -37,6 +37,7 @@ pub trait AnalyzerLike: GraphLike {
     fn parse_expr(&mut self, expr: &Self::Expr) -> NodeIdx;
     fn msg(&mut self) -> MsgNode;
     fn block(&mut self) -> BlockNode;
+    fn entry(&self) -> NodeIdx;
 }
 
 struct G<'a> {
@@ -540,6 +541,19 @@ pub trait Search: GraphLike {
                 .next()
         }
     }
+
+    fn search_for_ancestor_multi(&self, start: NodeIdx, edge_tys: &[Edge]) -> Option<NodeIdx> {
+        let edges = self.graph().edges_directed(start, Direction::Outgoing);
+        if let Some(edge) = edges.clone().find(|edge| edge_tys.contains(edge.weight())) {
+            Some(edge.target())
+        } else {
+            edges
+                .map(|edge| edge.target())
+                .filter_map(|node| self.search_for_ancestor_multi(node, edge_tys))
+                .take(1)
+                .next()
+        }
+    }
     /// Finds any child nodes that have some edge `edge_ty` incoming. Builds up a set of these
     ///
     /// i.e.: a -my_edge-> b -other_edge-> c -my_edge-> d
@@ -563,6 +577,29 @@ pub trait Search: GraphLike {
                 .flat_map(|edge| self.search_children(edge.source(), edge_ty))
                 .collect::<BTreeSet<NodeIdx>>(),
         );
+        this_children
+    }
+
+    fn search_children_depth(&self, start: NodeIdx, edge_ty: &Edge, max_depth: usize, curr_depth: usize) -> BTreeSet<NodeIdx> {
+        let edges = self.graph().edges_directed(start, Direction::Incoming);
+        let mut this_children: BTreeSet<NodeIdx> = edges
+            .clone()
+            .filter_map(|edge| {
+                if edge.weight() == edge_ty {
+                    Some(edge.source())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if curr_depth < max_depth {
+            this_children.extend(
+                edges
+                    .flat_map(|edge| self.search_children_depth(edge.source(), edge_ty, max_depth, curr_depth + 1))
+                    .collect::<BTreeSet<NodeIdx>>(),
+            );
+        }
         this_children
     }
 

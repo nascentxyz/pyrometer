@@ -35,6 +35,16 @@ impl ContractNode {
         }
     }
 
+    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+        let all_contracts = analyzer.search_children(analyzer.entry(), &Edge::Contract);
+        inherits.iter().for_each(|inherited_name| {
+            let found = all_contracts.iter().find(|contract| {
+                &ContractNode::from(**contract).name(analyzer) == inherited_name
+            }).unwrap_or_else(|| {analyzer.open_dot(); panic!("Could not find inherited contract: {inherited_name} for contract {:?}", self.name(analyzer)) });
+            analyzer.add_edge(*found, *self, Edge::InheritedContract);
+        });
+    }
+
     /// Gets the name from the underlying node data for the [`Contract`]
     pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
         self.underlying(analyzer)
@@ -59,6 +69,15 @@ impl ContractNode {
     pub fn funcs(&self, analyzer: &'_ (impl GraphLike + Search)) -> Vec<FunctionNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Func)
+            .into_iter()
+            .map(FunctionNode::from)
+            .collect()
+    }
+
+    /// Gets all associated modifiers from the underlying node data for the [`Contract`]
+    pub fn modifiers(&self, analyzer: &'_ (impl GraphLike + Search)) -> Vec<FunctionNode> {
+        analyzer
+            .search_children(self.0.into(), &Edge::Modifier)
             .into_iter()
             .map(FunctionNode::from)
             .collect()
@@ -113,27 +132,49 @@ impl Contract {
     /// Constructs a new contract from a `ContractDefinition` with imports
     pub fn from_w_imports(
         con: ContractDefinition,
+        source: NodeIdx,
         imports: &[(Option<NodeIdx>, String, String, usize)],
         analyzer: &'_ impl AnalyzerLike,
-    ) -> Contract {
+    ) -> (Contract, Vec<String>) {
         let mut inherits = vec![];
+        let mut unhandled_inherits = vec![];
         con.base.iter().for_each(|base| {
             let inherited_name = &base.name.identifiers[0].name;
-            for entry in imports.iter().filter_map(|import| import.0) {
-                for contract in analyzer.search_children(entry, &Edge::Contract).into_iter() {
-                    let name = ContractNode::from(contract).name(analyzer);
-                    if &name == inherited_name {
-                        inherits.push(ContractNode::from(contract));
-                        break;
+            let mut found = false;
+            for contract in analyzer.search_children(source, &Edge::Contract).into_iter() {
+                let name = ContractNode::from(contract).name(analyzer);
+                if &name == inherited_name {
+                    inherits.push(ContractNode::from(contract));
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                for entry in imports.iter().filter_map(|import| import.0) {
+                    for contract in analyzer.search_children(entry, &Edge::Contract).into_iter() {
+                        let name = ContractNode::from(contract).name(analyzer);
+                        if &name == inherited_name {
+                            inherits.push(ContractNode::from(contract));
+                            found = true;
+                            break;
+                        }
                     }
                 }
             }
+
+            if !found {
+                unhandled_inherits.push(inherited_name.clone());
+            }
         });
-        Contract {
-            loc: con.loc,
-            ty: con.ty,
-            name: con.name,
-            inherits,
-        }
+        (
+            Contract {
+                loc: con.loc,
+                ty: con.ty,
+                name: con.name,
+                inherits,
+            },
+            unhandled_inherits
+        )
     }
 }

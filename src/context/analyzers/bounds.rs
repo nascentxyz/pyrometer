@@ -994,41 +994,44 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                             }
                         });
 
-                    report.add_label(
-                        Label::new(LocStrSpan::new(
-                            self.file_mapping,
-                            ctx.underlying(analyzer)
-                                .parent_fn
-                                .underlying(analyzer)
-                                .body
-                                .as_ref()
-                                .expect("No body")
-                                .loc(),
-                        ))
-                        .with_message("Entry function call")
-                        .with_priority(-2)
-                        .with_order(-2),
-                    );
+                    if let Some(body) = ctx.underlying(analyzer)
+                            .parent_fn
+                            .underlying(analyzer)
+                            .body
+                            .as_ref() {
+                        report.add_label(
+                            Label::new(LocStrSpan::new(
+                                self.file_mapping,
+                                body.loc(),
+                            ))
+                            .with_message("Entry function call")
+                            .with_priority(-2)
+                            .with_order(-2),
+                        );
+                                
+                    }
+                    
 
                     ctx.underlying(analyzer).children.iter().for_each(|child| {
                         if let Some(fn_call) = child.underlying(analyzer).fn_call {
                             let fn_name = fn_call.name(analyzer);
                             if !called_fns.contains(&fn_name) {
-                                report.add_label(
-                                    Label::new(LocStrSpan::new(
-                                        self.file_mapping,
-                                        fn_call
+                                if let Some(body) = fn_call
                                             .underlying(analyzer)
                                             .body
-                                            .as_ref()
-                                            .expect("No body")
-                                            .loc(),
-                                    ))
-                                    .with_message("Internal function call")
-                                    .with_priority(-2)
-                                    .with_order(-2)
-                                    .with_color(Color::Fixed(140)),
-                                );
+                                            .as_ref() {
+                                    report.add_label(
+                                        Label::new(LocStrSpan::new(
+                                            self.file_mapping,
+                                            body.loc(),
+                                        ))
+                                        .with_message("Internal function call")
+                                        .with_priority(-2)
+                                        .with_order(-2)
+                                        .with_color(Color::Fixed(140)),
+                                    );         
+                                }
+                                
                                 called_fns.insert(fn_name);
                             }
                         }
@@ -1049,7 +1052,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                                 called_external_fns.insert(fn_name);
                             }
 
-                            if let Some(c) = ext_fn_call.contract(analyzer) {
+                            if let Some(c) = ext_fn_call.maybe_associated_contract(analyzer) {
                                 if let Some(cname) = c.maybe_name(analyzer) {
                                     if !called_contracts.contains(&cname) {
                                         report.add_label(

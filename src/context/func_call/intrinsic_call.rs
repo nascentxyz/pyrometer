@@ -115,6 +115,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                             self.parse_ctx_expr(&input_exprs[0], ctx).expect_single(),
                         ),
                         "push" => {
+                            assert!(input_exprs.len() == 2);
                             let (arr_ctx, arr) =
                                 self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
                             let arr = ContextVarNode::from(arr).latest_version(self);
@@ -216,30 +217,43 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             Node::Builtin(ty) => {
                 // it is a cast
                 let ty = ty.clone();
-                let (ctx, cvar) = match self.parse_ctx_expr(&input_exprs[0], ctx).flatten() {
-                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                    e => e.expect_single(),
-                };
+                fn cast_match(loc: &Loc, analyzer: &mut (impl GraphLike + AnalyzerLike), ty: Builtin, ret: ExprRet, func_idx: NodeIdx) -> ExprRet {
+                    match ret {
+                        ExprRet::CtxKilled => ExprRet::CtxKilled,
+                        ExprRet::Single((ctx, cvar))
+                        | ExprRet::SingleLiteral((ctx, cvar)) => {
+                            let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), analyzer);
 
-                let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), self);
+                            new_var.underlying_mut(analyzer).ty = VarType::try_from_idx(analyzer, func_idx).expect("");
+                            // cast the ranges
+                            if let Some(r) = ContextVarNode::from(cvar).range(analyzer) {
+                                let curr_range = SolcRange::try_from_builtin(&ty).expect("No default range");
+                                new_var.set_range_min(analyzer, r.range_min().cast(curr_range.range_min()));
+                                new_var.set_range_max(analyzer, r.range_max().cast(curr_range.range_max()));
+                                // cast the range exclusions - TODO: verify this is correct
+                                let mut exclusions = r.range_exclusions();
+                                exclusions.iter_mut().for_each(|range| {
+                                    *range = range.clone().cast(curr_range.range_min());
+                                });
+                                new_var.set_range_exclusions(analyzer, exclusions);
+                            }
 
-                new_var.underlying_mut(self).ty = VarType::try_from_idx(self, func_idx).expect("");
-
-                // cast the ranges
-                if let Some(r) = ContextVarNode::from(cvar).range(self) {
-                    let curr_range = SolcRange::try_from_builtin(&ty).expect("No default range");
-                    new_var.set_range_min(self, r.range_min().cast(curr_range.range_min()));
-                    new_var.set_range_max(self, r.range_max().cast(curr_range.range_max()));
-                    // cast the range exclusions - TODO: verify this is correct
-                    let mut exclusions = r.range_exclusions();
-                    exclusions.iter_mut().for_each(|range| {
-                        *range = range.clone().cast(curr_range.range_min());
-                    });
-                    new_var.set_range_exclusions(self, exclusions);
-                } else {
-                    // todo!("unable to cast: {:?}, {ty:?}", self.node(cvar))
+                            ExprRet::Single((ctx, new_var.into()))
+                        }
+                        ExprRet::Multi(inner) => {
+                            ExprRet::Multi(inner.into_iter().map(|i| cast_match(loc, analyzer, ty.clone(), i, func_idx)).collect())
+                        }
+                        ExprRet::Fork(w1, w2) => {
+                            ExprRet::Fork(
+                                Box::new(cast_match(loc, analyzer, ty.clone(), *w1, func_idx)),
+                                Box::new(cast_match(loc, analyzer, ty, *w2, func_idx)),
+                            )
+                        }
+                    }
                 }
-                ExprRet::Single((ctx, new_var.into()))
+
+                let ret = self.parse_ctx_expr(&input_exprs[0], ctx).flatten();
+                cast_match(loc, self, ty, ret, func_idx)
             }
             Node::ContextVar(_c) => {
                 // its a user type

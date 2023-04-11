@@ -1,3 +1,4 @@
+use solang_parser::pt::Type;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::Search;
 use crate::context::{ContextEdge, ContextNode};
@@ -46,6 +47,10 @@ impl FunctionNode {
             .collect()
     }
 
+    pub fn modifiers_set(&self, analyzer: &impl GraphLike) -> bool {
+        self.underlying(analyzer).modifiers_set
+    }
+
     pub fn modifier_input_vars(
         &self,
         mod_num: usize,
@@ -92,6 +97,14 @@ impl FunctionNode {
         }
     }
 
+    pub fn loc_specified_name(&self, analyzer: &'_ impl GraphLike) -> String {
+        if let Some(con) = self.maybe_associated_contract(analyzer) {
+            format!("{}.{}", con.name(analyzer), self.name(analyzer))
+        } else {
+            self.name(analyzer)
+        }
+    }
+
     pub fn body_ctx(&self, analyzer: &'_ impl GraphLike) -> ContextNode {
         analyzer
             .graph()
@@ -115,8 +128,8 @@ impl FunctionNode {
 
     pub fn maybe_associated_contract(&self, analyzer: &impl GraphLike) -> Option<ContractNode> {
         let parent = analyzer
-            .search_for_ancestor(self.0.into(), &Edge::Func)
-            .expect("detached function");
+            .search_for_ancestor_multi(self.0.into(), &[Edge::Func, Edge::Constructor, Edge::Modifier, Edge::ReceiveFunc, Edge::FallbackFunc])
+            .unwrap_or_else(|| panic!("detached function: {:?}", self.name(analyzer)));
         match analyzer.node(parent) {
             Node::Contract(_) => Some(parent.into()),
             _ => None,
@@ -196,18 +209,6 @@ impl FunctionNode {
             .collect()
     }
 
-    pub fn contract(&self, analyzer: &'_ impl GraphLike) -> Option<ContractNode> {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Outgoing)
-            .filter(|edge| Edge::Func == *edge.weight())
-            .map(|edge| edge.target())
-            .filter(|node| matches!(analyzer.node(*node), Node::Contract(_)))
-            .map(ContractNode::from)
-            .take(1)
-            .next()
-    }
-
     pub fn is_public_or_ext(&self, analyzer: &'_ impl GraphLike) -> bool {
         self.underlying(analyzer).attributes.iter().any(|attr| {
             matches!(
@@ -216,6 +217,26 @@ impl FunctionNode {
                     | FunctionAttribute::Visibility(Visibility::External(_))
             )
         })
+    }
+
+    pub fn get_overriding(&self, other: &Self, analyzer: &'_ impl GraphLike) -> Self {
+        let self_attrs = &self.underlying(analyzer).attributes;
+        let other_attrs = &other.underlying(analyzer).attributes;
+        let self_virt_over_attr = self_attrs.iter().find(|attr| {
+            // TODO: grab the override specifier if needed?
+            matches!(attr, FunctionAttribute::Virtual(_) | FunctionAttribute::Override(_, _))
+        });
+        let other_virt_over_attr = other_attrs.iter().find(|attr| {
+            // TODO: grab the override specifier if needed?
+            matches!(attr, FunctionAttribute::Virtual(_) | FunctionAttribute::Override(_, _))
+        });
+        match (self_virt_over_attr, other_virt_over_attr) {
+            (Some(FunctionAttribute::Virtual(_)), Some(FunctionAttribute::Virtual(_))) => *self,
+            (Some(FunctionAttribute::Virtual(_)), Some(FunctionAttribute::Override(_, _))) => *other,
+            (Some(FunctionAttribute::Override(_, _)), Some(FunctionAttribute::Virtual(_))) => *self,
+            (Some(FunctionAttribute::Override(_, _)), Some(FunctionAttribute::Override(_, _))) => *self,
+            (_, _) => *self
+        }
     }
 }
 
@@ -288,7 +309,7 @@ impl Default for Function {
             body: None,
             params: vec![],
             returns: vec![],
-            modifiers_set: true,
+            modifiers_set: false,
         }
     }
 }
@@ -327,8 +348,111 @@ impl From<FunctionDefinition> for Function {
     }
 }
 
+
+pub fn var_def_to_ret(expr: Expression) -> (Loc, Option<Parameter>) {
+    match expr {
+        Expression::Type(ty_loc, ref ty) => {
+            match ty {
+                Type::Mapping {
+                    value: v_ty,
+                    ..
+                } => {
+                    var_def_to_ret(*v_ty.clone())
+                }
+                Type::Address
+                | Type::AddressPayable
+                | Type::Payable
+                | Type::Bool
+                | Type::String
+                | Type::Int(_)
+                | Type::Uint(_)
+                | Type::Bytes(_)
+                | Type::Rational
+                | Type::DynamicBytes => {
+                    (ty_loc, Some(Parameter {
+                        loc: ty_loc,
+                        ty: expr,
+                        storage: None,
+                        name: None,
+                    }))
+                }
+                e => panic!("Unsupported type: {e:?}")
+            }
+        }
+        Expression::ArraySubscript(_loc, sub_expr, _) => {
+            // its an array, add the index as a parameter
+            var_def_to_ret(*sub_expr)
+        }
+        e => {
+            (Loc::Implicit, Some(Parameter {
+                loc: Loc::Implicit,
+                ty: e,
+                storage: None,
+                name: None,
+            }))
+        }
+    }
+}
+pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
+    let mut params = vec![];
+    match expr {
+        Expression::Type(ty_loc, ref ty) => {
+            match ty {
+                Type::Mapping {
+                    loc,
+                    key: key_ty,
+                    value: v_ty,
+                    ..
+                } => {
+                    params.push((ty_loc, Some(Parameter {
+                        loc: *loc,
+                        ty: *key_ty.clone(),
+                        storage: None,
+                        name: None,
+                    })));
+                    params.extend(var_def_to_params(*v_ty.clone()));
+                }
+                Type::Address
+                | Type::AddressPayable
+                | Type::Payable
+                | Type::Bool
+                | Type::String
+                | Type::Int(_)
+                | Type::Uint(_)
+                | Type::Bytes(_)
+                | Type::Rational
+                | Type::DynamicBytes => {
+                    // if !is_recursion {
+                    //     params.push((ty_loc, Some(Parameter {
+                    //         loc: ty_loc,
+                    //         ty: expr,
+                    //         storage: None,
+                    //         name: None,
+                    //     })));
+                    // }
+                }
+                e => panic!("Unsupported type: {e:?}")
+            }
+        }
+        Expression::ArraySubscript(loc, sub_expr, _) => {
+            // its an array, add the index as a parameter
+            params.push((loc, Some(Parameter {
+                loc,
+                ty: Expression::Type(loc, Type::Uint(256)),
+                storage: None,
+                name: None,
+            })));
+            params.extend(var_def_to_params(*sub_expr));
+        }
+        _e => {}
+    }
+
+    params
+}
+
 impl From<VariableDefinition> for Function {
     fn from(var: VariableDefinition) -> Function {
+        let ret = var_def_to_ret(var.ty.clone());
         Function {
             loc: var.loc,
             ty: FunctionTy::Function,
@@ -337,26 +461,11 @@ impl From<VariableDefinition> for Function {
             attributes: vec![FunctionAttribute::Visibility(Visibility::Public(Some(
                 var.loc,
             )))],
-            body: Some(Statement::Block {
-                loc: var.loc,
-                unchecked: false,
-                statements: vec![Statement::Return(
-                    var.loc,
-                    Some(Expression::Variable(
-                        var.name.expect("unnamed public variable?"),
-                    )),
-                )],
-            }),
-            params: vec![],
-            returns: vec![(
-                var.loc,
-                Some(Parameter {
-                    loc: var.loc,
-                    ty: var.ty,
-                    storage: None,
-                    name: None,
-                }),
-            )],
+            body: None,
+            params: var_def_to_params(var.ty),
+            returns: vec![
+                ret,
+            ],
             modifiers_set: true,
         }
     }

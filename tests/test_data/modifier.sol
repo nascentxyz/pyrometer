@@ -35,14 +35,17 @@ contract Modifier {
 
     function input(uint256 b) public Input(b) {
         uint256 a = b;
+        require(a == 1);
     }
 
     function input(uint256 b, uint256 c) public Input(b) Input(c) {
         uint256 k = b;
+        require(a == 2);
     }
 
     function internalMod(uint256 b) internal Input(b) {
         uint256 k = b;
+        require(a == 1);
     }
 
     function internalModPub(uint256 b) public {

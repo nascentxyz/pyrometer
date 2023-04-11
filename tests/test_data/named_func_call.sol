@@ -5,7 +5,9 @@ contract StruktTester {
 	}
 
 	function constructStruct() public {
-		A({b: 100, c: 100});
+		A memory b = A({b: 100, c: 100});
+		require(b.b == 100);
+		require(b.c == 100);
 	}
 
 	function namedCallPub() public {
@@ -13,6 +15,6 @@ contract StruktTester {
 	}
 
 	function namedCall(uint256 x) internal {
-		
+		require(x == 100);
 	}
 }

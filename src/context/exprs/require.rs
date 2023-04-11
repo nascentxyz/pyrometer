@@ -1,3 +1,5 @@
+use shared::range::range_string::ToRangeString;
+use solang_parser::helpers::CodeLocation;
 use crate::context::exprs::cmp::Cmp;
 use crate::{
     exprs::{BinOp, Variable},
@@ -24,8 +26,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) {
         match inputs.get(0).expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
+                let rhs_paths = self.parse_ctx_expr(rhs, ctx).flatten();
 
                 self.handle_require_inner(
                     *loc,
@@ -37,8 +39,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::NotEqual(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
+                let rhs_paths = self.parse_ctx_expr(rhs, ctx).flatten();
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -49,8 +51,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::Less(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
+                let rhs_paths = self.parse_ctx_expr(rhs, ctx).flatten();
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -61,8 +63,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::More(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
+                let rhs_paths = self.parse_ctx_expr(rhs, ctx).flatten();
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -73,8 +75,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::MoreEqual(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
+                let rhs_paths = self.parse_ctx_expr(rhs, ctx).flatten();
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -85,8 +87,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 );
             }
             Expression::LessEqual(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
+                let rhs_paths = self.parse_ctx_expr(rhs, ctx).flatten();
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -96,25 +98,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (RangeOp::Gte, RangeOp::Lte),
                 );
             }
-            Expression::Variable(ident) => {
-                let lhs_paths = self.variable(ident, ctx);
-                let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
-                let tmp_true =
-                    Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, cnode, self));
-                let rhs_paths =
-                    ExprRet::Single((ctx, ContextVarNode::from(self.add_node(tmp_true)).into()));
-                self.handle_require_inner(
-                    ident.loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                );
-            }
             Expression::Not(loc, lhs) => {
                 // println!("was not in require");
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx);
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx).flatten();
                 let cnode =
                     ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(false))));
                 let tmp_false =
@@ -166,7 +152,22 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (RangeOp::Neq, RangeOp::Eq),
                 );
             }
-            e => unreachable!("Require expr with noncomparator: {:?}", e),
+            other => {
+                let should_be_bool = self.parse_ctx_expr(other, ctx).flatten();
+                let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
+                let tmp_true =
+                    Node::ContextVar(ContextVar::new_from_concrete(Loc::Implicit, cnode, self));
+                let rhs_paths =
+                    ExprRet::Single((ctx, ContextVarNode::from(self.add_node(tmp_true)).into()));
+                self.handle_require_inner(
+                    other.loc(),
+                    &should_be_bool,
+                    &rhs_paths,
+                    RangeOp::Eq,
+                    RangeOp::Neq,
+                    (RangeOp::Neq, RangeOp::Eq),
+                );
+            }
         }
     }
 
@@ -205,8 +206,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 )
             }
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
-                let lhs_cvar = ContextVarNode::from(*lhs);
-                let rhs_cvar = ContextVarNode::from(*rhs);
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx);
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx);
 
@@ -217,12 +218,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 //     self.require(new_lhs, new_rhs, *rhs_ctx, loc, op, rhs_op, recursion_ops);
                 // }
             }
-            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
+            (l @ ExprRet::Single((_, _)) | l @ ExprRet::SingleLiteral(_), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides.iter().for_each(|expr_ret| {
                     self.handle_require_inner(loc, l, expr_ret, op, rhs_op, recursion_ops)
                 });
             }
-            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => {
+            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
                 lhs_sides.iter().for_each(|expr_ret| {
                     self.handle_require_inner(loc, expr_ret, r, op, rhs_op, recursion_ops)
                 });
@@ -261,9 +262,13 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 self.handle_require_inner(loc, lhs_world2, rhs_world1, op, rhs_op, recursion_ops);
                 self.handle_require_inner(loc, lhs_world2, rhs_world2, op, rhs_op, recursion_ops);
             }
-            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => {
+            (l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_) , ExprRet::Fork(world1, world2)) => {
                 self.handle_require_inner(loc, l, world1, op, rhs_op, recursion_ops);
                 self.handle_require_inner(loc, l, world2, op, rhs_op, recursion_ops);
+            }
+            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
+                self.handle_require_inner(loc, r, world1, op, rhs_op, recursion_ops);
+                self.handle_require_inner(loc, r, world2, op, rhs_op, recursion_ops);
             }
             (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => {
                 self.handle_require_inner(loc, m, world1, op, rhs_op, recursion_ops);
@@ -361,7 +366,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
             } else if let Some(arr) = new_lhs.index_to_array(self) {
                 if let Some(index) = new_lhs.index_access_to_index(self) {
-                    let next_arr = self.advance_var_in_ctx(arr, loc, ctx);
+                    let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, ctx);
                     if next_arr.underlying(self).ty.is_dyn_builtin(self) {
                         if let Some(r) = next_arr.range(self) {
                             let min = r.evaled_range_min(self);
@@ -709,7 +714,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return true;
                 }
 
-                let max_conc = max.maybe_concrete().expect("Was not concrete");
+                let max_conc = max.maybe_concrete().unwrap_or_else(|| {self.open_dot(); panic!("Was not concrete: {}", max.to_range_string(true, self).s) });
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
 
                 // we add/sub one to the element because its strict >
@@ -908,7 +913,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     e => panic!("here {e:?}"),
                 };
 
-                let new_underlying_rhs = self.advance_var_in_ctx(rhs, loc, ctx);
+                let new_underlying_rhs = self.advance_var_in_ctx(rhs.latest_version(self), loc, ctx);
                 if let Some(lhs_range) = new_underlying_rhs.underlying(self).ty.range(self) {
                     if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                         let new_lhs_range = if needs_inverse {

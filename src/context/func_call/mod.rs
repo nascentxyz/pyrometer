@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use shared::range::elem_ty::Elem;
 use shared::range::Range;
-use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
+use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation, FunctionTy};
 
 use crate::VarType;
 
@@ -98,7 +98,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         if !literals.iter().any(|i| *i) {
             None
         } else {
-            // println!("funcs: {:?}", funcs);
             let funcs = funcs
                 .iter()
                 .filter(|func| {
@@ -154,15 +153,15 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         };
 
         // TODO: this is probably wrong
-        if let Some(r) = var.fallback_range(self) {
-            if var.storage.is_some() {
-                if let Elem::Concrete(c) = r.range_max() {
-                    if let Some(size) = c.val.int_size() {
-                        var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
-                    }
-                }
-            }
-        }
+        // if let Some(r) = var.fallback_range(self) {
+        //     if var.storage.is_some() {
+        //         if let Elem::Concrete(c) = r.range_max() {
+        //             if let Some(size) = c.val.int_size() {
+        //                 var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
+        //             }
+        //         }
+        //     }
+        // }
         let new_cvarnode = self.add_node(Node::ContextVar(var));
         self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
         if let Some(func_node) = ContextVarNode::from(new_cvarnode).ty(self).func_node(self) {
@@ -325,6 +324,9 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             })
             .collect::<BTreeMap<_, ContextVarNode>>();
 
+        if !func_node.modifiers_set(self) {
+            self.set_modifiers(func_node, ctx);
+        }
         let mods = func_node.modifiers(self);
         if let Some(mod_state) = modifier_state {
             // we are iterating through modifiers
@@ -453,6 +455,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_call_str: Option<String>,
     ) -> ExprRet {
         let mod_node = func_node.modifiers(self)[mod_state.num];
+        tracing::trace!("calling modifier {} for func {}", mod_node.name(self), func_node.name(self));
         let mod_ctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
             func_ctx,
             loc,
@@ -538,6 +541,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
     /// Resumes the parent function of a modifier
     #[tracing::instrument(level = "trace", skip_all)]
     fn resume_from_modifier(&mut self, ctx: ContextNode, modifier_state: ModifierState) -> ExprRet {
+        tracing::trace!("resuming from modifier: {}", ctx.associated_fn_name(self));
         // pass up the variable changes
         self.inherit_input_changes(
             modifier_state.loc,
@@ -547,15 +551,23 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         );
         self.inherit_storage_changes(modifier_state.parent_ctx, ctx);
 
-        // actually execute the parent function
-        self.execute_call_inner(
-            modifier_state.loc,
-            modifier_state.parent_caller_ctx,
-            modifier_state.parent_ctx,
-            modifier_state.parent_fn,
-            modifier_state.renamed_inputs,
-            None,
-        )
+        let mods = modifier_state.parent_fn.modifiers(self);
+        if modifier_state.num + 1 < mods.len() {
+            // use the next modifier
+            let mut mstate = modifier_state;
+            mstate.num += 1;
+            self.call_modifier_for_fn(mods[mstate.num].underlying(self).loc, ctx, mstate.parent_fn, mstate, None)
+        } else {
+            // actually execute the parent function
+            self.execute_call_inner(
+                modifier_state.loc,
+                modifier_state.parent_caller_ctx,
+                modifier_state.parent_ctx,
+                modifier_state.parent_fn,
+                modifier_state.renamed_inputs,
+                None,
+            )
+        }
     }
 
     /// Inherit the input changes from a function call
@@ -645,9 +657,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         let _ = write!(mod_name, "{args_str}");
                     }
                     let _ = write!(mod_name, "");
-                    self.user_types()
-                        .get(&mod_name)
-                        .map(|idx| FunctionNode::from(*idx))
+
+                    // println!("func modifiers: {},\n{:?},\n{:#?},\n{}", func.name(self), mod_name, ctx.visible_modifiers(self), ctx.visible_modifiers(self)[0].name(self));
+                    let found: FunctionNode = *ctx.visible_modifiers(self).iter().find(|modifier| modifier.name(self) == mod_name)?;
+                    Some(found)
                 })
                 .collect();
             res
@@ -660,5 +673,6 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             .iter()
             .enumerate()
             .for_each(|(i, modifier)| self.add_edge(*modifier, func, Edge::FuncModifier(i)));
+        func.underlying_mut(self).modifiers_set = true;
     }
 }

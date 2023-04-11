@@ -1,3 +1,4 @@
+use crate::EnumNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::Elem;
@@ -592,6 +593,13 @@ impl ContextVarNode {
     pub fn is_int(&self, analyzer: &impl GraphLike) -> bool {
         self.underlying(analyzer).ty.is_int(analyzer)
     }
+
+    pub fn sol_delete_range(&mut self, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+        let ty = self.ty(analyzer);
+        if let Some(delete_range) = ty.delete_range_result(analyzer) {
+            self.set_range(analyzer, delete_range);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -742,6 +750,13 @@ impl ContextVar {
                     SolcRange::try_from_builtin(&Builtin::Address)
                 }
             }
+            VarType::User(TypeNode::Enum(enum_node), ref maybe_range) => {
+                if let Some(range) = maybe_range {
+                    Some(range.clone())
+                } else {
+                    enum_node.maybe_default_range(analyzer)
+                }
+            }
             VarType::BuiltIn(bn, ref maybe_range) => {
                 if let Some(range) = maybe_range {
                     Some(range.clone())
@@ -758,6 +773,7 @@ impl ContextVar {
     pub fn set_range(&mut self, new_range: SolcRange) {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 *maybe_range = Some(new_range);
             }
@@ -770,6 +786,7 @@ impl ContextVar {
     pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_min(new_min);
@@ -791,6 +808,7 @@ impl ContextVar {
     ) -> bool {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_min(new_min);
@@ -810,6 +828,7 @@ impl ContextVar {
     pub fn set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_max(new_max);
@@ -831,6 +850,7 @@ impl ContextVar {
     ) {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_exclusions(new_exclusions);
@@ -852,6 +872,7 @@ impl ContextVar {
     ) -> bool {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_max(new_max);
@@ -875,6 +896,7 @@ impl ContextVar {
     ) -> bool {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
+            | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
             | VarType::BuiltIn(_, ref mut maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.set_range_exclusions(new_exclusions);
@@ -974,6 +996,33 @@ impl ContextVar {
             })
         } else {
             None
+        }
+    }
+
+    pub fn new_from_enum_variant(
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        ctx: ContextNode,
+        loc: Loc,
+        enum_node: EnumNode,
+        variant: String,
+    ) -> Self {
+        let enum_name = enum_node.name(analyzer);
+        ContextVar {
+            loc: Some(loc),
+            name: format!("{}.{}_{}",
+                enum_name,
+                variant,
+                ctx.new_tmp(analyzer)
+            ),
+            display_name: format!("{}.{}",
+                enum_name,
+                variant
+            ),
+            storage: None,
+            is_tmp: false,
+            tmp_of: None,
+            is_symbolic: true,
+            ty: VarType::User(TypeNode::Enum(enum_node), Some(enum_node.range_from_variant(variant, analyzer))),
         }
     }
 

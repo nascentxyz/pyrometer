@@ -1,4 +1,9 @@
 //! Solidity and EVM specific representations as nodes in the graph
+use ethers_core::types::H256;
+use crate::range::elem_ty::RangeDyn;
+use ethers_core::types::I256;
+use ethers_core::types::U256;
+use ethers_core::types::Address;
 use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
 use crate::range::elem::RangeElem;
@@ -8,8 +13,7 @@ use crate::range::SolcRange;
 use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
-use solang_parser::pt::Expression;
-use solang_parser::pt::Type;
+use solang_parser::pt::{Loc, Expression, Type};
 
 mod contract_ty;
 pub use contract_ty::*;
@@ -115,7 +119,17 @@ impl VarType {
             )),
             Node::Function(_) => Some(VarType::User(TypeNode::Func(node.into()), None)),
             Node::Struct(_) => Some(VarType::User(TypeNode::Struct(node.into()), None)),
-            Node::Enum(_) => Some(VarType::User(TypeNode::Enum(node.into()), None)),
+            Node::Enum(enu) => {
+                let variants = enu.variants();
+                let range = if !variants.is_empty() {
+                    let min = Concrete::from(variants.first().unwrap().clone()).into();
+                    let max = Concrete::from(variants.last().unwrap().clone()).into();
+                    Some(SolcRange::new(min, max, vec![]))
+                } else {
+                    None
+                };
+                Some(VarType::User(TypeNode::Enum(node.into()), range))
+            },
             Node::Concrete(_) => Some(VarType::Concrete(node.into())),
             Node::ContextVar(cvar) => Some(cvar.ty.clone()),
             Node::Var(var) => VarType::try_from_idx(analyzer, var.ty),
@@ -129,10 +143,20 @@ impl VarType {
             | Node::Field(..)
             | Node::SourceUnitPart(..)
             | Node::SourceUnit(..)
+            | Node::Entry
             | Node::Unresolved(..)
             | Node::Context(..)
             | Node::Msg(_)
             | Node::Block(_) => None,
+        }
+    }
+
+    pub fn requires_input(&self, analyzer: &impl GraphLike) -> bool {
+        match self {
+            VarType::BuiltIn(bn, _) => {
+                bn.underlying(analyzer).requires_input()
+            }
+            _ => false
         }
     }
 
@@ -247,9 +271,26 @@ impl VarType {
         }
     }
 
+    pub fn delete_range_result(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+        match self {
+            Self::User(TypeNode::Contract(_), _) => {
+                let zero = Concrete::Address(Address::from_slice(&[0x00; 20]));
+                Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
+            },
+            Self::User(TypeNode::Enum(enum_node), _) => {
+                let zero = Concrete::from(enum_node.variants(analyzer).first()?.clone());
+                Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
+            },
+            Self::BuiltIn(bn, None) => bn.zero_range(analyzer),
+            Self::Concrete(cnode) => cnode.underlying(analyzer).as_builtin().zero_range(),
+            _ => None,
+        }
+    }
+
     pub fn default_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
         match self {
             Self::User(TypeNode::Contract(_), _) => SolcRange::try_from_builtin(&Builtin::Address),
+            Self::User(TypeNode::Enum(enu), _) => enu.maybe_default_range(analyzer),
             Self::BuiltIn(bn, _) => SolcRange::try_from_builtin(bn.underlying(analyzer)),
             Self::Concrete(cnode) => SolcRange::from(cnode.underlying(analyzer).clone()),
             _ => None,
@@ -361,9 +402,9 @@ pub enum TypeNode {
 impl TypeNode {
     pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
         match self {
-            TypeNode::Contract(n) => format!("contract {}", n.name(analyzer)),
-            TypeNode::Struct(n) => format!("struct {}", n.name(analyzer)),
-            TypeNode::Enum(n) => format!("enum {}", n.name(analyzer)),
+            TypeNode::Contract(n) => n.name(analyzer),
+            TypeNode::Struct(n) => n.name(analyzer),
+            TypeNode::Enum(n) => n.name(analyzer),
             TypeNode::Func(n) => format!("function {}", n.name(analyzer)),
         }
     }
@@ -432,6 +473,10 @@ impl BuiltInNode {
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> bool {
         self.underlying(analyzer).is_dyn()
     }
+
+    pub fn zero_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+        self.underlying(analyzer).zero_range()
+    }
 }
 
 impl From<NodeIdx> for BuiltInNode {
@@ -464,6 +509,33 @@ pub enum Builtin {
 }
 
 impl Builtin {
+    pub fn zero_range(&self) -> Option<SolcRange> {
+        match self {
+            Builtin::Address
+            | Builtin::AddressPayable
+            | Builtin::Payable => {
+                let zero = Concrete::Address(Address::from_slice(&[0x00; 20]));
+                Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
+            }
+            Builtin::Bool => SolcRange::from(Concrete::from(false)),
+            Builtin::String => SolcRange::from(Concrete::from("".to_string())),
+            Builtin::Int(_) => SolcRange::from(Concrete::from(I256::from(0))),
+            Builtin::Uint(_) => SolcRange::from(Concrete::from(U256::from(0))),
+            Builtin::Bytes(s) => SolcRange::from(Concrete::Bytes(*s, H256::zero())),
+            Builtin::DynamicBytes
+            | Builtin::Array(_)
+            | Builtin::Mapping(_, _) => {
+                let zero = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: Elem::from(Concrete::from(U256::zero())),
+                    val: Default::default(),
+                    loc: Loc::Implicit,
+                }));
+                Some(SolcRange::new(zero.clone(), zero, vec![]))
+            },
+            Builtin::Rational
+            | Builtin::Func(_, _) => None
+        }
+    }
     pub fn try_from_ty(
         ty: Type,
         analyzer: &mut impl AnalyzerLike<Expr = Expression>,
@@ -528,6 +600,13 @@ impl Builtin {
         )
     }
 
+    pub fn requires_input(&self) -> bool {
+        matches!(
+            self,
+            Builtin::Array(..) | Builtin::Mapping(..)
+        )
+    }
+
     pub fn num_size(&self) -> Option<u16> {
         match self {
             Builtin::Uint(size) => Some(*size),
@@ -571,8 +650,8 @@ impl Builtin {
         use Builtin::*;
         match self {
             Address => "address".to_string(),
-            AddressPayable => "payable".to_string(),
-            Payable => "payable".to_string(),
+            AddressPayable => "address".to_string(),
+            Payable => "address".to_string(),
             Bool => "bool".to_string(),
             String => "string".to_string(),
             Int(size) => format!("int{size}"),
@@ -602,59 +681,3 @@ impl Builtin {
         }
     }
 }
-
-// #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-// pub struct DynBuiltInNode(pub usize);
-
-// impl DynBuiltInNode {
-//     pub fn underlying_array_ty<'a>(&self, analyzer: &'a impl GraphLike) -> &'a VarType {
-//         match analyzer.node(*self) {
-//             Node::DynBuiltin(DynBuiltin::Array(v)) => v,
-//             e => panic!(
-//                 "Node type confusion: expected node to be Array but it was: {:?}",
-//                 e
-//             ),
-//         }
-//     }
-
-//     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a DynBuiltin {
-//         match analyzer.node(*self) {
-//             Node::DynBuiltin(b) => b,
-//             e => panic!(
-//                 "Node type confusion: expected node to be DynBuiltin but it was: {:?}",
-//                 e
-//             ),
-//         }
-//     }
-
-//     pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
-//         self.underlying(analyzer).as_string(analyzer)
-//     }
-// }
-
-// impl From<DynBuiltInNode> for NodeIdx {
-//     fn from(val: DynBuiltInNode) -> Self {
-//         val.0.into()
-//     }
-// }
-
-// impl From<NodeIdx> for DynBuiltInNode {
-//     fn from(idx: NodeIdx) -> Self {
-//         DynBuiltInNode(idx.index())
-//     }
-// }
-
-// #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-// pub enum DynBuiltin {
-
-// }
-
-// impl DynBuiltin {
-//     pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
-//         use DynBuiltin::*;
-//         match self {
-//             Array(v_ty) => format!("{}[]", v_ty.as_string(analyzer)),
-//             Mapping(key_ty, v_ty) => format!("mapping({} => {})", key_ty.as_string(analyzer), v_ty.as_string(analyzer)),
-//         }
-//     }
-// }

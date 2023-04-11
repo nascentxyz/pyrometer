@@ -18,6 +18,7 @@ use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
 impl<T> NameSpaceFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
 pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_name_spaced_named_func(
         &mut self,
         ctx: ContextNode,
@@ -31,6 +32,7 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         todo!("here");
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_name_spaced_func(
         &mut self,
         ctx: ContextNode,
@@ -40,6 +42,7 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         input_exprs: &[Expression],
     ) -> ExprRet {
         use solang_parser::pt::Expression::*;
+
         if let Variable(Identifier { name, .. }) = member_expr {
             if name == "abi" {
                 let func_name = format!("abi.{}", ident.name);
@@ -53,41 +56,28 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         }
 
         let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
+        tracing::trace!("namespaced function call: {:?}.{:?}(..)", ContextVarNode::from(member).display_name(self), ident.name);
 
-        let inputs = match ContextVarNode::from(member).underlying(self).ty {
-            VarType::User(TypeNode::Contract(_), _) => input_exprs
+        let funcs = self.visible_member_funcs(ctx, member);
+        // filter down all funcs to those that match
+        let possible_funcs = funcs
+            .iter()
+            .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
+            .copied()
+            .collect::<Vec<_>>();
+
+
+        let mut inputs = vec![ExprRet::Single((mem_ctx, member))];
+        inputs.extend(
+            input_exprs
                 .iter()
                 .map(|expr| self.parse_ctx_expr(expr, ctx))
                 .collect::<Vec<_>>(),
-            _ => {
-                let mut inputs = vec![ExprRet::Single((mem_ctx, member))];
-                inputs.extend(
-                    input_exprs
-                        .iter()
-                        .map(|expr| self.parse_ctx_expr(expr, ctx))
-                        .collect::<Vec<_>>(),
-                );
-                inputs
-            }
-        };
-
-        let inputs = ExprRet::Multi(inputs);
-        let func_str = format!(
-            "{}.{}({})",
-            ContextVarNode::from(member).display_name(self),
-            ident,
-            inputs
-                .as_flat_vec()
-                .iter()
-                .map(|cnode| ContextVarNode::from(*cnode).display_name(self))
-                .collect::<Vec<_>>()
-                .join(", ")
         );
-        if !inputs.has_literal() {
-            // TODO: handle implicit upcast
-            let as_input_str = inputs.try_as_func_input_str(self);
 
-            let (_func_ctx, func_idx) = match self.parse_ctx_expr(
+        if possible_funcs.is_empty() {
+            let as_input_str = ExprRet::Multi(inputs).try_as_func_input_str(self);
+            let (func_ctx, func_idx) = match self.parse_ctx_expr(
                 &MemberAccess(
                     *loc,
                     Box::new(member_expr.clone()),
@@ -97,59 +87,25 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     },
                 ),
                 ctx,
-            ) {
+            ).flatten() {
                 ExprRet::Single((ctx, idx)) => (ctx, idx),
                 m @ ExprRet::Multi(_) => m.expect_single(),
                 ExprRet::CtxKilled => return ExprRet::CtxKilled,
                 e => todo!("got fork in func call: {:?}", e),
             };
-
-            if matches!(self.node(func_idx), Node::Function(..)) {
-                // intrinsic
-                let mut inputs: Vec<Expression> = vec![member_expr.clone()];
-                inputs.extend(input_exprs.to_vec());
-                self.intrinsic_func_call(loc, &inputs, func_idx, ctx)
-            } else {
-                self.func_call(
-                    ctx,
-                    *loc,
-                    &inputs,
-                    ContextVarNode::from(func_idx)
-                        .ty(self)
-                        .func_node(self)
-                        .unwrap_or_else(|| {
-                            panic!("expected a function node, was: {:?}", self.node(func_idx))
-                        }),
-                    Some(func_str),
-                )
+            let mut modifierd_input_exprs = vec![member_expr.clone()];
+            modifierd_input_exprs.extend(input_exprs.to_vec());
+            self.intrinsic_func_call(loc, &modifierd_input_exprs, func_idx, func_ctx)
+        } else if possible_funcs.len() == 1 {
+            let func = possible_funcs[0];
+            if func.params(self).len() < inputs.len() {
+                inputs = inputs[1..].to_vec();
             }
+            self.setup_fn_call(&ident.loc, &ExprRet::Multi(inputs), func.into(), ctx, None)
         } else {
-            // we need to disambiguate the literals
-            let ty = &ContextVarNode::from(member).underlying(self).ty;
-            let possible_funcs: Vec<FunctionNode> = match ty {
-                VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
-                VarType::BuiltIn(bn, _) => self
-                    .possible_library_funcs(ctx, bn.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::Concrete(cnode) => {
-                    let b = cnode.underlying(self).as_builtin();
-                    let bn = self.builtin_or_add(b);
-                    self.possible_library_funcs(ctx, bn)
-                        .into_iter()
-                        .collect::<Vec<_>>()
-                }
-                VarType::User(TypeNode::Struct(sn), _) => self
-                    .possible_library_funcs(ctx, sn.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Enum(en), _) => self
-                    .possible_library_funcs(ctx, en.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Func(_), _) => todo!(),
-            };
-            let lits = input_exprs
+            // this is the annoying case due to function overloading & type inference on number literals
+            let mut lits = vec![false];
+            lits.extend(input_exprs
                 .iter()
                 .map(|expr| {
                     match expr {
@@ -161,17 +117,15 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                         _ => false,
                     }
                 })
-                .collect();
+                .collect::<Vec<bool>>());
 
+            let inputs = ExprRet::Multi(inputs);
             if let Some(func) =
-                self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs[..])
+                self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
             {
-                self.setup_fn_call(loc, &inputs, func.into(), ctx, Some(func_str))
+                self.setup_fn_call(loc, &inputs, func.into(), ctx, None)
             } else {
-                panic!(
-                    "Could not disambiguate function call: {}, {:?}",
-                    ident.name, inputs
-                )
+                ExprRet::CtxKilled
             }
         }
     }

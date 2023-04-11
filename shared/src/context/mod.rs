@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use crate::analyzer::{AnalyzerLike, Search};
 use crate::nodes::FunctionNode;
 use crate::ContractNode;
@@ -242,7 +243,7 @@ impl ContextNode {
     /// Gets the associated contract for the function for the context
     pub fn associated_contract(&self, analyzer: &(impl GraphLike + Search)) -> ContractNode {
         self.associated_fn(analyzer)
-            .contract(analyzer)
+            .maybe_associated_contract(analyzer)
             .expect("No associated contract for context")
     }
 
@@ -251,7 +252,7 @@ impl ContextNode {
         &self,
         analyzer: &(impl GraphLike + Search),
     ) -> Option<ContractNode> {
-        self.associated_fn(analyzer).contract(analyzer)
+        self.associated_fn(analyzer).maybe_associated_contract(analyzer)
     }
 
     pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
@@ -265,8 +266,110 @@ impl ContextNode {
             .associated_source_unit_part(analyzer)
     }
 
+    /// Gets visible functions
+    pub fn visible_modifiers(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+        // TODO: filter privates
+        let source = self.associated_source(analyzer);
+        if let Some(contract) = self.maybe_associated_contract(analyzer) {
+            let mut modifiers = contract.modifiers(analyzer);
+            // extend with free floating functions
+            modifiers.extend(
+                analyzer
+                    .search_children_depth(source, &Edge::Modifier, 1, 0)
+                    .into_iter()
+                    .map(FunctionNode::from)
+                    .collect::<Vec<_>>()
+            );
+
+            // extend with inherited functions
+            let inherited_contracts = analyzer.search_children(contract.0.into(), &Edge::InheritedContract);
+            // println!("inherited: [{:#?}]", inherited_contracts.iter().map(|i| ContractNode::from(*i).name(analyzer)).collect::<Vec<_>>());
+            modifiers.extend(
+                inherited_contracts
+                    .into_iter()
+                    .flat_map(|inherited_contract| ContractNode::from(inherited_contract).modifiers(analyzer))
+                    .collect::<Vec<_>>()
+            );
+
+            let mut mapping: BTreeMap<String, BTreeSet<FunctionNode>> = BTreeMap::new();
+            for modifier in modifiers.iter() {
+                let entry = mapping.entry(modifier.name(analyzer)).or_default();
+                entry.insert(*modifier);
+            }
+            mapping.into_values().map(|modifier_set| {
+                let as_vec = modifier_set.iter().collect::<Vec<_>>();
+
+                if as_vec.len() > 2 {
+                    panic!("3+ visible functions with the same name. This is invalid solidity")
+                } else if as_vec.len() == 2 {
+                    as_vec[0].get_overriding(as_vec[1], analyzer)
+                } else {
+                    *as_vec[0]
+                }
+            }).collect()
+        } else {
+            // we are in a free floating function, only look at free floating functions
+            let source = self.associated_source(analyzer);
+            analyzer
+                .search_children_depth(source, &Edge::Modifier, 1, 0)
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>()
+        }
+    }
+
+    /// Gets visible functions
+    pub fn visible_funcs(&self, analyzer: &(impl GraphLike + Search + AnalyzerLike)) -> Vec<FunctionNode> {
+        // TODO: filter privates
+        if let Some(contract) = self.maybe_associated_contract(analyzer) {
+            let mut funcs = contract.funcs(analyzer);
+            // extend with free floating functions
+            funcs.extend(
+                analyzer
+                    .search_children_depth(analyzer.entry(), &Edge::Func, 2, 0)
+                    .into_iter()
+                    .map(FunctionNode::from)
+                    .collect::<Vec<_>>()
+            );
+
+
+            // extend with inherited functions
+            let inherited_contracts = analyzer.search_children(contract.0.into(), &Edge::InheritedContract);
+            funcs.extend(
+                inherited_contracts
+                    .into_iter()
+                    .flat_map(|inherited_contract| ContractNode::from(inherited_contract).funcs(analyzer))
+                    .collect::<Vec<_>>()
+            );
+
+            let mut mapping: BTreeMap<String, BTreeSet<FunctionNode>> = BTreeMap::new();
+            for func in funcs.iter() {
+                let entry = mapping.entry(func.name(analyzer)).or_default();
+                entry.insert(*func);
+            }
+            mapping.into_values().map(|funcs_set| {
+                let as_vec = funcs_set.iter().collect::<Vec<_>>();
+
+                if as_vec.len() > 2 {
+                    panic!("3+ visible functions with the same name. This is invalid solidity")
+                } else if as_vec.len() == 2 {
+                    as_vec[0].get_overriding(as_vec[1], analyzer)
+                } else {
+                    *as_vec[0]
+                }
+            }).collect()
+        } else {
+            // we are in a free floating function, only look at free floating functions
+            analyzer
+                .search_children_depth(analyzer.entry(), &Edge::Func, 2, 0)
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>()
+        }
+    }
+
     /// Gets all visible functions
-    pub fn visible_funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+    pub fn source_funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         analyzer
@@ -294,10 +397,10 @@ impl ContextNode {
 
     /// Checks whether a function is external to the current context
     pub fn is_fn_ext(&self, fn_node: FunctionNode, analyzer: &(impl GraphLike + Search)) -> bool {
-        match fn_node.contract(analyzer) {
+        match fn_node.maybe_associated_contract(analyzer) {
             None => false,
             Some(fn_ctrt) => {
-                if let Some(self_ctrt) = self.associated_fn(analyzer).contract(analyzer) {
+                if let Some(self_ctrt) = self.associated_fn(analyzer).maybe_associated_contract(analyzer) {
                     Some(self_ctrt) != Some(fn_ctrt)
                         && !self_ctrt
                             .underlying(analyzer)

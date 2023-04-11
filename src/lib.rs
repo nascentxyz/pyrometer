@@ -29,11 +29,12 @@ pub struct Analyzer {
     pub root: PathBuf,
     pub remappings: Vec<(String, String)>,
     pub imported_srcs: BTreeSet<OsString>,
-    pub final_pass_items: Vec<(Vec<FunctionNode>, Vec<(Using, NodeIdx)>)>,
+    pub final_pass_items: Vec<(Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<(ContractNode, Vec<String>)>)>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
     pub graph: Graph<Node, Edge, Directed, usize>,
+    pub entry: NodeIdx,
     pub builtins: HashMap<Builtin, NodeIdx>,
     pub user_types: HashMap<String, NodeIdx>,
     pub builtin_fns: HashMap<String, Function>,
@@ -51,6 +52,7 @@ impl Default for Analyzer {
             msg: MsgNode(0),
             block: BlockNode(0),
             graph: Default::default(),
+            entry: NodeIndex::from(0),
             builtins: Default::default(),
             user_types: Default::default(),
             builtin_fns: builtin_fns::builtin_fns(),
@@ -65,6 +67,7 @@ impl Default for Analyzer {
         let block = a.graph.add_node(Node::Block(block)).into();
         a.msg = msg;
         a.block = block;
+        a.entry = a.add_node(Node::Entry);
         a
     }
 }
@@ -81,6 +84,10 @@ impl GraphLike for Analyzer {
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
+    fn entry(&self) -> NodeIdx {
+        self.entry
+    }
+
     fn msg(&mut self) -> MsgNode {
         self.msg
     }
@@ -219,6 +226,7 @@ impl Analyzer {
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
+                self.add_edge(parent, self.entry, Edge::Source);
                 let final_pass_part = self.parse_source_unit(
                     source_unit,
                     file_no,
@@ -239,24 +247,20 @@ impl Analyzer {
 
     pub fn final_pass(&mut self) {
         let elems = self.final_pass_items.clone();
-        elems.into_iter().for_each(|(funcs, usings)| {
-            usings.into_iter().for_each(|(using, scope_node)| {
-                self.parse_using(&using, scope_node);
+        elems.iter().for_each(|(funcs, usings, inherits)| {
+            inherits.iter().for_each(|(contract, inherits)| {
+                contract.inherit(inherits.to_vec(), self);
+            });
+            usings.iter().for_each(|(using, scope_node)| {
+                self.parse_using(using, *scope_node);
             });
             funcs.iter().for_each(|func| {
                 // add params now that parsing is done
                 func.set_params_and_ret(self);
-                let name = func.name(self);
-                if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-                    let underlying = func.underlying(self).clone();
-                    let unresolved = self.node_mut(user_ty_node);
-                    *unresolved = Node::Function(underlying);
-                } else {
-                    self.user_types
-                        .insert(name.to_string(), NodeIdx::from(*func));
-                }
             });
+        });
 
+        elems.into_iter().for_each(|(funcs, _usings, _inherits)| {
             funcs.into_iter().for_each(|func| {
                 if let Some(body) = &func.underlying(self).body.clone() {
                     self.parse_ctx_statement(body, false, Some(func));
@@ -273,15 +277,16 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &Path,
-    ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
+    ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<(ContractNode, Vec<String>)>) {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
+        let mut all_inherits = vec![];
         source_unit
             .0
             .iter()
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
-                let (_sup, funcs, usings) = self.parse_source_unit_part(
+                let (_sup, funcs, usings, inherits) = self.parse_source_unit_part(
                     source_unit_part,
                     file_no,
                     unit_part,
@@ -291,8 +296,9 @@ impl Analyzer {
                 );
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
+                all_inherits.extend(inherits);
             });
-        (all_funcs, all_usings)
+        (all_funcs, all_usings, all_inherits)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -304,7 +310,7 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &Path,
-    ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
+    ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<(ContractNode, Vec<String>)>) {
         use SourceUnitPart::*;
 
         let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
@@ -312,13 +318,15 @@ impl Analyzer {
 
         let mut func_nodes = vec![];
         let mut usings = vec![];
+        let mut inherits = vec![];
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs, con_usings) = self.parse_contract_def(def, imported);
+                let (node, funcs, con_usings, unhandled_inherits) = self.parse_contract_def(def, parent, imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
                 usings.extend(con_usings);
+                inherits.push((node, unhandled_inherits));
             }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(def);
@@ -355,7 +363,7 @@ impl Analyzer {
             PragmaDirective(_, _, _) => {}
             ImportDirective(import) => imported.extend(self.parse_import(import, current_path)),
         }
-        (sup_node, func_nodes, usings)
+        (sup_node, func_nodes, usings, inherits)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -459,8 +467,9 @@ impl Analyzer {
     pub fn parse_contract_def(
         &mut self,
         contract_def: &ContractDefinition,
+        source: NodeIdx,
         imports: &[(Option<NodeIdx>, String, String, usize)],
-    ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>) {
+    ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<String>) {
         tracing::trace!(
             "Parsing contract {}",
             if let Some(ident) = &contract_def.name {
@@ -471,7 +480,7 @@ impl Analyzer {
         );
         use ContractPart::*;
 
-        let contract = Contract::from_w_imports(contract_def.clone(), imports, self);
+        let (contract, unhandled_inherits) = Contract::from_w_imports(contract_def.clone(), source, imports, self);
         let inherits = contract.inherits.clone();
         let con_node = ContractNode(self.add_node(contract).index());
         inherits.iter().for_each(|contract_node| {
@@ -515,7 +524,7 @@ impl Analyzer {
         });
         self.user_types
             .insert(con_node.name(self), con_node.0.into());
-        (con_node, func_nodes, usings)
+        (con_node, func_nodes, usings, unhandled_inherits)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]

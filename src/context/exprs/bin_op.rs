@@ -1,3 +1,4 @@
+use shared::analyzer::AsDotStr;
 use crate::{context::ContextBuilder, ExprRet};
 use ethers_core::types::{I256, U256};
 use shared::range::elem::RangeElem;
@@ -213,7 +214,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                         } else {
                             // the new min is max(1, rhs.min)
                             let min = Elem::max(
-                                tmp_rhs.range_min(self).expect("No range minimum?"),
+                                tmp_rhs.range_min(self).unwrap_or_else(|| panic!("No range minimum: {:?}", tmp_rhs.underlying(self))),
                                 Elem::from(Concrete::from(U256::from(1)))
                                     .cast(tmp_rhs.range_min(self).expect("No range minimum?")),
                             );
@@ -245,7 +246,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                         let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
-                            tmp_lhs.range_min(self).expect("No range minimum?"),
+                            tmp_lhs.range_min(self).unwrap_or_else(|| panic!("No range minimum: {:?}", tmp_lhs.ty(self).as_dot_str(self))),
                             Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
                         );
                         tmp_lhs.set_range_min(self, min);

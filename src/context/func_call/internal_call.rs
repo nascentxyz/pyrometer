@@ -137,14 +137,18 @@ pub trait InternalFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLik
         func_expr: &Expression,
         input_exprs: &[Expression],
     ) -> ExprRet {
+        tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self);
+        // println!("visible funcs: [{:#?}]", funcs.iter().map(|i| i.name(self)).collect::<Vec<_>>());
+        // println!("visible funcs: [{:#?}]", funcs.iter().map(|func| func.name(self)).collect::<Vec<_>>());
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
             .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
             .copied()
             .collect::<Vec<_>>();
+        // println!("possible_funcs: [{:#?}]", possible_funcs.iter().map(|i| i.name(self)).collect::<Vec<_>>());
 
         if possible_funcs.is_empty() {
             // this is a builtin, cast, or unknown function?

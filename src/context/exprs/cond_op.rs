@@ -142,7 +142,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
                 c.loc = loc;
                 Expression::Variable(c)
             }
-            e => todo!("Wasnt comparator: {:?}", e),
+            e => e,
         };
         // println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
         self.handle_require(&[if_expr], true_fork_ctx)
@@ -158,7 +158,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
             Expression::MoreEqual(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
             Expression::LessEqual(_loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
             Expression::Variable(ref _ident) => Expression::Not(loc, Box::new(if_expr)),
-            e => todo!("Wasnt comparator: {:?}", e),
+            _ => Expression::Not(loc, Box::new(if_expr)),
         };
         // println!("inverse if expr: {inv_if_expr:?}");
         self.handle_require(&[inv_if_expr], false_fork_ctx)
