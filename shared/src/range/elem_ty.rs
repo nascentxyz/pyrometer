@@ -58,9 +58,7 @@ impl RangeElem<Concrete> for Dynamic {
                 val: concrete_node.underlying(analyzer).clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             }),
-            _e => {
-                Elem::Dynamic(*self)
-            }
+            _e => Elem::Dynamic(*self),
         }
     }
 
@@ -78,9 +76,7 @@ impl RangeElem<Concrete> for Dynamic {
                 val: concrete_node.underlying(analyzer).clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             }),
-            _e => {
-                Elem::Dynamic(*self)
-            }
+            _e => Elem::Dynamic(*self),
         }
     }
 

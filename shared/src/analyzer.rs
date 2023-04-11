@@ -580,7 +580,13 @@ pub trait Search: GraphLike {
         this_children
     }
 
-    fn search_children_depth(&self, start: NodeIdx, edge_ty: &Edge, max_depth: usize, curr_depth: usize) -> BTreeSet<NodeIdx> {
+    fn search_children_depth(
+        &self,
+        start: NodeIdx,
+        edge_ty: &Edge,
+        max_depth: usize,
+        curr_depth: usize,
+    ) -> BTreeSet<NodeIdx> {
         let edges = self.graph().edges_directed(start, Direction::Incoming);
         let mut this_children: BTreeSet<NodeIdx> = edges
             .clone()
@@ -596,7 +602,14 @@ pub trait Search: GraphLike {
         if curr_depth < max_depth {
             this_children.extend(
                 edges
-                    .flat_map(|edge| self.search_children_depth(edge.source(), edge_ty, max_depth, curr_depth + 1))
+                    .flat_map(|edge| {
+                        self.search_children_depth(
+                            edge.source(),
+                            edge_ty,
+                            max_depth,
+                            curr_depth + 1,
+                        )
+                    })
                     .collect::<BTreeSet<NodeIdx>>(),
             );
         }

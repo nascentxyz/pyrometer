@@ -1,13 +1,8 @@
 use crate::{
     context::{exprs::env::Env, ContextBuilder},
-    Concrete, ExprRet,
+    ExprRet,
 };
-use shared::{
-    analyzer::AnalyzerLike,
-    context::*,
-    range::{elem_ty::Elem, Range},
-    Edge, Node,
-};
+use shared::{analyzer::AnalyzerLike, context::*, range::Range, Edge, Node};
 use solang_parser::pt::Expression;
 
 use solang_parser::pt::Identifier;
@@ -39,7 +34,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
                 _ => ExprRet::Single((ctx, cvar)),
             }
         } else if let Some(idx) = self.user_types().get(&ident.name) {
-            let mut var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
+            let var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
                 Some(v) => v,
                 None => panic!(
                     "Could not create context variable from user type: {:?}, {:#?}",
@@ -78,7 +73,11 @@ pub trait Variable: AnalyzerLike<Expr = Expression> + Sized {
                 self.add_edge(output_node, func_node, Edge::FunctionReturn);
             });
             ExprRet::Single((ctx, func_node))
-        } else if let Some(func) = ctx.visible_funcs(self).iter().find(|func| func.name(self) == ident.name) {
+        } else if let Some(_func) = ctx
+            .visible_funcs(self)
+            .iter()
+            .find(|func| func.name(self) == ident.name)
+        {
             panic!("here");
         } else {
             // println!("{}", self.dot_str());

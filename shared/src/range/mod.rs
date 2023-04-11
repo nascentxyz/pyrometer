@@ -231,7 +231,10 @@ impl SolcRange {
                     vec![],
                 ))
             }
-            Builtin::DynamicBytes | Builtin::String | Builtin::Array(_) | Builtin::Mapping(_, _) => Some(SolcRange::new(
+            Builtin::DynamicBytes
+            | Builtin::String
+            | Builtin::Array(_)
+            | Builtin::Mapping(_, _) => Some(SolcRange::new(
                 Elem::ConcreteDyn(Box::new(RangeDyn {
                     len: Elem::from(Concrete::from(U256::zero())),
                     val: Default::default(),

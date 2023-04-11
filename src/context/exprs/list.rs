@@ -26,8 +26,7 @@ pub trait List: AnalyzerLike<Expr = Expression> + Sized {
 
     fn match_ty(&mut self, loc: &Loc, ty_ret: &ExprRet, input: &Parameter) -> ExprRet {
         match ty_ret {
-            ExprRet::Single((lhs_ctx, ty))
-            | ExprRet::SingleLiteral((lhs_ctx, ty)) => {
+            ExprRet::Single((lhs_ctx, ty)) | ExprRet::SingleLiteral((lhs_ctx, ty)) => {
                 if let Some(input_name) = &input.name {
                     let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                     let var = ContextVar {
@@ -63,8 +62,7 @@ pub trait List: AnalyzerLike<Expr = Expression> + Sized {
                                 tmp_of: None,
                                 ty,
                             };
-                            let input_node =
-                                self.add_node(Node::ContextVar(new_lhs_underlying));
+                            let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
                             self.add_edge(
                                 input_node,
                                 *lhs_ctx,

@@ -1,7 +1,7 @@
-use crate::Concrete;
-use crate::range::SolcRange;
 use crate::analyzer::GraphLike;
+use crate::range::SolcRange;
 use crate::AsDotStr;
+use crate::Concrete;
 use crate::Node;
 use crate::NodeIdx;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
@@ -89,7 +89,10 @@ pub struct Enum {
 
 impl Enum {
     pub fn variants(&self) -> Vec<String> {
-        self.values.iter().map(|ident| ident.clone().unwrap().name).collect()
+        self.values
+            .iter()
+            .map(|ident| ident.clone().unwrap().name)
+            .collect()
     }
 }
 

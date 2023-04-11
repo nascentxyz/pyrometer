@@ -1,4 +1,3 @@
-use solang_parser::pt::Type;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::Search;
 use crate::context::{ContextEdge, ContextNode};
@@ -13,6 +12,7 @@ use crate::{
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::ParameterList;
 use solang_parser::pt::Statement;
+use solang_parser::pt::Type;
 use solang_parser::pt::VariableDefinition;
 use solang_parser::pt::{
     Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc,
@@ -128,7 +128,16 @@ impl FunctionNode {
 
     pub fn maybe_associated_contract(&self, analyzer: &impl GraphLike) -> Option<ContractNode> {
         let parent = analyzer
-            .search_for_ancestor_multi(self.0.into(), &[Edge::Func, Edge::Constructor, Edge::Modifier, Edge::ReceiveFunc, Edge::FallbackFunc])
+            .search_for_ancestor_multi(
+                self.0.into(),
+                &[
+                    Edge::Func,
+                    Edge::Constructor,
+                    Edge::Modifier,
+                    Edge::ReceiveFunc,
+                    Edge::FallbackFunc,
+                ],
+            )
             .unwrap_or_else(|| panic!("detached function: {:?}", self.name(analyzer)));
         match analyzer.node(parent) {
             Node::Contract(_) => Some(parent.into()),
@@ -224,18 +233,28 @@ impl FunctionNode {
         let other_attrs = &other.underlying(analyzer).attributes;
         let self_virt_over_attr = self_attrs.iter().find(|attr| {
             // TODO: grab the override specifier if needed?
-            matches!(attr, FunctionAttribute::Virtual(_) | FunctionAttribute::Override(_, _))
+            matches!(
+                attr,
+                FunctionAttribute::Virtual(_) | FunctionAttribute::Override(_, _)
+            )
         });
         let other_virt_over_attr = other_attrs.iter().find(|attr| {
             // TODO: grab the override specifier if needed?
-            matches!(attr, FunctionAttribute::Virtual(_) | FunctionAttribute::Override(_, _))
+            matches!(
+                attr,
+                FunctionAttribute::Virtual(_) | FunctionAttribute::Override(_, _)
+            )
         });
         match (self_virt_over_attr, other_virt_over_attr) {
             (Some(FunctionAttribute::Virtual(_)), Some(FunctionAttribute::Virtual(_))) => *self,
-            (Some(FunctionAttribute::Virtual(_)), Some(FunctionAttribute::Override(_, _))) => *other,
+            (Some(FunctionAttribute::Virtual(_)), Some(FunctionAttribute::Override(_, _))) => {
+                *other
+            }
             (Some(FunctionAttribute::Override(_, _)), Some(FunctionAttribute::Virtual(_))) => *self,
-            (Some(FunctionAttribute::Override(_, _)), Some(FunctionAttribute::Override(_, _))) => *self,
-            (_, _) => *self
+            (Some(FunctionAttribute::Override(_, _)), Some(FunctionAttribute::Override(_, _))) => {
+                *self
+            }
+            (_, _) => *self,
         }
     }
 }
@@ -348,49 +367,43 @@ impl From<FunctionDefinition> for Function {
     }
 }
 
-
 pub fn var_def_to_ret(expr: Expression) -> (Loc, Option<Parameter>) {
     match expr {
-        Expression::Type(ty_loc, ref ty) => {
-            match ty {
-                Type::Mapping {
-                    value: v_ty,
-                    ..
-                } => {
-                    var_def_to_ret(*v_ty.clone())
-                }
-                Type::Address
-                | Type::AddressPayable
-                | Type::Payable
-                | Type::Bool
-                | Type::String
-                | Type::Int(_)
-                | Type::Uint(_)
-                | Type::Bytes(_)
-                | Type::Rational
-                | Type::DynamicBytes => {
-                    (ty_loc, Some(Parameter {
-                        loc: ty_loc,
-                        ty: expr,
-                        storage: None,
-                        name: None,
-                    }))
-                }
-                e => panic!("Unsupported type: {e:?}")
-            }
-        }
+        Expression::Type(ty_loc, ref ty) => match ty {
+            Type::Mapping { value: v_ty, .. } => var_def_to_ret(*v_ty.clone()),
+            Type::Address
+            | Type::AddressPayable
+            | Type::Payable
+            | Type::Bool
+            | Type::String
+            | Type::Int(_)
+            | Type::Uint(_)
+            | Type::Bytes(_)
+            | Type::Rational
+            | Type::DynamicBytes => (
+                ty_loc,
+                Some(Parameter {
+                    loc: ty_loc,
+                    ty: expr,
+                    storage: None,
+                    name: None,
+                }),
+            ),
+            e => panic!("Unsupported type: {e:?}"),
+        },
         Expression::ArraySubscript(_loc, sub_expr, _) => {
             // its an array, add the index as a parameter
             var_def_to_ret(*sub_expr)
         }
-        e => {
-            (Loc::Implicit, Some(Parameter {
+        e => (
+            Loc::Implicit,
+            Some(Parameter {
                 loc: Loc::Implicit,
                 ty: e,
                 storage: None,
                 name: None,
-            }))
-        }
+            }),
+        ),
     }
 }
 pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
@@ -404,12 +417,15 @@ pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
                     value: v_ty,
                     ..
                 } => {
-                    params.push((ty_loc, Some(Parameter {
-                        loc: *loc,
-                        ty: *key_ty.clone(),
-                        storage: None,
-                        name: None,
-                    })));
+                    params.push((
+                        ty_loc,
+                        Some(Parameter {
+                            loc: *loc,
+                            ty: *key_ty.clone(),
+                            storage: None,
+                            name: None,
+                        }),
+                    ));
                     params.extend(var_def_to_params(*v_ty.clone()));
                 }
                 Type::Address
@@ -431,17 +447,20 @@ pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
                     //     })));
                     // }
                 }
-                e => panic!("Unsupported type: {e:?}")
+                e => panic!("Unsupported type: {e:?}"),
             }
         }
         Expression::ArraySubscript(loc, sub_expr, _) => {
             // its an array, add the index as a parameter
-            params.push((loc, Some(Parameter {
+            params.push((
                 loc,
-                ty: Expression::Type(loc, Type::Uint(256)),
-                storage: None,
-                name: None,
-            })));
+                Some(Parameter {
+                    loc,
+                    ty: Expression::Type(loc, Type::Uint(256)),
+                    storage: None,
+                    name: None,
+                }),
+            ));
             params.extend(var_def_to_params(*sub_expr));
         }
         _e => {}
@@ -463,9 +482,7 @@ impl From<VariableDefinition> for Function {
             )))],
             body: None,
             params: var_def_to_params(var.ty),
-            returns: vec![
-                ret,
-            ],
+            returns: vec![ret],
             modifiers_set: true,
         }
     }

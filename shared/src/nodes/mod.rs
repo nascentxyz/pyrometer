@@ -1,19 +1,19 @@
 //! Solidity and EVM specific representations as nodes in the graph
-use ethers_core::types::H256;
-use crate::range::elem_ty::RangeDyn;
-use ethers_core::types::I256;
-use ethers_core::types::U256;
-use ethers_core::types::Address;
 use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Elem;
+use crate::range::elem_ty::RangeDyn;
 use crate::range::Range;
 use crate::range::SolcRange;
 use crate::GraphLike;
 use crate::Node;
 use crate::NodeIdx;
-use solang_parser::pt::{Loc, Expression, Type};
+use ethers_core::types::Address;
+use ethers_core::types::H256;
+use ethers_core::types::I256;
+use ethers_core::types::U256;
+use solang_parser::pt::{Expression, Loc, Type};
 
 mod contract_ty;
 pub use contract_ty::*;
@@ -129,7 +129,7 @@ impl VarType {
                     None
                 };
                 Some(VarType::User(TypeNode::Enum(node.into()), range))
-            },
+            }
             Node::Concrete(_) => Some(VarType::Concrete(node.into())),
             Node::ContextVar(cvar) => Some(cvar.ty.clone()),
             Node::Var(var) => VarType::try_from_idx(analyzer, var.ty),
@@ -153,10 +153,8 @@ impl VarType {
 
     pub fn requires_input(&self, analyzer: &impl GraphLike) -> bool {
         match self {
-            VarType::BuiltIn(bn, _) => {
-                bn.underlying(analyzer).requires_input()
-            }
-            _ => false
+            VarType::BuiltIn(bn, _) => bn.underlying(analyzer).requires_input(),
+            _ => false,
         }
     }
 
@@ -276,11 +274,11 @@ impl VarType {
             Self::User(TypeNode::Contract(_), _) => {
                 let zero = Concrete::Address(Address::from_slice(&[0x00; 20]));
                 Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
-            },
+            }
             Self::User(TypeNode::Enum(enum_node), _) => {
                 let zero = Concrete::from(enum_node.variants(analyzer).first()?.clone());
                 Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
-            },
+            }
             Self::BuiltIn(bn, None) => bn.zero_range(analyzer),
             Self::Concrete(cnode) => cnode.underlying(analyzer).as_builtin().zero_range(),
             _ => None,
@@ -511,9 +509,7 @@ pub enum Builtin {
 impl Builtin {
     pub fn zero_range(&self) -> Option<SolcRange> {
         match self {
-            Builtin::Address
-            | Builtin::AddressPayable
-            | Builtin::Payable => {
+            Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 let zero = Concrete::Address(Address::from_slice(&[0x00; 20]));
                 Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
             }
@@ -522,18 +518,15 @@ impl Builtin {
             Builtin::Int(_) => SolcRange::from(Concrete::from(I256::from(0))),
             Builtin::Uint(_) => SolcRange::from(Concrete::from(U256::from(0))),
             Builtin::Bytes(s) => SolcRange::from(Concrete::Bytes(*s, H256::zero())),
-            Builtin::DynamicBytes
-            | Builtin::Array(_)
-            | Builtin::Mapping(_, _) => {
+            Builtin::DynamicBytes | Builtin::Array(_) | Builtin::Mapping(_, _) => {
                 let zero = Elem::ConcreteDyn(Box::new(RangeDyn {
                     len: Elem::from(Concrete::from(U256::zero())),
                     val: Default::default(),
                     loc: Loc::Implicit,
                 }));
                 Some(SolcRange::new(zero.clone(), zero, vec![]))
-            },
-            Builtin::Rational
-            | Builtin::Func(_, _) => None
+            }
+            Builtin::Rational | Builtin::Func(_, _) => None,
         }
     }
     pub fn try_from_ty(
@@ -601,10 +594,7 @@ impl Builtin {
     }
 
     pub fn requires_input(&self) -> bool {
-        matches!(
-            self,
-            Builtin::Array(..) | Builtin::Mapping(..)
-        )
+        matches!(self, Builtin::Array(..) | Builtin::Mapping(..))
     }
 
     pub fn num_size(&self) -> Option<u16> {

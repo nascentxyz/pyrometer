@@ -9,9 +9,8 @@ use shared::analyzer::GraphLike;
 use shared::context::*;
 use std::collections::BTreeMap;
 
-use shared::range::elem_ty::Elem;
 use shared::range::Range;
-use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation, FunctionTy};
+use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
 
 use crate::VarType;
 
@@ -144,7 +143,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_call_str: Option<String>,
     ) -> ExprRet {
         // if we have a single match thats our function
-        let mut var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
+        let var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
             Some(v) => v,
             None => panic!(
                 "Could not create context variable from user type: {:?}",
@@ -455,7 +454,11 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_call_str: Option<String>,
     ) -> ExprRet {
         let mod_node = func_node.modifiers(self)[mod_state.num];
-        tracing::trace!("calling modifier {} for func {}", mod_node.name(self), func_node.name(self));
+        tracing::trace!(
+            "calling modifier {} for func {}",
+            mod_node.name(self),
+            func_node.name(self)
+        );
         let mod_ctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
             func_ctx,
             loc,
@@ -556,7 +559,13 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             // use the next modifier
             let mut mstate = modifier_state;
             mstate.num += 1;
-            self.call_modifier_for_fn(mods[mstate.num].underlying(self).loc, ctx, mstate.parent_fn, mstate, None)
+            self.call_modifier_for_fn(
+                mods[mstate.num].underlying(self).loc,
+                ctx,
+                mstate.parent_fn,
+                mstate,
+                None,
+            )
         } else {
             // actually execute the parent function
             self.execute_call_inner(
@@ -659,7 +668,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     let _ = write!(mod_name, "");
 
                     // println!("func modifiers: {},\n{:?},\n{:#?},\n{}", func.name(self), mod_name, ctx.visible_modifiers(self), ctx.visible_modifiers(self)[0].name(self));
-                    let found: FunctionNode = *ctx.visible_modifiers(self).iter().find(|modifier| modifier.name(self) == mod_name)?;
+                    let found: FunctionNode = *ctx
+                        .visible_modifiers(self)
+                        .iter()
+                        .find(|modifier| modifier.name(self) == mod_name)?;
                     Some(found)
                 })
                 .collect();

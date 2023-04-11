@@ -113,8 +113,18 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     );
                     tracing::trace!("Enum member access: {}", name);
 
-                    if let Some(variant) = enum_node.variants(self).iter().find(|variant| **variant == name) {
-                        let var = ContextVar::new_from_enum_variant(self, ctx, loc, *enum_node, variant.to_string());
+                    if let Some(variant) = enum_node
+                        .variants(self)
+                        .iter()
+                        .find(|variant| **variant == name)
+                    {
+                        let var = ContextVar::new_from_enum_variant(
+                            self,
+                            ctx,
+                            loc,
+                            *enum_node,
+                            variant.to_string(),
+                        );
                         let cvar = self.add_node(Node::ContextVar(var));
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         return ExprRet::Single((ctx, cvar));
@@ -153,7 +163,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             "No function with name {:?} in contract: {:?}. Functions: [{:#?}]",
                             ident.name,
                             con_node.name(self),
-                            con_node.funcs(self).iter().map(|func| func.name(self)).collect::<Vec<_>>()
+                            con_node
+                                .funcs(self)
+                                .iter()
+                                .map(|func| func.name(self))
+                                .collect::<Vec<_>>()
                         )
                     }
                 }

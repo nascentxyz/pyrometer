@@ -217,19 +217,37 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             Node::Builtin(ty) => {
                 // it is a cast
                 let ty = ty.clone();
-                fn cast_match(loc: &Loc, analyzer: &mut (impl GraphLike + AnalyzerLike), ty: Builtin, ret: ExprRet, func_idx: NodeIdx) -> ExprRet {
+                fn cast_match(
+                    loc: &Loc,
+                    analyzer: &mut (impl GraphLike + AnalyzerLike),
+                    ty: Builtin,
+                    ret: ExprRet,
+                    func_idx: NodeIdx,
+                ) -> ExprRet {
                     match ret {
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
-                        ExprRet::Single((ctx, cvar))
-                        | ExprRet::SingleLiteral((ctx, cvar)) => {
-                            let new_var = ContextVarNode::from(cvar).as_cast_tmp(*loc, ctx, ty.clone(), analyzer);
+                        ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
+                            let new_var = ContextVarNode::from(cvar).as_cast_tmp(
+                                *loc,
+                                ctx,
+                                ty.clone(),
+                                analyzer,
+                            );
 
-                            new_var.underlying_mut(analyzer).ty = VarType::try_from_idx(analyzer, func_idx).expect("");
+                            new_var.underlying_mut(analyzer).ty =
+                                VarType::try_from_idx(analyzer, func_idx).expect("");
                             // cast the ranges
                             if let Some(r) = ContextVarNode::from(cvar).range(analyzer) {
-                                let curr_range = SolcRange::try_from_builtin(&ty).expect("No default range");
-                                new_var.set_range_min(analyzer, r.range_min().cast(curr_range.range_min()));
-                                new_var.set_range_max(analyzer, r.range_max().cast(curr_range.range_max()));
+                                let curr_range =
+                                    SolcRange::try_from_builtin(&ty).expect("No default range");
+                                new_var.set_range_min(
+                                    analyzer,
+                                    r.range_min().cast(curr_range.range_min()),
+                                );
+                                new_var.set_range_max(
+                                    analyzer,
+                                    r.range_max().cast(curr_range.range_max()),
+                                );
                                 // cast the range exclusions - TODO: verify this is correct
                                 let mut exclusions = r.range_exclusions();
                                 exclusions.iter_mut().for_each(|range| {
@@ -240,15 +258,16 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
 
                             ExprRet::Single((ctx, new_var.into()))
                         }
-                        ExprRet::Multi(inner) => {
-                            ExprRet::Multi(inner.into_iter().map(|i| cast_match(loc, analyzer, ty.clone(), i, func_idx)).collect())
-                        }
-                        ExprRet::Fork(w1, w2) => {
-                            ExprRet::Fork(
-                                Box::new(cast_match(loc, analyzer, ty.clone(), *w1, func_idx)),
-                                Box::new(cast_match(loc, analyzer, ty, *w2, func_idx)),
-                            )
-                        }
+                        ExprRet::Multi(inner) => ExprRet::Multi(
+                            inner
+                                .into_iter()
+                                .map(|i| cast_match(loc, analyzer, ty.clone(), i, func_idx))
+                                .collect(),
+                        ),
+                        ExprRet::Fork(w1, w2) => ExprRet::Fork(
+                            Box::new(cast_match(loc, analyzer, ty.clone(), *w1, func_idx)),
+                            Box::new(cast_match(loc, analyzer, ty, *w2, func_idx)),
+                        ),
                     }
                 }
 

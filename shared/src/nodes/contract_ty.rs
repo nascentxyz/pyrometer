@@ -38,9 +38,16 @@ impl ContractNode {
     pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         let all_contracts = analyzer.search_children(analyzer.entry(), &Edge::Contract);
         inherits.iter().for_each(|inherited_name| {
-            let found = all_contracts.iter().find(|contract| {
-                &ContractNode::from(**contract).name(analyzer) == inherited_name
-            }).unwrap_or_else(|| {analyzer.open_dot(); panic!("Could not find inherited contract: {inherited_name} for contract {:?}", self.name(analyzer)) });
+            let found = all_contracts
+                .iter()
+                .find(|contract| &ContractNode::from(**contract).name(analyzer) == inherited_name)
+                .unwrap_or_else(|| {
+                    analyzer.open_dot();
+                    panic!(
+                        "Could not find inherited contract: {inherited_name} for contract {:?}",
+                        self.name(analyzer)
+                    )
+                });
             analyzer.add_edge(*found, *self, Edge::InheritedContract);
         });
     }
@@ -141,7 +148,10 @@ impl Contract {
         con.base.iter().for_each(|base| {
             let inherited_name = &base.name.identifiers[0].name;
             let mut found = false;
-            for contract in analyzer.search_children(source, &Edge::Contract).into_iter() {
+            for contract in analyzer
+                .search_children(source, &Edge::Contract)
+                .into_iter()
+            {
                 let name = ContractNode::from(contract).name(analyzer);
                 if &name == inherited_name {
                     inherits.push(ContractNode::from(contract));
@@ -174,7 +184,7 @@ impl Contract {
                 name: con.name,
                 inherits,
             },
-            unhandled_inherits
+            unhandled_inherits,
         )
     }
 }

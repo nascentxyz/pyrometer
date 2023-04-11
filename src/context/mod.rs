@@ -42,9 +42,7 @@ impl ExprRet {
         match self {
             ExprRet::Single((_, inner)) | ExprRet::SingleLiteral((_, inner)) => {
                 match analyzer.node(*inner) {
-                    Node::ContextVar(_) => ContextVarNode::from(*inner)
-                        .display_name(analyzer)
-                        ,
+                    Node::ContextVar(_) => ContextVarNode::from(*inner).display_name(analyzer),
                     e => format!("{:?}", e),
                 }
             }
@@ -232,10 +230,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         use Statement::*;
         // if let Some(ctx) = parent_ctx {
         //     if let Node::Context(_) = self.node(ctx) {
-        //         println!("ctx: {}, stmt: {:?}", ContextNode::from(ctx.into()).path(self), stmt);        
+        //         println!("ctx: {}, stmt: {:?}", ContextNode::from(ctx.into()).path(self), stmt);
         //     }
         // }
-        
+
         match stmt {
             Block {
                 loc,
@@ -330,16 +328,19 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                         let parent = FunctionNode::from(parent.into());
                         self.set_modifiers(parent, ctx_node.into());
                     }
-                    if self.func_call_inner(
-                        true,
-                        ctx_node.into(),
-                        parent.into().into(),
-                        fn_loc,
-                        inputs,
-                        params,
-                        None,
-                        None,
-                    ).is_killed() {
+                    if self
+                        .func_call_inner(
+                            true,
+                            ctx_node.into(),
+                            parent.into().into(),
+                            fn_loc,
+                            inputs,
+                            params,
+                            None,
+                            None,
+                        )
+                        .is_killed()
+                    {
                         ContextNode::from(ctx_node).kill(self, fn_loc);
                     }
                     return;
@@ -414,7 +415,10 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
             Expression(loc, expr) => {
                 tracing::trace!("parsing expr, {expr:?}");
                 if let Some(parent) = parent_ctx {
-                    if self.parse_ctx_expr(expr, ContextNode::from(parent.into())).is_killed() {
+                    if self
+                        .parse_ctx_expr(expr, ContextNode::from(parent.into()))
+                        .is_killed()
+                    {
                         ContextNode::from(parent.into()).kill(self, *loc);
                     }
                 }
@@ -581,8 +585,7 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
         rhs_paths: Option<&ExprRet>,
     ) -> bool {
         match (lhs_paths, rhs_paths) {
-            (ExprRet::CtxKilled, _)
-            | (_, Some(ExprRet::CtxKilled)) => true,
+            (ExprRet::CtxKilled, _) | (_, Some(ExprRet::CtxKilled)) => true,
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
@@ -631,29 +634,24 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 self.add_edge(lhs, *lhs_ctx, Edge::Context(ContextEdge::Variable));
                 false
             }
-            (l @ ExprRet::Single((_lhs_ctx, _lhs)), Some(ExprRet::Multi(rhs_sides))) => {
-                rhs_sides.iter().all(|expr_ret| {
-                    self.match_var_def(var_decl, loc, l, Some(expr_ret))
-                })
-            }
-            (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => {
-                lhs_sides.iter().all(|expr_ret| {
-                    self.match_var_def(var_decl, loc, expr_ret, r)
-                })
-            }
-            (ExprRet::Multi(lhs_sides), None) => {
-                lhs_sides.iter().all(|expr_ret| {
-                    self.match_var_def(var_decl, loc, expr_ret, None)
-                })
-            }
+            (l @ ExprRet::Single((_lhs_ctx, _lhs)), Some(ExprRet::Multi(rhs_sides))) => rhs_sides
+                .iter()
+                .all(|expr_ret| self.match_var_def(var_decl, loc, l, Some(expr_ret))),
+            (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => lhs_sides
+                .iter()
+                .all(|expr_ret| self.match_var_def(var_decl, loc, expr_ret, r)),
+            (ExprRet::Multi(lhs_sides), None) => lhs_sides
+                .iter()
+                .all(|expr_ret| self.match_var_def(var_decl, loc, expr_ret, None)),
             (ExprRet::Multi(lhs_sides), Some(ExprRet::Multi(rhs_sides))) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    lhs_sides.iter().zip(rhs_sides.iter()).all(
-                        |(lhs_expr_ret, rhs_expr_ret)| {
+                    lhs_sides
+                        .iter()
+                        .zip(rhs_sides.iter())
+                        .all(|(lhs_expr_ret, rhs_expr_ret)| {
                             self.match_var_def(var_decl, loc, lhs_expr_ret, Some(rhs_expr_ret))
-                        },
-                    )
+                        })
                 } else {
                     rhs_sides.iter().all(|rhs_expr_ret| {
                         self.match_var_def(var_decl, loc, lhs_paths, Some(rhs_expr_ret))
@@ -665,18 +663,17 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
                 Some(ExprRet::Fork(rhs_world1, rhs_world2)),
             ) => {
                 self.match_var_def(var_decl, loc, lhs_world1, Some(rhs_world1))
-                && self.match_var_def(var_decl, loc, lhs_world1, Some(rhs_world2))
-
-                && self.match_var_def(var_decl, loc, lhs_world2, Some(rhs_world1))
-                && self.match_var_def(var_decl, loc, lhs_world2, Some(rhs_world2))
+                    && self.match_var_def(var_decl, loc, lhs_world1, Some(rhs_world2))
+                    && self.match_var_def(var_decl, loc, lhs_world2, Some(rhs_world1))
+                    && self.match_var_def(var_decl, loc, lhs_world2, Some(rhs_world2))
             }
             (l @ ExprRet::Single(_), Some(ExprRet::Fork(world1, world2))) => {
                 self.match_var_def(var_decl, loc, l, Some(world1))
-                && self.match_var_def(var_decl, loc, l, Some(world2))
+                    && self.match_var_def(var_decl, loc, l, Some(world2))
             }
             (m @ ExprRet::Multi(_), Some(ExprRet::Fork(world1, world2))) => {
                 self.match_var_def(var_decl, loc, m, Some(world1))
-                && self.match_var_def(var_decl, loc, m, Some(world2))
+                    && self.match_var_def(var_decl, loc, m, Some(world2))
             }
             (e, f) => todo!("any: {:?} {:?}", e, f),
         }
@@ -867,28 +864,32 @@ pub trait ContextBuilder: AnalyzerLike<Expr = Expression> + Sized + ExprParser {
 
             Delete(loc, expr) => {
                 let ret = self.parse_ctx_expr(expr, ctx);
-                fn delete_match(loc: &Loc, analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>), ret: ExprRet) -> ExprRet {
+                fn delete_match(
+                    loc: &Loc,
+                    analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+                    ret: ExprRet,
+                ) -> ExprRet {
                     match ret {
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
-                        ExprRet::Single((ctx, cvar))
-                        | ExprRet::SingleLiteral((ctx, cvar)) => {
+                        ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
                             let mut new_var = analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx);
                             new_var.sol_delete_range(analyzer);
                             ExprRet::Single((ctx, new_var.into()))
                         }
-                        ExprRet::Multi(inner) => {
-                            ExprRet::Multi(inner.iter().map(|i| delete_match(loc, analyzer, i.clone())).collect())
-                        }
-                        ExprRet::Fork(w1, w2) => {
-                            ExprRet::Fork(
-                                Box::new(delete_match(loc, analyzer, *w1)),
-                                Box::new(delete_match(loc, analyzer, *w2))
-                            )
-                        }
+                        ExprRet::Multi(inner) => ExprRet::Multi(
+                            inner
+                                .iter()
+                                .map(|i| delete_match(loc, analyzer, i.clone()))
+                                .collect(),
+                        ),
+                        ExprRet::Fork(w1, w2) => ExprRet::Fork(
+                            Box::new(delete_match(loc, analyzer, *w1)),
+                            Box::new(delete_match(loc, analyzer, *w2)),
+                        ),
                     }
                 }
                 delete_match(loc, self, ret)
-            },
+            }
 
             // de/increment stuff
             PreIncrement(loc, expr) => {

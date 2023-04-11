@@ -1,4 +1,3 @@
-use crate::EnumNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::Elem;
@@ -12,6 +11,7 @@ use crate::BuiltInNode;
 use crate::Builtin;
 use crate::Concrete;
 use crate::ContractNode;
+use crate::EnumNode;
 use crate::FunctionNode;
 use crate::GraphLike;
 use crate::StructNode;
@@ -1009,20 +1009,16 @@ impl ContextVar {
         let enum_name = enum_node.name(analyzer);
         ContextVar {
             loc: Some(loc),
-            name: format!("{}.{}_{}",
-                enum_name,
-                variant,
-                ctx.new_tmp(analyzer)
-            ),
-            display_name: format!("{}.{}",
-                enum_name,
-                variant
-            ),
+            name: format!("{}.{}_{}", enum_name, variant, ctx.new_tmp(analyzer)),
+            display_name: format!("{}.{}", enum_name, variant),
             storage: None,
             is_tmp: false,
             tmp_of: None,
             is_symbolic: true,
-            ty: VarType::User(TypeNode::Enum(enum_node), Some(enum_node.range_from_variant(variant, analyzer))),
+            ty: VarType::User(
+                TypeNode::Enum(enum_node),
+                Some(enum_node.range_from_variant(variant, analyzer)),
+            ),
         }
     }
 

@@ -29,7 +29,11 @@ pub struct Analyzer {
     pub root: PathBuf,
     pub remappings: Vec<(String, String)>,
     pub imported_srcs: BTreeSet<OsString>,
-    pub final_pass_items: Vec<(Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<(ContractNode, Vec<String>)>)>,
+    pub final_pass_items: Vec<(
+        Vec<FunctionNode>,
+        Vec<(Using, NodeIdx)>,
+        Vec<(ContractNode, Vec<String>)>,
+    )>,
     pub file_no: usize,
     pub msg: MsgNode,
     pub block: BlockNode,
@@ -277,7 +281,11 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &Path,
-    ) -> (Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<(ContractNode, Vec<String>)>) {
+    ) -> (
+        Vec<FunctionNode>,
+        Vec<(Using, NodeIdx)>,
+        Vec<(ContractNode, Vec<String>)>,
+    ) {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
         let mut all_inherits = vec![];
@@ -310,7 +318,12 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &Path,
-    ) -> (NodeIdx, Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<(ContractNode, Vec<String>)>) {
+    ) -> (
+        NodeIdx,
+        Vec<FunctionNode>,
+        Vec<(Using, NodeIdx)>,
+        Vec<(ContractNode, Vec<String>)>,
+    ) {
         use SourceUnitPart::*;
 
         let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
@@ -322,7 +335,8 @@ impl Analyzer {
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs, con_usings, unhandled_inherits) = self.parse_contract_def(def, parent, imported);
+                let (node, funcs, con_usings, unhandled_inherits) =
+                    self.parse_contract_def(def, parent, imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
                 usings.extend(con_usings);
@@ -469,7 +483,12 @@ impl Analyzer {
         contract_def: &ContractDefinition,
         source: NodeIdx,
         imports: &[(Option<NodeIdx>, String, String, usize)],
-    ) -> (ContractNode, Vec<FunctionNode>, Vec<(Using, NodeIdx)>, Vec<String>) {
+    ) -> (
+        ContractNode,
+        Vec<FunctionNode>,
+        Vec<(Using, NodeIdx)>,
+        Vec<String>,
+    ) {
         tracing::trace!(
             "Parsing contract {}",
             if let Some(ident) = &contract_def.name {
@@ -480,7 +499,8 @@ impl Analyzer {
         );
         use ContractPart::*;
 
-        let (contract, unhandled_inherits) = Contract::from_w_imports(contract_def.clone(), source, imports, self);
+        let (contract, unhandled_inherits) =
+            Contract::from_w_imports(contract_def.clone(), source, imports, self);
         let inherits = contract.inherits.clone();
         let con_node = ContractNode(self.add_node(contract).index());
         inherits.iter().for_each(|contract_node| {

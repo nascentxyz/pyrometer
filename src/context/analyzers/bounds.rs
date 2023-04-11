@@ -6,7 +6,6 @@ use shared::{
     range::{range_string::*, Range, RangeEval, SolcRange},
 };
 
-
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
 use solang_parser::pt::{CodeLocation, StorageLocation};
 use std::collections::{BTreeMap, BTreeSet};
@@ -994,44 +993,35 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                             }
                         });
 
-                    if let Some(body) = ctx.underlying(analyzer)
-                            .parent_fn
-                            .underlying(analyzer)
-                            .body
-                            .as_ref() {
+                    if let Some(body) = ctx
+                        .underlying(analyzer)
+                        .parent_fn
+                        .underlying(analyzer)
+                        .body
+                        .as_ref()
+                    {
                         report.add_label(
-                            Label::new(LocStrSpan::new(
-                                self.file_mapping,
-                                body.loc(),
-                            ))
-                            .with_message("Entry function call")
-                            .with_priority(-2)
-                            .with_order(-2),
+                            Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
+                                .with_message("Entry function call")
+                                .with_priority(-2)
+                                .with_order(-2),
                         );
-                                
                     }
-                    
 
                     ctx.underlying(analyzer).children.iter().for_each(|child| {
                         if let Some(fn_call) = child.underlying(analyzer).fn_call {
                             let fn_name = fn_call.name(analyzer);
                             if !called_fns.contains(&fn_name) {
-                                if let Some(body) = fn_call
-                                            .underlying(analyzer)
-                                            .body
-                                            .as_ref() {
+                                if let Some(body) = fn_call.underlying(analyzer).body.as_ref() {
                                     report.add_label(
-                                        Label::new(LocStrSpan::new(
-                                            self.file_mapping,
-                                            body.loc(),
-                                        ))
-                                        .with_message("Internal function call")
-                                        .with_priority(-2)
-                                        .with_order(-2)
-                                        .with_color(Color::Fixed(140)),
-                                    );         
+                                        Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
+                                            .with_message("Internal function call")
+                                            .with_priority(-2)
+                                            .with_order(-2)
+                                            .with_color(Color::Fixed(140)),
+                                    );
                                 }
-                                
+
                                 called_fns.insert(fn_name);
                             }
                         }

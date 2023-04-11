@@ -12,7 +12,6 @@ use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::ContextNode,
     nodes::*,
-    Node,
 };
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
@@ -56,7 +55,11 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         }
 
         let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
-        tracing::trace!("namespaced function call: {:?}.{:?}(..)", ContextVarNode::from(member).display_name(self), ident.name);
+        tracing::trace!(
+            "namespaced function call: {:?}.{:?}(..)",
+            ContextVarNode::from(member).display_name(self),
+            ident.name
+        );
 
         let funcs = self.visible_member_funcs(ctx, member);
         // filter down all funcs to those that match
@@ -65,7 +68,6 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
             .copied()
             .collect::<Vec<_>>();
-
 
         let mut inputs = vec![ExprRet::Single((mem_ctx, member))];
         inputs.extend(
@@ -77,17 +79,20 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
 
         if possible_funcs.is_empty() {
             let as_input_str = ExprRet::Multi(inputs).try_as_func_input_str(self);
-            let (func_ctx, func_idx) = match self.parse_ctx_expr(
-                &MemberAccess(
-                    *loc,
-                    Box::new(member_expr.clone()),
-                    Identifier {
-                        loc: ident.loc,
-                        name: format!("{}{}", ident.name, as_input_str),
-                    },
-                ),
-                ctx,
-            ).flatten() {
+            let (func_ctx, func_idx) = match self
+                .parse_ctx_expr(
+                    &MemberAccess(
+                        *loc,
+                        Box::new(member_expr.clone()),
+                        Identifier {
+                            loc: ident.loc,
+                            name: format!("{}{}", ident.name, as_input_str),
+                        },
+                    ),
+                    ctx,
+                )
+                .flatten()
+            {
                 ExprRet::Single((ctx, idx)) => (ctx, idx),
                 m @ ExprRet::Multi(_) => m.expect_single(),
                 ExprRet::CtxKilled => return ExprRet::CtxKilled,
@@ -105,19 +110,21 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         } else {
             // this is the annoying case due to function overloading & type inference on number literals
             let mut lits = vec![false];
-            lits.extend(input_exprs
-                .iter()
-                .map(|expr| {
-                    match expr {
-                        Negate(_, expr) => {
-                            // negative number potentially
-                            matches!(**expr, NumberLiteral(..) | HexLiteral(..))
+            lits.extend(
+                input_exprs
+                    .iter()
+                    .map(|expr| {
+                        match expr {
+                            Negate(_, expr) => {
+                                // negative number potentially
+                                matches!(**expr, NumberLiteral(..) | HexLiteral(..))
+                            }
+                            NumberLiteral(..) | HexLiteral(..) => true,
+                            _ => false,
                         }
-                        NumberLiteral(..) | HexLiteral(..) => true,
-                        _ => false,
-                    }
-                })
-                .collect::<Vec<bool>>());
+                    })
+                    .collect::<Vec<bool>>(),
+            );
 
             let inputs = ExprRet::Multi(inputs);
             if let Some(func) =

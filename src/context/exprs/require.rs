@@ -1,10 +1,9 @@
-use shared::range::range_string::ToRangeString;
-use solang_parser::helpers::CodeLocation;
 use crate::context::exprs::cmp::Cmp;
 use crate::{
     exprs::{BinOp, Variable},
     AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ExprRet, Node,
 };
+use shared::range::range_string::ToRangeString;
 use shared::{
     context::*,
     nodes::{BuiltInNode, Builtin, VarType},
@@ -15,6 +14,7 @@ use shared::{
     },
     Edge,
 };
+use solang_parser::helpers::CodeLocation;
 
 use ethers_core::types::I256;
 use solang_parser::pt::{Expression, Loc};
@@ -218,7 +218,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 //     self.require(new_lhs, new_rhs, *rhs_ctx, loc, op, rhs_op, recursion_ops);
                 // }
             }
-            (l @ ExprRet::Single((_, _)) | l @ ExprRet::SingleLiteral(_), ExprRet::Multi(rhs_sides)) => {
+            (
+                l @ ExprRet::Single((_, _)) | l @ ExprRet::SingleLiteral(_),
+                ExprRet::Multi(rhs_sides),
+            ) => {
                 rhs_sides.iter().for_each(|expr_ret| {
                     self.handle_require_inner(loc, l, expr_ret, op, rhs_op, recursion_ops)
                 });
@@ -262,11 +265,17 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 self.handle_require_inner(loc, lhs_world2, rhs_world1, op, rhs_op, recursion_ops);
                 self.handle_require_inner(loc, lhs_world2, rhs_world2, op, rhs_op, recursion_ops);
             }
-            (l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_) , ExprRet::Fork(world1, world2)) => {
+            (
+                l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_),
+                ExprRet::Fork(world1, world2),
+            ) => {
                 self.handle_require_inner(loc, l, world1, op, rhs_op, recursion_ops);
                 self.handle_require_inner(loc, l, world2, op, rhs_op, recursion_ops);
             }
-            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
+            (
+                ExprRet::Fork(world1, world2),
+                r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_),
+            ) => {
                 self.handle_require_inner(loc, r, world1, op, rhs_op, recursion_ops);
                 self.handle_require_inner(loc, r, world2, op, rhs_op, recursion_ops);
             }
@@ -714,7 +723,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return true;
                 }
 
-                let max_conc = max.maybe_concrete().unwrap_or_else(|| {self.open_dot(); panic!("Was not concrete: {}", max.to_range_string(true, self).s) });
+                let max_conc = max.maybe_concrete().unwrap_or_else(|| {
+                    self.open_dot();
+                    panic!("Was not concrete: {}", max.to_range_string(true, self).s)
+                });
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
 
                 // we add/sub one to the element because its strict >
@@ -913,7 +925,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     e => panic!("here {e:?}"),
                 };
 
-                let new_underlying_rhs = self.advance_var_in_ctx(rhs.latest_version(self), loc, ctx);
+                let new_underlying_rhs =
+                    self.advance_var_in_ctx(rhs.latest_version(self), loc, ctx);
                 if let Some(lhs_range) = new_underlying_rhs.underlying(self).ty.range(self) {
                     if let Some(_rhs_range) = adjusted_gt_rhs.underlying(self).ty.range(self) {
                         let new_lhs_range = if needs_inverse {
