@@ -13,18 +13,18 @@ contract Storage {
 		require(map[who] == 1000);
 	}
 
-	// function setNestedMap(address who, address who2) public {
-	// 	nestedMap[who][who2] = 1000;
-	// 	require(nestedMap[who][who2] == 1000);
-	// }
+	function setNestedMap(address who, address who2) public {
+		nestedMap[who][who2] = 1000;
+		require(nestedMap[who][who2] == 1000);
+	}
 
-	// function setArray(uint256 idx) public {
-	// 	arr[idx] = 1000;
-	// 	require(arr[idx] == 1000);
-	// }
+	function setArray(uint256 idx) public {
+		arr[idx] = 1000;
+		require(arr[idx] == 1000);
+	}
 
-	// function setNestedArray(uint256 idx, uint256 idx2) public {
-	// 	nestedArr[idx][idx2] = 1000;
-	// 	require(nestedArr[idx][idx2] == 1000);
-	// }
+	function setNestedArray(uint256 idx, uint256 idx2) public {
+		nestedArr[idx][idx2] = 1000;
+		require(nestedArr[idx][idx2] == 1000);
+	}
 }
