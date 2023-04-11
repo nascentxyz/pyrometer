@@ -3,5 +3,7 @@
 **/out
 **/cache
 **/dot.jpeg
+**/dot.svg
+**/dot.dot
 **/flamegraph.svg
 **/.swp
