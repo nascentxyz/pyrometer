@@ -31,8 +31,4 @@ pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
             _e => None,
         }
     }
-
-    // fn gasleft(&mut self, ctx: ContextNode) -> ExprRet {
-
-    // }
 }

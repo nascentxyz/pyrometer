@@ -191,67 +191,6 @@ pub trait GraphLike {
         )
     }
 
-    // fn ctx_cluster_str(
-    //     &self,
-    //     ctx_node: ContextNode,
-    //     cluster_num: usize,
-    //     handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
-    //     handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
-    // ) -> String {
-    //     let new_graph = self.graph().filter_map(
-    //         |_idx, node| match node {
-    //             Node::ContextVar(_cvar) => {
-    //                 // if !cvar.is_symbolic {
-    //                 //     None
-    //                 // } else {
-    //                 Some(node.clone())
-    //                 // }
-    //             }
-    //             _ => Some(node.clone()),
-    //         },
-    //         |_idx, edge| Some(*edge),
-    //     );
-
-    //     let g = &G { graph: &new_graph };
-    //     let children = g.children(ctx_node.0.into());
-    //     let children_edges = g.children_edges(ctx_node.0.into());
-    //     format!(
-    //         "    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
-    //         cluster_num,
-    //         if cluster_num % 2 == 0 { "        bgcolor=\"#545e87\"" } else {  "        bgcolor=\"#1a1b26\"" },
-    //         format!(
-    //             "        {} [label = \"{}\", color = \"{}\"]\n",
-    //             func_node.0,
-    //             as_dot_str(func_node.0.into(), g).replace('\"', "\'"),
-    //             self.node(NodeIdx::from(func_node.0)).dot_str_color()
-    //         ),
-    //         children
-    //             .iter()
-    //             .map(|child| {
-    //                 handled_nodes.lock().unwrap().insert(*child);
-    //                 format!(
-    //                     "        {} [label = \"{}\", color = \"{}\"]\n",
-    //                     petgraph::graph::GraphIndex::index(child),
-    //                     as_dot_str(*child, g).replace('\"', "\'"),
-    //                     self.node(*child).dot_str_color()
-    //                 )
-    //             })
-    //             .collect::<Vec<_>>()
-    //             .join(""),
-    //         children_edges
-    //             .iter()
-    //             .filter(|(_, _, _, idx)| { !handled_edges.lock().unwrap().contains(idx) })
-    //             .map(|(from, to, edge, idx)| {
-    //                 handled_edges.lock().unwrap().insert(*idx);
-    //                 let from = petgraph::graph::GraphIndex::index(from);
-    //                 let to = petgraph::graph::GraphIndex::index(to);
-    //                 format!("        {from:} -> {to:} [label = \"{edge:?}\"]\n",)
-    //             })
-    //             .collect::<Vec<_>>()
-    //             .join(""),
-    //     )
-    // }
-
     fn dot_str(&self) -> String
     where
         Self: std::marker::Sized,
@@ -317,52 +256,6 @@ pub trait GraphLike {
 
         dot_str.push(nodes_str);
         dot_str.push(edges_str);
-        // let nodes_and_edges_str = format!(
-        //     "{:?}",
-        //     Dot::with_attr_getters(
-        //         &new_graph,
-        //         &[
-        //             petgraph::dot::Config::GraphContentOnly,
-        //             petgraph::dot::Config::NodeNoLabel,
-        //             petgraph::dot::Config::EdgeNoLabel
-        //         ],
-        //         &|_graph, edge_ref| {
-        //             match edge_ref.weight() {
-        //                 Edge::Context(edge) => format!("label = \"{edge:?}\""),
-        //                 e => format!("label = \"{e:?}\""),
-        //             }
-        //         },
-        //         &|_graph, (idx, node_ref)| {
-        //             let dot_str = match node_ref {
-        //                 Node::ContextVar(cvar) => {
-        //                     // we have to do this special because dynamic elements in ranges aren't guaranteed
-        //                     // to stick around
-        //                     let range_str = if let Some(r) = cvar.ty.range(self) {
-        //                         r.as_dot_str(self)
-        //                         // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
-        //                     } else {
-        //                         "".to_string()
-        //                     };
-
-        //                     format!(
-        //                         "{} -- {} -- range: {}, loc: {:?}",
-        //                         cvar.display_name,
-        //                         cvar.ty.as_string(self),
-        //                         range_str,
-        //                         cvar.loc
-        //                     )
-        //                 }
-        //                 _ => as_dot_str(idx, &G { graph: &new_graph }),
-        //             };
-        //             format!(
-        //                 "label = \"{}\", color = \"{}\"",
-        //                 dot_str.replace('\"', "\'"),
-        //                 node_ref.dot_str_color()
-        //             )
-        //         }
-        //     )
-        // );
-        // dot_str.push(nodes_and_edges_str);
         let raw_end_str = r#"}"#;
         dot_str.push(raw_end_str.to_string());
         dot_str.join("\n")

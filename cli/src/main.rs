@@ -249,10 +249,6 @@ fn main() {
         println!();
     });
 
-    // println!("parse time: {:?}ms", parse_time);
-    // println!("analyzer time: {:?}ms", t1.elapsed().as_millis());
-    // println!("total time: {:?}ms", t0.elapsed().as_millis());
-
     if args.open_dot {
         analyzer.open_dot()
     }
