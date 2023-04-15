@@ -154,6 +154,8 @@ fn main() {
             .collect::<HashMap<_, _>>(),
     );
 
+    analyzer.print_errors(&file_mapping, &mut source_map);
+
     if args.dot {
         println!("{}", analyzer.dot_str_no_tmps());
     }

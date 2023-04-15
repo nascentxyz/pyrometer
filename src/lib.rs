@@ -1,9 +1,13 @@
+use crate::analyzers::LocStrSpan;
 use crate::exprs::ExprErr;
+use ariadne::Source;
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
+use solang_parser::diagnostics::Diagnostic;
 use solang_parser::pt::Import;
+use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::Path;
@@ -16,6 +20,7 @@ use solang_parser::pt::{
 use std::path::PathBuf;
 use std::{collections::HashMap, fs};
 
+use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
 use petgraph::{graph::*, Directed};
 
 mod builtin_fns;
@@ -227,6 +232,33 @@ impl Analyzer {
             .collect();
     }
 
+    pub fn print_errors(
+        &self,
+        file_mapping: &'_ BTreeMap<usize, String>,
+        mut src: &mut impl Cache<String>,
+    ) {
+        if self.expr_errs.is_empty() {
+        } else {
+            self.expr_errs.iter().for_each(|error| {
+                let str_span = LocStrSpan::new(file_mapping, error.loc());
+                let report = Report::build(ReportKind::Error, str_span.source(), str_span.start())
+                    .with_message(error.report_msg())
+                    .with_config(
+                        Config::default()
+                            .with_cross_gap(false)
+                            .with_underlines(true)
+                            .with_tab_width(4),
+                    )
+                    .with_label(
+                        Label::new(str_span)
+                            .with_color(Color::Red)
+                            .with_message(format!("{}", error.msg().fg(Color::Red))),
+                    );
+                report.finish().print(&mut src).unwrap();
+            });
+        }
+    }
+
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse(
         &mut self,
@@ -258,7 +290,10 @@ impl Analyzer {
 
                 (Some(parent), imported)
             }
-            Err(e) => panic!("FAIL to parse, {e:?}"),
+            Err(diagnostics) => {
+                print_diagnostics_report(src, current_path, diagnostics).unwrap();
+                panic!("Failed to parse Solidity code for {current_path:?}.");
+            }
         }
     }
 
@@ -784,4 +819,30 @@ impl Analyzer {
         let ty = Ty::new(self, ty_def.clone());
         TyNode(self.add_node(ty).index())
     }
+}
+
+/// Print the report of parser's diagnostics
+pub fn print_diagnostics_report(
+    content: &str,
+    path: &Path,
+    diagnostics: Vec<Diagnostic>,
+) -> std::io::Result<()> {
+    let filename = path.file_name().unwrap().to_string_lossy().to_string();
+    for diag in diagnostics {
+        let (start, end) = (diag.loc.start(), diag.loc.end());
+        let mut report = Report::build(ReportKind::Error, &filename, start)
+            .with_message(format!("{:?}", diag.ty))
+            .with_label(
+                Label::new((&filename, start..end))
+                    .with_color(Color::Red)
+                    .with_message(format!("{}", diag.message.fg(Color::Red))),
+            );
+
+        for note in diag.notes {
+            report = report.with_note(note.message);
+        }
+
+        report.finish().print((&filename, Source::from(content)))?;
+    }
+    Ok(())
 }

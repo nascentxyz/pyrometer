@@ -304,7 +304,11 @@ pub trait IntrinsicFuncCaller:
 
                 Ok(ExprRet::Single((ctx, func_idx)))
             }
-            e => todo!("{:?}", e),
+            Node::Unresolved(ident) => Err(ExprErr::FunctionNotFound(
+                *loc,
+                format!("Could not find function: \"{}\"", ident.name),
+            )),
+            e => Err(ExprErr::FunctionNotFound(*loc, format!("{e:?}"))),
         }
     }
 }

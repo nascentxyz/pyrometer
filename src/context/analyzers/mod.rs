@@ -1,8 +1,8 @@
 pub mod bounds;
-use bounds::*;
 
 use crate::AnalyzerLike;
 use ariadne::{Cache, Label, Report, ReportKind, Span};
+use bounds::*;
 use shared::analyzer::Search;
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
@@ -62,7 +62,7 @@ impl Default for LocStrSpan {
 }
 
 impl LocStrSpan {
-    fn new(file_mapping: &BTreeMap<usize, String>, loc: Loc) -> Self {
+    pub fn new(file_mapping: &BTreeMap<usize, String>, loc: Loc) -> Self {
         let source = match loc {
             Loc::File(ref f, _, _) => f,
             Loc::Implicit => &0,
