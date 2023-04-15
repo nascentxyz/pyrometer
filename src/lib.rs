@@ -457,7 +457,13 @@ impl Analyzer {
                 };
 
                 let canonical = fs::canonicalize(&remapped)
-                    .unwrap_or_else(|_| panic!("Could not find file: {remapped:?}"));
+                    .unwrap_or_else(|_| panic!(
+                            "Could not find file: {remapped:?}{}",
+                            if self.remappings.is_empty() {
+                                ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                            } else { "" }
+                        )
+                    );
                 let canonical_str_path = canonical.as_os_str();
                 if self.imported_srcs.contains(canonical_str_path) {
                     return vec![];
@@ -465,7 +471,12 @@ impl Analyzer {
                 self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {canonical:?}")
+                    panic!(
+                        "Could not find file for dependency: {canonical:?}{}",
+                        if self.remappings.is_empty() {
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                        } else { "" }
+                    )
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
@@ -499,7 +510,13 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                let canonical = fs::canonicalize(&remapped).unwrap();
+                let canonical = fs::canonicalize(&remapped).unwrap_or_else(|_| panic!(
+                        "Could not find file: {remapped:?}{}",
+                        if self.remappings.is_empty() {
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                        } else { "" }
+                    )
+                );
                 let canonical_str_path = canonical.as_os_str();
                 if self.imported_srcs.contains(canonical_str_path) {
                     return vec![];
@@ -507,7 +524,12 @@ impl Analyzer {
                 self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {canonical:?}")
+                    panic!(
+                        "Could not find file for dependency: {canonical:?}{}",
+                        if self.remappings.is_empty() {
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                        } else { "" }
+                    )
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
