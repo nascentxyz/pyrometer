@@ -217,27 +217,19 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             (
                 l @ ExprRet::Single((_, _)) | l @ ExprRet::SingleLiteral(_),
                 ExprRet::Multi(rhs_sides),
-            ) => rhs_sides
-                .iter()
-                .map(|expr_ret| {
-                    self.handle_require_inner(loc, l, expr_ret, op, rhs_op, recursion_ops)
-                })
-                .collect::<Result<_, ExprErr>>(),
+            ) => rhs_sides.iter().try_for_each(|expr_ret| {
+                self.handle_require_inner(loc, l, expr_ret, op, rhs_op, recursion_ops)
+            }),
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
-                lhs_sides
-                    .iter()
-                    .map(|expr_ret| {
-                        self.handle_require_inner(loc, expr_ret, r, op, rhs_op, recursion_ops)
-                    })
-                    .collect::<Result<_, ExprErr>>()
+                lhs_sides.iter().try_for_each(|expr_ret| {
+                    self.handle_require_inner(loc, expr_ret, r, op, rhs_op, recursion_ops)
+                })
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    lhs_sides
-                        .iter()
-                        .zip(rhs_sides.iter())
-                        .map(|(lhs_expr_ret, rhs_expr_ret)| {
+                    lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
+                        |(lhs_expr_ret, rhs_expr_ret)| {
                             self.handle_require_inner(
                                 loc,
                                 lhs_expr_ret,
@@ -246,22 +238,19 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                                 rhs_op,
                                 recursion_ops,
                             )
-                        })
-                        .collect::<Result<_, ExprErr>>()
+                        },
+                    )
                 } else {
-                    rhs_sides
-                        .iter()
-                        .map(|rhs_expr_ret| {
-                            self.handle_require_inner(
-                                loc,
-                                lhs_paths,
-                                rhs_expr_ret,
-                                op,
-                                rhs_op,
-                                recursion_ops,
-                            )
-                        })
-                        .collect::<Result<_, ExprErr>>()
+                    rhs_sides.iter().try_for_each(|rhs_expr_ret| {
+                        self.handle_require_inner(
+                            loc,
+                            lhs_paths,
+                            rhs_expr_ret,
+                            op,
+                            rhs_op,
+                            recursion_ops,
+                        )
+                    })
                 }
             }
             (ExprRet::Fork(lhs_world1, lhs_world2), ExprRet::Fork(rhs_world1, rhs_world2)) => {
@@ -891,7 +880,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             ctx,
                             loc,
                             any_unsat,
-                        );
+                        )?;
                     }
                 }
             }

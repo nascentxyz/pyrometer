@@ -65,7 +65,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         RangeOp::Gt,
                         RangeOp::Lt,
                         (RangeOp::Lte, RangeOp::Gte),
-                    );
+                    )?;
                 }
 
                 let name = format!("{}[{}]", parent.name(self), index.name(self));

@@ -336,7 +336,7 @@ pub trait FuncCaller:
             .collect::<BTreeMap<_, ContextVarNode>>();
 
         if !func_node.modifiers_set(self) {
-            self.set_modifiers(func_node, ctx);
+            self.set_modifiers(func_node, ctx)?;
         }
         let mods = func_node.modifiers(self);
         if let Some(mod_state) = modifier_state {
@@ -697,7 +697,7 @@ pub trait FuncCaller:
                 })
                 .collect::<Result<Vec<Option<_>>, ExprErr>>()?
                 .into_iter()
-                .filter_map(|i| i)
+                .flatten()
                 .collect::<Vec<_>>();
             Ok(res)
         }

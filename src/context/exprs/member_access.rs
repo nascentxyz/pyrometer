@@ -627,7 +627,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         } else {
                             Err(ExprErr::NonStoragePush(
                                 loc,
-                                format!("Trying to push to nonstorage variable is not supported"),
+                                "Trying to push to nonstorage variable is not supported"
+                                    .to_string(),
                             ))
                         }
                     } else {

@@ -334,25 +334,28 @@ pub trait ContextBuilder:
                 if let Some(fn_loc) = entry_loc {
                     if !mods_set {
                         let parent = FunctionNode::from(parent.into());
-                        self.set_modifiers(parent, ctx_node.into());
+                        let _ = self
+                            .set_modifiers(parent, ctx_node.into())
+                            .map_err(|e| self.add_expr_err(e));
                     }
 
-                    self.func_call_inner(
-                        true,
-                        ctx_node.into(),
-                        parent.into().into(),
-                        fn_loc,
-                        inputs,
-                        params,
-                        None,
-                        None,
-                    )
-                    .map(|ctx| {
-                        if ctx.is_killed() {
-                            ContextNode::from(ctx_node).kill(self, fn_loc);
-                        }
-                    })
-                    .map_err(|e| self.add_expr_err(e));
+                    let _ = self
+                        .func_call_inner(
+                            true,
+                            ctx_node.into(),
+                            parent.into().into(),
+                            fn_loc,
+                            inputs,
+                            params,
+                            None,
+                            None,
+                        )
+                        .map(|ctx| {
+                            if ctx.is_killed() {
+                                ContextNode::from(ctx_node).kill(self, fn_loc);
+                            }
+                        })
+                        .map_err(|e| self.add_expr_err(e));
 
                     return;
                 }
@@ -379,10 +382,12 @@ pub trait ContextBuilder:
                 );
                 let forks = ctx.live_forks(self);
                 if forks.is_empty() {
-                    self.parse_ctx_expr(&var_decl.ty, ctx)
+                    let _ = self
+                        .parse_ctx_expr(&var_decl.ty, ctx)
                         .map(|lhs_paths| {
                             if let Some(rhs) = maybe_expr {
-                                self.parse_ctx_expr(rhs, ctx)
+                                let _ = self
+                                    .parse_ctx_expr(rhs, ctx)
                                     .map(|rhs_paths| {
                                         self.match_var_def(
                                             var_decl,
@@ -398,7 +403,8 @@ pub trait ContextBuilder:
                                     })
                                     .map_err(|err| self.add_expr_err(err));
                             } else {
-                                self.match_var_def(var_decl, *loc, &lhs_paths, None)
+                                let _ = self
+                                    .match_var_def(var_decl, *loc, &lhs_paths, None)
                                     .map(|res| {
                                         if res {
                                             ctx.kill(self, *loc);
@@ -410,28 +416,29 @@ pub trait ContextBuilder:
                         .map_err(|err| self.add_expr_err(err));
                 } else {
                     forks.into_iter().for_each(|ctx| {
-                        self.parse_ctx_expr(&var_decl.ty, ctx)
+                        let _ = self
+                            .parse_ctx_expr(&var_decl.ty, ctx)
                             .map(|lhs_paths| {
                                 if let Some(rhs) = maybe_expr {
-                                    self.parse_ctx_expr(rhs, ctx)
-                                        .map(|rhs_paths| {
-                                            self.match_var_def(
-                                                var_decl,
-                                                *loc,
-                                                &lhs_paths,
-                                                Some(&rhs_paths),
-                                            )
-                                            .map(
-                                                |res| {
+                                    let _ =
+                                        self.parse_ctx_expr(rhs, ctx)
+                                            .map(|rhs_paths| {
+                                                self.match_var_def(
+                                                    var_decl,
+                                                    *loc,
+                                                    &lhs_paths,
+                                                    Some(&rhs_paths),
+                                                )
+                                                .map(|res| {
                                                     if res {
                                                         ctx.kill(self, *loc);
                                                     }
-                                                },
-                                            )
-                                        })
-                                        .map_err(|err| self.add_expr_err(err));
+                                                })
+                                            })
+                                            .map_err(|err| self.add_expr_err(err));
                                 } else {
-                                    self.match_var_def(var_decl, *loc, &lhs_paths, None)
+                                    let _ = self
+                                        .match_var_def(var_decl, *loc, &lhs_paths, None)
                                         .map(|res| {
                                             if res {
                                                 ctx.kill(self, *loc);
@@ -452,11 +459,13 @@ pub trait ContextBuilder:
                 let ctx = ContextNode::from(parent_ctx.expect("Dangling if statement").into());
                 let forks = ctx.live_forks(self);
                 if forks.is_empty() {
-                    self.cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, ctx)
+                    let _ = self
+                        .cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, ctx)
                         .map_err(|e| self.add_expr_err(e));
                 } else {
                     forks.into_iter().for_each(|parent| {
-                        self.cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, parent)
+                        let _ = self
+                            .cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, parent)
                             .map_err(|e| self.add_expr_err(e));
                     });
                 }
@@ -470,7 +479,8 @@ pub trait ContextBuilder:
             Expression(loc, expr) => {
                 tracing::trace!("parsing expr, {expr:?}");
                 if let Some(parent) = parent_ctx {
-                    self.parse_ctx_expr(expr, ContextNode::from(parent.into()))
+                    let _ = self
+                        .parse_ctx_expr(expr, ContextNode::from(parent.into()))
                         .map(|ctx| {
                             if ctx.is_killed() {
                                 ContextNode::from(parent.into()).kill(self, *loc);
@@ -534,7 +544,8 @@ pub trait ContextBuilder:
                     if let Some(parent) = parent_ctx {
                         let forks = ContextNode::from(parent.into()).live_forks(self);
                         if forks.is_empty() {
-                            self.parse_ctx_expr(ret_expr, ContextNode::from(parent.into()))
+                            let _ = self
+                                .parse_ctx_expr(ret_expr, ContextNode::from(parent.into()))
                                 .map(|paths| {
                                     let paths = paths.flatten();
                                     if paths.is_killed() {
@@ -546,11 +557,12 @@ pub trait ContextBuilder:
                                 .map_err(|e| self.add_expr_err(e));
                         } else {
                             forks.into_iter().for_each(|parent| {
-                                self.parse_ctx_expr(ret_expr, ContextNode::from(parent))
+                                let _ = self
+                                    .parse_ctx_expr(ret_expr, parent)
                                     .map(|paths| {
                                         let paths = paths.flatten();
                                         if paths.is_killed() {
-                                            ContextNode::from(parent).kill(self, *loc);
+                                            parent.kill(self, *loc);
                                             return;
                                         }
                                         self.return_match(loc, &paths);
@@ -594,19 +606,20 @@ pub trait ContextBuilder:
                         one_node.into(),
                         self,
                     )));
-                    self.op(
-                        loc,
-                        var.latest_version(self),
-                        one_node.into(),
-                        parent.into().into(),
-                        if increment {
-                            RangeOp::Add
-                        } else {
-                            RangeOp::Sub
-                        },
-                        true,
-                    )
-                    .map_err(|e| self.add_expr_err(e));
+                    let _ = self
+                        .op(
+                            loc,
+                            var.latest_version(self),
+                            one_node.into(),
+                            parent.into().into(),
+                            if increment {
+                                RangeOp::Add
+                            } else {
+                                RangeOp::Sub
+                            },
+                            true,
+                        )
+                        .map_err(|e| self.add_expr_err(e));
                 });
                 ContextNode::from(parent.into())
                     .underlying_mut(self)

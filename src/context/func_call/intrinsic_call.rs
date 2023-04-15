@@ -114,7 +114,7 @@ pub trait IntrinsicFuncCaller:
                             Ok(ExprRet::Single((ctx, node)))
                         }
                         "require" | "assert" => {
-                            self.handle_require(input_exprs, ctx);
+                            self.handle_require(input_exprs, ctx)?;
                             Ok(ExprRet::Multi(vec![]))
                         }
                         "type" => Ok(ExprRet::Single(

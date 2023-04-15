@@ -104,14 +104,10 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
                 self.true_fork_if_cvar(loc, if_expr.clone(), *fork_ctx)
             }
             ExprRet::Multi(ref true_paths) => {
-                true_paths
-                    .iter()
-                    .take(1)
-                    .map(|expr_ret| {
-                        let (fork_ctx, _) = expr_ret.expect_single(loc)?;
-                        self.true_fork_if_cvar(loc, if_expr.clone(), fork_ctx)
-                    })
-                    .collect::<Result<_, ExprErr>>()?;
+                true_paths.iter().take(1).try_for_each(|expr_ret| {
+                    let (fork_ctx, _) = expr_ret.expect_single(loc)?;
+                    self.true_fork_if_cvar(loc, if_expr.clone(), fork_ctx)
+                })?;
                 Ok(())
             }
             ExprRet::Fork(true_paths, other_true_paths) => {
@@ -134,14 +130,10 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
                 self.false_fork_if_cvar(loc, if_expr.clone(), *fork_ctx)
             }
             ExprRet::Multi(ref false_paths) => {
-                false_paths
-                    .iter()
-                    .take(1)
-                    .map(|expr_ret| {
-                        let (fork_ctx, _) = expr_ret.expect_single(loc)?;
-                        self.false_fork_if_cvar(loc, if_expr.clone(), fork_ctx)
-                    })
-                    .collect::<Result<_, ExprErr>>()?;
+                false_paths.iter().take(1).try_for_each(|expr_ret| {
+                    let (fork_ctx, _) = expr_ret.expect_single(loc)?;
+                    self.false_fork_if_cvar(loc, if_expr.clone(), fork_ctx)
+                })?;
                 Ok(())
             }
             ExprRet::Fork(false_paths, other_false_paths) => {

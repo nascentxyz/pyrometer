@@ -88,31 +88,27 @@ pub trait InternalFuncCaller:
                 let cvar = self.add_node(Node::ContextVar(var));
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
-                strukt
-                    .fields(self)
-                    .iter()
-                    .map(|field| {
-                        let field_cvar = ContextVar::maybe_new_from_field(
-                            self,
-                            *loc,
-                            ContextVarNode::from(cvar).underlying(self),
-                            field.underlying(self).clone(),
-                        )
-                        .expect("Invalid struct field");
+                strukt.fields(self).iter().try_for_each(|field| {
+                    let field_cvar = ContextVar::maybe_new_from_field(
+                        self,
+                        *loc,
+                        ContextVarNode::from(cvar).underlying(self),
+                        field.underlying(self).clone(),
+                    )
+                    .expect("Invalid struct field");
 
-                        let fc_node = self.add_node(Node::ContextVar(field_cvar));
-                        self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
-                        self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
-                        let field_as_ret = ExprRet::Single((ctx, fc_node));
-                        let input = input_args
-                            .iter()
-                            .find(|arg| arg.name.name == field.name(self))
-                            .expect("No field in struct in struct construction");
-                        let assignment = self.parse_ctx_expr(&input.expr, ctx)?;
-                        self.match_assign_sides(*loc, &field_as_ret, &assignment)?;
-                        Ok(())
-                    })
-                    .collect::<Result<(), ExprErr>>()?;
+                    let fc_node = self.add_node(Node::ContextVar(field_cvar));
+                    self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
+                    self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                    let field_as_ret = ExprRet::Single((ctx, fc_node));
+                    let input = input_args
+                        .iter()
+                        .find(|arg| arg.name.name == field.name(self))
+                        .expect("No field in struct in struct construction");
+                    let assignment = self.parse_ctx_expr(&input.expr, ctx)?;
+                    self.match_assign_sides(*loc, &field_as_ret, &assignment)?;
+                    Ok(())
+                })?;
                 Ok(ExprRet::Single((ctx, cvar)))
             } else {
                 todo!("Disambiguate struct construction");
@@ -213,7 +209,7 @@ pub trait InternalFuncCaller:
             } else {
                 Err(ExprErr::FunctionNotFound(
                     *loc,
-                    format!("Could not find function"),
+                    "Could not find function".to_string(),
                 ))
             }
         }

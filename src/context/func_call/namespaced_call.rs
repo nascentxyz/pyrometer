@@ -145,7 +145,7 @@ pub trait NameSpaceFuncCaller:
             } else {
                 Err(ExprErr::FunctionNotFound(
                     *loc,
-                    format!("Could not find function"),
+                    "Could not find function".to_string(),
                 ))
             }
         }

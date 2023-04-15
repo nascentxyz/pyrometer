@@ -18,7 +18,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<ExprRet, ExprErr> {
         let rets = params
             .iter()
-            .filter_map(|(loc, input)| {
+            .filter_map(|(_loc, input)| {
                 if let Some(input) = input {
                     Some(input)
                 } else {
