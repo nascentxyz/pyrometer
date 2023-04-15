@@ -1,27 +1,31 @@
+use crate::context::ExprErr;
 use crate::{
     context::exprs::{member_access::MemberAccess, require::Require},
     Builtin, ContextBuilder, Edge, ExprRet, Node, VarType,
 };
 use shared::{analyzer::AnalyzerLike, context::*, range::elem::RangeOp};
+use solang_parser::helpers::CodeLocation;
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> Array for T where T: AnalyzerLike<Expr = Expression> + Sized {}
-pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
+impl<T> Array for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
-    fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> ExprRet {
-        let (ctx, inner_ty) = self.parse_ctx_expr(ty_expr, ctx).expect_single();
+    fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<ExprRet, ExprErr> {
+        let (ctx, inner_ty) = self
+            .parse_ctx_expr(ty_expr, ctx)?
+            .expect_single(ty_expr.loc())?;
         if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
             let dyn_b = Builtin::Array(var_type);
             if let Some(idx) = self.builtins().get(&dyn_b) {
-                ExprRet::Single((ctx, *idx))
+                Ok(ExprRet::Single((ctx, *idx)))
             } else {
                 let idx = self.add_node(Node::Builtin(dyn_b.clone()));
                 self.builtins_mut().insert(dyn_b, idx);
-                ExprRet::Single((ctx, idx))
+                Ok(ExprRet::Single((ctx, idx)))
             }
         } else {
-            panic!("Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.")
+            Err(ExprErr::ArrayTy(ty_expr.loc(), "Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.".to_string()))
         }
     }
 
@@ -32,9 +36,9 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
         ty_expr: &Expression,
         index_expr: &Expression,
         ctx: ContextNode,
-    ) -> ExprRet {
-        let inner_tys = self.parse_ctx_expr(ty_expr, ctx);
-        let index_tys = self.parse_ctx_expr(index_expr, ctx);
+    ) -> Result<ExprRet, ExprErr> {
+        let inner_tys = self.parse_ctx_expr(ty_expr, ctx)?;
+        let index_tys = self.parse_ctx_expr(index_expr, ctx)?;
         self.index_into_array_inner(loc, inner_tys, index_tys)
     }
 
@@ -44,12 +48,11 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
         loc: Loc,
         inner_paths: ExprRet,
         index_paths: ExprRet,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         match (inner_paths, index_paths) {
-            (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
-            (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
+            (_, ExprRet::CtxKilled) => Ok(ExprRet::CtxKilled),
+            (ExprRet::CtxKilled, _) => Ok(ExprRet::CtxKilled),
             (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) | (ExprRet::Single((ctx, parent)), ExprRet::SingleLiteral((_rhs_ctx, index))) => {
-
                 let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).first_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx);
@@ -71,7 +74,7 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                 if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name) {
                     let index_var = index_var.latest_version(self);
                     let index_var = self.advance_var_in_ctx(index_var, loc, ctx);
-                    ExprRet::Single((ctx, index_var.into()))
+                    Ok(ExprRet::Single((ctx, index_var.into())))
                 } else {
                     let index_var = ContextVar {
                         loc: Some(loc),
@@ -93,10 +96,10 @@ pub trait Array: AnalyzerLike<Expr = Expression> + Sized {
                     self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
                     self.add_edge(index, idx_node, Edge::Context(ContextEdge::Index));
 
-                    ExprRet::Single((ctx, idx_node))
+                    Ok(ExprRet::Single((ctx, idx_node)))
                 }
             }
-            e => panic!("Expected single expr evaluation of index expression, but was: {e:?}. This is a bug. Please report it at github.com/nascentxyz/pyrometer."),
+            e => Err(ExprErr::ArrayIndex(loc, format!("Expected single expr evaluation of index expression, but was: {e:?}. This is a bug. Please report it at github.com/nascentxyz/pyrometer."))),
         }
     }
 }

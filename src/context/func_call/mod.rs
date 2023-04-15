@@ -3,6 +3,7 @@ use crate::context::func_call::{
     namespaced_call::NameSpaceFuncCaller,
 };
 use crate::context::ContextBuilder;
+use crate::context::ExprErr;
 use crate::ExprRet;
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphLike;
@@ -20,8 +21,13 @@ pub mod internal_call;
 pub mod intrinsic_call;
 pub mod namespaced_call;
 
-impl<T> FuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
-pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+impl<T> FuncCaller for T where
+    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+{
+}
+pub trait FuncCaller:
+    GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized
+{
     #[tracing::instrument(level = "trace", skip_all)]
     fn named_fn_call_expr(
         &mut self,
@@ -29,16 +35,17 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         loc: &Loc,
         func_expr: &Expression,
         input_exprs: &[NamedArgument],
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
                 self.call_name_spaced_named_func(ctx, loc, member_expr, ident, input_exprs)
             }
             Variable(ident) => self.call_internal_named_func(ctx, loc, ident, input_exprs),
-            e => {
-                panic!("Cannot call intrinsic functions with named arguments. Call: {e:?}")
-            }
+            e => Err(ExprErr::IntrinsicNamedArgs(
+                *loc,
+                format!("Cannot call intrinsic functions with named arguments. Call: {e:?}"),
+            )),
         }
     }
     #[tracing::instrument(level = "trace", skip_all)]
@@ -48,7 +55,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         loc: &Loc,
         func_expr: &Expression,
         input_exprs: &[Expression],
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
@@ -56,11 +63,16 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             }
             Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, input_exprs),
             _ => {
-                let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx) {
+                let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx)? {
                     ExprRet::Single((ctx, idx)) => (ctx, idx),
-                    m @ ExprRet::Multi(_) => m.expect_single(),
-                    ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                    e => todo!("got fork in func call: {:?}", e),
+                    m @ ExprRet::Multi(_) => m.expect_single(*loc)?,
+                    ExprRet::CtxKilled => return Ok(ExprRet::CtxKilled),
+                    e => {
+                        return Err(ExprErr::UnhandledExprRet(
+                            *loc,
+                            format!("Got fork in func call: {e:?}"),
+                        ))
+                    }
                 };
                 self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
             }
@@ -141,7 +153,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_idx: NodeIdx,
         ctx: ContextNode,
         func_call_str: Option<String>,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         // if we have a single match thats our function
         let var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
             Some(v) => v,
@@ -178,7 +190,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         input_paths: &ExprRet,
         func: FunctionNode,
         func_call_str: Option<String>,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
         match input_paths {
@@ -204,10 +216,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         let input_vars = inputs
                             .iter()
                             .map(|expr_ret| {
-                                let (_ctx, var) = expr_ret.expect_single();
-                                ContextVarNode::from(var).latest_version(self)
+                                let (_ctx, var) = expr_ret.expect_single(loc)?;
+                                Ok(ContextVarNode::from(var).latest_version(self))
                             })
-                            .collect();
+                            .collect::<Result<Vec<_>, ExprErr>>()?;
                         self.func_call_inner(
                             false,
                             ctx,
@@ -229,10 +241,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                     panic!("Length mismatch: {inputs:?} {params:?}");
                 }
             }
-            ExprRet::Fork(w1, w2) => ExprRet::Fork(
-                Box::new(self.func_call(ctx, loc, &w1, func, func_call_str.clone())),
-                Box::new(self.func_call(ctx, loc, &w2, func, func_call_str)),
-            ),
+            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                Box::new(self.func_call(ctx, loc, &w1, func, func_call_str.clone())?),
+                Box::new(self.func_call(ctx, loc, &w2, func, func_call_str)?),
+            )),
             e => todo!("here: {:?}", e),
         }
     }
@@ -249,7 +261,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         params: Vec<FunctionParamNode>,
         modifier_state: Option<ModifierState>,
         func_call_str: Option<String>,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         let fn_ext = ctx.is_fn_ext(func_node, self);
         let callee_ctx = if entry_call {
             ctx
@@ -372,7 +384,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_node: FunctionNode,
         renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
         func_call_str: Option<String>,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         if let Some(body) = func_node.underlying(self).body.clone() {
             // add return nodes into the subctx
             func_node.returns(self).iter().for_each(|ret| {
@@ -390,11 +402,11 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
 
-            self.ctx_rets(callee_ctx)
+            Ok(self.ctx_rets(callee_ctx))
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs);
             self.inherit_storage_changes(caller_ctx, callee_ctx);
-            ExprRet::Multi(
+            Ok(ExprRet::Multi(
                 func_node
                     .returns(self)
                     .iter()
@@ -413,7 +425,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         ExprRet::Single((caller_ctx, node))
                     })
                     .collect(),
-            )
+            ))
         }
     }
 
@@ -452,7 +464,7 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         func_node: FunctionNode,
         mod_state: ModifierState,
         func_call_str: Option<String>,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         let mod_node = func_node.modifiers(self)[mod_state.num];
         tracing::trace!(
             "calling modifier {} for func {}",
@@ -482,10 +494,10 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         let inputs: Vec<ContextVarNode> = input_exprs
             .iter()
             .map(|expr| {
-                let (_ctx, input) = self.parse_ctx_expr(expr, mod_ctx).expect_single();
-                input.into()
+                let (_ctx, input) = self.parse_ctx_expr(expr, mod_ctx)?.expect_single(loc)?;
+                Ok(input.into())
             })
-            .collect();
+            .collect::<Result<Vec<_>, ExprErr>>()?;
 
         let params = mod_node.params(self);
         let renamed_inputs = params
@@ -543,7 +555,11 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
 
     /// Resumes the parent function of a modifier
     #[tracing::instrument(level = "trace", skip_all)]
-    fn resume_from_modifier(&mut self, ctx: ContextNode, modifier_state: ModifierState) -> ExprRet {
+    fn resume_from_modifier(
+        &mut self,
+        ctx: ContextNode,
+        modifier_state: ModifierState,
+    ) -> Result<ExprRet, ExprErr> {
         tracing::trace!("resuming from modifier: {}", ctx.associated_fn_name(self));
         // pass up the variable changes
         self.inherit_input_changes(
@@ -641,16 +657,20 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
         }
     }
 
-    fn modifiers(&mut self, ctx: ContextNode, func: FunctionNode) -> Vec<FunctionNode> {
+    fn modifiers(
+        &mut self,
+        ctx: ContextNode,
+        func: FunctionNode,
+    ) -> Result<Vec<FunctionNode>, ExprErr> {
         use std::fmt::Write;
         let binding = func.underlying(self).clone();
         let modifiers = binding.modifiers_as_base();
         if modifiers.is_empty() {
-            vec![]
+            Ok(vec![])
         } else {
             let res = modifiers
                 .iter()
-                .filter_map(|modifier| {
+                .map(|modifier| {
                     assert_eq!(modifier.name.identifiers.len(), 1);
                     // construct arg string for function selector
                     let mut mod_name = format!("{}", modifier.name.identifiers[0]);
@@ -658,33 +678,38 @@ pub trait FuncCaller: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
                         let args_str = args
                             .iter()
                             .map(|expr| {
-                                let ret = self.parse_ctx_expr(expr, ctx);
-                                ret.try_as_func_input_str(self)
+                                let ret = self.parse_ctx_expr(expr, ctx)?;
+                                Ok(ret.try_as_func_input_str(self))
                             })
-                            .collect::<Vec<_>>()
+                            .collect::<Result<Vec<_>, ExprErr>>()?
                             .join(", ");
                         let _ = write!(mod_name, "{args_str}");
                     }
                     let _ = write!(mod_name, "");
 
                     // println!("func modifiers: {},\n{:?},\n{:#?},\n{}", func.name(self), mod_name, ctx.visible_modifiers(self), ctx.visible_modifiers(self)[0].name(self));
-                    let found: FunctionNode = *ctx
+                    let found: Option<FunctionNode> = ctx
                         .visible_modifiers(self)
                         .iter()
-                        .find(|modifier| modifier.name(self) == mod_name)?;
-                    Some(found)
+                        .find(|modifier| modifier.name(self) == mod_name)
+                        .copied();
+                    Ok(found)
                 })
-                .collect();
-            res
+                .collect::<Result<Vec<Option<_>>, ExprErr>>()?
+                .into_iter()
+                .filter_map(|i| i)
+                .collect::<Vec<_>>();
+            Ok(res)
         }
     }
 
-    fn set_modifiers(&mut self, func: FunctionNode, ctx: ContextNode) {
-        let modifiers = self.modifiers(ctx, func);
+    fn set_modifiers(&mut self, func: FunctionNode, ctx: ContextNode) -> Result<(), ExprErr> {
+        let modifiers = self.modifiers(ctx, func)?;
         modifiers
             .iter()
             .enumerate()
             .for_each(|(i, modifier)| self.add_edge(*modifier, func, Edge::FuncModifier(i)));
         func.underlying_mut(self).modifiers_set = true;
+        Ok(())
     }
 }

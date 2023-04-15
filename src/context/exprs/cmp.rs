@@ -1,3 +1,4 @@
+use crate::context::ExprErr;
 use crate::{ContextBuilder, ExprRet};
 use shared::range::elem_ty::Dynamic;
 use shared::{
@@ -15,17 +16,22 @@ use shared::{
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;
 
-impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression> + Sized {}
-pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
-    fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> ExprRet {
-        let lhs = self.parse_ctx_expr(lhs_expr, ctx);
+impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn not(
+        &mut self,
+        loc: Loc,
+        lhs_expr: &Expression,
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
+        let lhs = self.parse_ctx_expr(lhs_expr, ctx)?;
         self.not_inner(loc, lhs)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn not_inner(&mut self, loc: Loc, lhs_expr: ExprRet) -> ExprRet {
+    fn not_inner(&mut self, loc: Loc, lhs_expr: ExprRet) -> Result<ExprRet, ExprErr> {
         match lhs_expr {
-            ExprRet::CtxKilled => lhs_expr,
+            ExprRet::CtxKilled => Ok(lhs_expr),
             ExprRet::Single((ctx, lhs)) | ExprRet::SingleLiteral((ctx, lhs)) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
 
@@ -47,15 +53,19 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     ),
                 };
 
-                ExprRet::Single((ctx, self.add_node(Node::ContextVar(out_var))))
+                Ok(ExprRet::Single((
+                    ctx,
+                    self.add_node(Node::ContextVar(out_var)),
+                )))
             }
-            ExprRet::Multi(f) => {
-                panic!("not: {f:?}")
-            }
-            ExprRet::Fork(world1, world2) => ExprRet::Fork(
-                Box::new(self.not_inner(loc, *world1)),
-                Box::new(self.not_inner(loc, *world2)),
-            ),
+            ExprRet::Multi(f) => Err(ExprErr::MultiNot(
+                loc,
+                format!("Multiple elements in not expression: {f:?}"),
+            )),
+            ExprRet::Fork(world1, world2) => Ok(ExprRet::Fork(
+                Box::new(self.not_inner(loc, *world1)?),
+                Box::new(self.not_inner(loc, *world2)?),
+            )),
         }
     }
 
@@ -66,9 +76,9 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         op: RangeOp,
         rhs_expr: &Expression,
         ctx: ContextNode,
-    ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
+    ) -> Result<ExprRet, ExprErr> {
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
+        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?.flatten();
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
 
@@ -79,7 +89,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         lhs_paths: &ExprRet,
         op: RangeOp,
         rhs_paths: &ExprRet,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral((_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
                 ContextVarNode::from(*lhs).literal_cast_from(&ContextVarNode::from(*rhs), self);
@@ -139,66 +149,74 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     ),
                 };
 
-                ExprRet::Single((*ctx, self.add_node(Node::ContextVar(out_var))))
+                Ok(ExprRet::Single((
+                    *ctx,
+                    self.add_node(Node::ContextVar(out_var)),
+                )))
             }
-            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
-                rhs_sides
-                    .iter()
-                    .map(|expr_ret| self.cmp_inner(loc, l, op, expr_ret))
-                    .collect(),
-            ),
-            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => ExprRet::Multi(
+            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => {
+                Ok(ExprRet::Multi(
+                    rhs_sides
+                        .iter()
+                        .map(|expr_ret| self.cmp_inner(loc, l, op, expr_ret))
+                        .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
+                ))
+            }
+            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => Ok(ExprRet::Multi(
                 lhs_sides
                     .iter()
                     .map(|expr_ret| self.cmp_inner(loc, expr_ret, op, r))
-                    .collect(),
-            ),
+                    .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
+            )),
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    ExprRet::Multi(
+                    Ok(ExprRet::Multi(
                         lhs_sides
                             .iter()
                             .zip(rhs_sides.iter())
                             .map(|(lhs_expr_ret, rhs_expr_ret)| {
                                 self.cmp_inner(loc, lhs_expr_ret, op, rhs_expr_ret)
                             })
-                            .collect(),
-                    )
+                            .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
+                    ))
                 } else {
-                    ExprRet::Multi(
+                    Ok(ExprRet::Multi(
                         rhs_sides
                             .iter()
                             .map(|rhs_expr_ret| self.cmp_inner(loc, lhs_paths, op, rhs_expr_ret))
-                            .collect(),
-                    )
+                            .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
+                    ))
                 }
             }
             (ExprRet::Fork(lhs_world1, lhs_world2), ExprRet::Fork(rhs_world1, rhs_world2)) => {
-                ExprRet::Fork(
+                Ok(ExprRet::Fork(
                     Box::new(ExprRet::Fork(
-                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world1)),
-                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world2)),
+                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world1)?),
+                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world2)?),
                     )),
                     Box::new(ExprRet::Fork(
-                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world1)),
-                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world2)),
+                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world1)?),
+                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world2)?),
                     )),
-                )
+                ))
             }
-            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
-                Box::new(self.cmp_inner(loc, l, op, world1)),
-                Box::new(self.cmp_inner(loc, l, op, world2)),
-            ),
-            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_)) => ExprRet::Fork(
-                Box::new(self.cmp_inner(loc, world1, op, r)),
-                Box::new(self.cmp_inner(loc, world2, op, r)),
-            ),
-            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
-                Box::new(self.cmp_inner(loc, m, op, world1)),
-                Box::new(self.cmp_inner(loc, m, op, world2)),
-            ),
-            (e, f) => todo!("any: {:?} {:?}", e, f),
+            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => Ok(ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, l, op, world1)?),
+                Box::new(self.cmp_inner(loc, l, op, world2)?),
+            )),
+            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_)) => Ok(ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, world1, op, r)?),
+                Box::new(self.cmp_inner(loc, world2, op, r)?),
+            )),
+            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => Ok(ExprRet::Fork(
+                Box::new(self.cmp_inner(loc, m, op, world1)?),
+                Box::new(self.cmp_inner(loc, m, op, world2)?),
+            )),
+            (e, f) => Err(ExprErr::UnhandledCombo(
+                loc,
+                format!("Unhandled combination in `not`: {e:?} {f:?}"),
+            )),
         }
     }
 

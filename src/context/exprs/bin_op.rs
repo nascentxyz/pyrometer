@@ -1,4 +1,7 @@
-use crate::{context::ContextBuilder, ExprRet};
+use crate::{
+    context::{ContextBuilder, ExprErr},
+    ExprRet,
+};
 use ethers_core::types::{I256, U256};
 use shared::analyzer::AsDotStr;
 use shared::range::elem::RangeElem;
@@ -16,8 +19,8 @@ use shared::{
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> BinOp for T where T: AnalyzerLike<Expr = Expression> + Sized {}
-pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
+impl<T> BinOp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Evaluate and execute a binary operation expression
     fn op_expr(
         &mut self,
@@ -27,9 +30,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         ctx: ContextNode,
         op: RangeOp,
         assign: bool,
-    ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
+    ) -> Result<ExprRet, ExprErr> {
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
+        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?.flatten();
         self.op_match(loc, &lhs_paths, &rhs_paths, op, assign)
     }
 
@@ -40,7 +43,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         rhs_paths: &ExprRet,
         op: RangeOp,
         assign: bool,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
@@ -66,42 +69,46 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
+            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => Ok(ExprRet::Multi(
                 rhs_sides
                     .iter()
                     .map(|expr_ret| {
-                        let (_rhs_ctx, rhs) = expr_ret.expect_single();
+                        let (_rhs_ctx, rhs) = expr_ret.expect_single(loc)?;
                         let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                         let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
                         self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
                     })
-                    .collect(),
-            ),
-            (ExprRet::Multi(lhs_sides), ExprRet::Single((_rhs_ctx, rhs))) => ExprRet::Multi(
+                    .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
+            )),
+            (ExprRet::Multi(lhs_sides), ExprRet::Single((_rhs_ctx, rhs))) => Ok(ExprRet::Multi(
                 lhs_sides
                     .iter()
                     .map(|expr_ret| {
-                        let (lhs_ctx, lhs) = expr_ret.expect_single();
+                        let (lhs_ctx, lhs) = expr_ret.expect_single(loc)?;
                         let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
                         let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                         self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign)
                     })
-                    .collect(),
-            ),
-            (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
-                todo!("here multi: {lhs_sides:?} {rhs_sides:?}")
-            }
-            (_, ExprRet::CtxKilled) => ExprRet::CtxKilled,
-            (ExprRet::CtxKilled, _) => ExprRet::CtxKilled,
-            (ExprRet::Fork(world1, world2), rhs @ ExprRet::Single(..)) => ExprRet::Fork(
-                Box::new(self.op_match(loc, world1, rhs, op, assign)),
-                Box::new(self.op_match(loc, world2, rhs, op, assign)),
-            ),
-            (lhs @ ExprRet::Single(..), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
-                Box::new(self.op_match(loc, lhs, world1, op, assign)),
-                Box::new(self.op_match(loc, lhs, world2, op, assign)),
-            ),
-            (l, r) => todo!("here other: {l:?} {r:?}"),
+                    .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
+            )),
+            (_, ExprRet::CtxKilled) => Ok(ExprRet::CtxKilled),
+            (ExprRet::CtxKilled, _) => Ok(ExprRet::CtxKilled),
+            (ExprRet::Fork(world1, world2), rhs @ ExprRet::Single(..)) => Ok(ExprRet::Fork(
+                Box::new(self.op_match(loc, world1, rhs, op, assign)?),
+                Box::new(self.op_match(loc, world2, rhs, op, assign)?),
+            )),
+            (lhs @ ExprRet::Single(..), ExprRet::Fork(world1, world2)) => Ok(ExprRet::Fork(
+                Box::new(self.op_match(loc, lhs, world1, op, assign)?),
+                Box::new(self.op_match(loc, lhs, world2, op, assign)?),
+            )),
+            (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => Err(ExprErr::UnhandledCombo(
+                loc,
+                format!("Unhandled combination in binop: {lhs_sides:?} {rhs_sides:?}"),
+            )),
+            (l, r) => Err(ExprErr::UnhandledCombo(
+                loc,
+                format!("Unhandled combination in binop: {l:?} {r:?}"),
+            )),
         }
     }
 
@@ -115,7 +122,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
         ctx: ContextNode,
         op: RangeOp,
         assign: bool,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         tracing::trace!(
             "binary op: {} {} {}, assign: {}",
             lhs_cvar.display_name(self),
@@ -175,7 +182,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                             .range_eq(&Elem::from(Concrete::from(U256::zero())))
                         {
                             ctx.kill(self, loc);
-                            return ExprRet::CtxKilled;
+                            return Ok(ExprRet::CtxKilled);
                         }
                     } else if new_rhs.is_symbolic(self) {
                         let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx);
@@ -240,7 +247,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                                         | Some(std::cmp::Ordering::Equal)
                                 ) {
                                     ctx.kill(self, loc);
-                                    return ExprRet::CtxKilled;
+                                    return Ok(ExprRet::CtxKilled);
                                 }
                             }
                         }
@@ -306,8 +313,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                         ));
 
                         let (_, tmp_rhs) = self
-                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)
-                            .expect_single();
+                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)?
+                            .expect_single(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -363,8 +370,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                         ));
 
                         let (_, tmp_rhs) = self
-                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)
-                            .expect_single();
+                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)?
+                            .expect_single(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -407,7 +414,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                             Some(std::cmp::Ordering::Less)
                         ) {
                             ctx.kill(self, loc);
-                            return ExprRet::CtxKilled;
+                            return Ok(ExprRet::CtxKilled);
                         }
                     } else if new_rhs.is_symbolic(self) {
                         let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
@@ -483,6 +490,6 @@ pub trait BinOp: AnalyzerLike<Expr = Expression> + Sized {
                 }
             }
         }
-        ExprRet::Single((ctx, new_lhs.into()))
+        Ok(ExprRet::Single((ctx, new_lhs.into())))
     }
 }

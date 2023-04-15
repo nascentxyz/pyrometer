@@ -1,3 +1,4 @@
+use crate::context::ExprErr;
 use crate::{
     context::{
         exprs::{Array, MemberAccess, Require},
@@ -18,8 +19,13 @@ use shared::{
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> IntrinsicFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
-pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike {
+impl<T> IntrinsicFuncCaller for T where
+    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+{
+}
+pub trait IntrinsicFuncCaller:
+    AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+{
     /// Calls an intrinsic/builtin function call (casts, require, etc.)
     #[tracing::instrument(level = "trace", skip_all)]
     fn intrinsic_func_call(
@@ -28,7 +34,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         input_exprs: &[Expression],
         func_idx: NodeIdx,
         ctx: ContextNode,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         match self.node(func_idx) {
             Node::Function(underlying) => {
                 if let Some(func_name) = &underlying.name {
@@ -36,7 +42,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                         "abi.decode" => {
                             // we skip the first because that is what is being decoded.
                             // TODO: check if we have a concrete bytes value
-                            let ret = self.parse_ctx_expr(&input_exprs[1], ctx);
+                            let ret = self.parse_ctx_expr(&input_exprs[1], ctx)?;
                             fn match_decode(
                                 loc: &Loc,
                                 ret: ExprRet,
@@ -86,7 +92,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                                     e => panic!("This is invalid solidity: {:?}", e),
                                 }
                             }
-                            match_decode(loc, ret, self)
+                            Ok(match_decode(loc, ret, self))
                         }
                         "abi.encode"
                         | "abi.encodePacked"
@@ -97,7 +103,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ExprRet::Single((ctx, node))
+                            Ok(ExprRet::Single((ctx, node)))
                         }
                         "delegatecall" | "staticcall" | "call" => {
                             // TODO: try to be smarter based on the address input
@@ -105,19 +111,21 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ExprRet::Single((ctx, node))
+                            Ok(ExprRet::Single((ctx, node)))
                         }
                         "require" | "assert" => {
                             self.handle_require(input_exprs, ctx);
-                            ExprRet::Multi(vec![])
+                            Ok(ExprRet::Multi(vec![]))
                         }
-                        "type" => ExprRet::Single(
-                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single(),
-                        ),
+                        "type" => Ok(ExprRet::Single(
+                            self.parse_ctx_expr(&input_exprs[0], ctx)?
+                                .expect_single(*loc)?,
+                        )),
                         "push" => {
                             assert!(input_exprs.len() == 2);
-                            let (arr_ctx, arr) =
-                                self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                            let (arr_ctx, arr) = self
+                                .parse_ctx_expr(&input_exprs[0], ctx)?
+                                .expect_single(*loc)?;
                             let arr = ContextVarNode::from(arr).latest_version(self);
                             // get length
                             let len = self.tmp_length(arr, arr_ctx, *loc);
@@ -128,20 +136,21 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                                 *loc,
                                 ExprRet::Single((arr_ctx, arr.latest_version(self).into())),
                                 ExprRet::Single((arr_ctx, len_as_idx.latest_version(self).into())),
-                            );
+                            )?;
                             // assign index to new_elem
-                            let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx);
+                            let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx)?;
                             self.match_assign_sides(*loc, &index, &new_elem)
                         }
                         "keccak256" => {
-                            self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                            self.parse_ctx_expr(&input_exprs[0], ctx)?
+                                .expect_single(*loc)?;
                             let var = ContextVar::new_from_builtin(
                                 *loc,
                                 self.builtin_or_add(Builtin::Bytes(32)).into(),
                                 self,
                             );
                             let cvar = self.add_node(Node::ContextVar(var));
-                            ExprRet::Single((ctx, cvar))
+                            Ok(ExprRet::Single((ctx, cvar)))
                         }
                         "ecrecover" => {
                             input_exprs.iter().for_each(|expr| {
@@ -154,7 +163,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                                 self,
                             );
                             let cvar = self.add_node(Node::ContextVar(var));
-                            ExprRet::Single((ctx, cvar))
+                            Ok(ExprRet::Single((ctx, cvar)))
                         }
                         e => todo!("builtin function: {:?}", e),
                     }
@@ -164,7 +173,9 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             }
             Node::Builtin(Builtin::Array(_)) => {
                 // create a new list
-                let (ctx, len_cvar) = self.parse_ctx_expr(&input_exprs[0], ctx).expect_single();
+                let (ctx, len_cvar) = self
+                    .parse_ctx_expr(&input_exprs[0], ctx)?
+                    .expect_single(*loc)?;
                 let ty = VarType::try_from_idx(self, func_idx);
 
                 let new_arr = ContextVar {
@@ -212,7 +223,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     }
                 }
 
-                ExprRet::Single((ctx, arr.into()))
+                Ok(ExprRet::Single((ctx, arr.into())))
             }
             Node::Builtin(ty) => {
                 // it is a cast
@@ -271,8 +282,8 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     }
                 }
 
-                let ret = self.parse_ctx_expr(&input_exprs[0], ctx).flatten();
-                cast_match(loc, self, ty, ret, func_idx)
+                let ret = self.parse_ctx_expr(&input_exprs[0], ctx)?.flatten();
+                Ok(cast_match(loc, self, ty, ret, func_idx))
             }
             Node::ContextVar(_c) => {
                 // its a user type
@@ -282,7 +293,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     .map(|expr| self.parse_ctx_expr(expr, ctx))
                     .collect();
 
-                ExprRet::Single((ctx, func_idx))
+                Ok(ExprRet::Single((ctx, func_idx)))
             }
             Node::Contract(_) => {
                 // TODO: figure out if we need to do anything
@@ -291,7 +302,7 @@ pub trait IntrinsicFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                     .map(|expr| self.parse_ctx_expr(expr, ctx))
                     .collect();
 
-                ExprRet::Single((ctx, func_idx))
+                Ok(ExprRet::Single((ctx, func_idx)))
             }
             e => todo!("{:?}", e),
         }

@@ -1,3 +1,5 @@
+use solang_parser::pt::Loc;
+
 mod array;
 mod bin_op;
 mod cmp;
@@ -27,4 +29,23 @@ pub trait ExprParser:
 impl<T> ExprParser for T where
     T: BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env
 {
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprErr {
+    ExpectedSingle(Loc, String),
+    ArrayTy(Loc, String),
+    ArrayIndex(Loc, String),
+    UnhandledCombo(Loc, String),
+    UnhandledExprRet(Loc, String),
+    MultiNot(Loc, String),
+    VarBadType(Loc, String),
+    Todo(Loc, String),
+    RequireBadRange(Loc, String),
+    ContractFunctionNotFound(Loc, String),
+    MemberAccessNotFound(Loc, String),
+    FunctionNotFound(Loc, String),
+
+    NonStoragePush(Loc, String),
+    IntrinsicNamedArgs(Loc, String),
 }

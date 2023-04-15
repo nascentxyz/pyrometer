@@ -1,3 +1,4 @@
+use crate::context::ExprErr;
 use crate::{context::exprs::variable::Variable, ContextBuilder, ExprRet, NodeIdx};
 use shared::analyzer::Search;
 use shared::range::elem_ty::Dynamic;
@@ -16,8 +17,8 @@ use ethers_core::types::{I256, U256};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression> + Sized {}
-pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
+impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn visible_member_funcs(&mut self, ctx: ContextNode, member_idx: NodeIdx) -> Vec<FunctionNode> {
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
@@ -67,11 +68,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         member_expr: &Expression,
         ident: &Identifier,
         ctx: ContextNode,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         if ident.name == "length" {
             return self.length(loc, member_expr, ctx);
         }
-        let (_, member_idx) = self.parse_ctx_expr(member_expr, ctx).expect_single();
+        let (_, member_idx) = self.parse_ctx_expr(member_expr, ctx)?.expect_single(loc)?;
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Struct(struct_node), _) => {
@@ -82,7 +83,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     );
                     tracing::trace!("Struct member access: {}", name);
                     if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
-                        return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
+                        return Ok(ExprRet::Single((ctx, attr_var.latest_version(self).into())));
                     } else if let Some(field) = struct_node.find_field(self, ident) {
                         if let Some(field_cvar) = ContextVar::maybe_new_from_field(
                             self,
@@ -97,12 +98,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 Edge::Context(ContextEdge::AttrAccess),
                             );
                             self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
-                            return ExprRet::Single((ctx, fc_node));
+                            return Ok(ExprRet::Single((ctx, fc_node)));
                         }
                     } else if let Some(ret) =
                         self.library_func_search(ctx, struct_node.0.into(), ident)
                     {
-                        return ret;
+                        return Ok(ret);
                     }
                 }
                 VarType::User(TypeNode::Enum(enum_node), _) => {
@@ -127,11 +128,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         );
                         let cvar = self.add_node(Node::ContextVar(var));
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                        return ExprRet::Single((ctx, cvar));
+                        return Ok(ExprRet::Single((ctx, cvar)));
                     } else if let Some(ret) =
                         self.library_func_search(ctx, enum_node.0.into(), ident)
                     {
-                        return ret;
+                        return Ok(ret);
                     }
                 }
                 VarType::User(TypeNode::Contract(con_node), _) => {
@@ -156,19 +157,22 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 member_idx,
                                 Edge::Context(ContextEdge::FuncAccess),
                             );
-                            return ExprRet::Single((ctx, fn_node));
+                            return Ok(ExprRet::Single((ctx, fn_node)));
                         }
                     } else {
-                        panic!(
-                            "No function with name {:?} in contract: {:?}. Functions: [{:#?}]",
-                            ident.name,
-                            con_node.name(self),
-                            con_node
-                                .funcs(self)
-                                .iter()
-                                .map(|func| func.name(self))
-                                .collect::<Vec<_>>()
-                        )
+                        return Err(ExprErr::ContractFunctionNotFound(
+                            loc,
+                            format!(
+                                "No function with name {:?} in contract: {:?}. Functions: [{:#?}]",
+                                ident.name,
+                                con_node.name(self),
+                                con_node
+                                    .funcs(self)
+                                    .iter()
+                                    .map(|func| func.name(self))
+                                    .collect::<Vec<_>>()
+                            ),
+                        ));
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
@@ -180,14 +184,19 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         ident,
                     );
                 }
-                e => todo!("member access: {:?}, {:?}", e, ident),
+                e => {
+                    return Err(ExprErr::UnhandledCombo(
+                        loc,
+                        format!("Unhandled member access: {:?}, {:?}", e, ident),
+                    ))
+                }
             },
             Node::Msg(_msg) => {
                 let name = format!("msg.{}", ident.name);
                 tracing::trace!("Msg Env member access: {}", name);
 
                 if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
-                    return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
+                    return Ok(ExprRet::Single((ctx, attr_var.latest_version(self).into())));
                 } else {
                     let (node, name) = match &*ident.name {
                         "data" => {
@@ -207,7 +216,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "sender" => {
@@ -226,7 +235,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "sig" => {
@@ -245,7 +254,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "value" => {
@@ -264,7 +273,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "origin" => {
@@ -283,7 +292,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "gasprice" => {
@@ -302,7 +311,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "gaslimit" => {
@@ -316,10 +325,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
-                        e => panic!("unknown msg attribute: {e:?}"),
+                        e => {
+                            return Err(ExprErr::MemberAccessNotFound(
+                                loc,
+                                format!("Unknown member access on msg: {e:?}"),
+                            ))
+                        }
                     };
 
                     let mut var = ContextVar::new_from_concrete(loc, node, self);
@@ -329,14 +343,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     var.is_symbolic = true;
                     let cvar = self.add_node(Node::ContextVar(var));
                     self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                    return ExprRet::Single((ctx, cvar));
+                    return Ok(ExprRet::Single((ctx, cvar)));
                 }
             }
             Node::Block(_b) => {
                 let name = format!("block.{}", ident.name);
                 tracing::trace!("Block Env member access: {}", name);
                 if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name) {
-                    return ExprRet::Single((ctx, attr_var.latest_version(self).into()));
+                    return Ok(ExprRet::Single((ctx, attr_var.latest_version(self).into())));
                 } else {
                     let (node, name) = match &*ident.name {
                         "hash" => {
@@ -355,7 +369,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "basefee" => {
@@ -374,7 +388,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "chainid" => {
@@ -393,7 +407,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "coinbase" => {
@@ -412,7 +426,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "difficulty" => {
@@ -431,7 +445,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "gaslimit" => {
@@ -450,7 +464,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "number" => {
@@ -469,7 +483,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "prevrandao" => {
@@ -488,7 +502,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
                         "timestamp" => {
@@ -507,10 +521,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return ExprRet::Single((ctx, cvar));
+                                return Ok(ExprRet::Single((ctx, cvar)));
                             }
                         }
-                        e => panic!("unknown block attribute: {e:?}"),
+                        e => {
+                            return Err(ExprErr::MemberAccessNotFound(
+                                loc,
+                                format!("Unknown member access on block: {e:?}"),
+                            ))
+                        }
                     };
                     let mut var = ContextVar::new_from_concrete(loc, node, self);
                     var.name = name.clone();
@@ -519,7 +538,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                     var.is_symbolic = true;
                     let cvar = self.add_node(Node::ContextVar(var));
                     self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                    return ExprRet::Single((ctx, cvar));
+                    return Ok(ExprRet::Single((ctx, cvar)));
                 }
             }
             Node::Builtin(ref _b) => {
@@ -533,7 +552,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
             }
             e => todo!("{:?}", e),
         }
-        ExprRet::Single((ctx, member_idx))
+        Ok(ExprRet::Single((ctx, member_idx)))
     }
 
     fn builtin_member_access(
@@ -543,9 +562,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         node: BuiltInNode,
         is_storage: bool,
         ident: &Identifier,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         if let Some(ret) = self.library_func_search(ctx, node.0.into(), ident) {
-            ret
+            Ok(ret)
         } else {
             match node.underlying(self).clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
@@ -571,43 +590,61 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                                 let output_node = self.add_node(output);
                                 self.add_edge(output_node, func_node, Edge::FunctionReturn);
                             });
-                            ExprRet::Single((ctx, func_node))
+                            Ok(ExprRet::Single((ctx, func_node)))
                         }
-                        _ => panic!("Unknown member access on address: {:?}", ident.name),
+                        _ => Err(ExprErr::MemberAccessNotFound(
+                            loc,
+                            format!("Unknown member access on address: {:?}", ident.name),
+                        )),
                     }
                 }
-                Builtin::Bool => panic!("Unknown member access on bool: {:?}", ident.name),
-                Builtin::String => {
-                    panic!("Unknown member access on string: {:?}", ident.name)
-                }
-                Builtin::Bytes(size) => {
-                    panic!("Unknown member access on bytes{}: {:?}", size, ident.name)
-                }
-                Builtin::Rational => {
-                    panic!("Unknown member access on rational: {:?}", ident.name)
-                }
-                Builtin::DynamicBytes => {
-                    panic!("Unknown member access on bytes[]: {:?}", ident.name)
-                }
+                Builtin::Bool => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on bool: {:?}", ident.name),
+                )),
+                Builtin::String => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on string: {:?}", ident.name),
+                )),
+                Builtin::Bytes(size) => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on bytes{}: {:?}", size, ident.name),
+                )),
+                Builtin::Rational => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on rational: {:?}", ident.name),
+                )),
+                Builtin::DynamicBytes => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on bytes[]: {:?}", ident.name),
+                )),
                 Builtin::Array(_) => {
                     if ident.name.starts_with("push") {
                         if is_storage {
                             let as_fn = self.builtin_fns().get("push").unwrap();
                             let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
-                            ExprRet::Single((ctx, fn_node.into()))
+                            Ok(ExprRet::Single((ctx, fn_node.into())))
                         } else {
-                            panic!("Trying to push to nonstorage variable is not supported");
+                            Err(ExprErr::NonStoragePush(
+                                loc,
+                                format!("Trying to push to nonstorage variable is not supported"),
+                            ))
                         }
                     } else {
-                        panic!("Unknown member access on array[]: {:?}", ident.name)
+                        Err(ExprErr::MemberAccessNotFound(
+                            loc,
+                            format!("Unknown member access on array[]: {:?}", ident.name),
+                        ))
                     }
                 }
-                Builtin::Mapping(_, _) => {
-                    panic!("Unknown member access on mapping: {:?}", ident.name)
-                }
-                Builtin::Func(_, _) => {
-                    panic!("Unknown member access on func: {:?}", ident.name)
-                }
+                Builtin::Mapping(_, _) => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on mapping: {:?}", ident.name),
+                )),
+                Builtin::Func(_, _) => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!("Unknown member access on func: {:?}", ident.name),
+                )),
                 Builtin::Int(size) => {
                     let max = if size == 256 {
                         I256::MAX
@@ -625,7 +662,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            ExprRet::Single((ctx, cvar))
+                            Ok(ExprRet::Single((ctx, cvar)))
                         }
                         "min" => {
                             let min = max * I256::from(-1i32);
@@ -638,9 +675,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            ExprRet::Single((ctx, cvar))
+                            Ok(ExprRet::Single((ctx, cvar)))
                         }
-                        e => panic!("Unknown type attribute on int{size}: {e:?}"),
+                        e => Err(ExprErr::MemberAccessNotFound(
+                            loc,
+                            format!("Unknown type attribute on int{size}: {e:?}"),
+                        )),
                     }
                 }
                 Builtin::Uint(size) => match &*ident.name {
@@ -660,7 +700,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         var.is_symbolic = false;
                         let cvar = self.add_node(Node::ContextVar(var));
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                        ExprRet::Single((ctx, cvar))
+                        Ok(ExprRet::Single((ctx, cvar)))
                     }
                     "min" => {
                         let min = U256::zero();
@@ -673,9 +713,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                         var.is_symbolic = false;
                         let cvar = self.add_node(Node::ContextVar(var));
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                        ExprRet::Single((ctx, cvar))
+                        Ok(ExprRet::Single((ctx, cvar)))
                     }
-                    e => panic!("Unknown type attribute on uint{size}: {e:?}"),
+                    e => Err(ExprErr::MemberAccessNotFound(
+                        loc,
+                        format!("Unknown type attribute on uint{size}: {e:?}"),
+                    )),
                 },
             }
         }
@@ -792,8 +835,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         dyn_builtin: BuiltInNode,
         ident: &Identifier,
         ctx: ContextNode,
-    ) -> ExprRet {
-        let index_paths = self.variable(ident, ctx);
+    ) -> Result<ExprRet, ExprErr> {
+        let index_paths = self.variable(ident, ctx)?;
         self.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)
     }
 
@@ -805,9 +848,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
         parent: ContextVarNode,
         dyn_builtin: BuiltInNode,
         ctx: ContextNode,
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         match index_paths {
-            ExprRet::CtxKilled => ExprRet::CtxKilled,
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
             ExprRet::Single((_index_ctx, idx)) => {
                 let parent = parent.first_version(self);
                 let parent_name = parent.name(self);
@@ -837,14 +880,22 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                 self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
                 self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
                 self.add_edge(*idx, idx_node, Edge::Context(ContextEdge::Index));
-                ExprRet::Single((ctx, idx_node))
+                Ok(ExprRet::Single((ctx, idx_node)))
             }
-            _ => todo!("here"),
+            e => Err(ExprErr::UnhandledExprRet(
+                loc,
+                format!("Unhandled expression return in index access: {e:?}"),
+            )),
         }
     }
 
-    fn length(&mut self, loc: Loc, input_expr: &Expression, ctx: ContextNode) -> ExprRet {
-        let elem = self.parse_ctx_expr(input_expr, ctx);
+    fn length(
+        &mut self,
+        loc: Loc,
+        input_expr: &Expression,
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
+        let elem = self.parse_ctx_expr(input_expr, ctx)?;
         self.match_length(loc, elem, true)
     }
 
@@ -901,9 +952,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn match_length(&mut self, loc: Loc, elem_path: ExprRet, update_len_bound: bool) -> ExprRet {
+    fn match_length(
+        &mut self,
+        loc: Loc,
+        elem_path: ExprRet,
+        update_len_bound: bool,
+    ) -> Result<ExprRet, ExprErr> {
         match elem_path {
-            ExprRet::CtxKilled => ExprRet::CtxKilled,
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
             ExprRet::Single((array_ctx, arr)) => {
                 let next_arr = self.advance_var_in_ctx(
                     ContextVarNode::from(arr).latest_version(self),
@@ -932,7 +988,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
                             }
                         }
                     }
-                    ExprRet::Single((array_ctx, new_len.into()))
+                    Ok(ExprRet::Single((array_ctx, new_len.into())))
                 } else {
                     let len_var = ContextVar {
                         loc: Some(loc),
@@ -968,7 +1024,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression> + Sized {
 
                     self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess));
                     self.add_edge(len_node, array_ctx, Edge::Context(ContextEdge::Variable));
-                    ExprRet::Single((array_ctx, len_node))
+                    Ok(ExprRet::Single((array_ctx, len_node)))
                 }
             }
             _ => todo!("here"),

@@ -1,3 +1,4 @@
+use crate::exprs::ExprErr;
 use ethers_core::types::U256;
 use shared::analyzer::*;
 use shared::nodes::*;
@@ -43,6 +44,7 @@ pub struct Analyzer {
     pub user_types: HashMap<String, NodeIdx>,
     pub builtin_fns: HashMap<String, Function>,
     pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
+    pub expr_errs: Vec<ExprErr>,
 }
 
 impl Default for Analyzer {
@@ -61,6 +63,7 @@ impl Default for Analyzer {
             user_types: Default::default(),
             builtin_fns: builtin_fns::builtin_fns(),
             builtin_fn_inputs: Default::default(),
+            expr_errs: Default::default(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -88,6 +91,16 @@ impl GraphLike for Analyzer {
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
+    type ExprErr = ExprErr;
+
+    fn add_expr_err(&mut self, err: ExprErr) {
+        self.expr_errs.push(err);
+    }
+
+    fn expr_errs(&self) -> Vec<ExprErr> {
+        self.expr_errs.clone()
+    }
+
     fn entry(&self) -> NodeIdx {
         self.entry
     }

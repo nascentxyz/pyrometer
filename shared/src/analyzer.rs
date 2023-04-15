@@ -19,6 +19,7 @@ use std::collections::HashMap;
 
 pub trait AnalyzerLike: GraphLike {
     type Expr;
+    type ExprErr;
     fn builtin_fns(&self) -> &HashMap<String, Function>;
     fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
     fn builtins(&self) -> &HashMap<Builtin, NodeIdx>;
@@ -38,6 +39,9 @@ pub trait AnalyzerLike: GraphLike {
     fn msg(&mut self) -> MsgNode;
     fn block(&mut self) -> BlockNode;
     fn entry(&self) -> NodeIdx;
+
+    fn add_expr_err(&mut self, err: Self::ExprErr);
+    fn expr_errs(&self) -> Vec<Self::ExprErr>;
 }
 
 struct G<'a> {

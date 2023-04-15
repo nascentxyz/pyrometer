@@ -1,3 +1,4 @@
+use crate::context::ExprErr;
 use crate::{
     context::{
         exprs::MemberAccess, func_call::intrinsic_call::IntrinsicFuncCaller, func_call::FuncCaller,
@@ -15,18 +16,23 @@ use shared::{
 };
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
-impl<T> NameSpaceFuncCaller for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
-pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLike {
+impl<T> NameSpaceFuncCaller for T where
+    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+{
+}
+pub trait NameSpaceFuncCaller:
+    AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+{
     #[tracing::instrument(level = "trace", skip_all)]
     fn call_name_spaced_named_func(
         &mut self,
         ctx: ContextNode,
-        _loc: &Loc,
+        loc: &Loc,
         member_expr: &Expression,
         _ident: &Identifier,
         _input_args: &[NamedArgument],
-    ) -> ExprRet {
-        let (_mem_ctx, _member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
+    ) -> Result<ExprRet, ExprErr> {
+        let (_mem_ctx, _member) = self.parse_ctx_expr(member_expr, ctx)?.expect_single(*loc)?;
 
         todo!("here");
     }
@@ -39,7 +45,7 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
         member_expr: &Expression,
         ident: &Identifier,
         input_exprs: &[Expression],
-    ) -> ExprRet {
+    ) -> Result<ExprRet, ExprErr> {
         use solang_parser::pt::Expression::*;
 
         if let Variable(Identifier { name, .. }) = member_expr {
@@ -54,7 +60,7 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             }
         }
 
-        let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx).expect_single();
+        let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx)?.expect_single(*loc)?;
         tracing::trace!(
             "namespaced function call: {:?}.{:?}(..)",
             ContextVarNode::from(member).display_name(self),
@@ -74,7 +80,7 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             input_exprs
                 .iter()
                 .map(|expr| self.parse_ctx_expr(expr, ctx))
-                .collect::<Vec<_>>(),
+                .collect::<Result<Vec<_>, ExprErr>>()?,
         );
 
         if possible_funcs.is_empty() {
@@ -90,13 +96,18 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
                         },
                     ),
                     ctx,
-                )
+                )?
                 .flatten()
             {
                 ExprRet::Single((ctx, idx)) => (ctx, idx),
-                m @ ExprRet::Multi(_) => m.expect_single(),
-                ExprRet::CtxKilled => return ExprRet::CtxKilled,
-                e => todo!("got fork in func call: {:?}", e),
+                m @ ExprRet::Multi(_) => m.expect_single(*loc)?,
+                ExprRet::CtxKilled => return Ok(ExprRet::CtxKilled),
+                e => {
+                    return Err(ExprErr::UnhandledExprRet(
+                        *loc,
+                        format!("Got fork in func call: {e:?}"),
+                    ))
+                }
             };
             let mut modifierd_input_exprs = vec![member_expr.clone()];
             modifierd_input_exprs.extend(input_exprs.to_vec());
@@ -132,7 +143,10 @@ pub trait NameSpaceFuncCaller: AnalyzerLike<Expr = Expression> + Sized + GraphLi
             {
                 self.setup_fn_call(loc, &inputs, func.into(), ctx, None)
             } else {
-                ExprRet::CtxKilled
+                Err(ExprErr::FunctionNotFound(
+                    *loc,
+                    format!("Could not find function"),
+                ))
             }
         }
     }

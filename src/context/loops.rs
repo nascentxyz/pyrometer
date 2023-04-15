@@ -1,3 +1,4 @@
+use crate::ExprErr;
 use solang_parser::pt::Loc;
 use solang_parser::pt::Statement;
 
@@ -7,8 +8,8 @@ use shared::context::*;
 use shared::{analyzer::AnalyzerLike, Edge, Node, NodeIdx};
 use solang_parser::pt::Expression;
 
-impl<T> Looper for T where T: AnalyzerLike<Expr = Expression> + Sized + GraphLike {}
-pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression> + Sized {
+impl<T> Looper for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike {}
+pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn for_loop(
         &mut self,
