@@ -592,6 +592,22 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             });
                             Ok(ExprRet::Single((ctx, func_node)))
                         }
+                        "code" => {
+                            // TODO: try to be smarter based on the address input
+                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self);
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
+                        "balance" => {
+                            // TODO: try to be smarter based on the address input
+                            let bn = self.builtin_or_add(Builtin::Uint(256));
+                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self);
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
                         _ => Err(ExprErr::MemberAccessNotFound(
                             loc,
                             format!("Unknown member access on address: {:?}", ident.name),

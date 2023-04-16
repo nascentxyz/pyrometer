@@ -1,3 +1,5 @@
+use crate::nodes::GraphError;
+use crate::nodes::GraphAnalyzer;
 use crate::analyzer::AsDotStr;
 use crate::VarType;
 use crate::{
@@ -12,25 +14,25 @@ use solang_parser::pt::{
 pub struct VarNode(pub usize);
 
 impl VarNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Var {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Var, GraphError> {
         match analyzer.node(*self) {
-            Node::Var(func) => func,
-            e => panic!("Node type confusion: expected node to be Var but it was: {e:?}"),
+            Node::Var(func) => Ok(func),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Var but it was: {e:?}"))),
         }
     }
 
-    pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
-        self.underlying(analyzer)
+    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+        Ok(self.underlying(analyzer)?
             .name
             .clone()
             .expect("Unnamed function")
-            .name
+            .name)
     }
 }
 
 impl AsDotStr for VarNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        let underlying = self.underlying(analyzer);
+        let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{}{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
@@ -90,7 +92,7 @@ impl From<Var> for Node {
 
 impl Var {
     pub fn new(
-        analyzer: &mut impl AnalyzerLike<Expr = Expression>,
+        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {

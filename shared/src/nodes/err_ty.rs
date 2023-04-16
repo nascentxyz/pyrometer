@@ -1,21 +1,23 @@
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::AnalyzerLike;
 use crate::AsDotStr;
-use crate::{analyzer::GraphLike, Node, NodeIdx};
+use crate::{Node, NodeIdx};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ErrorNode(pub usize);
 impl ErrorNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Error {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Error, GraphError> {
         match analyzer.node(*self) {
-            Node::Error(err) => err,
-            e => panic!("Node type confusion: expected node to be Var but it was: {e:?}"),
+            Node::Error(err) => Ok(err),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Var but it was: {e:?}"))),
         }
     }
 }
 impl AsDotStr for ErrorNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        let underlying = self.underlying(analyzer);
+        let underlying = self.underlying(analyzer).unwrap();
         format!(
             "error {}",
             if let Some(name) = &underlying.name {
@@ -89,7 +91,7 @@ impl From<ErrorParam> for Node {
 }
 
 impl ErrorParam {
-    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, param: ErrorParameter) -> Self {
+    pub fn new(analyzer: &mut impl GraphAnalyzer<Expr = Expression>, param: ErrorParameter) -> Self {
         ErrorParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

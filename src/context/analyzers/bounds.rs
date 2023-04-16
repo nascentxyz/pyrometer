@@ -104,7 +104,7 @@ pub struct OrderedAnalysis {
 }
 
 impl OrderedAnalysis {
-    pub fn from_bound_analysis(ba: BoundAnalysis, analyzer: &(impl AnalyzerLike + Search)) -> Self {
+    pub fn from_bound_analysis(ba: BoundAnalysis, analyzer: &impl GraphLike) -> Self {
         let mut analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>> = Default::default();
         if let Some(init) = ba.init_item(analyzer) {
             let source: usize = *LocSpan(init.loc.1).source();
@@ -139,7 +139,7 @@ impl OrderedAnalysis {
 
     pub fn from_func_analysis(
         fvba: FunctionVarsBoundAnalysis,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) -> Self {
         let mut analyses = Self::default();
         fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
@@ -283,7 +283,7 @@ impl ToString for RangePart {
 impl BoundAnalysis {
     pub fn conditionals(
         &self,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) -> Vec<(String, Vec<RangePart>)> {
         let deps = self.ctx.ctx_deps(analyzer);
         let deps = deps
@@ -302,7 +302,7 @@ impl BoundAnalysis {
     }
     pub fn range_parts(
         &self,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
         range: &SolcRange,
     ) -> (Vec<RangePart>, bool) {
         let mut parts = vec![];
@@ -361,7 +361,7 @@ impl BoundAnalysis {
         (parts, unsat)
     }
 
-    pub fn init_item(&self, analyzer: &(impl AnalyzerLike + Search)) -> Option<AnalysisItem> {
+    pub fn init_item(&self, analyzer: &impl GraphLike) -> Option<AnalysisItem> {
         let mut parts = vec![];
         let mut unsat = false;
         if let Some(init_range) = &self.var_def.1 {
@@ -406,7 +406,7 @@ impl BoundAnalysis {
 
     pub fn flatten_to_children(
         mut self,
-        analyzer: &impl AnalyzerLike,
+        analyzer: &impl GraphLike,
     ) -> BTreeMap<ContextNode, BoundAnalysis> {
         let children = self.ctx.forks(analyzer).len();
         let mut map =
@@ -466,14 +466,14 @@ impl ReportDisplay for BoundAnalysis {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+    fn msg(&self, analyzer: &impl GraphLike) -> String {
         format!(
             "Bounds for {} in {}:",
             self.var_display_name,
             self.ctx.underlying(analyzer).path
         )
     }
-    fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
+    fn labels(&self, analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>> {
         let mut labels = if self.report_config.show_initial_bounds {
             if let Some(init_item) = self.init_item(analyzer) {
                 vec![init_item.into()]
@@ -509,7 +509,7 @@ impl ReportDisplay for BoundAnalysis {
         labels
     }
 
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             self.var_def.0.source(),
@@ -550,7 +550,7 @@ impl ReportDisplay for BoundAnalysis {
     fn print_reports(
         &self,
         mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
@@ -561,7 +561,7 @@ impl ReportDisplay for BoundAnalysis {
     fn eprint_reports(
         &self,
         mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
@@ -790,7 +790,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+    fn msg(&self, analyzer: &impl GraphLike) -> String {
         format!(
             "Bounds for function: {}",
             format!(
@@ -803,11 +803,11 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         )
     }
 
-    fn labels(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
+    fn labels(&self, _analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             self.func_var_bound_analysis.ctx_loc.source(),
@@ -1111,7 +1111,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn print_reports(
         &self,
         mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
@@ -1122,7 +1122,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn eprint_reports(
         &self,
         mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {

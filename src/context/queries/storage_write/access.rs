@@ -25,15 +25,15 @@ impl ReportDisplay for AccessStorageWriteReport {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Access Analysis", Color::Green)
     }
-    fn msg(&self, _analyzer: &(impl AnalyzerLike + Search)) -> String {
+    fn msg(&self, _analyzer: &impl GraphLike) -> String {
         self.msgs.join(";\n")
     }
 
-    fn labels(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
+    fn labels(&self, _analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>> {
         let report = Report::build(self.report_kind(), "".to_string(), 0)
             .with_message(self.msg(analyzer))
             .with_config(
@@ -45,7 +45,7 @@ impl ReportDisplay for AccessStorageWriteReport {
         vec![report.finish()]
     }
 
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut *src).unwrap();
@@ -55,7 +55,7 @@ impl ReportDisplay for AccessStorageWriteReport {
     fn eprint_reports(
         &self,
         mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {

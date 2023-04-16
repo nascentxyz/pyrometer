@@ -1,7 +1,8 @@
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::context::ContextVarNode;
 use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeExpr;
-use crate::GraphLike;
+
 use crate::NodeIdx;
 use std::collections::BTreeMap;
 

@@ -23,7 +23,7 @@ impl ReportDisplay for StorageRangeReport {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Storage Write Query", Color::Green)
     }
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+    fn msg(&self, analyzer: &impl GraphLike) -> String {
         let bounds_string = self
             .analysis
             .ctx
@@ -92,11 +92,11 @@ impl ReportDisplay for StorageRangeReport {
         )
     }
 
-    fn labels(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
+    fn labels(&self, _analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.analysis.report_kind(),
             self.analysis.var_def.0.source(),
@@ -127,7 +127,7 @@ impl ReportDisplay for StorageRangeReport {
         reports
     }
 
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut *src).unwrap();
@@ -137,7 +137,7 @@ impl ReportDisplay for StorageRangeReport {
     fn eprint_reports(
         &self,
         mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
+        analyzer: &impl GraphLike,
     ) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {

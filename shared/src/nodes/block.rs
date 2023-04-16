@@ -1,5 +1,7 @@
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike};
 use crate::analyzer::AsDotStr;
-use crate::GraphLike;
+
 use crate::Node;
 use crate::NodeIdx;
 use ethers_core::types::Address;
@@ -12,17 +14,17 @@ pub struct BlockNode(pub usize);
 
 impl BlockNode {
     /// Gets the underlying node data for the block environment
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Block {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Block, GraphError> {
         match analyzer.node(*self) {
-            Node::Block(st) => st,
-            e => panic!("Node type confusion: expected node to be Msg but it was: {e:?}"),
+            Node::Block(st) => Ok(st),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Msg but it was: {e:?}"))),
         }
     }
 }
 
 impl AsDotStr for BlockNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        format!("block {{ {:?} }}", self.underlying(analyzer))
+        format!("block {{ {:?} }}", self.underlying(analyzer).unwrap())
     }
 }
 

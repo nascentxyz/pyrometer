@@ -94,7 +94,7 @@ impl GraphLike for Analyzer {
     }
 }
 
-impl AnalyzerLike for Analyzer {
+impl GraphAnalyzer for Analyzer {
     type Expr = Expression;
     type ExprErr = ExprErr;
 

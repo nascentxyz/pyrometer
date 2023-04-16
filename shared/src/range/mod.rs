@@ -1,3 +1,4 @@
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
 use crate::context::ContextNode;
@@ -11,7 +12,7 @@ use crate::range::elem_ty::RangeDyn;
 use crate::range::range_string::ToRangeString;
 use crate::Builtin;
 use crate::Concrete;
-use crate::GraphLike;
+
 use crate::NodeIdx;
 use ethers_core::types::Address;
 use ethers_core::types::H256;
@@ -550,17 +551,17 @@ pub trait Range<T> {
 }
 
 pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
-    fn sat(&self, analyzer: &impl AnalyzerLike) -> bool;
-    fn unsat(&self, analyzer: &impl AnalyzerLike) -> bool {
+    fn sat(&self, analyzer: &impl GraphLike) -> bool;
+    fn unsat(&self, analyzer: &impl GraphLike) -> bool {
         !self.sat(analyzer)
     }
-    fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
-    fn contains_elem(&self, other: &T, analyzer: &impl AnalyzerLike) -> bool;
-    fn overlaps(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool;
+    fn contains(&self, other: &Self, analyzer: &impl GraphLike) -> bool;
+    fn contains_elem(&self, other: &T, analyzer: &impl GraphLike) -> bool;
+    fn overlaps(&self, other: &Self, analyzer: &impl GraphLike) -> bool;
 }
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
-    fn sat(&self, analyzer: &impl AnalyzerLike) -> bool {
+    fn sat(&self, analyzer: &impl GraphLike) -> bool {
         matches!(
             self.evaled_range_min(analyzer)
                 .range_ord(&self.evaled_range_max(analyzer)),
@@ -568,7 +569,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         )
     }
 
-    fn contains(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn contains(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
             self.evaled_range_min(analyzer)
                 .range_ord(&other.evaled_range_min(analyzer)),
@@ -584,7 +585,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         min_contains && max_contains
     }
 
-    fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl AnalyzerLike) -> bool {
+    fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
             self.evaled_range_min(analyzer)
                 .range_ord(&other.minimize(analyzer)),
@@ -600,7 +601,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         min_contains && max_contains
     }
 
-    fn overlaps(&self, other: &Self, analyzer: &impl AnalyzerLike) -> bool {
+    fn overlaps(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
             self.evaled_range_min(analyzer)
                 .range_ord(&other.evaled_range_min(analyzer)),

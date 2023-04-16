@@ -111,7 +111,7 @@ impl ExprRet {
         }
     }
 
-    pub fn try_as_func_input_str(&self, analyzer: &(impl GraphLike + AnalyzerLike)) -> String {
+    pub fn try_as_func_input_str(&self, analyzer: &impl GraphLike) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let (_, idx) = inner;
@@ -940,7 +940,9 @@ pub trait ContextBuilder:
             Or(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx),
 
             // Function calls
-            FunctionCallBlock(_loc, _func_expr, _input_exprs) => todo!("Function call block"),
+            FunctionCallBlock(loc, _func_expr, _input_exprs) => {
+                Err(ExprErr::Todo(*loc, "Function call block".to_string()))
+            },
             NamedFunctionCall(loc, func_expr, input_args) => {
                 self.named_fn_call_expr(ctx, loc, func_expr, input_args)
             }

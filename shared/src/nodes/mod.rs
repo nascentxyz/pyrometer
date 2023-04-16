@@ -1,4 +1,6 @@
 //! Solidity and EVM specific representations as nodes in the graph
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
 use crate::range::elem::RangeElem;
@@ -6,7 +8,7 @@ use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeDyn;
 use crate::range::Range;
 use crate::range::SolcRange;
-use crate::GraphLike;
+
 use crate::Node;
 use crate::NodeIdx;
 use ethers_core::types::Address;
@@ -45,21 +47,21 @@ pub enum VarType {
 
 impl AsDotStr for VarType {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        self.as_string(analyzer)
+        self.as_string(analyzer).unwrap()
     }
 }
 
 impl VarType {
-    pub fn is_dyn_builtin(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_dyn_builtin(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.is_dyn(analyzer),
-            _ => false,
+            _ => Ok(false),
         }
     }
 
-    pub fn concrete_to_builtin(&mut self, analyzer: &mut impl AnalyzerLike) {
+    pub fn concrete_to_builtin(&mut self, analyzer: &mut impl GraphAnalyzer) -> Result<(), GraphError> {
         if let VarType::Concrete(cnode) = self {
-            let c = cnode.underlying(analyzer).clone();
+            let c = cnode.underlying(analyzer)?.clone();
             match c {
                 crate::Concrete::Uint(ref size, _) => {
                     let new_ty = VarType::BuiltIn(
@@ -103,6 +105,7 @@ impl VarType {
                 _ => {}
             }
         }
+        Ok(())
     }
 
     pub fn try_from_idx(analyzer: &(impl GraphLike + ?Sized), node: NodeIdx) -> Option<VarType> {
@@ -151,92 +154,104 @@ impl VarType {
         }
     }
 
-    pub fn requires_input(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn requires_input(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
-            VarType::BuiltIn(bn, _) => bn.underlying(analyzer).requires_input(),
-            _ => false,
+            VarType::BuiltIn(bn, _) => Ok(bn.underlying(analyzer)?.requires_input()),
+            _ => Ok(false),
         }
     }
 
     pub fn try_cast(
         self,
         other: &Self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Option<Self> {
+        analyzer: &mut impl GraphAnalyzer,
+    ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Contract(cn), _)) => {
-                match from_bn.underlying(analyzer) {
+                match from_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                        Some(Self::User(TypeNode::Contract(*cn), sr))
+                        Ok(Some(Self::User(TypeNode::Contract(*cn), sr)))
                     }
-                    _ => None,
+                    _ => Ok(None),
                 }
             }
             (Self::User(TypeNode::Contract(_cn), sr), Self::BuiltIn(to_bn, _)) => {
-                match to_bn.underlying(analyzer) {
+                match to_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                        Some(Self::BuiltIn(*to_bn, sr))
+                        Ok(Some(Self::BuiltIn(*to_bn, sr)))
                     }
-                    _ => None,
+                    _ => Ok(None),
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
-                if from_bn.implicitly_castable_to(to_bn, analyzer) {
-                    Some(Self::BuiltIn(*to_bn, sr))
+                if from_bn.implicitly_castable_to(to_bn, analyzer)? {
+                    Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
-                let c = from_c.underlying(analyzer).clone();
-                let b = to_bn.underlying(analyzer);
-                let casted = c.cast(b.clone())?;
-                let node = analyzer.add_node(Node::Concrete(casted));
-                Some(Self::Concrete(node.into()))
+                let c = from_c.underlying(analyzer)?.clone();
+                let b = to_bn.underlying(analyzer)?;
+                if let Some(casted) = c.cast(b.clone()) {
+                    let node = analyzer.add_node(Node::Concrete(casted));
+                    Ok(Some(Self::Concrete(node.into())))    
+                } else {
+                    Ok(None)
+                }
             }
             (Self::Concrete(from_c), Self::Concrete(to_c)) => {
-                let c = from_c.underlying(analyzer).clone();
-                let to_c = to_c.underlying(analyzer);
-                let casted = c.cast_from(to_c)?;
-                let node = analyzer.add_node(Node::Concrete(casted));
-                Some(Self::Concrete(node.into()))
+                let c = from_c.underlying(analyzer)?.clone();
+                let to_c = to_c.underlying(analyzer)?;
+                if let Some(casted) = c.cast_from(to_c) {
+                    let node = analyzer.add_node(Node::Concrete(casted));
+                    Ok(Some(Self::Concrete(node.into())))
+                } else {
+                    Ok(None)
+                }
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
     pub fn try_literal_cast(
         self,
         other: &Self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Option<Self> {
+        analyzer: &mut impl GraphAnalyzer,
+    ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
-                if from_bn.implicitly_castable_to(to_bn, analyzer) {
-                    Some(Self::BuiltIn(*to_bn, sr))
+                if from_bn.implicitly_castable_to(to_bn, analyzer)? {
+                    Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
-                let c = from_c.underlying(analyzer).clone();
-                let b = to_bn.underlying(analyzer);
-                let casted = c.literal_cast(b.clone())?;
-                let node = analyzer.add_node(Node::Concrete(casted));
-                Some(Self::Concrete(node.into()))
+                let c = from_c.underlying(analyzer)?.clone();
+                let b = to_bn.underlying(analyzer)?;
+                if let Some(casted) = c.literal_cast(b.clone()) {
+                    let node = analyzer.add_node(Node::Concrete(casted));
+                    Ok(Some(Self::Concrete(node.into())))
+                } else {
+                    Ok(None)
+                }
             }
             (Self::Concrete(from_c), Self::Concrete(to_c)) => {
-                let c = from_c.underlying(analyzer).clone();
-                let to_c = to_c.underlying(analyzer);
-                let casted = c.literal_cast_from(to_c)?;
-                let node = analyzer.add_node(Node::Concrete(casted));
-                Some(Self::Concrete(node.into()))
+                let c = from_c.underlying(analyzer)?.clone();
+                let to_c = to_c.underlying(analyzer)?;
+                if let Some(casted) = c.literal_cast_from(to_c) {
+                    let node = analyzer.add_node(Node::Concrete(casted));
+                    Ok(Some(Self::Concrete(node.into())))
+                } else {
+                    Ok(None)
+                }
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
-    pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
+    pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
                 from_bn.implicitly_castable_to(to_bn, analyzer)
@@ -244,74 +259,79 @@ impl VarType {
             (Self::Concrete(from_c), Self::BuiltIn(_to_bn, _)) => {
                 todo!("here, {from_c:?}")
             }
-            _ => false,
+            _ => Ok(false),
         }
     }
 
-    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Self {
+    pub fn max_size(&self, analyzer: &mut impl GraphAnalyzer) -> Result<Self, GraphError> {
         match self {
             Self::BuiltIn(from_bn, _r) => {
-                let bn = from_bn.max_size(analyzer);
-                Self::BuiltIn(bn, SolcRange::try_from_builtin(bn.underlying(analyzer)))
+                let bn = from_bn.max_size(analyzer)?;
+                Ok(Self::BuiltIn(bn, SolcRange::try_from_builtin(bn.underlying(analyzer)?)))
             }
-            Self::Concrete(from_c) => Self::Concrete(from_c.max_size(analyzer)),
-            _ => self.clone(),
+            Self::Concrete(from_c) => Ok(Self::Concrete(from_c.max_size(analyzer)?)),
+            _ => Ok(self.clone()),
         }
     }
 
-    pub fn range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+    pub fn range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
         match self {
-            Self::User(_, Some(range)) => Some(range.clone()),
-            Self::BuiltIn(_, Some(range)) => Some(range.clone()),
-            Self::BuiltIn(bn, None) => SolcRange::try_from_builtin(bn.underlying(analyzer)),
-            Self::Concrete(cnode) => SolcRange::from(cnode.underlying(analyzer).clone()),
-            _ => None,
+            Self::User(_, Some(range)) => Ok(Some(range.clone())),
+            Self::BuiltIn(_, Some(range)) => Ok(Some(range.clone())),
+            Self::BuiltIn(bn, None) => Ok(SolcRange::try_from_builtin(bn.underlying(analyzer)?)),
+            Self::Concrete(cnode) => Ok(SolcRange::from(cnode.underlying(analyzer)?.clone())),
+            _ => Ok(None),
         }
     }
 
-    pub fn delete_range_result(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+    pub fn delete_range_result(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
         match self {
             Self::User(TypeNode::Contract(_), _) => {
                 let zero = Concrete::Address(Address::from_slice(&[0x00; 20]));
-                Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
+                Ok(Some(SolcRange::new(zero.clone().into(), zero.into(), vec![])))
             }
             Self::User(TypeNode::Enum(enum_node), _) => {
-                let zero = Concrete::from(enum_node.variants(analyzer).first()?.clone());
-                Some(SolcRange::new(zero.clone().into(), zero.into(), vec![]))
+                if let Some(first) = enum_node.variants(analyzer)?.first() {
+                    let zero = Concrete::from(first.clone());
+                    Ok(Some(SolcRange::new(zero.clone().into(), zero.into(), vec![])))
+                } else {
+                    Ok(None)
+                }
+                
             }
             Self::BuiltIn(bn, None) => bn.zero_range(analyzer),
-            Self::Concrete(cnode) => cnode.underlying(analyzer).as_builtin().zero_range(),
-            _ => None,
+            Self::Concrete(cnode) => Ok(cnode.underlying(analyzer)?.as_builtin().zero_range()),
+            _ => Ok(None),
         }
     }
 
-    pub fn default_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
+    pub fn default_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
         match self {
-            Self::User(TypeNode::Contract(_), _) => SolcRange::try_from_builtin(&Builtin::Address),
+            Self::User(TypeNode::Contract(_), _) => Ok(SolcRange::try_from_builtin(&Builtin::Address)),
             Self::User(TypeNode::Enum(enu), _) => enu.maybe_default_range(analyzer),
-            Self::BuiltIn(bn, _) => SolcRange::try_from_builtin(bn.underlying(analyzer)),
-            Self::Concrete(cnode) => SolcRange::from(cnode.underlying(analyzer).clone()),
-            _ => None,
+            Self::BuiltIn(bn, _) => Ok(SolcRange::try_from_builtin(bn.underlying(analyzer)?)),
+            Self::Concrete(cnode) => Ok(SolcRange::from(cnode.underlying(analyzer)?.clone())),
+            _ => Ok(None),
         }
     }
 
-    pub fn is_const(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_const(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
-            Self::Concrete(_) => true,
-            Self::User(TypeNode::Func(_), _) => false,
+            Self::Concrete(_) => Ok(true),
+            Self::User(TypeNode::Func(_), _) => Ok(false),
             _ => {
-                if let Some(range) = self.range(analyzer) {
+                if let Some(range) = self.range(analyzer)? {
                     let min = range.evaled_range_min(analyzer);
                     let max = range.evaled_range_max(analyzer);
-                    min.range_eq(&max)
+                    Ok(min.range_eq(&max))
                 } else {
-                    false
+                    Ok(false)
                 }
             }
         }
     }
 
-    pub fn func_node(&self, _analyzer: &impl AnalyzerLike) -> Option<FunctionNode> {
+    pub fn func_node(&self, _analyzer: &impl GraphLike) -> Option<FunctionNode> {
         match self {
             Self::User(TypeNode::Func(func_node), _) => Some(*func_node),
             _ => None,
@@ -320,71 +340,67 @@ impl VarType {
 
     pub fn evaled_range(
         &self,
-        analyzer: &impl AnalyzerLike,
-    ) -> Option<(Elem<Concrete>, Elem<Concrete>)> {
-        self.range(analyzer).map(|range| {
+        analyzer: &impl GraphLike,
+    ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
+        Ok(self.range(analyzer)?.map(|range| {
             (
                 range.evaled_range_min(analyzer),
                 range.evaled_range_max(analyzer),
             )
-        })
+        }))
     }
 
-    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
+    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl GraphAnalyzer) -> Result<VarType, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
-            e => {
-                panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
-            }
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Builtin but it was: {e:?}")))
         }
     }
 
-    pub fn is_mapping(&self, analyzer: &impl AnalyzerLike) -> bool {
+    pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
-            Self::BuiltIn(node, _) => node.is_mapping(analyzer),
-            e => {
-                panic!("Node type confusion: expected node to be VarType::Array but it was: {e:?}")
-            }
+            Self::BuiltIn(node, _) => Ok(node.is_mapping(analyzer)?),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be a Builtin but it was: {e:?}")))
         }
     }
 
-    pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
+    pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match (self, other) {
-            (VarType::User(s, _), VarType::User(o, _)) => s == o,
+            (VarType::User(s, _), VarType::User(o, _)) => Ok(s == o),
             (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
-                s.underlying(analyzer) == o.underlying(analyzer)
+                Ok(s.underlying(analyzer)? == o.underlying(analyzer)?)
             }
             (VarType::Concrete(s), VarType::Concrete(o)) => {
-                s.underlying(analyzer).equivalent_ty(o.underlying(analyzer))
+                Ok(s.underlying(analyzer)?.equivalent_ty(o.underlying(analyzer)?))
             }
-            _ => false,
+            _ => Ok(false),
         }
     }
 
-    pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
+    pub fn as_string(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
         match self {
             VarType::User(ty_node, _) => ty_node.as_string(analyzer),
             VarType::BuiltIn(bn, _) => match analyzer.node(*bn) {
                 Node::Builtin(bi) => bi.as_string(analyzer),
                 _ => unreachable!(),
             },
-            VarType::Concrete(c) => c.underlying(analyzer).as_builtin().as_string(analyzer),
+            VarType::Concrete(c) => c.underlying(analyzer)?.as_builtin().as_string(analyzer),
         }
     }
 
-    pub fn is_int(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_int(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
-            VarType::BuiltIn(bn, _) => bn.underlying(analyzer).is_int(),
-            VarType::Concrete(c) => c.underlying(analyzer).is_int(),
-            _ => false,
+            VarType::BuiltIn(bn, _) => Ok(bn.underlying(analyzer)?.is_int()),
+            VarType::Concrete(c) => Ok(c.underlying(analyzer)?.is_int()),
+            _ => Ok(false),
         }
     }
 
-    pub fn as_builtin(&self, analyzer: &impl GraphLike) -> Builtin {
+    pub fn as_builtin(&self, analyzer: &impl GraphLike) -> Result<Builtin, GraphError> {
         match self {
-            VarType::BuiltIn(bn, _) => bn.underlying(analyzer).clone(),
-            VarType::Concrete(c) => c.underlying(analyzer).as_builtin(),
-            e => panic!("Expected to be builtin castable but wasnt: {e:?}"),
+            VarType::BuiltIn(bn, _) => Ok(bn.underlying(analyzer)?.clone()),
+            VarType::Concrete(c) => Ok(c.underlying(analyzer)?.as_builtin()),
+            e => Err(GraphError::NodeConfusion(format!("Expected to be builtin castable but wasnt: {e:?}"))),
         }
     }
 }
@@ -398,12 +414,12 @@ pub enum TypeNode {
 }
 
 impl TypeNode {
-    pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
+    pub fn as_string(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
         match self {
             TypeNode::Contract(n) => n.name(analyzer),
             TypeNode::Struct(n) => n.name(analyzer),
             TypeNode::Enum(n) => n.name(analyzer),
-            TypeNode::Func(n) => format!("function {}", n.name(analyzer)),
+            TypeNode::Func(n) => Ok(format!("function {}", n.name(analyzer)?)),
         }
     }
 }
@@ -423,57 +439,54 @@ impl From<TypeNode> for NodeIdx {
 pub struct BuiltInNode(pub usize);
 
 impl BuiltInNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Builtin {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Builtin, GraphError> {
         match analyzer.node(*self) {
-            Node::Builtin(b) => b,
-            e => panic!("Node type confusion: expected node to be Builtin but it was: {e:?}"),
+            Node::Builtin(b) => Ok(b),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Builtin but it was: {e:?}"))),
         }
     }
 
-    pub fn num_size(&self, analyzer: &impl AnalyzerLike) -> Option<u16> {
-        let underlying = self.underlying(analyzer);
-        underlying.num_size()
+    pub fn num_size(&self, analyzer: &impl GraphLike) -> Result<Option<u16>, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        Ok(underlying.num_size())
     }
 
-    pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
-        self.underlying(analyzer)
-            .implicitly_castable_to(other.underlying(analyzer))
+    pub fn implicitly_castable_to(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?
+            .implicitly_castable_to(other.underlying(analyzer)?))
     }
 
-    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Self {
-        let m = self.underlying(analyzer).max_size();
-        analyzer.builtin_or_add(m).into()
+    pub fn max_size(&self, analyzer: &mut impl GraphAnalyzer) -> Result<Self, GraphError> {
+        let m = self.underlying(analyzer)?.max_size();
+        Ok(analyzer.builtin_or_add(m).into())
     }
 
-    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl AnalyzerLike) -> VarType {
-        match self.underlying(analyzer) {
-            Builtin::Array(v_ty) => v_ty.clone(),
-            Builtin::Mapping(_, v_ty) => v_ty.clone(),
-            Builtin::DynamicBytes => VarType::BuiltIn(
+    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl GraphAnalyzer) -> Result<VarType, GraphError> {
+        match self.underlying(analyzer)? {
+            Builtin::Array(v_ty) => Ok(v_ty.clone()),
+            Builtin::Mapping(_, v_ty) => Ok(v_ty.clone()),
+            Builtin::DynamicBytes => Ok(VarType::BuiltIn(
                 analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
                 Some(SolcRange::new(
                     Elem::from(Concrete::from(vec![0x00])),
                     Elem::from(Concrete::from(vec![0xff])),
                     vec![],
                 )),
-            ),
-
-            e => {
-                panic!("Node type confusion: expected node to be Builtin::Array but it was: {e:?}")
-            }
+            )),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Builtin::Array but it was: {e:?}")))
         }
     }
 
-    pub fn is_mapping(&self, analyzer: &impl AnalyzerLike) -> bool {
-        matches!(self.underlying(analyzer), Builtin::Mapping(_, _))
+    pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(matches!(self.underlying(analyzer)?, Builtin::Mapping(_, _)))
     }
 
-    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> bool {
-        self.underlying(analyzer).is_dyn()
+    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_dyn())
     }
 
-    pub fn zero_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
-        self.underlying(analyzer).zero_range()
+    pub fn zero_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
+        Ok(self.underlying(analyzer)?.zero_range())
     }
 }
 
@@ -531,7 +544,7 @@ impl Builtin {
     }
     pub fn try_from_ty(
         ty: Type,
-        analyzer: &mut impl AnalyzerLike<Expr = Expression>,
+        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
     ) -> Option<Builtin> {
         use Type::*;
         match ty {
@@ -636,38 +649,38 @@ impl Builtin {
         }
     }
 
-    pub fn as_string(&self, analyzer: &impl GraphLike) -> String {
+    pub fn as_string(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
         use Builtin::*;
         match self {
-            Address => "address".to_string(),
-            AddressPayable => "address".to_string(),
-            Payable => "address".to_string(),
-            Bool => "bool".to_string(),
-            String => "string".to_string(),
-            Int(size) => format!("int{size}"),
-            Uint(size) => format!("uint{size}"),
-            Bytes(size) => format!("bytes{size}"),
-            Rational => "rational".to_string(),
-            DynamicBytes => "bytes".to_string(),
-            Array(v_ty) => format!("{}[]", v_ty.as_string(analyzer)),
-            Mapping(key_ty, v_ty) => format!(
+            Address => Ok("address".to_string()),
+            AddressPayable => Ok("address".to_string()),
+            Payable => Ok("address".to_string()),
+            Bool => Ok("bool".to_string()),
+            String => Ok("string".to_string()),
+            Int(size) => Ok(format!("int{size}")),
+            Uint(size) => Ok(format!("uint{size}")),
+            Bytes(size) => Ok(format!("bytes{size}")),
+            Rational => Ok("rational".to_string()),
+            DynamicBytes => Ok("bytes".to_string()),
+            Array(v_ty) => Ok(format!("{}[]", v_ty.as_string(analyzer)?)),
+            Mapping(key_ty, v_ty) => Ok(format!(
                 "mapping ({} => {})",
-                key_ty.as_string(analyzer),
-                v_ty.as_string(analyzer)
-            ),
-            Func(inputs, outputs) => format!(
+                key_ty.as_string(analyzer)?,
+                v_ty.as_string(analyzer)?
+            )),
+            Func(inputs, outputs) => Ok(format!(
                 "function({}) returns ({})",
                 inputs
                     .iter()
-                    .map(|input| input.as_string(analyzer))
+                    .map(|input| input.as_string(analyzer).unwrap())
                     .collect::<Vec<_>>()
                     .join(", "),
                 outputs
                     .iter()
-                    .map(|output| output.as_string(analyzer))
+                    .map(|output| output.as_string(analyzer).unwrap())
                     .collect::<Vec<_>>()
                     .join(", ")
-            ),
+            )),
         }
     }
 }

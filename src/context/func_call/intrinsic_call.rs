@@ -46,7 +46,7 @@ pub trait IntrinsicFuncCaller:
                             fn match_decode(
                                 loc: &Loc,
                                 ret: ExprRet,
-                                analyzer: &mut (impl GraphLike + AnalyzerLike),
+                                analyzer: &mut impl GraphAnalyzer,
                             ) -> ExprRet {
                                 match ret {
                                     ExprRet::Single((ctx, expect_builtin)) => {
@@ -97,7 +97,8 @@ pub trait IntrinsicFuncCaller:
                         "abi.encode"
                         | "abi.encodePacked"
                         | "abi.encodeCall"
-                        | "abi.encodeWithSignature" => {
+                        | "abi.encodeWithSignature"
+                        | "abi.encodeWithSelector" => {
                             // currently we dont support concrete abi encoding, TODO
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
@@ -108,6 +109,22 @@ pub trait IntrinsicFuncCaller:
                         "delegatecall" | "staticcall" | "call" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
+                        "code" => {
+                            // TODO: try to be smarter based on the address input
+                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
+                        "balance" => {
+                            // TODO: try to be smarter based on the address input
+                            let bn = self.builtin_or_add(Builtin::Uint(256));
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
@@ -230,7 +247,7 @@ pub trait IntrinsicFuncCaller:
                 let ty = ty.clone();
                 fn cast_match(
                     loc: &Loc,
-                    analyzer: &mut (impl GraphLike + AnalyzerLike),
+                    analyzer: &mut impl GraphAnalyzer,
                     ty: Builtin,
                     ret: ExprRet,
                     func_idx: NodeIdx,
@@ -304,10 +321,22 @@ pub trait IntrinsicFuncCaller:
 
                 Ok(ExprRet::Single((ctx, func_idx)))
             }
-            Node::Unresolved(ident) => Err(ExprErr::FunctionNotFound(
-                *loc,
-                format!("Could not find function: \"{}\"", ident.name),
-            )),
+            Node::Unresolved(_) => {
+                let inputs = ExprRet::Multi(
+                    input_exprs
+                        .iter()
+                        .map(|expr| self.parse_ctx_expr(expr, ctx))
+                        .collect::<Result<Vec<_>, ExprErr>>()?,
+                );
+                if let Node::Unresolved(ident) = self.node(func_idx) {
+                    Err(ExprErr::FunctionNotFound(
+                        *loc,
+                        format!("Could not find function: \"{}({})\"", ident.name, inputs.try_as_func_input_str(self)),
+                    ))
+                } else {
+                    unreachable!()
+                }
+            },
             e => Err(ExprErr::FunctionNotFound(*loc, format!("{e:?}"))),
         }
     }

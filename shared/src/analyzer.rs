@@ -17,6 +17,14 @@ use petgraph::dot::Dot;
 use petgraph::{graph::*, Directed, Direction};
 use std::collections::HashMap;
 
+
+#[derive(Debug, Clone)]
+pub enum GraphError {
+    NodeConfusion(String)
+}
+
+pub trait GraphAnalyzer: GraphLike + AnalyzerLike + Search {}
+
 pub trait AnalyzerLike: GraphLike {
     type Expr;
     type ExprErr;
@@ -268,7 +276,7 @@ pub trait GraphLike {
     fn dot_str_no_tmps(&self) -> String
     where
         Self: std::marker::Sized,
-        Self: AnalyzerLike,
+        Self: GraphAnalyzer,
     {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
@@ -307,7 +315,7 @@ pub trait GraphLike {
                 &|_graph, (idx, node_ref)| {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
-                            let range_str = if let Some(r) = cvar.ty.range(self) {
+                            let range_str = if let Some(r) = cvar.ty.range(self).unwrap() {
                                 r.as_dot_str(self)
                                 // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
                             } else {
@@ -339,7 +347,7 @@ pub trait GraphLike {
 
     fn dot_str_no_tmps_for_ctx(&self, fork_name: String) -> String
     where
-        Self: AnalyzerLike,
+        Self: GraphAnalyzer,
         Self: Sized,
     {
         let new_graph = self.graph().filter_map(

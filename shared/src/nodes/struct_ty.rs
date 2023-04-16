@@ -1,7 +1,9 @@
-use crate::analyzer::AnalyzerLike;
+use crate::nodes::GraphError;
+use crate::GraphLike;
+use crate::nodes::GraphAnalyzer;
 use crate::analyzer::AsDotStr;
 use crate::Edge;
-use crate::GraphLike;
+
 use crate::Node;
 use crate::NodeIdx;
 use crate::VarType;
@@ -12,25 +14,23 @@ use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableD
 pub struct StructNode(pub usize);
 
 impl StructNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Struct {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Struct, GraphError> {
         match analyzer.node(*self) {
-            Node::Struct(st) => st,
-            e => panic!("Node type confusion: expected node to be Struct but it was: {e:?}"),
+            Node::Struct(st) => Ok(st),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Struct but it was: {e:?}"))),
         }
     }
 
-    pub fn loc(&self, analyzer: &impl GraphLike) -> Loc {
-        Struct::maybe_from_node(analyzer.node(*self).clone())
-            .expect("Node wasnt struct")
-            .loc
+    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+        Ok(self.underlying(analyzer)?.loc)
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> String {
-        self.underlying(analyzer)
+    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+        Ok(self.underlying(analyzer)?
             .name
             .as_ref()
             .expect("Struct wasn't named")
-            .to_string()
+            .to_string())
     }
 
     pub fn fields(&self, analyzer: &impl GraphLike) -> Vec<FieldNode> {
@@ -48,13 +48,13 @@ impl StructNode {
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| Edge::Field == *edge.weight())
             .map(|edge| FieldNode::from(edge.source()))
-            .find(|field_node| field_node.name(analyzer) == ident.name)
+            .find(|field_node| field_node.name(analyzer).unwrap() == ident.name)
     }
 }
 
 impl AsDotStr for StructNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        let underlying = self.underlying(analyzer);
+        let underlying = self.underlying(analyzer).unwrap();
         format!(
             "struct {} {{ {} }}",
             if let Some(name) = &underlying.name {
@@ -117,25 +117,25 @@ impl From<StructDefinition> for Struct {
 pub struct FieldNode(pub usize);
 
 impl FieldNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Field {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Field, GraphError> {
         match analyzer.node(*self) {
-            Node::Field(field) => field,
-            e => panic!("Node type confusion: expected node to be Field but it was: {e:?}"),
+            Node::Field(field) => Ok(field),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Field but it was: {e:?}"))),
         }
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> String {
-        self.underlying(analyzer)
+    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+        Ok(self.underlying(analyzer)?
             .name
             .as_ref()
             .expect("Struct wasn't named")
-            .to_string()
+            .to_string())
     }
 }
 
 impl AsDotStr for FieldNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        let underlying = self.underlying(analyzer);
+        let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
@@ -179,7 +179,7 @@ impl From<Field> for Node {
 
 impl Field {
     pub fn new(
-        analyzer: &mut impl AnalyzerLike<Expr = Expression>,
+        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
         var_def: VariableDeclaration,
     ) -> Field {
         let ty_idx = analyzer.parse_expr(&var_def.ty);

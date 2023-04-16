@@ -80,10 +80,10 @@ impl RangeElem<Concrete> for Dynamic {
         }
     }
 
-    fn simplify_maximize(&self, _: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_maximize(&self, _: &impl GraphAnalyzer) -> Elem<Concrete> {
         Elem::Dynamic(*self)
     }
-    fn simplify_minimize(&self, _: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_minimize(&self, _: &impl GraphAnalyzer) -> Elem<Concrete> {
         Elem::Dynamic(*self)
     }
 }

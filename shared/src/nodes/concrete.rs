@@ -1,5 +1,7 @@
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::Builtin;
-use crate::{analyzer::GraphLike, Node, NodeIdx};
+use crate::{Node, NodeIdx};
 use ethers_core::types::{Address, H256, I256, U256};
 
 /// An index in the graph that references a [`Concrete`] node
@@ -8,16 +10,16 @@ pub struct ConcreteNode(pub usize);
 
 impl ConcreteNode {
     /// Gets the underlying node data for the [`Concrete`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Concrete {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Concrete, GraphError> {
         match analyzer.node(*self) {
-            Node::Concrete(c) => c,
-            e => panic!("Node type confusion: expected node to be Concrete but it was: {e:?}"),
+            Node::Concrete(c) => Ok(c),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Concrete but it was: {e:?}"))),
         }
     }
 
-    pub fn max_size(&self, analyzer: &mut impl GraphLike) -> Self {
-        let c = self.underlying(analyzer).max_size();
-        analyzer.add_node(Node::Concrete(c)).into()
+    pub fn max_size(&self, analyzer: &mut impl GraphAnalyzer) -> Result<Self, GraphError> {
+        let c = self.underlying(analyzer)?.max_size();
+        Ok(analyzer.add_node(Node::Concrete(c)).into())
     }
 }
 

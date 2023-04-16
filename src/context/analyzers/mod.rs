@@ -150,9 +150,9 @@ impl Default for ReportConfig {
 
 pub trait ReportDisplay {
     fn report_kind(&self) -> ReportKind;
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String;
-    fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>>;
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>>;
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search));
-    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search));
+    fn msg(&self, analyzer: &impl GraphLike) -> String;
+    fn labels(&self, analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>>;
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>>;
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike);
+    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike);
 }

@@ -1,5 +1,5 @@
-use crate::analyzer::Search;
-use crate::analyzer::{AnalyzerLike, GraphLike};
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::AsDotStr;
 use crate::Edge;
 use crate::FunctionNode;
@@ -13,7 +13,7 @@ pub struct ContractNode(pub usize);
 
 impl AsDotStr for ContractNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        let underlying = self.underlying(analyzer);
+        let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
             underlying.ty,
@@ -28,19 +28,20 @@ impl AsDotStr for ContractNode {
 
 impl ContractNode {
     /// Gets the underlying node data for the [`Contract`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Contract {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Contract, GraphError> {
         match analyzer.node(*self) {
-            Node::Contract(func) => func,
-            e => panic!("Node type confusion: expected node to be Contract but it was: {e:?}"),
+            Node::Contract(contract) => Ok(contract),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Contract but it was: {e:?}"))),
         }
     }
 
-    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut impl GraphAnalyzer) {
         let all_contracts = analyzer.search_children(analyzer.entry(), &Edge::Contract);
+        // we unwrap the name call because we dont really wanna bubble up thru an iteration
         inherits.iter().for_each(|inherited_name| {
             let found = all_contracts
                 .iter()
-                .find(|contract| &ContractNode::from(**contract).name(analyzer) == inherited_name)
+                .find(|contract| &ContractNode::from(**contract).name(analyzer).unwrap() == inherited_name)
                 .unwrap_or_else(|| {
                     analyzer.open_dot();
                     panic!(
@@ -53,27 +54,30 @@ impl ContractNode {
     }
 
     /// Gets the name from the underlying node data for the [`Contract`]
-    pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
-        self.underlying(analyzer)
+    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+        Ok(self.underlying(analyzer)?
             .name
             .clone()
             .expect("Unnamed contract")
-            .name
+            .name)
     }
 
     /// Tries to Get the name from the underlying node data for the [`Contract`]
-    pub fn maybe_name(&self, analyzer: &'_ impl GraphLike) -> Option<String> {
-        let ident = self.underlying(analyzer).name.clone()?;
-        Some(ident.name)
+    pub fn maybe_name(&self, analyzer: &impl GraphLike) -> Result<Option<String>, GraphError> {
+        if let Some(ident) = self.underlying(analyzer)?.name.clone() {
+            Ok(Some(ident.name))    
+        } else {
+            Ok(None)
+        }
     }
 
     /// Gets the sourcecode location from the underlying node data for the [`Contract`]
-    pub fn loc(&self, analyzer: &'_ impl GraphLike) -> Loc {
-        self.underlying(analyzer).loc
+    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+        Ok(self.underlying(analyzer)?.loc)
     }
 
     /// Gets all associated functions from the underlying node data for the [`Contract`]
-    pub fn funcs(&self, analyzer: &'_ (impl GraphLike + Search)) -> Vec<FunctionNode> {
+    pub fn funcs(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Func)
             .into_iter()
@@ -82,7 +86,7 @@ impl ContractNode {
     }
 
     /// Gets all associated modifiers from the underlying node data for the [`Contract`]
-    pub fn modifiers(&self, analyzer: &'_ (impl GraphLike + Search)) -> Vec<FunctionNode> {
+    pub fn modifiers(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Modifier)
             .into_iter()
@@ -141,7 +145,7 @@ impl Contract {
         con: ContractDefinition,
         source: NodeIdx,
         imports: &[(Option<NodeIdx>, String, String, usize)],
-        analyzer: &'_ impl AnalyzerLike,
+        analyzer: &impl GraphLike,
     ) -> (Contract, Vec<String>) {
         let mut inherits = vec![];
         let mut unhandled_inherits = vec![];
@@ -152,7 +156,7 @@ impl Contract {
                 .search_children(source, &Edge::Contract)
                 .into_iter()
             {
-                let name = ContractNode::from(contract).name(analyzer);
+                let name = ContractNode::from(contract).name(analyzer).unwrap();
                 if &name == inherited_name {
                     inherits.push(ContractNode::from(contract));
                     found = true;
@@ -163,7 +167,7 @@ impl Contract {
             if !found {
                 for entry in imports.iter().filter_map(|import| import.0) {
                     for contract in analyzer.search_children(entry, &Edge::Contract).into_iter() {
-                        let name = ContractNode::from(contract).name(analyzer);
+                        let name = ContractNode::from(contract).name(analyzer).unwrap();
                         if &name == inherited_name {
                             inherits.push(ContractNode::from(contract));
                             found = true;

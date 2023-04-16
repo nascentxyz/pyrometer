@@ -20,6 +20,24 @@ pub fn builtin_fns() -> HashMap<String, Function> {
         builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
+                name: "balance".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "code".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
                 name: "push".to_string(),
             }),
             attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
@@ -233,9 +251,41 @@ pub fn builtin_fns() -> HashMap<String, Function> {
 }
 
 pub fn builtin_fns_inputs(
-    analyzer: &mut impl AnalyzerLike,
+    analyzer: &mut impl GraphAnalyzer,
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
+        ("balance", vec![
+            FunctionParam {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Address),
+                order: 0,
+                storage: None,
+                name: None,
+            }
+        ], vec![
+            FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                storage: None,
+                name: None,
+            }
+        ]),
+        ("code", vec![
+            FunctionParam {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Address),
+                order: 0,
+                storage: None,
+                name: None,
+            }
+        ], vec![
+            FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                storage: None,
+                name: None,
+            }
+        ]),
         ("push", vec![], vec![]),
         (
             "ecrecover",

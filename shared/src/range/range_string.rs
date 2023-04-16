@@ -1,3 +1,4 @@
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::context::ContextVarNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem::RangeOp;
@@ -6,7 +7,7 @@ use crate::range::elem_ty::RangeExpr;
 use crate::range::Elem;
 use crate::range::RangeDyn;
 use crate::Concrete;
-use crate::GraphLike;
+
 use std::collections::BTreeMap;
 
 use solang_parser::pt::Loc;

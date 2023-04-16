@@ -172,6 +172,7 @@ pub trait InternalFuncCaller:
                 }
             };
             self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
+            
         } else if possible_funcs.len() == 1 {
             let inputs = ExprRet::Multi(
                 input_exprs

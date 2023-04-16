@@ -1,3 +1,4 @@
+use crate::nodes::GraphAnalyzer;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::Node;
@@ -56,7 +57,7 @@ impl From<Ty> for Node {
 }
 
 impl Ty {
-    pub fn new(analyzer: &mut impl AnalyzerLike<Expr = Expression>, ty: TypeDefinition) -> Ty {
+    pub fn new(analyzer: &mut impl GraphAnalyzer<Expr = Expression>, ty: TypeDefinition) -> Ty {
         Ty {
             loc: ty.loc,
             ty: analyzer.parse_expr(&ty.ty),

@@ -1,4 +1,5 @@
-use crate::analyzer::GraphLike;
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::range::SolcRange;
 use crate::AsDotStr;
 use crate::Concrete;
@@ -12,7 +13,7 @@ pub struct EnumNode(pub usize);
 
 impl AsDotStr for EnumNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        let underlying = self.underlying(analyzer);
+        let underlying = self.underlying(analyzer).unwrap();
         format!(
             "enum {} {{ {} }}",
             if let Some(name) = &underlying.name {
@@ -27,43 +28,43 @@ impl AsDotStr for EnumNode {
 
 impl EnumNode {
     /// Gets the underlying node data for the [`Enum`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Enum {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Enum, GraphError> {
         match analyzer.node(*self) {
-            Node::Enum(e) => e,
-            e => panic!("Node type confusion: expected node to be Contract but it was: {e:?}"),
+            Node::Enum(e) => Ok(e),
+            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Contract but it was: {e:?}"))),
         }
     }
 
     /// Gets the name of the enum from the underlying node data for the [`Enum`]
-    pub fn name(&self, analyzer: &'_ impl GraphLike) -> String {
-        self.underlying(analyzer)
+    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+        Ok(self.underlying(analyzer)?
             .name
             .clone()
             .expect("Unnamed contract")
-            .name
+            .name)
     }
 
-    pub fn variants(&self, analyzer: &impl GraphLike) -> Vec<String> {
-        self.underlying(analyzer).variants()
+    pub fn variants(&self, analyzer: &impl GraphLike) -> Result<Vec<String>, GraphError> {
+        Ok(self.underlying(analyzer)?.variants())
     }
 
-    pub fn maybe_default_range(&self, analyzer: &impl GraphLike) -> Option<SolcRange> {
-        let variants = self.variants(analyzer);
+    pub fn maybe_default_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
+        let variants = self.variants(analyzer)?;
         if !variants.is_empty() {
             let min = Concrete::from(variants.first().unwrap().clone()).into();
             let max = Concrete::from(variants.last().unwrap().clone()).into();
-            Some(SolcRange::new(min, max, vec![]))
+            Ok(Some(SolcRange::new(min, max, vec![])))
         } else {
-            None
+            Ok(None)
         }
     }
 
-    pub fn range_from_variant(&self, variant: String, analyzer: &impl GraphLike) -> SolcRange {
-        let variants = self.variants(analyzer);
+    pub fn range_from_variant(&self, variant: String, analyzer: &impl GraphLike) -> Result<SolcRange, GraphError> {
+        let variants = self.variants(analyzer)?;
         assert!(variants.contains(&variant));
         let min = Concrete::from(variant.clone()).into();
         let max = Concrete::from(variant).into();
-        SolcRange::new(min, max, vec![])
+        Ok(SolcRange::new(min, max, vec![]))
     }
 }
 
