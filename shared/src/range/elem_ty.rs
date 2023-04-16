@@ -1,3 +1,4 @@
+use crate::analyzer::GraphError;
 use crate::context::ContextVarNode;
 use crate::nodes::VarType;
 use crate::range::range_ops::*;
@@ -44,47 +45,47 @@ impl RangeElem<Concrete> for Dynamic {
 
     fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 
-    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        let cvar = ContextVarNode::from(self.idx).underlying(analyzer);
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
         match &cvar.ty {
             VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.evaled_range_max(analyzer)
                 } else {
-                    Elem::Dynamic(*self)
+                    Ok(Elem::Dynamic(*self))
                 }
             }
-            VarType::Concrete(concrete_node) => Elem::Concrete(RangeConcrete {
-                val: concrete_node.underlying(analyzer).clone(),
+            VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
+                val: concrete_node.underlying(analyzer)?.clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
-            }),
-            _e => Elem::Dynamic(*self),
+            })),
+            _e => Ok(Elem::Dynamic(*self)),
         }
     }
 
-    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        let cvar = ContextVarNode::from(self.idx).underlying(analyzer);
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
         match &cvar.ty {
             VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.evaled_range_min(analyzer)
                 } else {
-                    Elem::Dynamic(*self)
+                    Ok(Elem::Dynamic(*self))
                 }
             }
-            VarType::Concrete(concrete_node) => Elem::Concrete(RangeConcrete {
-                val: concrete_node.underlying(analyzer).clone(),
+            VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
+                val: concrete_node.underlying(analyzer)?.clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
-            }),
-            _e => Elem::Dynamic(*self),
+            })),
+            _e => Ok(Elem::Dynamic(*self)),
         }
     }
 
-    fn simplify_maximize(&self, _: &impl GraphAnalyzer) -> Elem<Concrete> {
-        Elem::Dynamic(*self)
+    fn simplify_maximize(&self, _: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Dynamic(*self))
     }
-    fn simplify_minimize(&self, _: &impl GraphAnalyzer) -> Elem<Concrete> {
-        Elem::Dynamic(*self)
+    fn simplify_minimize(&self, _: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Dynamic(*self))
     }
 }
 
@@ -125,55 +126,71 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
 
     fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 
-    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::ConcreteDyn(Box::new(Self {
-            len: self.len.maximize(analyzer),
-            val: self
-                .val
-                .clone()
-                .into_iter()
-                .map(|(idx, val)| (idx, val.maximize(analyzer)))
-                .collect(),
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::ConcreteDyn(Box::new(Self {
+            len: self.len.maximize(analyzer)?,
+            val: {
+                    let mut map = BTreeMap::default();
+                    for (idx, val) in self
+                        .val
+                        .clone()
+                        .into_iter() {
+                        map.insert(idx, val.maximize(analyzer)?);
+                    }
+                    map
+                },
             loc: self.loc,
-        }))
+        })))
     }
 
-    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::ConcreteDyn(Box::new(Self {
-            len: self.len.minimize(analyzer),
-            val: self
-                .val
-                .clone()
-                .into_iter()
-                .map(|(idx, val)| (idx, val.minimize(analyzer)))
-                .collect(),
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::ConcreteDyn(Box::new(Self {
+            len: self.len.minimize(analyzer)?,
+            val: {
+                    let mut map = BTreeMap::default();
+                    for (idx, val) in self
+                        .val
+                        .clone()
+                        .into_iter() {
+                        map.insert(idx, val.minimize(analyzer)?);
+                    }
+                    map
+                },
             loc: self.loc,
-        }))
+        })))
     }
 
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::ConcreteDyn(Box::new(Self {
-            len: self.len.simplify_maximize(analyzer),
-            val: self
-                .val
-                .clone()
-                .into_iter()
-                .map(|(idx, val)| (idx, val.simplify_maximize(analyzer)))
-                .collect(),
+    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::ConcreteDyn(Box::new(Self {
+            len: self.len.simplify_maximize(analyzer)?,
+            val: {
+                    let mut map = BTreeMap::default();
+                    for (idx, val) in self
+                        .val
+                        .clone()
+                        .into_iter() {
+                        map.insert(idx, val.simplify_maximize(analyzer)?);
+                    }
+                    map
+                },
             loc: self.loc,
-        }))
+        })))
     }
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::ConcreteDyn(Box::new(Self {
-            len: self.len.simplify_minimize(analyzer),
-            val: self
-                .val
-                .clone()
-                .into_iter()
-                .map(|(idx, val)| (idx, val.simplify_minimize(analyzer)))
-                .collect(),
+    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::ConcreteDyn(Box::new(Self {
+            len: self.len.simplify_minimize(analyzer)?,
+            val: {
+                    let mut map = BTreeMap::default();
+                    for (idx, val) in self
+                        .val
+                        .clone()
+                        .into_iter() {
+                        map.insert(idx, val.simplify_minimize(analyzer)?);
+                    }
+                    map
+                },
             loc: self.loc,
-        }))
+        })))
     }
 }
 
@@ -271,18 +288,18 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
 
     fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
 
-    fn maximize(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::Concrete(self.clone())
+    fn maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Concrete(self.clone()))
     }
-    fn minimize(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::Concrete(self.clone())
+    fn minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Concrete(self.clone()))
     }
 
-    fn simplify_maximize(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::Concrete(self.clone())
+    fn simplify_maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Concrete(self.clone()))
     }
-    fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
-        Elem::Concrete(self.clone())
+    fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Concrete(self.clone()))
     }
 }
 
@@ -330,19 +347,17 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         self.rhs.filter_recursion(node_idx, old);
     }
 
-    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         self.exec_op(true, analyzer)
-        // Elem::Dynamic(self.clone())
     }
-    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        // Elem::Dynamic(self.clone())
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         self.exec_op(false, analyzer)
     }
 
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         self.simplify_exec_op(true, analyzer)
     }
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         self.simplify_exec_op(false, analyzer)
     }
 }
@@ -446,28 +461,29 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
 }
 
 impl Elem<Concrete> {
-    pub fn is_negative(&self, maximize: bool, analyzer: &impl GraphLike) -> bool {
-        match self {
+    pub fn is_negative(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        let res = match self {
             Elem::Concrete(RangeConcrete {
                 val: Concrete::Int(_, val),
                 ..
             }) if val < &I256::zero() => true,
             Elem::Dynamic(dy) => {
                 if maximize {
-                    dy.maximize(analyzer).is_negative(maximize, analyzer)
+                    dy.maximize(analyzer)?.is_negative(maximize, analyzer)?
                 } else {
-                    dy.minimize(analyzer).is_negative(maximize, analyzer)
+                    dy.minimize(analyzer)?.is_negative(maximize, analyzer)?
                 }
             }
             Elem::Expr(expr) => {
                 if maximize {
-                    expr.maximize(analyzer).is_negative(maximize, analyzer)
+                    expr.maximize(analyzer)?.is_negative(maximize, analyzer)?
                 } else {
-                    expr.minimize(analyzer).is_negative(maximize, analyzer)
+                    expr.minimize(analyzer)?.is_negative(maximize, analyzer)?
                 }
             }
             _ => false,
-        }
+        };
+        Ok(res)
     }
 
     pub fn pre_evaled_is_negative(&self) -> bool {
@@ -546,48 +562,52 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         // println!("filter recursion {:?}", self);
     }
 
-    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
-        match self {
-            Dynamic(dy) => dy.maximize(analyzer),
-            Concrete(inner) => inner.maximize(analyzer),
-            ConcreteDyn(inner) => inner.maximize(analyzer),
-            Expr(expr) => expr.maximize(analyzer),
+        let res = match self {
+            Dynamic(dy) => dy.maximize(analyzer)?,
+            Concrete(inner) => inner.maximize(analyzer)?,
+            ConcreteDyn(inner) => inner.maximize(analyzer)?,
+            Expr(expr) => expr.maximize(analyzer)?,
             Null => Elem::Null,
-        }
+        };
+        Ok(res)
     }
 
-    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
-        match self {
-            Dynamic(dy) => dy.minimize(analyzer),
-            Concrete(inner) => inner.minimize(analyzer),
-            ConcreteDyn(inner) => inner.minimize(analyzer),
-            Expr(expr) => expr.minimize(analyzer),
+        let res = match self {
+            Dynamic(dy) => dy.minimize(analyzer)?,
+            Concrete(inner) => inner.minimize(analyzer)?,
+            ConcreteDyn(inner) => inner.minimize(analyzer)?,
+            Expr(expr) => expr.minimize(analyzer)?,
             Null => Elem::Null,
-        }
+        };
+        Ok(res)
     }
 
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
-        match self {
-            Dynamic(dy) => dy.simplify_maximize(analyzer),
-            Concrete(inner) => inner.simplify_maximize(analyzer),
-            ConcreteDyn(inner) => inner.simplify_maximize(analyzer),
-            Expr(expr) => expr.simplify_maximize(analyzer),
+        let res = match self {
+            Dynamic(dy) => dy.simplify_maximize(analyzer)?,
+            Concrete(inner) => inner.simplify_maximize(analyzer)?,
+            ConcreteDyn(inner) => inner.simplify_maximize(analyzer)?,
+            Expr(expr) => expr.simplify_maximize(analyzer)?,
             Null => Elem::Null,
-        }
+        };
+        Ok(res)
     }
 
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
-        match self {
-            Dynamic(dy) => dy.simplify_minimize(analyzer),
-            Concrete(inner) => inner.simplify_minimize(analyzer),
-            ConcreteDyn(inner) => inner.simplify_minimize(analyzer),
-            Expr(expr) => expr.simplify_minimize(analyzer),
+        let res = match self {
+            Dynamic(dy) => dy.simplify_minimize(analyzer)?,
+            Concrete(inner) => inner.simplify_minimize(analyzer)?,
+            ConcreteDyn(inner) => inner.simplify_minimize(analyzer)?,
+            Expr(expr) => expr.simplify_minimize(analyzer)?,
             Null => Elem::Null,
-        }
+        };
+        Ok(res)
     }
 }
 
@@ -761,17 +781,17 @@ impl Elem<Concrete> {
 pub trait ExecOp<T> {
     /// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
     /// and right-hand-side
-    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<T>;
+    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Attempts to simplify an expression (i.e. just apply constant folding)
-    fn simplify_exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<T>;
+    fn simplify_exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
-    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Elem<Concrete> {
-        let lhs_min = self.lhs.minimize(analyzer);
-        let lhs_max = self.lhs.maximize(analyzer);
-        let rhs_min = self.rhs.minimize(analyzer);
-        let rhs_max = self.rhs.maximize(analyzer);
+    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        let lhs_min = self.lhs.minimize(analyzer)?;
+        let lhs_max = self.lhs.maximize(analyzer)?;
+        let rhs_min = self.rhs.minimize(analyzer)?;
+        let rhs_max = self.rhs.maximize(analyzer)?;
 
         tracing::trace!(
             "executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}",
@@ -790,7 +810,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let rhs_max_neg = rhs_max.pre_evaled_is_negative();
 
         // println!("op: {}, lhs_min: {} lhs_max: {}, rhs_min: {}, rhs_max: {}", self.op.to_string(), lhs_min.to_range_string(false, analyzer).s, lhs_max.to_range_string(true, analyzer).s, rhs_min.to_range_string(false, analyzer).s, rhs_max.to_range_string(true, analyzer).s);
-        match self.op {
+        let res = match self.op {
             RangeOp::Add => {
                 if maximize {
                     // if we are maximizing, the largest value will always just be the the largest value + the largest value
@@ -933,7 +953,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1064,7 +1084,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1121,7 +1141,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1237,10 +1257,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             Some(std::cmp::Ordering::Equal),
                             Some(c),
                         ) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         _ => {}
                     }
@@ -1271,16 +1291,16 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             Some(std::cmp::Ordering::Equal),
                             Some(c),
                         ) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         (_, _, Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                     }
 
@@ -1295,10 +1315,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         (_, _, None) => {}
                         (Some(std::cmp::Ordering::Less), _, Some(c))
                         | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         _ => {}
                     }
@@ -1311,16 +1331,16 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         (_, _, None) => {}
                         (Some(std::cmp::Ordering::Less), _, Some(c))
                         | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         (_, _, Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                     }
 
@@ -1338,10 +1358,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         (_, _, None) => {}
                         (Some(std::cmp::Ordering::Less), _, Some(c))
                         | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         _ => {}
                     }
@@ -1354,16 +1374,16 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         (_, _, None) => {}
                         (Some(std::cmp::Ordering::Less), _, Some(c))
                         | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         (_, _, Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                     }
 
@@ -1396,10 +1416,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             Some(std::cmp::Ordering::Equal),
                             Some(c),
                         ) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         _ => {}
                     }
@@ -1430,36 +1450,36 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             Some(std::cmp::Ordering::Equal),
                             Some(c),
                         ) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         (_, Some(std::cmp::Ordering::Equal), Some(c)) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         (
                             Some(std::cmp::Ordering::Greater),
                             Some(std::cmp::Ordering::Greater),
                             Some(c),
                         ) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         (
                             Some(std::cmp::Ordering::Less),
                             Some(std::cmp::Ordering::Less),
                             Some(c),
                         ) => {
-                            return Elem::Concrete(RangeConcrete {
+                            return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(true),
                                 loc: c.loc,
-                            })
+                            }))
                         }
                         _ => {}
                     }
@@ -1481,7 +1501,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1504,7 +1524,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1527,7 +1547,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1550,7 +1570,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1569,7 +1589,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1594,7 +1614,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1618,7 +1638,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Elem::Expr(self.clone());
+                    return Ok(Elem::Expr(self.clone()));
                 }
 
                 if maximize {
@@ -1661,10 +1681,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             _ => Elem::Expr(self.clone()),
-        }
+        };
+        Ok(res)
     }
 
-    fn simplify_exec_op(&self, _maximize: bool, _analyzer: &impl GraphLike) -> Elem<Concrete> {
+    fn simplify_exec_op(&self, _maximize: bool, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         todo!();
     }
 }

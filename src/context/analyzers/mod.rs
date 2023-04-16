@@ -1,5 +1,6 @@
 pub mod bounds;
 
+use crate::GraphLike;
 use crate::AnalyzerLike;
 use ariadne::{Cache, Label, Report, ReportKind, Span};
 use bounds::*;

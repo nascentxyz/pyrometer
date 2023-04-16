@@ -1,5 +1,5 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, GraphAnalyzer};
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::Builtin;
 use crate::{Node, NodeIdx};
 use ethers_core::types::{Address, H256, I256, U256};
@@ -17,7 +17,7 @@ impl ConcreteNode {
         }
     }
 
-    pub fn max_size(&self, analyzer: &mut impl GraphAnalyzer) -> Result<Self, GraphError> {
+    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
         Ok(analyzer.add_node(Node::Concrete(c)).into())
     }

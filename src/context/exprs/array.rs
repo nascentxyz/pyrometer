@@ -1,3 +1,4 @@
+use crate::context::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
     context::exprs::{member_access::MemberAccess, require::Require},
@@ -56,7 +57,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).first_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx);
-                if !parent.is_mapping(self) {
+                if !parent.is_mapping(self).into_expr_err(loc)? {
                     let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
                     self.handle_require_inner(
                         loc,
@@ -68,10 +69,10 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     )?;
                 }
 
-                let name = format!("{}[{}]", parent.name(self), index.name(self));
+                let name = format!("{}[{}]", parent.name(self).into_expr_err(loc)?, index.name(self).into_expr_err(loc)?);
                 tracing::trace!("indexing: {}", name);
 
-                if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name) {
+                if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
                     let index_var = index_var.latest_version(self);
                     let index_var = self.advance_var_in_ctx(index_var, loc, ctx);
                     Ok(ExprRet::Single((ctx, index_var.into())))
@@ -81,14 +82,14 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         name: name.clone(),
                         display_name: format!(
                             "{}[{}]",
-                            parent.display_name(self),
-                            index.display_name(self)
+                            parent.display_name(self).into_expr_err(loc)?,
+                            index.display_name(self).into_expr_err(loc)?
                         ),
-                        storage: parent.storage(self).clone(),
+                        storage: parent.storage(self).into_expr_err(loc)?.clone(),
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,
-                        ty: parent.ty(self).clone().dynamic_underlying_ty(self),
+                        ty: parent.ty(self).into_expr_err(loc)?.clone().dynamic_underlying_ty(self).into_expr_err(loc)?,
                     };
 
                     let idx_node = self.add_node(Node::ContextVar(index_var));

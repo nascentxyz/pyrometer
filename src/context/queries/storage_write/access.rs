@@ -80,7 +80,7 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
         let contract = self
             .search_children(entry, &crate::Edge::Contract)
             .into_iter()
-            .filter(|contract| ContractNode::from(*contract).name(self) == contract_name)
+            .filter(|contract| ContractNode::from(*contract).name(self).unwrap() == contract_name)
             .take(1)
             .next()
             .expect("No contract with provided name");
@@ -90,16 +90,16 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
         for func in con_node
             .funcs(self)
             .iter()
-            .filter(|func| func.is_public_or_ext(self))
+            .filter(|func| func.is_public_or_ext(self).unwrap())
         {
             let ctx = func.body_ctx(self);
-            let terminals = ctx.terminal_child_list(self);
+            let terminals = ctx.terminal_child_list(self).unwrap();
             let vars = self.recurse(ctx, storage_var_name.clone());
             for var in vars {
                 for analysis in terminals
                     .iter()
                     .map(|child| {
-                        let mut parents = child.parent_list(self);
+                        let mut parents = child.parent_list(self).unwrap();
                         parents.reverse();
                         parents.push(*child);
                         self.bounds_for_var_in_family_tree(
@@ -110,7 +110,7 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                         )
                     })
                     .filter(|analysis| terminals.contains(&analysis.ctx))
-                    .filter(|analysis| !analysis.ctx.is_killed(self))
+                    .filter(|analysis| !analysis.ctx.is_killed(self).unwrap())
                     .filter(|analysis| !analysis.bound_changes.is_empty())
                 {
                     // filter spurious bound changes
@@ -141,41 +141,42 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                 .map(|ctx| {
                     let bounds_string = ctx
                         .ctx_deps(self)
+                        .unwrap()
                         .iter()
                         .filter_map(|(_name, cvar)| {
                             let min = if report_config.eval_bounds {
-                                cvar.range(self)?
-                                    .evaled_range_min(self)
+                                cvar.range(self).unwrap()?
+                                    .evaled_range_min(self).unwrap()
                                     .to_range_string(false, self)
                                     .s
                             } else if report_config.simplify_bounds {
-                                cvar.range(self)?
-                                    .simplified_range_min(self)
+                                cvar.range(self).unwrap()?
+                                    .simplified_range_min(self).unwrap()
                                     .to_range_string(false, self)
                                     .s
                             } else {
-                                cvar.range(self)?.range_min().to_range_string(false, self).s
+                                cvar.range(self).unwrap()?.range_min().to_range_string(false, self).s
                             };
 
                             let max = if report_config.eval_bounds {
-                                cvar.range(self)?
-                                    .evaled_range_max(self)
+                                cvar.range(self).unwrap()?
+                                    .evaled_range_max(self).unwrap()
                                     .to_range_string(true, self)
                                     .s
                             } else if report_config.simplify_bounds {
-                                cvar.range(self)?
-                                    .simplified_range_max(self)
+                                cvar.range(self).unwrap()?
+                                    .simplified_range_max(self).unwrap()
                                     .to_range_string(true, self)
                                     .s
                             } else {
-                                cvar.range(self)?.range_max().to_range_string(true, self).s
+                                cvar.range(self).unwrap()?.range_max().to_range_string(true, self).s
                             };
                             if min == max {
-                                Some(format!("\"{}\" == {}", cvar.display_name(self), min,))
+                                Some(format!("\"{}\" == {}", cvar.display_name(self).unwrap(), min,))
                             } else {
                                 Some(format!(
                                     "\"{}\" ∈ [ {}, {} ]",
-                                    cvar.display_name(self),
+                                    cvar.display_name(self).unwrap(),
                                     min,
                                     max,
                                 ))
@@ -188,13 +189,13 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                         format!(
                             "Unrestricted write access of storage var \"{}\" via: function \"{}\"",
                             storage_var_name,
-                            ctx.associated_fn_name(self)
+                            ctx.associated_fn_name(self).unwrap()
                         )
                     } else {
                         format!(
                             "Write access of storage var \"{}\" via: function \"{}\" if {}",
                             storage_var_name,
-                            ctx.associated_fn_name(self),
+                            ctx.associated_fn_name(self).unwrap(),
                             bounds_string
                         )
                     }
@@ -206,12 +207,12 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
 
     fn recurse(&self, ctx: ContextNode, storage_var_name: String) -> Vec<String> {
         if let Some(cvar) = ctx.var_by_name(self, &storage_var_name) {
-            match cvar.ty(self) {
+            match cvar.ty(self).unwrap() {
                 VarType::User(TypeNode::Struct(s_node), _) => {
                     let fields = s_node
                         .fields(self)
                         .iter()
-                        .map(|field| format!("{}.{}", storage_var_name, field.name(self)))
+                        .map(|field| format!("{}.{}", storage_var_name, field.name(self).unwrap()))
                         .collect();
                     fields
                 }

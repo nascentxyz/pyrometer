@@ -71,7 +71,7 @@ pub trait NameSpaceFuncCaller:
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
-            .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
+            .filter(|func| func.name(self).unwrap().starts_with(&format!("{}(", ident.name)))
             .copied()
             .collect::<Vec<_>>();
 

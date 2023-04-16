@@ -1,5 +1,5 @@
-use crate::analyzer::{GraphLike, GraphAnalyzer};
-use crate::analyzer::AnalyzerLike;
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike};
 use crate::analyzer::AsDotStr;
 use crate::context::ContextNode;
 use crate::context::ContextVarNode;
@@ -41,10 +41,10 @@ impl AsDotStr for SolcRange {
         // println!("here: {}", self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", "));
         format!(
             "[{}, {}] excluding: [{}]",
-            self.evaled_range_min(analyzer)
+            self.evaled_range_min(analyzer).unwrap()
                 .to_range_string(false, analyzer)
                 .s,
-            self.evaled_range_max(analyzer)
+            self.evaled_range_max(analyzer).unwrap()
                 .to_range_string(true, analyzer)
                 .s,
             self.exclusions
@@ -77,7 +77,7 @@ impl SolcRange {
         }
     }
 
-    pub fn min_is_negative(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn min_is_negative(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         self.min.is_negative(false, analyzer)
     }
 
@@ -455,35 +455,36 @@ impl Range<Concrete> for SolcRange {
         self.max.clone()
     }
 
-    fn cache_eval(&mut self, analyzer: &impl GraphLike) {
+    fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>{
         if self.min_cached.is_none() {
-            self.min_cached = Some(self.range_min().minimize(analyzer));
+            self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }
         if self.max_cached.is_none() {
-            self.max_cached = Some(self.range_max().maximize(analyzer));
+            self.max_cached = Some(self.range_max().maximize(analyzer)?);
         }
+        Ok(())
     }
 
-    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
         if let Some(cached) = &self.min_cached {
-            cached.clone()
+            Ok(cached.clone())
         } else {
             self.range_min().minimize(analyzer)
         }
     }
 
-    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
         if let Some(cached) = &self.max_cached {
-            cached.clone()
+            Ok(cached.clone())
         } else {
             self.range_max().maximize(analyzer)
         }
     }
 
-    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
         self.range_min().simplify_minimize(analyzer)
     }
-    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy {
+    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
         self.range_max().simplify_maximize(analyzer)
     }
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
@@ -510,11 +511,11 @@ impl Range<Concrete> for SolcRange {
 
 pub trait Range<T> {
     type ElemTy: RangeElem<T> + Clone;
-    fn cache_eval(&mut self, analyzer: &impl GraphLike);
-    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
-    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
-    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
-    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Self::ElemTy;
+    fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
+    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
+    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
+    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
     fn range_min(&self) -> Self::ElemTy;
     fn range_max(&self) -> Self::ElemTy;
     fn range_exclusions(&self) -> Vec<Self::ElemTy>
@@ -537,8 +538,8 @@ pub trait Range<T> {
         let deps = self.dependent_on();
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
             .into_iter()
-            .filter(|dep| !dep.is_const(analyzer))
-            .map(|dep| (dep, dep.latest_version_in_ctx(ctx, analyzer)))
+            .filter(|dep| !dep.is_const(analyzer).unwrap())
+            .map(|dep| (dep, dep.latest_version_in_ctx(ctx, analyzer).unwrap()))
             .collect();
 
         let mut min = self.range_min();
@@ -563,22 +564,22 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     fn sat(&self, analyzer: &impl GraphLike) -> bool {
         matches!(
-            self.evaled_range_min(analyzer)
-                .range_ord(&self.evaled_range_max(analyzer)),
+            self.evaled_range_min(analyzer).unwrap()
+                .range_ord(&self.evaled_range_max(analyzer).unwrap()),
             None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         )
     }
 
     fn contains(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer)
-                .range_ord(&other.evaled_range_min(analyzer)),
+            self.evaled_range_min(analyzer).unwrap()
+                .range_ord(&other.evaled_range_min(analyzer).unwrap()),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer)
-                .range_ord(&other.evaled_range_max(analyzer)),
+            self.evaled_range_max(analyzer).unwrap()
+                .range_ord(&other.evaled_range_max(analyzer).unwrap()),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
 
@@ -587,14 +588,14 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
     fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer)
-                .range_ord(&other.minimize(analyzer)),
+            self.evaled_range_min(analyzer).unwrap()
+                .range_ord(&other.minimize(analyzer).unwrap()),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer)
-                .range_ord(&other.maximize(analyzer)),
+            self.evaled_range_max(analyzer).unwrap()
+                .range_ord(&other.maximize(analyzer).unwrap()),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
 
@@ -603,14 +604,14 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
     fn overlaps(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer)
-                .range_ord(&other.evaled_range_min(analyzer)),
+            self.evaled_range_min(analyzer).unwrap()
+                .range_ord(&other.evaled_range_min(analyzer).unwrap()),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer)
-                .range_ord(&other.evaled_range_max(analyzer)),
+            self.evaled_range_max(analyzer).unwrap()
+                .range_ord(&other.evaled_range_max(analyzer).unwrap()),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
 

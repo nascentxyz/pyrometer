@@ -172,7 +172,7 @@ fn main() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {
                     FunctionNode::from(func)
-                        .name(&analyzer)
+                        .name(&analyzer).unwrap()
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
@@ -193,12 +193,12 @@ fn main() {
         // println!("specified contracts: {:?}", all_contracts);
         all_contracts
             .iter()
-            .filter(|contract| args.contracts.contains(&contract.name(&analyzer)))
+            .filter(|contract| args.contracts.contains(&contract.name(&analyzer).unwrap()))
             .for_each(|contract| {
                 let funcs = contract.funcs(&analyzer);
                 for func in funcs.into_iter() {
                     if !args.funcs.is_empty() {
-                        if args.funcs.contains(&func.name(&analyzer)) {
+                        if args.funcs.contains(&func.name(&analyzer).unwrap()) {
                             let ctx = func.body_ctx(&analyzer);
                             let analysis = analyzer
                                 .bounds_for_all(&file_mapping, ctx, config)

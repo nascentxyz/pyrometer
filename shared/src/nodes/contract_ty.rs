@@ -1,5 +1,6 @@
+use crate::analyzer::Search;
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, GraphAnalyzer};
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::AsDotStr;
 use crate::Edge;
 use crate::FunctionNode;
@@ -35,7 +36,7 @@ impl ContractNode {
         }
     }
 
-    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut impl GraphAnalyzer) {
+    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         let all_contracts = analyzer.search_children(analyzer.entry(), &Edge::Contract);
         // we unwrap the name call because we dont really wanna bubble up thru an iteration
         inherits.iter().for_each(|inherited_name| {
@@ -77,7 +78,7 @@ impl ContractNode {
     }
 
     /// Gets all associated functions from the underlying node data for the [`Contract`]
-    pub fn funcs(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
+    pub fn funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Func)
             .into_iter()
@@ -86,7 +87,7 @@ impl ContractNode {
     }
 
     /// Gets all associated modifiers from the underlying node data for the [`Contract`]
-    pub fn modifiers(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
+    pub fn modifiers(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         analyzer
             .search_children(self.0.into(), &Edge::Modifier)
             .into_iter()
@@ -94,13 +95,13 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn associated_source_unit_part(&self, analyzer: &impl GraphLike) -> NodeIdx {
+    pub fn associated_source_unit_part(&self, analyzer: &(impl GraphLike + Search)) -> NodeIdx {
         analyzer
             .search_for_ancestor(self.0.into(), &Edge::Contract)
             .expect("detached contract")
     }
 
-    pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
+    pub fn associated_source(&self, analyzer: &(impl GraphLike + Search)) -> NodeIdx {
         let sup = self.associated_source_unit_part(analyzer);
         analyzer
             .search_for_ancestor(sup, &Edge::Part)

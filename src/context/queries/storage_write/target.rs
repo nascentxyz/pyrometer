@@ -28,37 +28,38 @@ impl ReportDisplay for StorageRangeReport {
             .analysis
             .ctx
             .ctx_deps(analyzer)
+            .unwrap()
             .iter()
             .filter_map(|(_name, cvar)| {
                 let min = if self.analysis.report_config.eval_bounds {
-                    cvar.range(analyzer)?
-                        .evaled_range_min(analyzer)
+                    cvar.range(analyzer).unwrap()?
+                        .evaled_range_min(analyzer).unwrap()
                         .to_range_string(false, analyzer)
                         .s
                 } else if self.analysis.report_config.simplify_bounds {
-                    cvar.range(analyzer)?
-                        .simplified_range_min(analyzer)
+                    cvar.range(analyzer).unwrap()?
+                        .simplified_range_min(analyzer).unwrap()
                         .to_range_string(false, analyzer)
                         .s
                 } else {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer).unwrap()?
                         .range_min()
                         .to_range_string(false, analyzer)
                         .s
                 };
 
                 let max = if self.analysis.report_config.eval_bounds {
-                    cvar.range(analyzer)?
-                        .evaled_range_max(analyzer)
+                    cvar.range(analyzer).unwrap()?
+                        .evaled_range_max(analyzer).unwrap()
                         .to_range_string(true, analyzer)
                         .s
                 } else if self.analysis.report_config.simplify_bounds {
-                    cvar.range(analyzer)?
-                        .simplified_range_max(analyzer)
+                    cvar.range(analyzer).unwrap()?
+                        .simplified_range_max(analyzer).unwrap()
                         .to_range_string(true, analyzer)
                         .s
                 } else {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer).unwrap()?
                         .range_max()
                         .to_range_string(true, analyzer)
                         .s
@@ -66,7 +67,7 @@ impl ReportDisplay for StorageRangeReport {
 
                 Some(format!(
                     "\"{}\" ∈ {{{}, {}}}",
-                    cvar.display_name(analyzer),
+                    cvar.display_name(analyzer).unwrap(),
                     min,
                     max,
                 ))
@@ -78,10 +79,10 @@ impl ReportDisplay for StorageRangeReport {
             self.analysis.ctx.path(analyzer),
             self.analysis.var_name,
             self.target
-                .evaled_range_min(analyzer) .to_range_string(false, analyzer)
+                .evaled_range_min(analyzer).unwrap() .to_range_string(false, analyzer)
                 .s,
             self.target
-                .evaled_range_max(analyzer) .to_range_string(true, analyzer)
+                .evaled_range_max(analyzer).unwrap() .to_range_string(true, analyzer)
                 .s,
             if bounds_string.is_empty() {
                 ""
@@ -167,24 +168,24 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
         let contract = self
             .search_children(entry, &crate::Edge::Contract)
             .into_iter()
-            .filter(|contract| ContractNode::from(*contract).name(self) == contract_name)
+            .filter(|contract| ContractNode::from(*contract).name(self).unwrap() == contract_name)
             .take(1)
             .next()
             .expect("No contract with provided name");
         let func = self
             .search_children(contract, &crate::Edge::Func)
             .into_iter()
-            .filter(|func| FunctionNode::from(*func).name(self) == func_name)
+            .filter(|func| FunctionNode::from(*func).name(self).unwrap() == func_name)
             .take(1)
             .next()
             .expect("No function in contract with provided name");
         let ctx = FunctionNode::from(func).body_ctx(self);
 
-        let terminals = ctx.terminal_child_list(self);
+        let terminals = ctx.terminal_child_list(self).unwrap();
         for mut analysis in terminals
             .iter()
             .map(|child| {
-                let mut parents = child.parent_list(self);
+                let mut parents = child.parent_list(self).unwrap();
                 parents.reverse();
                 parents.push(*child);
                 self.bounds_for_var_in_family_tree(
@@ -195,7 +196,7 @@ pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
                 )
             })
             .filter(|analysis| terminals.contains(&analysis.ctx))
-            .filter(|analysis| !analysis.ctx.is_killed(self))
+            .filter(|analysis| !analysis.ctx.is_killed(self).unwrap())
         {
             if let Some(last) = analysis.bound_changes.iter_mut().last() {
                 if last.1.contains(&mut target, self) {

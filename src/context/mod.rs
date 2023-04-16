@@ -1,3 +1,4 @@
+use solang_parser::helpers::CodeLocation;
 use ethers_core::types::U256;
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphLike;
@@ -42,7 +43,7 @@ impl ExprRet {
         match self {
             ExprRet::Single((_, inner)) | ExprRet::SingleLiteral((_, inner)) => {
                 match analyzer.node(*inner) {
-                    Node::ContextVar(_) => ContextVarNode::from(*inner).display_name(analyzer),
+                    Node::ContextVar(_) => ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
                     e => format!("{:?}", e),
                 }
             }
@@ -115,9 +116,11 @@ impl ExprRet {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let (_, idx) = inner;
-                let var_ty = VarType::try_from_idx(analyzer, *idx)
-                    .unwrap_or_else(|| panic!("Non-typeable as type: {:?}", analyzer.node(*idx)));
-                format!("({})", var_ty.as_dot_str(analyzer))
+                match VarType::try_from_idx(analyzer, *idx) {
+                    Some(var_ty) => format!("({})", var_ty.as_dot_str(analyzer)),
+                    None => "UnresolvedType".to_string(),
+                }
+                
             }
             ExprRet::Multi(inner) if !self.has_fork() => {
                 let mut strs = vec![];
@@ -207,15 +210,17 @@ pub trait ContextBuilder:
             match self.node(parent) {
                 Node::Context(_) => {
                     let ctx = ContextNode::from(parent.into());
-                    if ctx.is_ended(self) {
+                    if let Some(true) = self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc())) {
                         return;
                     }
-                    if ctx.live_forks(self).is_empty() {
-                        self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx)
-                    } else {
-                        ctx.live_forks(self).iter().for_each(|fork_ctx| {
-                            self.parse_ctx_stmt_inner(stmt, unchecked, Some(*fork_ctx));
-                        });
+                    if let Some(live_forks) = self.add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc())) {
+                        if live_forks.is_empty() {
+                            self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx)
+                        } else {
+                            live_forks.iter().for_each(|fork_ctx| {
+                                self.parse_ctx_stmt_inner(stmt, unchecked, Some(*fork_ctx));
+                            });
+                        }
                     }
                 }
                 _ => self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx),
@@ -258,7 +263,7 @@ pub trait ContextBuilder:
                         entry_loc = Some(fn_node.loc);
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
-                            FunctionNode::from(parent.into()).name(self),
+                            self.add_if_err(FunctionNode::from(parent.into()).name(self).into_expr_err(stmt.loc())).unwrap(),
                             *loc,
                         );
                         let ctx_node = self.add_node(Node::Context(ctx));
@@ -291,11 +296,12 @@ pub trait ContextBuilder:
                     .filter(|edge| *edge.weight() == Edge::FunctionParam)
                     .map(|edge| FunctionParamNode::from(edge.source()))
                     .collect::<Vec<FunctionParamNode>>()
-                    .iter()
+                    .into_iter()
                     .filter_map(|param_node| {
-                        let func_param = param_node.underlying(self);
+                        let res = param_node.underlying(self).into_expr_err(stmt.loc()).cloned();
+                        let func_param = self.add_if_err(res)?;
                         if let Some(cvar) =
-                            ContextVar::maybe_new_from_func_param(self, func_param.clone())
+                            ContextVar::maybe_new_from_func_param(self, func_param)
                         {
                             let cvar_node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(
@@ -304,7 +310,7 @@ pub trait ContextBuilder:
                                 Edge::Context(ContextEdge::Variable),
                             );
 
-                            Some((*param_node, ContextVarNode::from(cvar_node)))
+                            Some((param_node, ContextVarNode::from(cvar_node)))
                         } else {
                             None
                         }
@@ -318,9 +324,10 @@ pub trait ContextBuilder:
                     .collect::<Vec<FunctionReturnNode>>()
                     .iter()
                     .for_each(|ret_node| {
-                        let func_ret = ret_node.underlying(self);
+                        let res = ret_node.underlying(self).into_expr_err(stmt.loc()).cloned();
+                        let func_ret = self.add_if_err(res).unwrap();
                         if let Some(cvar) =
-                            ContextVar::maybe_new_from_func_ret(self, func_ret.clone())
+                            ContextVar::maybe_new_from_func_ret(self, func_ret)
                         {
                             let cvar_node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(
@@ -352,7 +359,8 @@ pub trait ContextBuilder:
                         )
                         .map(|ctx| {
                             if ctx.is_killed() {
-                                ContextNode::from(ctx_node).kill(self, fn_loc);
+                                let res = ContextNode::from(ctx_node).kill(self, fn_loc).into_expr_err(fn_loc);
+                                let _ = self.add_if_err(res);
                             }
                         })
                         .map_err(|e| self.add_expr_err(e));
@@ -360,7 +368,7 @@ pub trait ContextBuilder:
                     return;
                 }
 
-                let forks = ContextNode::from(ctx_node).live_forks(self);
+                let forks = self.add_if_err(ContextNode::from(ctx_node).live_forks(self).into_expr_err(stmt.loc())).unwrap();
                 if forks.is_empty() {
                     statements.iter().for_each(|stmt| {
                         self.parse_ctx_statement(stmt, *unchecked, Some(ctx_node))
@@ -380,7 +388,7 @@ pub trait ContextBuilder:
                         .expect("No context for variable definition?")
                         .into(),
                 );
-                let forks = ctx.live_forks(self);
+                let forks = self.add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc())).unwrap();
                 if forks.is_empty() {
                     let _ = self
                         .parse_ctx_expr(&var_decl.ty, ctx)
@@ -397,7 +405,8 @@ pub trait ContextBuilder:
                                         )
                                         .map(|res| {
                                             if res {
-                                                ctx.kill(self, *loc);
+                                                let res = ctx.kill(self, *loc).into_expr_err(*loc);
+                                                let _ = self.add_if_err(res);
                                             }
                                         })
                                     })
@@ -407,7 +416,8 @@ pub trait ContextBuilder:
                                     .match_var_def(var_decl, *loc, &lhs_paths, None)
                                     .map(|res| {
                                         if res {
-                                            ctx.kill(self, *loc);
+                                            let res = ctx.kill(self, *loc).into_expr_err(*loc);
+                                            let _ = self.add_if_err(res);
                                         }
                                     })
                                     .map_err(|err| self.add_expr_err(err));
@@ -431,7 +441,9 @@ pub trait ContextBuilder:
                                                 )
                                                 .map(|res| {
                                                     if res {
-                                                        ctx.kill(self, *loc);
+                                                        let res = ctx.kill(self, *loc).into_expr_err(*loc);
+                                                        let _ = self.add_if_err(res);
+
                                                     }
                                                 })
                                             })
@@ -441,7 +453,8 @@ pub trait ContextBuilder:
                                         .match_var_def(var_decl, *loc, &lhs_paths, None)
                                         .map(|res| {
                                             if res {
-                                                ctx.kill(self, *loc);
+                                                let res = ctx.kill(self, *loc).into_expr_err(*loc);
+                                                let _ = self.add_if_err(res);
                                             }
                                         })
                                         .map_err(|err| self.add_expr_err(err));
@@ -457,7 +470,7 @@ pub trait ContextBuilder:
             If(loc, if_expr, true_expr, maybe_false_expr) => {
                 tracing::trace!("parsing if, {if_expr:?}");
                 let ctx = ContextNode::from(parent_ctx.expect("Dangling if statement").into());
-                let forks = ctx.live_forks(self);
+                let forks = self.add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc())).unwrap();
                 if forks.is_empty() {
                     let _ = self
                         .cond_op_stmt(*loc, if_expr, true_expr, maybe_false_expr, ctx)
@@ -473,7 +486,8 @@ pub trait ContextBuilder:
             While(loc, cond, body) => {
                 tracing::trace!("parsing while, {cond:?}");
                 if let Some(parent) = parent_ctx {
-                    self.while_loop(*loc, parent.into().into(), cond, body);
+                    let res = self.while_loop(*loc, parent.into().into(), cond, body);
+                    let _ = self.add_if_err(res);
                 }
             }
             Expression(loc, expr) => {
@@ -483,7 +497,8 @@ pub trait ContextBuilder:
                         .parse_ctx_expr(expr, ContextNode::from(parent.into()))
                         .map(|ctx| {
                             if ctx.is_killed() {
-                                ContextNode::from(parent.into()).kill(self, *loc);
+                                let res = ContextNode::from(parent.into()).kill(self, *loc).into_expr_err(*loc);
+                                let _ = self.add_if_err(res);
                             }
                         })
                         .map_err(|e| self.add_expr_err(e));
@@ -492,7 +507,7 @@ pub trait ContextBuilder:
             For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {
                 tracing::trace!("parsing for loop");
                 if let Some(parent) = parent_ctx {
-                    self.for_loop(
+                    let res = self.for_loop(
                         *loc,
                         parent.into().into(),
                         maybe_for_start,
@@ -500,6 +515,7 @@ pub trait ContextBuilder:
                         maybe_for_end,
                         maybe_for_body,
                     );
+                    let _ = self.add_if_err(res);
                 }
             }
             DoWhile(_loc, _while_stmt, _while_expr) => {
@@ -531,10 +547,13 @@ pub trait ContextBuilder:
                 vars.iter().for_each(|var| {
                     // widen to max range
                     let latest_var = var.latest_version(self);
-                    if let Some(r) = latest_var.underlying(self).ty.default_range(self) {
+                    let res = latest_var.ty(self).into_expr_err(stmt.loc()).cloned();
+                    if let Some(r) = self.add_if_err(res).unwrap().default_range(self).unwrap() {
                         let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx);
-                        new_var.set_range_min(self, r.min);
-                        new_var.set_range_max(self, r.max);
+                        let res = new_var.set_range_min(self, r.min).into_expr_err(*loc);
+                        let _ = self.add_if_err(res);
+                        let res = new_var.set_range_max(self, r.max).into_expr_err(*loc);
+                        let _ = self.add_if_err(res);
                     }
                 });
             }
@@ -542,14 +561,15 @@ pub trait ContextBuilder:
                 tracing::trace!("parsing return");
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
-                        let forks = ContextNode::from(parent.into()).live_forks(self);
+                        let forks = self.add_if_err(ContextNode::from(parent.into()).live_forks(self).into_expr_err(stmt.loc())).unwrap();
                         if forks.is_empty() {
                             let _ = self
                                 .parse_ctx_expr(ret_expr, ContextNode::from(parent.into()))
                                 .map(|paths| {
                                     let paths = paths.flatten();
                                     if paths.is_killed() {
-                                        ContextNode::from(parent.into()).kill(self, *loc);
+                                        let res = ContextNode::from(parent.into()).kill(self, *loc).into_expr_err(*loc);
+                                        let _ = self.add_if_err(res);
                                         return;
                                     }
                                     self.return_match(loc, &paths);
@@ -562,7 +582,8 @@ pub trait ContextBuilder:
                                     .map(|paths| {
                                         let paths = paths.flatten();
                                         if paths.is_killed() {
-                                            parent.kill(self, *loc);
+                                            let res = parent.kill(self, *loc).into_expr_err(*loc);
+                                            let _ = self.add_if_err(res);
                                             return;
                                         }
                                         self.return_match(loc, &paths);
@@ -577,12 +598,14 @@ pub trait ContextBuilder:
                 tracing::trace!("parsing revert");
                 if let Some(parent) = parent_ctx {
                     let parent = ContextNode::from(parent.into());
-                    let forks = parent.live_forks(self);
+                    let forks = self.add_if_err(parent.live_forks(self).into_expr_err(stmt.loc())).unwrap();
                     if forks.is_empty() {
-                        parent.kill(self, *loc);
+                        let res = parent.kill(self, *loc).into_expr_err(*loc);
+                        let _ = self.add_if_err(res);
                     } else {
                         forks.into_iter().for_each(|parent| {
-                            parent.kill(self, *loc);
+                            let res = parent.kill(self, *loc).into_expr_err(*loc);
+                            let _ = self.add_if_err(res);
                         });
                     }
                 }
@@ -601,11 +624,12 @@ pub trait ContextBuilder:
                 let adjusts = c.post_statement_range_adjs.clone();
                 adjusts.into_iter().for_each(|(var, loc, increment)| {
                     let one_node = self.add_node(Node::Concrete(Concrete::from(U256::from(1))));
-                    let one_node = self.add_node(Node::ContextVar(ContextVar::new_from_concrete(
+                    let new_var = self.add_if_err(ContextVar::new_from_concrete(
                         Loc::Implicit,
                         one_node.into(),
                         self,
-                    )));
+                    ).into_expr_err(stmt.loc())).unwrap();
+                    let one_node = self.add_node(Node::ContextVar(new_var));
                     let _ = self
                         .op(
                             loc,
@@ -622,7 +646,7 @@ pub trait ContextBuilder:
                         .map_err(|e| self.add_expr_err(e));
                 });
                 ContextNode::from(parent.into())
-                    .underlying_mut(self)
+                    .underlying_mut(self).unwrap()
                     .post_statement_range_adjs = vec![];
             }
         }
@@ -637,7 +661,8 @@ pub trait ContextBuilder:
                     *ctx,
                     Edge::Context(ContextEdge::Return),
                 );
-                ctx.add_return_node(*loc, ContextVarNode::from(*expr).latest_version(self), self);
+                let res = ctx.add_return_node(*loc, ContextVarNode::from(*expr).latest_version(self), self).into_expr_err(*loc);
+                let _ = self.add_if_err(res);
             }
             ExprRet::Multi(rets) => {
                 rets.iter().for_each(|expr_ret| {
@@ -663,7 +688,8 @@ pub trait ContextBuilder:
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                rhs_cvar.literal_cast_from_ty(ty, self);
+                let res = rhs_cvar.literal_cast_from_ty(ty, self).into_expr_err(loc);
+                let _ = self.add_if_err(res);
                 self.match_var_def(
                     var_decl,
                     loc,
@@ -789,15 +815,16 @@ pub trait ContextBuilder:
     }
 
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Result<ExprRet, ExprErr> {
-        if ctx.is_ended(self) {
+        if ctx.is_ended(self).into_expr_err(expr.loc())? {
             return Ok(ExprRet::CtxKilled);
         }
 
-        if ctx.live_forks(self).is_empty() {
+        if ctx.live_forks(self).into_expr_err(expr.loc())?.is_empty() {
             self.parse_ctx_expr_inner(expr, ctx)
         } else {
             let rets: Vec<ExprRet> = ctx
                 .live_forks(self)
+                .into_expr_err(expr.loc())?
                 .iter()
                 .map(|fork_ctx| self.parse_ctx_expr(expr, *fork_ctx))
                 .collect::<Result<_, ExprErr>>()?;
@@ -820,23 +847,23 @@ pub trait ContextBuilder:
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => {
-                Ok(self.number_literal(ctx, *loc, int, exp, false))
+                self.number_literal(ctx, *loc, int, exp, false)
             }
-            AddressLiteral(loc, addr) => Ok(self.address_literal(ctx, *loc, addr)),
+            AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
             StringLiteral(lits) => Ok(ExprRet::Multi(
                 lits.iter()
                     .map(|lit| self.string_literal(ctx, lit.loc, &lit.string))
-                    .collect(),
+                    .collect::<Result<Vec<_>, ExprErr>>()?,
             )),
-            BoolLiteral(loc, b) => Ok(self.bool_literal(ctx, *loc, *b)),
-            HexNumberLiteral(loc, b, _unit) => Ok(self.hex_num_literal(ctx, *loc, b, false)),
-            HexLiteral(hexes) => Ok(self.hex_literals(ctx, hexes)),
+            BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
+            HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
+            HexLiteral(hexes) => self.hex_literals(ctx, hexes),
             RationalNumberLiteral(_, _, _, _, _) => todo!("Rational literal"),
             Negate(_loc, expr) => match &**expr {
                 NumberLiteral(loc, int, exp, _unit) => {
-                    Ok(self.number_literal(ctx, *loc, int, exp, true))
+                    self.number_literal(ctx, *loc, int, exp, true)
                 }
-                HexNumberLiteral(loc, b, _unit) => Ok(self.hex_num_literal(ctx, *loc, b, true)),
+                HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, true),
                 e => todo!("UnaryMinus unexpected rhs: {e:?}"),
             },
             UnaryPlus(_loc, e) => todo!("UnaryPlus unexpected rhs: {e:?}"),
@@ -952,7 +979,7 @@ pub trait ContextBuilder:
             // member
             New(_loc, expr) => self.parse_ctx_expr(expr, ctx),
             This(loc) => {
-                let var = ContextVar::new_from_contract(*loc, ctx.associated_contract(self), self);
+                let var = ContextVar::new_from_contract(*loc, ctx.associated_contract(self).into_expr_err(*loc)?, self).into_expr_err(*loc)?;
                 let cvar = self.add_node(Node::ContextVar(var));
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                 Ok(ExprRet::Single((ctx, cvar)))
@@ -972,7 +999,8 @@ pub trait ContextBuilder:
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
                         ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
                             let mut new_var = analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx);
-                            new_var.sol_delete_range(analyzer);
+                            let res = new_var.sol_delete_range(analyzer).into_expr_err(*loc);
+                            let _ = analyzer.add_if_err(res);
                             ExprRet::Single((ctx, new_var.into()))
                         }
                         ExprRet::Multi(inner) => ExprRet::Multi(
@@ -1037,33 +1065,40 @@ pub trait ContextBuilder:
         match rhs {
             ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
             ExprRet::SingleLiteral((ctx, var)) => {
-                ContextVarNode::from(*var).try_increase_size(self);
+                let res = ContextVarNode::from(*var).try_increase_size(self).into_expr_err(loc);
+                let _ = self.add_if_err(res);
                 self.match_in_de_crement(pre, increment, loc, &ExprRet::Single((*ctx, *var)))
             }
             ExprRet::Single((ctx, var)) => {
                 let cvar = ContextVarNode::from(*var);
                 let elem = Elem::Dynamic(Dynamic::new(cvar.into(), loc));
                 let one = Elem::from(Concrete::from(U256::from(1))).cast(elem);
-                if let Some(r) = cvar.range(self) {
+                if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                     if increment {
                         if pre {
                             let new_cvar = self.advance_var_in_ctx(cvar, loc, *ctx);
-                            new_cvar.set_range_min(self, r.min + one.clone());
-                            new_cvar.set_range_max(self, r.max + one);
+                            let res = new_cvar.set_range_min(self, r.min + one.clone()).into_expr_err(loc);
+                            let _ = self.add_if_err(res);
+                            let res = new_cvar.set_range_max(self, r.max + one).into_expr_err(loc);
+                            let _ = self.add_if_err(res);
                             Ok(ExprRet::Single((*ctx, new_cvar.into())))
                         } else {
                             ctx.underlying_mut(self)
+                                .into_expr_err(loc)?
                                 .post_statement_range_adjs
                                 .push((cvar, loc, increment));
                             Ok(ExprRet::Single((*ctx, cvar.into())))
                         }
                     } else if pre {
                         let new_cvar = self.advance_var_in_ctx(cvar, loc, *ctx);
-                        new_cvar.set_range_min(self, r.min - one.clone());
-                        new_cvar.set_range_max(self, r.max - one);
+                        let res = new_cvar.set_range_min(self, r.min - one.clone()).into_expr_err(loc);
+                        let _ = self.add_if_err(res);
+                        let res = new_cvar.set_range_max(self, r.max - one).into_expr_err(loc);
+                        let _ = self.add_if_err(res);
                         Ok(ExprRet::Single((*ctx, new_cvar.into())))
                     } else {
                         ctx.underlying_mut(self)
+                            .into_expr_err(loc)?
                             .post_statement_range_adjs
                             .push((cvar, loc, increment));
                         Ok(ExprRet::Single((*ctx, cvar.into())))
@@ -1108,7 +1143,8 @@ pub trait ContextBuilder:
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                rhs_cvar.literal_cast_from(&lhs_cvar, self);
+                let res = rhs_cvar.literal_cast_from(&lhs_cvar, self).into_expr_err(loc);
+                let _ = self.add_if_err(res);
                 self.assign(loc, lhs_cvar, rhs_cvar, *rhs_ctx)
             }
             (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
@@ -1191,37 +1227,47 @@ pub trait ContextBuilder:
         );
 
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
-        if !lhs_cvar.ty_eq(&rhs_cvar, self) {
-            let cast_to_min = lhs_cvar
+        if !lhs_cvar.ty_eq(&rhs_cvar, self).into_expr_err(loc)? {
+            let cast_to_min = match lhs_cvar
                 .range_min(self)
-                .unwrap_or_else(|| panic!("No range during cast? {:?}", lhs_cvar.underlying(self)));
-            let cast_to_max = lhs_cvar
+                .into_expr_err(loc)? {
+                Some(v) => v,
+                None =>  return Err(ExprErr::BadRange(loc, format!("No range during cast? {:?}", lhs_cvar.underlying(self).unwrap()))),
+            };
+
+            let cast_to_max = match lhs_cvar
                 .range_max(self)
-                .unwrap_or_else(|| panic!("No range during cast? {:?}", lhs_cvar.underlying(self)));
+                .into_expr_err(loc)? {
+                Some(v) => v,
+                None =>  return Err(ExprErr::BadRange(loc, format!("No range during cast? {:?}", lhs_cvar.underlying(self).unwrap()))),
+            };
+
             let _ = new_lhs.try_set_range_min(self, new_lower_bound.cast(cast_to_min));
             let _ = new_lhs.try_set_range_max(self, new_upper_bound.cast(cast_to_max));
         } else {
             let _ = new_lhs.try_set_range_min(self, new_lower_bound);
             let _ = new_lhs.try_set_range_max(self, new_upper_bound);
         }
-        if let Some(rhs_range) = rhs_cvar.range(self) {
-            new_lhs.try_set_range_exclusions(self, rhs_range.exclusions);
+        if let Some(rhs_range) = rhs_cvar.range(self).into_expr_err(loc)? {
+            let res = new_lhs.try_set_range_exclusions(self, rhs_range.exclusions).into_expr_err(loc);
+            let _ = self.add_if_err(res);
         }
 
         if let Some(arr) = lhs_cvar.index_to_array(self) {
             if let Some(index) = lhs_cvar.index_access_to_index(self) {
                 let next_arr = self.advance_var_in_ctx(arr, loc, ctx);
-                if next_arr.underlying(self).ty.is_dyn_builtin(self) {
-                    if let Some(r) = next_arr.range(self) {
-                        let min = r.evaled_range_min(self);
-                        let max = r.evaled_range_max(self);
+                if next_arr.underlying(self).into_expr_err(loc)?.ty.is_dyn_builtin(self).into_expr_err(loc)? {
+                    if let Some(r) = next_arr.range(self).into_expr_err(loc)? {
+                        let min = r.evaled_range_min(self).into_expr_err(loc)?;
+                        let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
                         if let Some(mut rd) = min.maybe_range_dyn() {
                             rd.val.insert(
                                 Elem::Dynamic(Dynamic::new(index.into(), loc)),
                                 Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
                             );
-                            next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                            let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                            let _ = self.add_if_err(res);
                         }
 
                         if let Some(mut rd) = max.maybe_range_dyn() {
@@ -1229,7 +1275,8 @@ pub trait ContextBuilder:
                                 Elem::Dynamic(Dynamic::new(index.into(), loc)),
                                 Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
                             );
-                            next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                            let res = next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                            let _ = self.add_if_err(res);
                         }
                     }
                 }
@@ -1246,9 +1293,9 @@ pub trait ContextBuilder:
         ctx: ContextNode,
     ) -> ContextVarNode {
         if let Some(cvar) = cvar_node.next_version(self) {
-            panic!("Not latest version of: {}", cvar.display_name(self));
+            panic!("Not latest version of: {}", cvar.display_name(self).unwrap());
         }
-        let mut new_cvar = cvar_node.latest_version(self).underlying(self).clone();
+        let mut new_cvar = cvar_node.latest_version(self).underlying(self).unwrap().clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
         if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
@@ -1266,10 +1313,10 @@ pub trait ContextBuilder:
 
     fn advance_var_underlying(&mut self, cvar_node: ContextVarNode, loc: Loc) -> &mut ContextVar {
         assert_eq!(None, cvar_node.next_version(self));
-        let mut new_cvar = cvar_node.latest_version(self).underlying(self).clone();
+        let mut new_cvar = cvar_node.latest_version(self).underlying(self).unwrap().clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
         self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
-        ContextVarNode::from(new_cvarnode).underlying_mut(self)
+        ContextVarNode::from(new_cvarnode).underlying_mut(self).unwrap()
     }
 }

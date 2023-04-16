@@ -1,5 +1,5 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, GraphAnalyzer};
+use crate::analyzer::{GraphLike};
 use crate::range::SolcRange;
 use crate::AsDotStr;
 use crate::Concrete;

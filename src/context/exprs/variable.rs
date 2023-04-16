@@ -1,9 +1,10 @@
+use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
     context::{exprs::env::Env, ContextBuilder},
     ExprRet,
 };
-use shared::{analyzer::AnalyzerLike, context::*, range::Range, Edge, Node};
+use shared::{analyzer::AnalyzerLike, context::*, Edge, Node};
 use solang_parser::pt::Expression;
 
 use solang_parser::pt::Identifier;
@@ -22,7 +23,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         } else if ident.name == "_" {
             // if we've reached this point, we are evaluating a modifier and it was the "_" keyword
             Ok(ExprRet::Multi(vec![]))
-        } else if let Some(parent_ctx) = ctx.underlying(self).parent_ctx {
+        } else if let Some(parent_ctx) = ctx.underlying(self).into_expr_err(ident.loc)?.parent_ctx {
             // check if we can inherit it
             let (_pctx, cvar) = self.variable(ident, parent_ctx)?.expect_single(ident.loc)?;
             match self.node(cvar) {
@@ -69,8 +70,9 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             Ok(ExprRet::Single((ctx, func_node)))
         } else if let Some(_func) = ctx
             .visible_funcs(self)
+            .into_expr_err(ident.loc)?
             .iter()
-            .find(|func| func.name(self) == ident.name)
+            .find(|func| func.name(self).unwrap() == ident.name)
         {
             Err(ExprErr::Todo(
                 ident.loc,

@@ -1,7 +1,6 @@
 //! Solidity and EVM specific representations as nodes in the graph
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, GraphAnalyzer};
-use crate::analyzer::AnalyzerLike;
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::analyzer::AsDotStr;
 use crate::range::elem::RangeElem;
 use crate::range::elem_ty::Elem;
@@ -59,7 +58,7 @@ impl VarType {
         }
     }
 
-    pub fn concrete_to_builtin(&mut self, analyzer: &mut impl GraphAnalyzer) -> Result<(), GraphError> {
+    pub fn concrete_to_builtin(&mut self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
         if let VarType::Concrete(cnode) = self {
             let c = cnode.underlying(analyzer)?.clone();
             match c {
@@ -164,7 +163,7 @@ impl VarType {
     pub fn try_cast(
         self,
         other: &Self,
-        analyzer: &mut impl GraphAnalyzer,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Contract(cn), _)) => {
@@ -217,7 +216,7 @@ impl VarType {
     pub fn try_literal_cast(
         self,
         other: &Self,
-        analyzer: &mut impl GraphAnalyzer,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
@@ -263,7 +262,7 @@ impl VarType {
         }
     }
 
-    pub fn max_size(&self, analyzer: &mut impl GraphAnalyzer) -> Result<Self, GraphError> {
+    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Self, GraphError> {
         match self {
             Self::BuiltIn(from_bn, _r) => {
                 let bn = from_bn.max_size(analyzer)?;
@@ -321,8 +320,8 @@ impl VarType {
             Self::User(TypeNode::Func(_), _) => Ok(false),
             _ => {
                 if let Some(range) = self.range(analyzer)? {
-                    let min = range.evaled_range_min(analyzer);
-                    let max = range.evaled_range_max(analyzer);
+                    let min = range.evaled_range_min(analyzer)?;
+                    let max = range.evaled_range_max(analyzer)?;
                     Ok(min.range_eq(&max))
                 } else {
                     Ok(false)
@@ -344,13 +343,13 @@ impl VarType {
     ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
         Ok(self.range(analyzer)?.map(|range| {
             (
-                range.evaled_range_min(analyzer),
-                range.evaled_range_max(analyzer),
+                range.evaled_range_min(analyzer).unwrap(),
+                range.evaled_range_max(analyzer).unwrap(),
             )
         }))
     }
 
-    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl GraphAnalyzer) -> Result<VarType, GraphError> {
+    pub fn dynamic_underlying_ty(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<VarType, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
             e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Builtin but it was: {e:?}")))
@@ -456,12 +455,12 @@ impl BuiltInNode {
             .implicitly_castable_to(other.underlying(analyzer)?))
     }
 
-    pub fn max_size(&self, analyzer: &mut impl GraphAnalyzer) -> Result<Self, GraphError> {
+    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Self, GraphError> {
         let m = self.underlying(analyzer)?.max_size();
         Ok(analyzer.builtin_or_add(m).into())
     }
 
-    pub fn dynamic_underlying_ty(&self, analyzer: &mut impl GraphAnalyzer) -> Result<VarType, GraphError> {
+    pub fn dynamic_underlying_ty(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<VarType, GraphError> {
         match self.underlying(analyzer)? {
             Builtin::Array(v_ty) => Ok(v_ty.clone()),
             Builtin::Mapping(_, v_ty) => Ok(v_ty.clone()),
@@ -544,7 +543,7 @@ impl Builtin {
     }
     pub fn try_from_ty(
         ty: Type,
-        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
     ) -> Option<Builtin> {
         use Type::*;
         match ty {

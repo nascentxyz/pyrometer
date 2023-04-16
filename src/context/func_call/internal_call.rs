@@ -1,3 +1,4 @@
+use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
     func_call::{intrinsic_call::IntrinsicFuncCaller, FuncCaller},
@@ -30,12 +31,12 @@ pub trait InternalFuncCaller:
         input_args: &[NamedArgument],
     ) -> Result<ExprRet, ExprErr> {
         // It is a function call, check if we have the ident in scope
-        let funcs = ctx.visible_funcs(self);
+        let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
             .filter(|func| {
-                let named_correctly = func.name(self).starts_with(&format!("{}(", ident.name));
+                let named_correctly = func.name(self).unwrap().starts_with(&format!("{}(", ident.name));
                 if !named_correctly {
                     false
                 } else {
@@ -47,7 +48,7 @@ pub trait InternalFuncCaller:
                         params.iter().all(|param| {
                             input_args
                                 .iter()
-                                .any(|input| input.name.name == param.name(self))
+                                .any(|input| input.name.name == param.name(self).unwrap())
                         })
                     }
                 }
@@ -61,7 +62,7 @@ pub trait InternalFuncCaller:
             let possible_structs = structs
                 .iter()
                 .filter(|strukt| {
-                    let named_correctly = strukt.name(self).starts_with(&ident.name.to_string());
+                    let named_correctly = strukt.name(self).unwrap().starts_with(&ident.name.to_string());
                     if !named_correctly {
                         false
                     } else {
@@ -73,7 +74,7 @@ pub trait InternalFuncCaller:
                             fields.iter().all(|field| {
                                 input_args
                                     .iter()
-                                    .any(|input| input.name.name == field.name(self))
+                                    .any(|input| input.name.name == field.name(self).unwrap())
                             })
                         }
                     }
@@ -84,7 +85,7 @@ pub trait InternalFuncCaller:
                 panic!("No functions or structs found for Named Function Call");
             } else if possible_structs.len() == 1 {
                 let strukt = possible_structs[0];
-                let var = ContextVar::new_from_struct(*loc, strukt, ctx, self);
+                let var = ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
                 let cvar = self.add_node(Node::ContextVar(var));
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -92,8 +93,8 @@ pub trait InternalFuncCaller:
                     let field_cvar = ContextVar::maybe_new_from_field(
                         self,
                         *loc,
-                        ContextVarNode::from(cvar).underlying(self),
-                        field.underlying(self).clone(),
+                        ContextVarNode::from(cvar).underlying(self).into_expr_err(*loc)?,
+                        field.underlying(self).unwrap().clone(),
                     )
                     .expect("Invalid struct field");
 
@@ -103,7 +104,7 @@ pub trait InternalFuncCaller:
                     let field_as_ret = ExprRet::Single((ctx, fc_node));
                     let input = input_args
                         .iter()
-                        .find(|arg| arg.name.name == field.name(self))
+                        .find(|arg| arg.name.name == field.name(self).unwrap())
                         .expect("No field in struct in struct construction");
                     let assignment = self.parse_ctx_expr(&input.expr, ctx)?;
                     self.match_assign_sides(*loc, &field_as_ret, &assignment)?;
@@ -122,7 +123,7 @@ pub trait InternalFuncCaller:
                     .map(|param| {
                         let input = input_args
                             .iter()
-                            .find(|arg| arg.name.name == param.name(self))
+                            .find(|arg| arg.name.name == param.name(self).unwrap())
                             .expect(
                                 "No parameter with named provided in named parameter function call",
                             );
@@ -147,13 +148,13 @@ pub trait InternalFuncCaller:
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
-        let funcs = ctx.visible_funcs(self);
+        let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
         // println!("visible funcs: [{:#?}]", funcs.iter().map(|i| i.name(self)).collect::<Vec<_>>());
         // println!("visible funcs: [{:#?}]", funcs.iter().map(|func| func.name(self)).collect::<Vec<_>>());
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
-            .filter(|func| func.name(self).starts_with(&format!("{}(", ident.name)))
+            .filter(|func| func.name(self).unwrap().starts_with(&format!("{}(", ident.name)))
             .copied()
             .collect::<Vec<_>>();
         // println!("possible_funcs: [{:#?}]", possible_funcs.iter().map(|i| i.name(self)).collect::<Vec<_>>());

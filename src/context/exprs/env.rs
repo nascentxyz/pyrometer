@@ -1,3 +1,4 @@
+use crate::context::exprs::IntoExprErr;
 use crate::context::func_call::FuncCaller;
 use crate::context::ExprErr;
 use crate::{context::ContextNode, AnalyzerLike, ExprRet};
@@ -18,7 +19,7 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             "abi" => Ok(Some(ExprRet::Multi(vec![]))),
             "_" => {
                 #[allow(clippy::manual_map)]
-                if let Some(mod_state) = &ctx.underlying(self).modifier_state.clone() {
+                if let Some(mod_state) = &ctx.underlying(self).into_expr_err(ident.loc)?.modifier_state.clone() {
                     // println!("going back to function execution from modifier: {}", mod_state.num);
                     let res = self.resume_from_modifier(ctx, mod_state.clone())?;
                     // println!("back in modifier: {}", mod_state.num);

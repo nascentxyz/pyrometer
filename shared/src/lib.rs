@@ -3,8 +3,6 @@ use crate::context::ContextVarNode;
 use std::collections::HashMap;
 
 use crate::context::ContextNode;
-
-use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
 use crate::{
     context::{Context, ContextEdge, ContextVar},

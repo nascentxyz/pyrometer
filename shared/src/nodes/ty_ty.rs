@@ -1,6 +1,5 @@
-use crate::nodes::GraphAnalyzer;
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::analyzer::AsDotStr;
-use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::Node;
 use crate::NodeIdx;
 use crate::VarType;
@@ -57,7 +56,7 @@ impl From<Ty> for Node {
 }
 
 impl Ty {
-    pub fn new(analyzer: &mut impl GraphAnalyzer<Expr = Expression>, ty: TypeDefinition) -> Ty {
+    pub fn new(analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>), ty: TypeDefinition) -> Ty {
         Ty {
             loc: ty.loc,
             ty: analyzer.parse_expr(&ty.ty),

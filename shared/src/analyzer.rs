@@ -18,12 +18,10 @@ use petgraph::{graph::*, Directed, Direction};
 use std::collections::HashMap;
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum GraphError {
     NodeConfusion(String)
 }
-
-pub trait GraphAnalyzer: GraphLike + AnalyzerLike + Search {}
 
 pub trait AnalyzerLike: GraphLike {
     type Expr;
@@ -49,6 +47,14 @@ pub trait AnalyzerLike: GraphLike {
     fn entry(&self) -> NodeIdx;
 
     fn add_expr_err(&mut self, err: Self::ExprErr);
+    
+    fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T> {
+        match err {
+            Ok(t) => Some(t),
+            Err(e) => { self.add_expr_err(e); None }
+        }
+    }
+
     fn expr_errs(&self) -> Vec<Self::ExprErr>;
 }
 
@@ -276,7 +282,7 @@ pub trait GraphLike {
     fn dot_str_no_tmps(&self) -> String
     where
         Self: std::marker::Sized,
-        Self: GraphAnalyzer,
+        Self: GraphLike + AnalyzerLike,
     {
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
@@ -325,7 +331,7 @@ pub trait GraphLike {
                             format!(
                                 "{} -- {} -- range: {}",
                                 cvar.display_name,
-                                cvar.ty.as_string(self),
+                                cvar.ty.as_string(self).unwrap(),
                                 range_str
                             )
                         }
@@ -347,7 +353,7 @@ pub trait GraphLike {
 
     fn dot_str_no_tmps_for_ctx(&self, fork_name: String) -> String
     where
-        Self: GraphAnalyzer,
+        Self: GraphLike + AnalyzerLike,
         Self: Sized,
     {
         let new_graph = self.graph().filter_map(
@@ -361,7 +367,7 @@ pub trait GraphLike {
                 }
                 Node::ContextVar(cvar) => {
                     if let Some(ctx) = ContextVarNode::from(idx).maybe_ctx(self) {
-                        if ctx.underlying(self).path == fork_name && !cvar.is_symbolic {
+                        if ctx.underlying(self).unwrap().path == fork_name && !cvar.is_symbolic {
                             Some(node.clone())
                         } else {
                             None
@@ -398,11 +404,11 @@ pub trait GraphLike {
                 &|_graph, (idx, node_ref)| {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
-                            let range_str = if let Some(r) = cvar.ty.range(self) {
+                            let range_str = if let Some(r) = cvar.ty.range(self).unwrap() {
                                 format!(
                                     "[{}, {}]",
-                                    r.evaled_range_min(self).to_range_string(false, self).s,
-                                    r.evaled_range_max(self).to_range_string(true, self).s
+                                    r.evaled_range_min(self).unwrap().to_range_string(false, self).s,
+                                    r.evaled_range_max(self).unwrap().to_range_string(true, self).s
                                 )
                             } else {
                                 "".to_string()
@@ -411,7 +417,7 @@ pub trait GraphLike {
                             format!(
                                 "{} -- {} -- range: {}",
                                 cvar.display_name,
-                                cvar.ty.as_string(self),
+                                cvar.ty.as_string(self).unwrap(),
                                 range_str
                             )
                         }

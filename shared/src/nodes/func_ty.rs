@@ -1,6 +1,5 @@
 use crate::analyzer::Search;
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, GraphAnalyzer};
 use crate::analyzer::AsDotStr;
 use crate::context::{ContextEdge, ContextNode};
 use crate::nodes::ContractNode;
@@ -8,7 +7,7 @@ use crate::range::SolcRange;
 use crate::Edge;
 use crate::VarType;
 use crate::{
-    analyzer::{AnalyzerLike},
+    analyzer::{GraphLike, AnalyzerLike},
     Node, NodeIdx,
 };
 use petgraph::{visit::EdgeRef, Direction};
@@ -70,7 +69,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn underlying_mut<'a>(&self, analyzer: &'a mut impl GraphAnalyzer) -> Result<&'a mut Function, GraphError> {
+    pub fn underlying_mut<'a>(&self, analyzer: &'a mut (impl GraphLike + AnalyzerLike)) -> Result<&'a mut Function, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Function(func) => Ok(func),
             e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Function but it was: {e:?}"))),
@@ -181,7 +180,7 @@ impl FunctionNode {
 
     pub fn set_params_and_ret(
         &self,
-        analyzer: &'_ mut (impl GraphLike + AnalyzerLike<Expr = Expression> + Search + GraphAnalyzer),
+        analyzer: &'_ mut (impl GraphLike + AnalyzerLike<Expr = Expression> + Search + GraphLike + AnalyzerLike),
     ) ->Result<(), GraphError> {
         let underlying = self.underlying(analyzer)?.clone();
         let mut params_strs = vec![];
@@ -592,7 +591,7 @@ impl From<FunctionParam> for Node {
 
 impl FunctionParam {
     pub fn new(
-        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
         param: Parameter,
         order: usize,
     ) -> Self {
@@ -674,7 +673,7 @@ pub struct FunctionReturn {
 }
 
 impl FunctionReturn {
-    pub fn new(analyzer: &mut impl GraphAnalyzer<Expr = Expression>, param: Parameter) -> Self {
+    pub fn new(analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>), param: Parameter) -> Self {
         FunctionReturn {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

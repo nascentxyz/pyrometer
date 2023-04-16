@@ -1,3 +1,4 @@
+use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{context::ContextBuilder, ExprRet};
 use shared::{analyzer::AnalyzerLike, context::*, nodes::*, Edge, Node};
@@ -65,7 +66,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         _ => {
                             // create a tmp
                             let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                            let tmp_num = lhs_ctx.new_tmp(self);
+                            let tmp_num = lhs_ctx.new_tmp(self).into_expr_err(*loc)?;
                             let new_lhs_underlying = ContextVar {
                                 loc: Some(*loc),
                                 name: format!("tmp{tmp_num}"),

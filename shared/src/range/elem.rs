@@ -1,4 +1,5 @@
-use crate::analyzer::{GraphLike, GraphAnalyzer};
+use crate::analyzer::GraphError;
+use crate::analyzer::{GraphLike};
 use crate::context::ContextVarNode;
 use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeExpr;
@@ -111,13 +112,13 @@ impl ToString for RangeOp {
 
 pub trait RangeElem<T> {
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
-    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
-    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Checks if two range elements are equal
     fn range_eq(&self, other: &Self) -> bool;
     /// Tries to compare the ordering of two range elements

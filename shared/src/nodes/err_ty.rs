@@ -1,6 +1,5 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, GraphAnalyzer};
-use crate::AnalyzerLike;
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::AsDotStr;
 use crate::{Node, NodeIdx};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
@@ -91,7 +90,7 @@ impl From<ErrorParam> for Node {
 }
 
 impl ErrorParam {
-    pub fn new(analyzer: &mut impl GraphAnalyzer<Expr = Expression>, param: ErrorParameter) -> Self {
+    pub fn new(analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>), param: ErrorParameter) -> Self {
         ErrorParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

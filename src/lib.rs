@@ -94,7 +94,7 @@ impl GraphLike for Analyzer {
     }
 }
 
-impl GraphAnalyzer for Analyzer {
+impl AnalyzerLike for Analyzer {
     type Expr = Expression;
     type ExprErr = ExprErr;
 
@@ -314,7 +314,7 @@ impl Analyzer {
 
         elems.into_iter().for_each(|(funcs, _usings, _inherits)| {
             funcs.into_iter().for_each(|func| {
-                if let Some(body) = &func.underlying(self).body.clone() {
+                if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                     self.parse_ctx_statement(body, false, Some(func));
                 }
             });
@@ -613,7 +613,7 @@ impl Analyzer {
             StraySemicolon(_loc) => todo!(),
         });
         self.user_types
-            .insert(con_node.name(self), con_node.0.into());
+            .insert(con_node.name(self).unwrap(), con_node.0.into());
         (con_node, func_nodes, usings, unhandled_inherits)
     }
 
@@ -650,7 +650,7 @@ impl Analyzer {
                                 .funcs(self)
                                 .iter()
                                 .find(|func| {
-                                    func.name(self)
+                                    func.name(self).unwrap()
                                         .starts_with(&ident_paths.path.identifiers[1].name)
                                 })
                             {
@@ -680,7 +680,7 @@ impl Analyzer {
                         };
                         if let Some(func) = funcs.iter().find(|func| {
                             FunctionNode::from(**func)
-                                .name(self)
+                                .name(self).unwrap()
                                 .starts_with(&ident_paths.path.identifiers[0].name)
                         }) {
                             self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
@@ -833,7 +833,7 @@ impl Analyzer {
             func = Some(Function::from(var_def.clone()));
         }
         let var_node = VarNode::from(self.add_node(var));
-        self.user_types.insert(var_node.name(self), var_node.into());
+        self.user_types.insert(var_node.name(self).unwrap(), var_node.into());
         (var_node, func)
     }
 

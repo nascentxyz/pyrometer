@@ -1,4 +1,6 @@
-use crate::context::ExprErr;
+use shared::analyzer::Search;
+use shared::analyzer::{GraphLike, AnalyzerLike};
+use crate::context::{ExprErr, IntoExprErr};
 use crate::{
     context::{
         exprs::{Array, MemberAccess, Require},
@@ -7,7 +9,6 @@ use crate::{
     ExprRet,
 };
 use shared::{
-    analyzer::{AnalyzerLike, GraphLike},
     context::*,
     nodes::{Builtin, VarType},
     range::{
@@ -20,11 +21,11 @@ use shared::{
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> IntrinsicFuncCaller for T where
-    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike + Search
 {
 }
 pub trait IntrinsicFuncCaller:
-    AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+    AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike + Search
 {
     /// Calls an intrinsic/builtin function call (casts, require, etc.)
     #[tracing::instrument(level = "trace", skip_all)]
@@ -46,9 +47,9 @@ pub trait IntrinsicFuncCaller:
                             fn match_decode(
                                 loc: &Loc,
                                 ret: ExprRet,
-                                analyzer: &mut impl GraphAnalyzer,
-                            ) -> ExprRet {
-                                match ret {
+                                analyzer: &mut impl AnalyzerLike,
+                            ) -> Result<ExprRet, ExprErr> {
+                                let res = match ret {
                                     ExprRet::Single((ctx, expect_builtin)) => {
                                         match analyzer.node(expect_builtin) {
                                             Node::Builtin(_) => {
@@ -56,7 +57,7 @@ pub trait IntrinsicFuncCaller:
                                                     *loc,
                                                     expect_builtin.into(),
                                                     analyzer,
-                                                );
+                                                ).into_expr_err(*loc)?;
                                                 let node = analyzer.add_node(Node::ContextVar(var));
                                                 analyzer.add_edge(
                                                     node,
@@ -67,11 +68,11 @@ pub trait IntrinsicFuncCaller:
                                             }
                                             Node::ContextVar(cvar) => {
                                                 let bn = analyzer
-                                                    .builtin_or_add(cvar.ty.as_builtin(analyzer))
+                                                    .builtin_or_add(cvar.ty.as_builtin(analyzer).into_expr_err(*loc)?)
                                                     .into();
                                                 let var = ContextVar::new_from_builtin(
                                                     *loc, bn, analyzer,
-                                                );
+                                                ).into_expr_err(*loc)?;
                                                 let node = analyzer.add_node(Node::ContextVar(var));
                                                 analyzer.add_edge(
                                                     node,
@@ -87,12 +88,13 @@ pub trait IntrinsicFuncCaller:
                                         inner
                                             .iter()
                                             .map(|i| match_decode(loc, i.clone(), analyzer))
-                                            .collect(),
+                                            .collect::<Result<Vec<_>, _>>()?,
                                     ),
                                     e => panic!("This is invalid solidity: {:?}", e),
-                                }
+                                };
+                                Ok(res)
                             }
-                            Ok(match_decode(loc, ret, self))
+                            match_decode(loc, ret, self)
                         }
                         "abi.encode"
                         | "abi.encodePacked"
@@ -101,7 +103,7 @@ pub trait IntrinsicFuncCaller:
                         | "abi.encodeWithSelector" => {
                             // currently we dont support concrete abi encoding, TODO
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -109,7 +111,7 @@ pub trait IntrinsicFuncCaller:
                         "delegatecall" | "staticcall" | "call" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -117,7 +119,7 @@ pub trait IntrinsicFuncCaller:
                         "code" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -125,7 +127,7 @@ pub trait IntrinsicFuncCaller:
                         "balance" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::Uint(256));
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self);
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -147,7 +149,7 @@ pub trait IntrinsicFuncCaller:
                             // get length
                             let len = self.tmp_length(arr, arr_ctx, *loc);
 
-                            let len_as_idx = len.as_tmp(*loc, ctx, self);
+                            let len_as_idx = len.as_tmp(*loc, ctx, self).into_expr_err(*loc)?;
                             // set length as index
                             let index = self.index_into_array_inner(
                                 *loc,
@@ -165,7 +167,7 @@ pub trait IntrinsicFuncCaller:
                                 *loc,
                                 self.builtin_or_add(Builtin::Bytes(32)).into(),
                                 self,
-                            );
+                            ).into_expr_err(*loc)?;
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
@@ -178,7 +180,7 @@ pub trait IntrinsicFuncCaller:
                                 *loc,
                                 self.builtin_or_add(Builtin::Address).into(),
                                 self,
-                            );
+                            ).into_expr_err(*loc)?;
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
@@ -197,7 +199,7 @@ pub trait IntrinsicFuncCaller:
 
                 let new_arr = ContextVar {
                     loc: Some(*loc),
-                    name: format!("tmp_arr{}", ctx.new_tmp(self)),
+                    name: format!("tmp_arr{}", ctx.new_tmp(self).into_expr_err(*loc)?),
                     display_name: "arr".to_string(),
                     storage: None,
                     is_tmp: true,
@@ -210,13 +212,13 @@ pub trait IntrinsicFuncCaller:
 
                 let len_var = ContextVar {
                     loc: Some(*loc),
-                    name: arr.name(self) + ".length",
-                    display_name: arr.display_name(self) + ".length",
+                    name: arr.name(self).into_expr_err(*loc)? + ".length",
+                    display_name: arr.display_name(self).unwrap() + ".length",
                     storage: None,
                     is_tmp: true,
                     tmp_of: None,
                     is_symbolic: true,
-                    ty: ContextVarNode::from(len_cvar).underlying(self).ty.clone(),
+                    ty: ContextVarNode::from(len_cvar).underlying(self).into_expr_err(*loc)?.ty.clone(),
                 };
 
                 let len_cvar = self.add_node(Node::ContextVar(len_var));
@@ -225,9 +227,9 @@ pub trait IntrinsicFuncCaller:
                 self.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess));
 
                 // update the length
-                if let Some(r) = arr.range(self) {
-                    let min = r.evaled_range_min(self);
-                    let max = r.evaled_range_max(self);
+                if let Some(r) = arr.range(self).into_expr_err(*loc)? {
+                    let min = r.evaled_range_min(self).into_expr_err(*loc)?;
+                    let max = r.evaled_range_max(self).into_expr_err(*loc)?;
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
@@ -236,7 +238,7 @@ pub trait IntrinsicFuncCaller:
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
                     }
                 }
 
@@ -247,12 +249,12 @@ pub trait IntrinsicFuncCaller:
                 let ty = ty.clone();
                 fn cast_match(
                     loc: &Loc,
-                    analyzer: &mut impl GraphAnalyzer,
+                    analyzer: &mut (impl GraphLike + AnalyzerLike),
                     ty: Builtin,
                     ret: ExprRet,
                     func_idx: NodeIdx,
-                ) -> ExprRet {
-                    match ret {
+                ) -> Result<ExprRet, ExprErr> {
+                    let res = match ret {
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
                         ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
                             let new_var = ContextVarNode::from(cvar).as_cast_tmp(
@@ -260,12 +262,12 @@ pub trait IntrinsicFuncCaller:
                                 ctx,
                                 ty.clone(),
                                 analyzer,
-                            );
+                            ).into_expr_err(*loc)?;
 
-                            new_var.underlying_mut(analyzer).ty =
+                            new_var.underlying_mut(analyzer).into_expr_err(*loc)?.ty =
                                 VarType::try_from_idx(analyzer, func_idx).expect("");
                             // cast the ranges
-                            if let Some(r) = ContextVarNode::from(cvar).range(analyzer) {
+                            if let Some(r) = ContextVarNode::from(cvar).range(analyzer).into_expr_err(*loc)? {
                                 let curr_range =
                                     SolcRange::try_from_builtin(&ty).expect("No default range");
                                 new_var.set_range_min(
@@ -281,7 +283,7 @@ pub trait IntrinsicFuncCaller:
                                 exclusions.iter_mut().for_each(|range| {
                                     *range = range.clone().cast(curr_range.range_min());
                                 });
-                                new_var.set_range_exclusions(analyzer, exclusions);
+                                new_var.set_range_exclusions(analyzer, exclusions).into_expr_err(*loc)?;
                             }
 
                             ExprRet::Single((ctx, new_var.into()))
@@ -290,17 +292,18 @@ pub trait IntrinsicFuncCaller:
                             inner
                                 .into_iter()
                                 .map(|i| cast_match(loc, analyzer, ty.clone(), i, func_idx))
-                                .collect(),
+                                .collect::<Result<Vec<_>, _>>()?,
                         ),
                         ExprRet::Fork(w1, w2) => ExprRet::Fork(
-                            Box::new(cast_match(loc, analyzer, ty.clone(), *w1, func_idx)),
-                            Box::new(cast_match(loc, analyzer, ty, *w2, func_idx)),
+                            Box::new(cast_match(loc, analyzer, ty.clone(), *w1, func_idx)?),
+                            Box::new(cast_match(loc, analyzer, ty, *w2, func_idx)?),
                         ),
-                    }
+                    };
+                    Ok(res)
                 }
 
                 let ret = self.parse_ctx_expr(&input_exprs[0], ctx)?.flatten();
-                Ok(cast_match(loc, self, ty, ret, func_idx))
+                cast_match(loc, self, ty, ret, func_idx)
             }
             Node::ContextVar(_c) => {
                 // its a user type

@@ -1,6 +1,5 @@
 use crate::nodes::GraphError;
-use crate::GraphLike;
-use crate::nodes::GraphAnalyzer;
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::analyzer::AsDotStr;
 use crate::Edge;
 
@@ -179,7 +178,7 @@ impl From<Field> for Node {
 
 impl Field {
     pub fn new(
-        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
         var_def: VariableDeclaration,
     ) -> Field {
         let ty_idx = analyzer.parse_expr(&var_def.ty);

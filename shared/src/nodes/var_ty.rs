@@ -1,9 +1,7 @@
 use crate::nodes::GraphError;
-use crate::nodes::GraphAnalyzer;
-use crate::analyzer::AsDotStr;
 use crate::VarType;
 use crate::{
-    analyzer::{AnalyzerLike, GraphLike},
+    analyzer::{GraphLike, AnalyzerLike, AsDotStr},
     Node, NodeIdx,
 };
 use solang_parser::pt::{
@@ -92,7 +90,7 @@ impl From<Var> for Node {
 
 impl Var {
     pub fn new(
-        analyzer: &mut impl GraphAnalyzer<Expr = Expression>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {

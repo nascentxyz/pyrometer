@@ -1,6 +1,5 @@
 use crate::nodes::GraphError;
-use crate::GraphLike;
-use crate::nodes::GraphAnalyzer;
+use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::analyzer::AsDotStr;
 use crate::Builtin;
 use crate::Concrete;
@@ -58,8 +57,8 @@ impl Msg {
         &self,
         elem: &str,
         loc: Loc,
-        analyzer: &mut impl GraphAnalyzer,
-    ) -> ContextVar {
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<ContextVar, GraphError> {
         let (node, name) = match elem {
             "data" => {
                 if let Some(d) = self.data.clone() {
@@ -71,12 +70,12 @@ impl Msg {
                 } else {
                     let b = Builtin::DynamicBytes;
                     let node = analyzer.builtin_or_add(b);
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.data".to_string();
                     var.display_name = "msg.data".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "sender" => {
@@ -88,12 +87,12 @@ impl Msg {
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Address);
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.sender".to_string();
                     var.display_name = "msg.sender".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "sig" => {
@@ -105,12 +104,12 @@ impl Msg {
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Bytes(4));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.sig".to_string();
                     var.display_name = "msg.sig".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "value" => {
@@ -122,12 +121,12 @@ impl Msg {
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(256));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.value".to_string();
                     var.display_name = "msg.value".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "origin" => {
@@ -139,12 +138,12 @@ impl Msg {
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Address);
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "tx.origin".to_string();
                     var.display_name = "tx.origin".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "gasprice" => {
@@ -156,12 +155,12 @@ impl Msg {
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "tx.gasprice".to_string();
                     var.display_name = "tx.gasprice".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "gaslimit" => {
@@ -170,20 +169,20 @@ impl Msg {
                     (analyzer.add_node(Node::Concrete(c)).into(), "".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
-            e => panic!("unknown msg attribute: {e:?}"),
+            e => return Err(GraphError::NodeConfusion(format!("Unknown msg attribute: {e:?}"))),
         };
 
-        let mut var = ContextVar::new_from_concrete(loc, node, analyzer);
+        let mut var = ContextVar::new_from_concrete(loc, node, analyzer)?;
         var.name = name.clone();
         var.display_name = name;
         var.is_tmp = false;
         var.is_symbolic = true;
-        var
+        Ok(var)
     }
 }

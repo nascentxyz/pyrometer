@@ -1,5 +1,6 @@
+use shared::analyzer::{GraphLike, AnalyzerLike};
 use crate::Builtin;
-use crate::{AnalyzerLike, Function, FunctionParam, FunctionReturn};
+use crate::{Function, FunctionParam, FunctionReturn};
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};
 use std::collections::HashMap;
 
@@ -251,7 +252,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
 }
 
 pub fn builtin_fns_inputs(
-    analyzer: &mut impl GraphAnalyzer,
+    analyzer: &mut (impl GraphLike + AnalyzerLike),
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
         ("balance", vec![
