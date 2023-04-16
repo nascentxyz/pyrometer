@@ -1,6 +1,6 @@
-use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike};
 use crate::analyzer::AsDotStr;
+use crate::analyzer::GraphError;
+use crate::analyzer::GraphLike;
 use crate::context::ContextNode;
 use crate::context::ContextVarNode;
 use crate::range::elem::RangeElem;
@@ -41,10 +41,12 @@ impl AsDotStr for SolcRange {
         // println!("here: {}", self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", "));
         format!(
             "[{}, {}] excluding: [{}]",
-            self.evaled_range_min(analyzer).unwrap()
+            self.evaled_range_min(analyzer)
+                .unwrap()
                 .to_range_string(false, analyzer)
                 .s,
-            self.evaled_range_max(analyzer).unwrap()
+            self.evaled_range_max(analyzer)
+                .unwrap()
                 .to_range_string(true, analyzer)
                 .s,
             self.exclusions
@@ -455,7 +457,7 @@ impl Range<Concrete> for SolcRange {
         self.max.clone()
     }
 
-    fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>{
+    fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError> {
         if self.min_cached.is_none() {
             self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }
@@ -564,7 +566,8 @@ pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     fn sat(&self, analyzer: &impl GraphLike) -> bool {
         matches!(
-            self.evaled_range_min(analyzer).unwrap()
+            self.evaled_range_min(analyzer)
+                .unwrap()
                 .range_ord(&self.evaled_range_max(analyzer).unwrap()),
             None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         )
@@ -572,13 +575,15 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
     fn contains(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer).unwrap()
+            self.evaled_range_min(analyzer)
+                .unwrap()
                 .range_ord(&other.evaled_range_min(analyzer).unwrap()),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer).unwrap()
+            self.evaled_range_max(analyzer)
+                .unwrap()
                 .range_ord(&other.evaled_range_max(analyzer).unwrap()),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
@@ -588,13 +593,15 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
     fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer).unwrap()
+            self.evaled_range_min(analyzer)
+                .unwrap()
                 .range_ord(&other.minimize(analyzer).unwrap()),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer).unwrap()
+            self.evaled_range_max(analyzer)
+                .unwrap()
                 .range_ord(&other.maximize(analyzer).unwrap()),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
@@ -604,13 +611,15 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 
     fn overlaps(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer).unwrap()
+            self.evaled_range_min(analyzer)
+                .unwrap()
                 .range_ord(&other.evaled_range_min(analyzer).unwrap()),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer).unwrap()
+            self.evaled_range_max(analyzer)
+                .unwrap()
                 .range_ord(&other.evaled_range_max(analyzer).unwrap()),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );

@@ -1,6 +1,6 @@
-use shared::analyzer::GraphLike;
 use crate::analyzers::LocSpan;
 use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
+use shared::analyzer::GraphLike;
 use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
@@ -138,10 +138,7 @@ impl OrderedAnalysis {
         Self { analyses }
     }
 
-    pub fn from_func_analysis(
-        fvba: FunctionVarsBoundAnalysis,
-        analyzer: &impl GraphLike,
-    ) -> Self {
+    pub fn from_func_analysis(fvba: FunctionVarsBoundAnalysis, analyzer: &impl GraphLike) -> Self {
         let mut analyses = Self::default();
         fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
             bas.iter().for_each(|ba| {
@@ -282,10 +279,7 @@ impl ToString for RangePart {
 }
 
 impl BoundAnalysis {
-    pub fn conditionals(
-        &self,
-        analyzer: &impl GraphLike,
-    ) -> Vec<(String, Vec<RangePart>)> {
+    pub fn conditionals(&self, analyzer: &impl GraphLike) -> Vec<(String, Vec<RangePart>)> {
         let deps = self.ctx.ctx_deps(analyzer).unwrap();
         let deps = deps
             .values()
@@ -309,12 +303,14 @@ impl BoundAnalysis {
         let mut parts = vec![];
         let min = if self.report_config.eval_bounds {
             range
-                .evaled_range_min(analyzer).unwrap()
+                .evaled_range_min(analyzer)
+                .unwrap()
                 .to_range_string(false, analyzer)
                 .s
         } else if self.report_config.simplify_bounds {
             range
-                .simplified_range_min(analyzer).unwrap()
+                .simplified_range_min(analyzer)
+                .unwrap()
                 .to_range_string(false, analyzer)
                 .s
         } else {
@@ -322,12 +318,14 @@ impl BoundAnalysis {
         };
         let max = if self.report_config.eval_bounds {
             range
-                .evaled_range_max(analyzer).unwrap()
+                .evaled_range_max(analyzer)
+                .unwrap()
                 .to_range_string(true, analyzer)
                 .s
         } else if self.report_config.simplify_bounds {
             range
-                .simplified_range_max(analyzer).unwrap()
+                .simplified_range_max(analyzer)
+                .unwrap()
                 .to_range_string(true, analyzer)
                 .s
         } else {
@@ -548,22 +546,14 @@ impl ReportDisplay for BoundAnalysis {
         reports
     }
 
-    fn print_reports(
-        &self,
-        mut src: &mut impl Cache<String>,
-        analyzer: &impl GraphLike,
-    ) {
+    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
             report.print(&mut src).unwrap();
         });
     }
 
-    fn eprint_reports(
-        &self,
-        mut src: &mut impl Cache<String>,
-        analyzer: &impl GraphLike,
-    ) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = self.reports(analyzer);
         reports.into_iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -679,11 +669,19 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
 
         let ctx = cvar.ctx(self);
         let func_span = if let Some(fn_call) = ctx.underlying(self).unwrap().fn_call {
-            Some(LocStrSpan::new(file_mapping, fn_call.underlying(self).unwrap().loc))
+            Some(LocStrSpan::new(
+                file_mapping,
+                fn_call.underlying(self).unwrap().loc,
+            ))
         } else {
             Some(LocStrSpan::new(
                 file_mapping,
-                ctx.underlying(self).unwrap().parent_fn.underlying(self).unwrap().loc,
+                ctx.underlying(self)
+                    .unwrap()
+                    .parent_fn
+                    .underlying(self)
+                    .unwrap()
+                    .loc,
             ))
         };
 
@@ -692,7 +690,8 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
             new_ba.ctx = ctx;
             new_ba.func_span = func_span;
             new_ba.ctx_killed = ctx
-                .killed_loc(self).unwrap()
+                .killed_loc(self)
+                .unwrap()
                 .map(|loc| LocStrSpan::new(file_mapping, loc));
             new_ba
         } else {
@@ -703,14 +702,19 @@ pub trait BoundAnalyzer: Search + AnalyzerLike + Sized {
                 func_span,
                 var_def: (
                     LocStrSpan::new(file_mapping, curr.loc(self).unwrap()),
-                    if !is_subctx { curr.range(self).unwrap() } else { None },
+                    if !is_subctx {
+                        curr.range(self).unwrap()
+                    } else {
+                        None
+                    },
                 ),
                 bound_changes: vec![],
                 report_config,
                 sub_ctxs: vec![],
                 storage: curr.underlying(self).unwrap().storage.clone(),
                 ctx_killed: ctx
-                    .killed_loc(self).unwrap()
+                    .killed_loc(self)
+                    .unwrap()
                     .map(|loc| LocStrSpan::new(file_mapping, loc)),
             }
         };
@@ -798,7 +802,8 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                 "function {}",
                 self.func_var_bound_analysis
                     .ctx
-                    .associated_fn_name(analyzer).unwrap()
+                    .associated_fn_name(analyzer)
+                    .unwrap()
             )
             .fg(Color::Cyan)
         )
@@ -855,34 +860,44 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                         .enumerate()
                         .filter_map(|(i, (_name, cvar))| {
                             let min = if self.func_var_bound_analysis.report_config.eval_bounds {
-                                cvar.range(analyzer).unwrap()?
-                                    .evaled_range_min(analyzer).unwrap()
+                                cvar.range(analyzer)
+                                    .unwrap()?
+                                    .evaled_range_min(analyzer)
+                                    .unwrap()
                                     .to_range_string(false, analyzer)
                                     .s
                             } else if self.func_var_bound_analysis.report_config.simplify_bounds {
-                                cvar.range(analyzer).unwrap()?
-                                    .simplified_range_min(analyzer).unwrap()
+                                cvar.range(analyzer)
+                                    .unwrap()?
+                                    .simplified_range_min(analyzer)
+                                    .unwrap()
                                     .to_range_string(false, analyzer)
                                     .s
                             } else {
-                                cvar.range(analyzer).unwrap()?
+                                cvar.range(analyzer)
+                                    .unwrap()?
                                     .range_min()
                                     .to_range_string(false, analyzer)
                                     .s
                             };
 
                             let max = if self.func_var_bound_analysis.report_config.eval_bounds {
-                                cvar.range(analyzer).unwrap()?
-                                    .evaled_range_max(analyzer).unwrap()
+                                cvar.range(analyzer)
+                                    .unwrap()?
+                                    .evaled_range_max(analyzer)
+                                    .unwrap()
                                     .to_range_string(true, analyzer)
                                     .s
                             } else if self.func_var_bound_analysis.report_config.simplify_bounds {
-                                cvar.range(analyzer).unwrap()?
-                                    .simplified_range_max(analyzer).unwrap()
+                                cvar.range(analyzer)
+                                    .unwrap()?
+                                    .simplified_range_max(analyzer)
+                                    .unwrap()
                                     .to_range_string(true, analyzer)
                                     .s
                             } else {
-                                cvar.range(analyzer).unwrap()?
+                                cvar.range(analyzer)
+                                    .unwrap()?
                                     .range_max()
                                     .to_range_string(true, analyzer)
                                     .s
@@ -943,7 +958,8 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                     }
 
                     if !added_fn_calls.contains(ctx) {
-                        ctx.underlying(analyzer).unwrap()
+                        ctx.underlying(analyzer)
+                            .unwrap()
                             .children
                             .iter()
                             .filter(|child| child.underlying(analyzer).unwrap().fn_call.is_some())
@@ -961,16 +977,19 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                         added_fn_calls.insert(ctx);
                     }
 
-                    ctx.return_nodes(analyzer).unwrap()
+                    ctx.return_nodes(analyzer)
+                        .unwrap()
                         .into_iter()
                         .for_each(|(loc, var)| {
                             if let Some(range) = var.range(analyzer).unwrap() {
                                 let min = range
-                                    .evaled_range_min(analyzer).unwrap()
+                                    .evaled_range_min(analyzer)
+                                    .unwrap()
                                     .to_range_string(false, analyzer)
                                     .s;
                                 let max = range
-                                    .evaled_range_max(analyzer).unwrap()
+                                    .evaled_range_max(analyzer)
+                                    .unwrap()
                                     .to_range_string(true, analyzer)
                                     .s;
                                 let r_str = if min == max {
@@ -995,9 +1014,11 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                         });
 
                     if let Some(body) = ctx
-                        .underlying(analyzer).unwrap()
+                        .underlying(analyzer)
+                        .unwrap()
                         .parent_fn
-                        .underlying(analyzer).unwrap()
+                        .underlying(analyzer)
+                        .unwrap()
                         .body
                         .as_ref()
                     {
@@ -1009,99 +1030,115 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                         );
                     }
 
-                    ctx.underlying(analyzer).unwrap().children.iter().for_each(|child| {
-                        if let Some(fn_call) = child.underlying(analyzer).unwrap().fn_call {
-                            let fn_name = fn_call.name(analyzer);
-                            if !called_fns.contains(&fn_name) {
-                                if let Some(body) = fn_call.underlying(analyzer).unwrap().body.as_ref() {
-                                    report.add_label(
-                                        Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
+                    ctx.underlying(analyzer)
+                        .unwrap()
+                        .children
+                        .iter()
+                        .for_each(|child| {
+                            if let Some(fn_call) = child.underlying(analyzer).unwrap().fn_call {
+                                let fn_name = fn_call.name(analyzer);
+                                if !called_fns.contains(&fn_name) {
+                                    if let Some(body) =
+                                        fn_call.underlying(analyzer).unwrap().body.as_ref()
+                                    {
+                                        report.add_label(
+                                            Label::new(LocStrSpan::new(
+                                                self.file_mapping,
+                                                body.loc(),
+                                            ))
                                             .with_message("Internal function call")
                                             .with_priority(-2)
                                             .with_order(-2)
                                             .with_color(Color::Fixed(140)),
-                                    );
+                                        );
+                                    }
+
+                                    called_fns.insert(fn_name);
                                 }
-
-                                called_fns.insert(fn_name);
                             }
-                        }
 
-                        if let Some(ext_fn_call) = child.underlying(analyzer).unwrap().ext_fn_call {
-                            let fn_name = ext_fn_call.name(analyzer);
-                            if !called_external_fns.contains(&fn_name) {
-                                if let Some(body) = &ext_fn_call.underlying(analyzer).unwrap().body {
-                                    report.add_label(
-                                        Label::new(LocStrSpan::new(self.file_mapping, body.loc()))
+                            if let Some(ext_fn_call) =
+                                child.underlying(analyzer).unwrap().ext_fn_call
+                            {
+                                let fn_name = ext_fn_call.name(analyzer);
+                                if !called_external_fns.contains(&fn_name) {
+                                    if let Some(body) =
+                                        &ext_fn_call.underlying(analyzer).unwrap().body
+                                    {
+                                        report.add_label(
+                                            Label::new(LocStrSpan::new(
+                                                self.file_mapping,
+                                                body.loc(),
+                                            ))
                                             .with_message("External function call")
                                             .with_priority(-2)
                                             .with_order(-2)
                                             .with_color(Color::Fixed(75)),
-                                    );
+                                        );
+                                    }
+
+                                    called_external_fns.insert(fn_name);
                                 }
 
-                                called_external_fns.insert(fn_name);
-                            }
+                                if let Some(c) = ext_fn_call.maybe_associated_contract(analyzer) {
+                                    if let Some(cname) = c.maybe_name(analyzer).unwrap() {
+                                        if !called_contracts.contains(&cname) {
+                                            report.add_label(
+                                                Label::new(LocStrSpan::new(
+                                                    self.file_mapping,
+                                                    c.loc(analyzer).unwrap(),
+                                                ))
+                                                .with_message("External Contract")
+                                                .with_priority(-3)
+                                                .with_order(-3)
+                                                .with_color(Color::Fixed(8)),
+                                            );
 
-                            if let Some(c) = ext_fn_call.maybe_associated_contract(analyzer) {
-                                if let Some(cname) = c.maybe_name(analyzer).unwrap() {
-                                    if !called_contracts.contains(&cname) {
-                                        report.add_label(
-                                            Label::new(LocStrSpan::new(
-                                                self.file_mapping,
-                                                c.loc(analyzer).unwrap(),
-                                            ))
-                                            .with_message("External Contract")
-                                            .with_priority(-3)
-                                            .with_order(-3)
-                                            .with_color(Color::Fixed(8)),
-                                        );
-
-                                        called_contracts.insert(cname);
+                                            called_contracts.insert(cname);
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        child
-                            .return_nodes(analyzer)
-                            .unwrap()
-                            .into_iter()
-                            .for_each(|(loc, var)| {
-                                if let Some(range) = var.range(analyzer).unwrap() {
-                                    let min = range
-                                        .evaled_range_min(analyzer).unwrap()
-                                        .to_range_string(false, analyzer)
-                                        .s;
-                                    let max = range
-                                        .evaled_range_max(analyzer).unwrap()
-                                        .to_range_string(true, analyzer)
-                                        .s;
-                                    let r_str = if min == max {
-                                        format!(" == {}", min.fg(MAX_COLOR))
-                                    } else {
-                                        format!(
-                                            " ∈ [ {}, {} ]",
-                                            min.fg(MIN_COLOR),
-                                            max.fg(MAX_COLOR),
-                                        )
-                                    };
-                                    report.add_label(
-                                        Label::new(LocStrSpan::new(self.file_mapping, loc))
-                                            .with_message(
-                                                format!(
-                                                    "returns: \"{}\"{}",
-                                                    var.display_name(analyzer).unwrap(),
-                                                    r_str
-                                                )
-                                                .fg(Color::Yellow),
+                            child.return_nodes(analyzer).unwrap().into_iter().for_each(
+                                |(loc, var)| {
+                                    if let Some(range) = var.range(analyzer).unwrap() {
+                                        let min = range
+                                            .evaled_range_min(analyzer)
+                                            .unwrap()
+                                            .to_range_string(false, analyzer)
+                                            .s;
+                                        let max = range
+                                            .evaled_range_max(analyzer)
+                                            .unwrap()
+                                            .to_range_string(true, analyzer)
+                                            .s;
+                                        let r_str = if min == max {
+                                            format!(" == {}", min.fg(MAX_COLOR))
+                                        } else {
+                                            format!(
+                                                " ∈ [ {}, {} ]",
+                                                min.fg(MIN_COLOR),
+                                                max.fg(MAX_COLOR),
                                             )
-                                            .with_color(Color::Yellow)
-                                            .with_order(3),
-                                    );
-                                }
-                            })
-                    });
+                                        };
+                                        report.add_label(
+                                            Label::new(LocStrSpan::new(self.file_mapping, loc))
+                                                .with_message(
+                                                    format!(
+                                                        "returns: \"{}\"{}",
+                                                        var.display_name(analyzer).unwrap(),
+                                                        r_str
+                                                    )
+                                                    .fg(Color::Yellow),
+                                                )
+                                                .with_color(Color::Yellow)
+                                                .with_order(3),
+                                        );
+                                    }
+                                },
+                            )
+                        });
                     report.finish()
                 })
                 .collect::<Vec<Report<LocStrSpan>>>(),
@@ -1110,22 +1147,14 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         reports
     }
 
-    fn print_reports(
-        &self,
-        mut src: &mut impl Cache<String>,
-        analyzer: &impl GraphLike,
-    ) {
+    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut src).unwrap();
         }
     }
 
-    fn eprint_reports(
-        &self,
-        mut src: &mut impl Cache<String>,
-        analyzer: &impl GraphLike,
-    ) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -1189,7 +1218,8 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             ctx_loc: LocStrSpan::new(file_mapping, ctx.underlying(self).unwrap().loc),
             ctx,
             ctx_killed: ctx
-                .killed_loc(self).unwrap()
+                .killed_loc(self)
+                .unwrap()
                 .map(|loc| LocStrSpan::new(file_mapping, loc)),
             vars_by_ctx: analyses,
             report_config,

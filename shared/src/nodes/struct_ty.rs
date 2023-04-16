@@ -1,6 +1,6 @@
-use crate::nodes::GraphError;
-use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::analyzer::AsDotStr;
+use crate::analyzer::{AnalyzerLike, GraphLike};
+use crate::nodes::GraphError;
 use crate::Edge;
 
 use crate::Node;
@@ -16,7 +16,9 @@ impl StructNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Struct, GraphError> {
         match analyzer.node(*self) {
             Node::Struct(st) => Ok(st),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Struct but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Struct but it was: {e:?}"
+            ))),
         }
     }
 
@@ -25,7 +27,8 @@ impl StructNode {
     }
 
     pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        Ok(self.underlying(analyzer)?
+        Ok(self
+            .underlying(analyzer)?
             .name
             .as_ref()
             .expect("Struct wasn't named")
@@ -119,12 +122,15 @@ impl FieldNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Field, GraphError> {
         match analyzer.node(*self) {
             Node::Field(field) => Ok(field),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Field but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Field but it was: {e:?}"
+            ))),
         }
     }
 
     pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        Ok(self.underlying(analyzer)?
+        Ok(self
+            .underlying(analyzer)?
             .name
             .as_ref()
             .expect("Struct wasn't named")

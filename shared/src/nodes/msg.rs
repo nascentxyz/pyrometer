@@ -1,6 +1,6 @@
-use crate::nodes::GraphError;
-use crate::analyzer::{GraphLike, AnalyzerLike};
 use crate::analyzer::AsDotStr;
+use crate::analyzer::{AnalyzerLike, GraphLike};
+use crate::nodes::GraphError;
 use crate::Builtin;
 use crate::Concrete;
 use crate::ContextVar;
@@ -18,7 +18,9 @@ impl MsgNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Msg, GraphError> {
         match analyzer.node(*self) {
             Node::Msg(st) => Ok(st),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Msg but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Msg but it was: {e:?}"
+            ))),
         }
     }
 }
@@ -175,7 +177,11 @@ impl Msg {
                     return Ok(var);
                 }
             }
-            e => return Err(GraphError::NodeConfusion(format!("Unknown msg attribute: {e:?}"))),
+            e => {
+                return Err(GraphError::NodeConfusion(format!(
+                    "Unknown msg attribute: {e:?}"
+                )))
+            }
         };
 
         let mut var = ContextVar::new_from_concrete(loc, node, analyzer)?;

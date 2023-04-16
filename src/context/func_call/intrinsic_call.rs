@@ -1,5 +1,3 @@
-use shared::analyzer::Search;
-use shared::analyzer::{GraphLike, AnalyzerLike};
 use crate::context::{ExprErr, IntoExprErr};
 use crate::{
     context::{
@@ -8,6 +6,8 @@ use crate::{
     },
     ExprRet,
 };
+use shared::analyzer::Search;
+use shared::analyzer::{AnalyzerLike, GraphLike};
 use shared::{
     context::*,
     nodes::{Builtin, VarType},
@@ -57,7 +57,8 @@ pub trait IntrinsicFuncCaller:
                                                     *loc,
                                                     expect_builtin.into(),
                                                     analyzer,
-                                                ).into_expr_err(*loc)?;
+                                                )
+                                                .into_expr_err(*loc)?;
                                                 let node = analyzer.add_node(Node::ContextVar(var));
                                                 analyzer.add_edge(
                                                     node,
@@ -68,11 +69,16 @@ pub trait IntrinsicFuncCaller:
                                             }
                                             Node::ContextVar(cvar) => {
                                                 let bn = analyzer
-                                                    .builtin_or_add(cvar.ty.as_builtin(analyzer).into_expr_err(*loc)?)
+                                                    .builtin_or_add(
+                                                        cvar.ty
+                                                            .as_builtin(analyzer)
+                                                            .into_expr_err(*loc)?,
+                                                    )
                                                     .into();
                                                 let var = ContextVar::new_from_builtin(
                                                     *loc, bn, analyzer,
-                                                ).into_expr_err(*loc)?;
+                                                )
+                                                .into_expr_err(*loc)?;
                                                 let node = analyzer.add_node(Node::ContextVar(var));
                                                 analyzer.add_edge(
                                                     node,
@@ -103,7 +109,8 @@ pub trait IntrinsicFuncCaller:
                         | "abi.encodeWithSelector" => {
                             // currently we dont support concrete abi encoding, TODO
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
+                                .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -111,7 +118,8 @@ pub trait IntrinsicFuncCaller:
                         "delegatecall" | "staticcall" | "call" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
+                                .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -119,7 +127,8 @@ pub trait IntrinsicFuncCaller:
                         "code" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
+                                .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -127,7 +136,8 @@ pub trait IntrinsicFuncCaller:
                         "balance" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::Uint(256));
-                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self).into_expr_err(*loc)?;
+                            let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
+                                .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
@@ -167,7 +177,8 @@ pub trait IntrinsicFuncCaller:
                                 *loc,
                                 self.builtin_or_add(Builtin::Bytes(32)).into(),
                                 self,
-                            ).into_expr_err(*loc)?;
+                            )
+                            .into_expr_err(*loc)?;
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
@@ -180,7 +191,8 @@ pub trait IntrinsicFuncCaller:
                                 *loc,
                                 self.builtin_or_add(Builtin::Address).into(),
                                 self,
-                            ).into_expr_err(*loc)?;
+                            )
+                            .into_expr_err(*loc)?;
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
@@ -218,7 +230,11 @@ pub trait IntrinsicFuncCaller:
                     is_tmp: true,
                     tmp_of: None,
                     is_symbolic: true,
-                    ty: ContextVarNode::from(len_cvar).underlying(self).into_expr_err(*loc)?.ty.clone(),
+                    ty: ContextVarNode::from(len_cvar)
+                        .underlying(self)
+                        .into_expr_err(*loc)?
+                        .ty
+                        .clone(),
                 };
 
                 let len_cvar = self.add_node(Node::ContextVar(len_var));
@@ -257,17 +273,17 @@ pub trait IntrinsicFuncCaller:
                     let res = match ret {
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
                         ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
-                            let new_var = ContextVarNode::from(cvar).as_cast_tmp(
-                                *loc,
-                                ctx,
-                                ty.clone(),
-                                analyzer,
-                            ).into_expr_err(*loc)?;
+                            let new_var = ContextVarNode::from(cvar)
+                                .as_cast_tmp(*loc, ctx, ty.clone(), analyzer)
+                                .into_expr_err(*loc)?;
 
                             new_var.underlying_mut(analyzer).into_expr_err(*loc)?.ty =
                                 VarType::try_from_idx(analyzer, func_idx).expect("");
                             // cast the ranges
-                            if let Some(r) = ContextVarNode::from(cvar).range(analyzer).into_expr_err(*loc)? {
+                            if let Some(r) = ContextVarNode::from(cvar)
+                                .range(analyzer)
+                                .into_expr_err(*loc)?
+                            {
                                 let curr_range =
                                     SolcRange::try_from_builtin(&ty).expect("No default range");
                                 new_var.set_range_min(
@@ -283,7 +299,9 @@ pub trait IntrinsicFuncCaller:
                                 exclusions.iter_mut().for_each(|range| {
                                     *range = range.clone().cast(curr_range.range_min());
                                 });
-                                new_var.set_range_exclusions(analyzer, exclusions).into_expr_err(*loc)?;
+                                new_var
+                                    .set_range_exclusions(analyzer, exclusions)
+                                    .into_expr_err(*loc)?;
                             }
 
                             ExprRet::Single((ctx, new_var.into()))
@@ -334,12 +352,16 @@ pub trait IntrinsicFuncCaller:
                 if let Node::Unresolved(ident) = self.node(func_idx) {
                     Err(ExprErr::FunctionNotFound(
                         *loc,
-                        format!("Could not find function: \"{}({})\"", ident.name, inputs.try_as_func_input_str(self)),
+                        format!(
+                            "Could not find function: \"{}({})\"",
+                            ident.name,
+                            inputs.try_as_func_input_str(self)
+                        ),
                     ))
                 } else {
                     unreachable!()
                 }
-            },
+            }
             e => Err(ExprErr::FunctionNotFound(*loc, format!("{e:?}"))),
         }
     }

@@ -17,13 +17,13 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         false_stmt: &Option<Box<Statement>>,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ).into_expr_err(loc)?)));
+        let true_subctx = ContextNode::from(self.add_node(Node::Context(
+            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
+        )));
         ctx.add_fork(true_subctx, self);
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ).into_expr_err(loc)?)));
+        let false_subctx = ContextNode::from(self.add_node(Node::Context(
+            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
+        )));
         ctx.add_fork(false_subctx, self);
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
@@ -60,13 +60,13 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!("conditional operator");
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ).into_expr_err(loc)?)));
+        let true_subctx = ContextNode::from(self.add_node(Node::Context(
+            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
+        )));
         ctx.add_fork(true_subctx, self);
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ).into_expr_err(loc)?)));
+        let false_subctx = ContextNode::from(self.add_node(Node::Context(
+            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
+        )));
         ctx.add_fork(false_subctx, self);
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));

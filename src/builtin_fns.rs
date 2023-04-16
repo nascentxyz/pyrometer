@@ -1,6 +1,6 @@
-use shared::analyzer::{GraphLike, AnalyzerLike};
 use crate::Builtin;
 use crate::{Function, FunctionParam, FunctionReturn};
+use shared::analyzer::{AnalyzerLike, GraphLike};
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};
 use std::collections::HashMap;
 
@@ -255,38 +255,38 @@ pub fn builtin_fns_inputs(
     analyzer: &mut (impl GraphLike + AnalyzerLike),
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
-        ("balance", vec![
-            FunctionParam {
+        (
+            "balance",
+            vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Address),
                 order: 0,
                 storage: None,
                 name: None,
-            }
-        ], vec![
-            FunctionReturn {
+            }],
+            vec![FunctionReturn {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Uint(256)),
                 storage: None,
                 name: None,
-            }
-        ]),
-        ("code", vec![
-            FunctionParam {
+            }],
+        ),
+        (
+            "code",
+            vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Address),
                 order: 0,
                 storage: None,
                 name: None,
-            }
-        ], vec![
-            FunctionReturn {
+            }],
+            vec![FunctionReturn {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
                 storage: None,
                 name: None,
-            }
-        ]),
+            }],
+        ),
         ("push", vec![], vec![]),
         (
             "ecrecover",

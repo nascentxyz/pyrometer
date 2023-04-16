@@ -1,10 +1,9 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, AnalyzerLike, Search};
+use crate::analyzer::{AnalyzerLike, GraphLike, Search};
 use crate::nodes::FunctionNode;
 use crate::ContractNode;
 use crate::StructNode;
 use std::collections::BTreeSet;
-
 
 use crate::{Edge, Node, NodeIdx};
 use petgraph::{visit::EdgeRef, Direction};
@@ -242,8 +241,12 @@ impl ContextNode {
     }
 
     /// Gets the associated contract for the function for the context
-    pub fn associated_contract(&self, analyzer: &impl GraphLike) -> Result<ContractNode, GraphError> {
-        Ok(self.associated_fn(analyzer)?
+    pub fn associated_contract(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<ContractNode, GraphError> {
+        Ok(self
+            .associated_fn(analyzer)?
             .maybe_associated_contract(analyzer)
             .expect("No associated contract for context"))
     }
@@ -253,7 +256,8 @@ impl ContextNode {
         &self,
         analyzer: &impl GraphLike,
     ) -> Result<Option<ContractNode>, GraphError> {
-        Ok(self.associated_fn(analyzer)?
+        Ok(self
+            .associated_fn(analyzer)?
             .maybe_associated_contract(analyzer))
     }
 
@@ -263,13 +267,20 @@ impl ContextNode {
             .expect("No associated source?")
     }
 
-    pub fn associated_source_unit_part(&self, analyzer: &impl GraphLike) -> Result<NodeIdx, GraphError> {
-        Ok(self.associated_fn(analyzer)?
+    pub fn associated_source_unit_part(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<NodeIdx, GraphError> {
+        Ok(self
+            .associated_fn(analyzer)?
             .associated_source_unit_part(analyzer))
     }
 
     /// Gets visible functions
-    pub fn visible_modifiers(&self, analyzer: &impl GraphLike) -> Result<Vec<FunctionNode>, GraphError> {
+    pub fn visible_modifiers(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         if let Some(contract) = self.maybe_associated_contract(analyzer)? {
@@ -412,7 +423,11 @@ impl ContextNode {
     }
 
     /// Checks whether a function is external to the current context
-    pub fn is_fn_ext(&self, fn_node: FunctionNode, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_fn_ext(
+        &self,
+        fn_node: FunctionNode,
+        analyzer: &impl GraphLike,
+    ) -> Result<bool, GraphError> {
         match fn_node.maybe_associated_contract(analyzer) {
             None => Ok(false),
             Some(fn_ctrt) => {
@@ -439,10 +454,15 @@ impl ContextNode {
     }
 
     /// Gets a mutable reference to the underlying context in the graph
-    pub fn underlying_mut<'a>(&self, analyzer: &'a mut (impl GraphLike + AnalyzerLike)) -> Result<&'a mut Context, GraphError> {
+    pub fn underlying_mut<'a>(
+        &self,
+        analyzer: &'a mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<&'a mut Context, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Context(c) => Ok(c),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Context but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Context but it was: {e:?}"
+            ))),
         }
     }
 
@@ -450,7 +470,9 @@ impl ContextNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Context, GraphError> {
         match analyzer.node(*self) {
             Node::Context(c) => Ok(c),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Context but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Context but it was: {e:?}"
+            ))),
         }
     }
 
@@ -536,7 +558,10 @@ impl ContextNode {
     }
 
     /// Reads the current temporary counter and increments the counter
-    pub fn new_tmp(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<usize, GraphError> {
+    pub fn new_tmp(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<usize, GraphError> {
         let context = self.underlying_mut(analyzer)?;
         let ret = context.tmp_var_ctr;
         context.tmp_var_ctr += 1;
@@ -553,25 +578,31 @@ impl ContextNode {
     pub fn live_forks(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
         let context = self.underlying(analyzer)?;
         let mut live = vec![];
-        for fork in context
-            .forks
-            .iter() {
+        for fork in context.forks.iter() {
             if !fork.is_ended(analyzer)? {
-                live.push(fork.clone());    
+                live.push(*fork);
             }
         }
         Ok(live)
     }
 
     /// Adds a fork to the context
-    pub fn add_fork(&self, fork: ContextNode, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError>{
+    pub fn add_fork(
+        &self,
+        fork: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
         context.add_fork(fork);
         Ok(())
     }
 
     /// Adds a child to the context
-    pub fn add_child(&self, child: ContextNode, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError>{
+    pub fn add_child(
+        &self,
+        child: ContextNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
         context.add_child(child);
         Ok(())
@@ -579,7 +610,11 @@ impl ContextNode {
 
     /// Kills the context by denoting it as killed. Recurses up the contexts and kills
     /// parent contexts if all subcontexts of that context are killed
-    pub fn kill(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), kill_loc: Loc) -> Result<(), GraphError> {
+    pub fn kill(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        kill_loc: Loc,
+    ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
         context.killed = Some(kill_loc);
         if let Some(parent_ctx) = context.parent_ctx {
@@ -589,7 +624,11 @@ impl ContextNode {
     }
 
     /// Kills if and only if all subcontexts are killed
-    pub fn end_if_all_forks_ended(&self, analyzer: &mut (impl GraphLike + AnalyzerLike), kill_loc: Loc) -> Result<(), GraphError> {
+    pub fn end_if_all_forks_ended(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        kill_loc: Loc,
+    ) -> Result<(), GraphError> {
         if self.live_forks(analyzer)?.is_empty() {
             let context = self.underlying_mut(analyzer)?;
             context.killed = Some(kill_loc);
@@ -612,33 +651,35 @@ impl ContextNode {
     }
 
     /// Gets all terminal children
-    pub fn terminal_child_list(&self, analyzer: &impl GraphLike) -> Result<Vec<ContextNode>, GraphError> {
+    pub fn terminal_child_list(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Vec<ContextNode>, GraphError> {
         let context = self.underlying(analyzer)?;
         if context.forks.is_empty() {
             Ok(vec![*self])
         } else {
             let mut forks = vec![];
 
-            for fork in context
-                .forks
-                .clone().into_iter() {
-                forks.extend(fork.terminal_child_list(analyzer)?)       
+            for fork in context.forks.clone().into_iter() {
+                forks.extend(fork.terminal_child_list(analyzer)?)
             }
             Ok(forks)
         }
     }
 
-    pub fn returning_child_list(&self, analyzer: &impl GraphLike) -> Result<Vec<ContextNode>, GraphError> {
+    pub fn returning_child_list(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Vec<ContextNode>, GraphError> {
         let context = self.underlying(analyzer)?;
         if context.children.is_empty() {
             Ok(vec![*self])
         } else {
             let mut children = vec![];
 
-            for child in context
-                .children
-                .clone().into_iter() {
-                children.extend(child.returning_child_list(analyzer)?)       
+            for child in context.children.clone().into_iter() {
+                children.extend(child.returning_child_list(analyzer)?)
             }
             Ok(children)
         }
@@ -661,12 +702,19 @@ impl ContextNode {
     }
 
     /// Returns a map of variable dependencies for this context
-    pub fn ctx_deps(&self, analyzer: &impl GraphLike) -> Result<HashMap<String, ContextVarNode>, GraphError> {
+    pub fn ctx_deps(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<HashMap<String, ContextVarNode>, GraphError> {
         Ok(self.underlying(analyzer)?.ctx_deps.clone())
     }
 
     /// Returns a vector of variable dependencies for this context
-    pub fn add_ctx_dep(&self, dep: ContextVarNode, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+    pub fn add_ctx_dep(
+        &self,
+        dep: ContextVarNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
         tracing::trace!("Adding ctx dependency: {}", dep.display_name(analyzer)?);
         if dep.is_symbolic(analyzer)? {
             let dep_name = dep.name(analyzer)?;
@@ -686,7 +734,10 @@ impl ContextNode {
         Ok(())
     }
 
-    pub fn return_nodes(&self, analyzer: &impl GraphLike) -> Result<Vec<(Loc, ContextVarNode)>, GraphError> {
+    pub fn return_nodes(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Vec<(Loc, ContextVarNode)>, GraphError> {
         Ok(self.underlying(analyzer)?.ret.clone())
     }
 

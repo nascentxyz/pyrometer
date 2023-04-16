@@ -1,6 +1,6 @@
-use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike};
 use crate::analyzer::AsDotStr;
+use crate::analyzer::GraphError;
+use crate::analyzer::GraphLike;
 
 use crate::Node;
 use crate::NodeIdx;
@@ -17,7 +17,9 @@ impl BlockNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Block, GraphError> {
         match analyzer.node(*self) {
             Node::Block(st) => Ok(st),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Msg but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Msg but it was: {e:?}"
+            ))),
         }
     }
 }

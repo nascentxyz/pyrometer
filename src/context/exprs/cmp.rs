@@ -1,7 +1,7 @@
-use shared::analyzer::GraphError;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{ContextBuilder, ExprRet};
+use shared::analyzer::GraphError;
 use shared::range::elem_ty::Dynamic;
 use shared::{
     analyzer::AnalyzerLike,
@@ -43,7 +43,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                 let out_var = ContextVar {
                     loc: Some(loc),
-                    name: format!("tmp{}(!{})", lhs_cvar.name(self).into_expr_err(loc)?, ctx.new_tmp(self).into_expr_err(loc)?),
+                    name: format!(
+                        "tmp{}(!{})",
+                        lhs_cvar.name(self).into_expr_err(loc)?,
+                        ctx.new_tmp(self).into_expr_err(loc)?
+                    ),
                     display_name: format!("!{}", lhs_cvar.display_name(self).into_expr_err(loc)?,),
                     storage: None,
                     is_tmp: true,
@@ -112,7 +116,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     });
 
                     let exclusions = lhs_cvar
-                        .range(self).into_expr_err(loc)?
+                        .range(self)
+                        .into_expr_err(loc)?
                         .expect("No lhs rnage")
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
@@ -142,8 +147,12 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ),
                     storage: None,
                     is_tmp: true,
-                    is_symbolic: ContextVarNode::from(*lhs).is_symbolic(self).into_expr_err(loc)?
-                        || ContextVarNode::from(*rhs).is_symbolic(self).into_expr_err(loc)?,
+                    is_symbolic: ContextVarNode::from(*lhs)
+                        .is_symbolic(self)
+                        .into_expr_err(loc)?
+                        || ContextVarNode::from(*rhs)
+                            .is_symbolic(self)
+                            .into_expr_err(loc)?,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),

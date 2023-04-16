@@ -1,6 +1,6 @@
-use crate::analyzer::Search;
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, AnalyzerLike};
+use crate::analyzer::Search;
+use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::AsDotStr;
 use crate::Edge;
 use crate::FunctionNode;
@@ -32,7 +32,9 @@ impl ContractNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Contract, GraphError> {
         match analyzer.node(*self) {
             Node::Contract(contract) => Ok(contract),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Contract but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Contract but it was: {e:?}"
+            ))),
         }
     }
 
@@ -42,7 +44,9 @@ impl ContractNode {
         inherits.iter().for_each(|inherited_name| {
             let found = all_contracts
                 .iter()
-                .find(|contract| &ContractNode::from(**contract).name(analyzer).unwrap() == inherited_name)
+                .find(|contract| {
+                    &ContractNode::from(**contract).name(analyzer).unwrap() == inherited_name
+                })
                 .unwrap_or_else(|| {
                     analyzer.open_dot();
                     panic!(
@@ -56,7 +60,8 @@ impl ContractNode {
 
     /// Gets the name from the underlying node data for the [`Contract`]
     pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        Ok(self.underlying(analyzer)?
+        Ok(self
+            .underlying(analyzer)?
             .name
             .clone()
             .expect("Unnamed contract")
@@ -66,7 +71,7 @@ impl ContractNode {
     /// Tries to Get the name from the underlying node data for the [`Contract`]
     pub fn maybe_name(&self, analyzer: &impl GraphLike) -> Result<Option<String>, GraphError> {
         if let Some(ident) = self.underlying(analyzer)?.name.clone() {
-            Ok(Some(ident.name))    
+            Ok(Some(ident.name))
         } else {
             Ok(None)
         }

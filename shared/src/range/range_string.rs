@@ -1,4 +1,4 @@
-use crate::analyzer::{GraphLike};
+use crate::analyzer::GraphLike;
 use crate::context::ContextVarNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem::RangeOp;
@@ -55,7 +55,8 @@ impl ToRangeString for Elem<Concrete> {
             Elem::Dynamic(Dynamic { idx, .. }) => {
                 let cvar = ContextVarNode::from(*idx)
                     .first_version(analyzer)
-                    .underlying(analyzer).unwrap();
+                    .underlying(analyzer)
+                    .unwrap();
                 RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
             Elem::ConcreteDyn(rd) => rd.def_string(analyzer),
@@ -240,7 +241,11 @@ impl ToRangeString for RangeExpr<Concrete> {
 
             match rhs {
                 Elem::Concrete(c) => RangeElemString::new(
-                    format!("{}({})", c.val.as_builtin().as_string(analyzer).unwrap(), lhs_str.s),
+                    format!(
+                        "{}({})",
+                        c.val.as_builtin().as_string(analyzer).unwrap(),
+                        lhs_str.s
+                    ),
                     lhs_str.loc,
                 ),
                 _ => RangeElemString::new(

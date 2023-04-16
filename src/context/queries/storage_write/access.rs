@@ -52,11 +52,7 @@ impl ReportDisplay for AccessStorageWriteReport {
         }
     }
 
-    fn eprint_reports(
-        &self,
-        mut src: &mut impl Cache<String>,
-        analyzer: &impl GraphLike,
-    ) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -145,34 +141,54 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                         .iter()
                         .filter_map(|(_name, cvar)| {
                             let min = if report_config.eval_bounds {
-                                cvar.range(self).unwrap()?
-                                    .evaled_range_min(self).unwrap()
+                                cvar.range(self)
+                                    .unwrap()?
+                                    .evaled_range_min(self)
+                                    .unwrap()
                                     .to_range_string(false, self)
                                     .s
                             } else if report_config.simplify_bounds {
-                                cvar.range(self).unwrap()?
-                                    .simplified_range_min(self).unwrap()
+                                cvar.range(self)
+                                    .unwrap()?
+                                    .simplified_range_min(self)
+                                    .unwrap()
                                     .to_range_string(false, self)
                                     .s
                             } else {
-                                cvar.range(self).unwrap()?.range_min().to_range_string(false, self).s
+                                cvar.range(self)
+                                    .unwrap()?
+                                    .range_min()
+                                    .to_range_string(false, self)
+                                    .s
                             };
 
                             let max = if report_config.eval_bounds {
-                                cvar.range(self).unwrap()?
-                                    .evaled_range_max(self).unwrap()
+                                cvar.range(self)
+                                    .unwrap()?
+                                    .evaled_range_max(self)
+                                    .unwrap()
                                     .to_range_string(true, self)
                                     .s
                             } else if report_config.simplify_bounds {
-                                cvar.range(self).unwrap()?
-                                    .simplified_range_max(self).unwrap()
+                                cvar.range(self)
+                                    .unwrap()?
+                                    .simplified_range_max(self)
+                                    .unwrap()
                                     .to_range_string(true, self)
                                     .s
                             } else {
-                                cvar.range(self).unwrap()?.range_max().to_range_string(true, self).s
+                                cvar.range(self)
+                                    .unwrap()?
+                                    .range_max()
+                                    .to_range_string(true, self)
+                                    .s
                             };
                             if min == max {
-                                Some(format!("\"{}\" == {}", cvar.display_name(self).unwrap(), min,))
+                                Some(format!(
+                                    "\"{}\" == {}",
+                                    cvar.display_name(self).unwrap(),
+                                    min,
+                                ))
                             } else {
                                 Some(format!(
                                     "\"{}\" ∈ [ {}, {} ]",

@@ -1,5 +1,5 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, AnalyzerLike};
+use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::AsDotStr;
 use crate::{Node, NodeIdx};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
@@ -10,7 +10,9 @@ impl ErrorNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Error, GraphError> {
         match analyzer.node(*self) {
             Node::Error(err) => Ok(err),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Var but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Var but it was: {e:?}"
+            ))),
         }
     }
 }
@@ -90,7 +92,10 @@ impl From<ErrorParam> for Node {
 }
 
 impl ErrorParam {
-    pub fn new(analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>), param: ErrorParameter) -> Self {
+    pub fn new(
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        param: ErrorParameter,
+    ) -> Self {
         ErrorParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty),

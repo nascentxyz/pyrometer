@@ -1,5 +1,5 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike, AnalyzerLike};
+use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::Builtin;
 use crate::{Node, NodeIdx};
 use ethers_core::types::{Address, H256, I256, U256};
@@ -13,11 +13,16 @@ impl ConcreteNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Concrete, GraphError> {
         match analyzer.node(*self) {
             Node::Concrete(c) => Ok(c),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Concrete but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Concrete but it was: {e:?}"
+            ))),
         }
     }
 
-    pub fn max_size(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Self, GraphError> {
+    pub fn max_size(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
         Ok(analyzer.add_node(Node::Concrete(c)).into())
     }

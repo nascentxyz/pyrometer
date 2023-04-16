@@ -1,5 +1,5 @@
 use crate::analyzer::GraphError;
-use crate::analyzer::{GraphLike};
+use crate::analyzer::GraphLike;
 use crate::range::SolcRange;
 use crate::AsDotStr;
 use crate::Concrete;
@@ -31,13 +31,16 @@ impl EnumNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Enum, GraphError> {
         match analyzer.node(*self) {
             Node::Enum(e) => Ok(e),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Contract but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Contract but it was: {e:?}"
+            ))),
         }
     }
 
     /// Gets the name of the enum from the underlying node data for the [`Enum`]
     pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        Ok(self.underlying(analyzer)?
+        Ok(self
+            .underlying(analyzer)?
             .name
             .clone()
             .expect("Unnamed contract")
@@ -48,7 +51,10 @@ impl EnumNode {
         Ok(self.underlying(analyzer)?.variants())
     }
 
-    pub fn maybe_default_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
+    pub fn maybe_default_range(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Option<SolcRange>, GraphError> {
         let variants = self.variants(analyzer)?;
         if !variants.is_empty() {
             let min = Concrete::from(variants.first().unwrap().clone()).into();
@@ -59,7 +65,11 @@ impl EnumNode {
         }
     }
 
-    pub fn range_from_variant(&self, variant: String, analyzer: &impl GraphLike) -> Result<SolcRange, GraphError> {
+    pub fn range_from_variant(
+        &self,
+        variant: String,
+        analyzer: &impl GraphLike,
+    ) -> Result<SolcRange, GraphError> {
         let variants = self.variants(analyzer)?;
         assert!(variants.contains(&variant));
         let min = Concrete::from(variant.clone()).into();

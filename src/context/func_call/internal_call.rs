@@ -36,7 +36,10 @@ pub trait InternalFuncCaller:
         let possible_funcs = funcs
             .iter()
             .filter(|func| {
-                let named_correctly = func.name(self).unwrap().starts_with(&format!("{}(", ident.name));
+                let named_correctly = func
+                    .name(self)
+                    .unwrap()
+                    .starts_with(&format!("{}(", ident.name));
                 if !named_correctly {
                     false
                 } else {
@@ -62,7 +65,10 @@ pub trait InternalFuncCaller:
             let possible_structs = structs
                 .iter()
                 .filter(|strukt| {
-                    let named_correctly = strukt.name(self).unwrap().starts_with(&ident.name.to_string());
+                    let named_correctly = strukt
+                        .name(self)
+                        .unwrap()
+                        .starts_with(&ident.name.to_string());
                     if !named_correctly {
                         false
                     } else {
@@ -85,7 +91,8 @@ pub trait InternalFuncCaller:
                 panic!("No functions or structs found for Named Function Call");
             } else if possible_structs.len() == 1 {
                 let strukt = possible_structs[0];
-                let var = ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
+                let var =
+                    ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
                 let cvar = self.add_node(Node::ContextVar(var));
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -93,7 +100,9 @@ pub trait InternalFuncCaller:
                     let field_cvar = ContextVar::maybe_new_from_field(
                         self,
                         *loc,
-                        ContextVarNode::from(cvar).underlying(self).into_expr_err(*loc)?,
+                        ContextVarNode::from(cvar)
+                            .underlying(self)
+                            .into_expr_err(*loc)?,
                         field.underlying(self).unwrap().clone(),
                     )
                     .expect("Invalid struct field");
@@ -154,7 +163,11 @@ pub trait InternalFuncCaller:
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
-            .filter(|func| func.name(self).unwrap().starts_with(&format!("{}(", ident.name)))
+            .filter(|func| {
+                func.name(self)
+                    .unwrap()
+                    .starts_with(&format!("{}(", ident.name))
+            })
             .copied()
             .collect::<Vec<_>>();
         // println!("possible_funcs: [{:#?}]", possible_funcs.iter().map(|i| i.name(self)).collect::<Vec<_>>());
@@ -173,7 +186,6 @@ pub trait InternalFuncCaller:
                 }
             };
             self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
-            
         } else if possible_funcs.len() == 1 {
             let inputs = ExprRet::Multi(
                 input_exprs

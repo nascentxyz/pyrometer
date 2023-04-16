@@ -130,15 +130,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
             len: self.len.maximize(analyzer)?,
             val: {
-                    let mut map = BTreeMap::default();
-                    for (idx, val) in self
-                        .val
-                        .clone()
-                        .into_iter() {
-                        map.insert(idx, val.maximize(analyzer)?);
-                    }
-                    map
-                },
+                let mut map = BTreeMap::default();
+                for (idx, val) in self.val.clone().into_iter() {
+                    map.insert(idx, val.maximize(analyzer)?);
+                }
+                map
+            },
             loc: self.loc,
         })))
     }
@@ -147,15 +144,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
             len: self.len.minimize(analyzer)?,
             val: {
-                    let mut map = BTreeMap::default();
-                    for (idx, val) in self
-                        .val
-                        .clone()
-                        .into_iter() {
-                        map.insert(idx, val.minimize(analyzer)?);
-                    }
-                    map
-                },
+                let mut map = BTreeMap::default();
+                for (idx, val) in self.val.clone().into_iter() {
+                    map.insert(idx, val.minimize(analyzer)?);
+                }
+                map
+            },
             loc: self.loc,
         })))
     }
@@ -164,15 +158,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
             len: self.len.simplify_maximize(analyzer)?,
             val: {
-                    let mut map = BTreeMap::default();
-                    for (idx, val) in self
-                        .val
-                        .clone()
-                        .into_iter() {
-                        map.insert(idx, val.simplify_maximize(analyzer)?);
-                    }
-                    map
-                },
+                let mut map = BTreeMap::default();
+                for (idx, val) in self.val.clone().into_iter() {
+                    map.insert(idx, val.simplify_maximize(analyzer)?);
+                }
+                map
+            },
             loc: self.loc,
         })))
     }
@@ -180,15 +171,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
             len: self.len.simplify_minimize(analyzer)?,
             val: {
-                    let mut map = BTreeMap::default();
-                    for (idx, val) in self
-                        .val
-                        .clone()
-                        .into_iter() {
-                        map.insert(idx, val.simplify_minimize(analyzer)?);
-                    }
-                    map
-                },
+                let mut map = BTreeMap::default();
+                for (idx, val) in self.val.clone().into_iter() {
+                    map.insert(idx, val.simplify_minimize(analyzer)?);
+                }
+                map
+            },
             loc: self.loc,
         })))
     }
@@ -461,7 +449,11 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
 }
 
 impl Elem<Concrete> {
-    pub fn is_negative(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_negative(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphLike,
+    ) -> Result<bool, GraphError> {
         let res = match self {
             Elem::Concrete(RangeConcrete {
                 val: Concrete::Int(_, val),
@@ -783,11 +775,19 @@ pub trait ExecOp<T> {
     /// and right-hand-side
     fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Attempts to simplify an expression (i.e. just apply constant folding)
-    fn simplify_exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn simplify_exec_op(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<T>, GraphError>;
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
-    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn exec_op(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
         let lhs_min = self.lhs.minimize(analyzer)?;
         let lhs_max = self.lhs.maximize(analyzer)?;
         let rhs_min = self.rhs.minimize(analyzer)?;
@@ -1685,7 +1685,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         Ok(res)
     }
 
-    fn simplify_exec_op(&self, _maximize: bool, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_exec_op(
+        &self,
+        _maximize: bool,
+        _analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
         todo!();
     }
 }

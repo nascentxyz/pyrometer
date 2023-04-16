@@ -172,7 +172,8 @@ fn main() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {
                     FunctionNode::from(func)
-                        .name(&analyzer).unwrap()
+                        .name(&analyzer)
+                        .unwrap()
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {

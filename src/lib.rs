@@ -650,7 +650,8 @@ impl Analyzer {
                                 .funcs(self)
                                 .iter()
                                 .find(|func| {
-                                    func.name(self).unwrap()
+                                    func.name(self)
+                                        .unwrap()
                                         .starts_with(&ident_paths.path.identifiers[1].name)
                                 })
                             {
@@ -680,7 +681,8 @@ impl Analyzer {
                         };
                         if let Some(func) = funcs.iter().find(|func| {
                             FunctionNode::from(**func)
-                                .name(self).unwrap()
+                                .name(self)
+                                .unwrap()
                                 .starts_with(&ident_paths.path.identifiers[0].name)
                         }) {
                             self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
@@ -833,7 +835,8 @@ impl Analyzer {
             func = Some(Function::from(var_def.clone()));
         }
         let var_node = VarNode::from(self.add_node(var));
-        self.user_types.insert(var_node.name(self).unwrap(), var_node.into());
+        self.user_types
+            .insert(var_node.name(self).unwrap(), var_node.into());
         (var_node, func)
     }
 

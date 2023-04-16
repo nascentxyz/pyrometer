@@ -32,7 +32,6 @@ impl<T> ExprParser for T where
 {
 }
 
-
 pub trait IntoExprErr<T> {
     fn into_expr_err(self, loc: Loc) -> Result<T, ExprErr>;
 }
@@ -41,11 +40,10 @@ impl<T> IntoExprErr<T> for Result<T, GraphError> {
     fn into_expr_err(self, loc: Loc) -> Result<T, ExprErr> {
         match self {
             Ok(v) => Ok(v),
-            Err(e) => Err(ExprErr::from_graph_err(loc, e))
+            Err(e) => Err(ExprErr::from_graph_err(loc, e)),
         }
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub enum ExprErr {

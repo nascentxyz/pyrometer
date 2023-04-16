@@ -17,10 +17,9 @@ use petgraph::dot::Dot;
 use petgraph::{graph::*, Directed, Direction};
 use std::collections::HashMap;
 
-
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum GraphError {
-    NodeConfusion(String)
+    NodeConfusion(String),
 }
 
 pub trait AnalyzerLike: GraphLike {
@@ -47,11 +46,14 @@ pub trait AnalyzerLike: GraphLike {
     fn entry(&self) -> NodeIdx;
 
     fn add_expr_err(&mut self, err: Self::ExprErr);
-    
+
     fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T> {
         match err {
             Ok(t) => Some(t),
-            Err(e) => { self.add_expr_err(e); None }
+            Err(e) => {
+                self.add_expr_err(e);
+                None
+            }
         }
     }
 
@@ -407,8 +409,14 @@ pub trait GraphLike {
                             let range_str = if let Some(r) = cvar.ty.range(self).unwrap() {
                                 format!(
                                     "[{}, {}]",
-                                    r.evaled_range_min(self).unwrap().to_range_string(false, self).s,
-                                    r.evaled_range_max(self).unwrap().to_range_string(true, self).s
+                                    r.evaled_range_min(self)
+                                        .unwrap()
+                                        .to_range_string(false, self)
+                                        .s,
+                                    r.evaled_range_max(self)
+                                        .unwrap()
+                                        .to_range_string(true, self)
+                                        .s
                                 )
                             } else {
                                 "".to_string()

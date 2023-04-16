@@ -124,7 +124,8 @@ pub trait FuncCaller:
                             {
                                 true
                             } else if literals[i] {
-                                let as_concrete = ContextVarNode::from(*input).as_concrete(self).unwrap();
+                                let as_concrete =
+                                    ContextVarNode::from(*input).as_concrete(self).unwrap();
                                 let possibilities = as_concrete.possible_builtins_from_ty_inf();
                                 let param_ty = param.ty(self).unwrap();
                                 match self.node(param_ty) {
@@ -176,7 +177,11 @@ pub trait FuncCaller:
         // }
         let new_cvarnode = self.add_node(Node::ContextVar(var));
         self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
-        if let Some(func_node) = ContextVarNode::from(new_cvarnode).ty(self).into_expr_err(*loc)?.func_node(self) {
+        if let Some(func_node) = ContextVarNode::from(new_cvarnode)
+            .ty(self)
+            .into_expr_err(*loc)?
+            .func_node(self)
+        {
             self.func_call(ctx, *loc, inputs, func_node, func_call_str)
         } else {
             unreachable!()
@@ -267,15 +272,20 @@ pub trait FuncCaller:
         let callee_ctx = if entry_call {
             ctx
         } else {
-            let callee_ctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-                ctx,
-                loc,
-                false,
-                Some(func_node),
-                fn_ext,
-                self,
-                modifier_state.clone(),
-            ).into_expr_err(loc)?)));
+            let callee_ctx = ContextNode::from(
+                self.add_node(Node::Context(
+                    Context::new_subctx(
+                        ctx,
+                        loc,
+                        false,
+                        Some(func_node),
+                        fn_ext,
+                        self,
+                        modifier_state.clone(),
+                    )
+                    .into_expr_err(loc)?,
+                )),
+            );
             let res = ctx.add_child(callee_ctx, self).into_expr_err(loc);
             let _ = self.add_if_err(res);
             let ctx_fork = self.add_node(Node::FunctionCall);
@@ -294,8 +304,14 @@ pub trait FuncCaller:
             .zip(inputs.iter())
             .filter_map(|(param, input)| {
                 if !entry_call {
-                    if let Some(name) = self.add_if_err(param.maybe_name(self).into_expr_err(loc))? {
-                        let res = input.latest_version(self).underlying(self).into_expr_err(loc).cloned();
+                    if let Some(name) =
+                        self.add_if_err(param.maybe_name(self).into_expr_err(loc))?
+                    {
+                        let res = input
+                            .latest_version(self)
+                            .underlying(self)
+                            .into_expr_err(loc)
+                            .cloned();
                         let mut new_cvar = self.add_if_err(res)?;
                         new_cvar.loc = Some(param.loc(self).unwrap());
                         new_cvar.name = name.clone();
@@ -309,7 +325,8 @@ pub trait FuncCaller:
                             None
                         };
 
-                        if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
+                        if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap())
+                        {
                             let ty = new_cvar.ty.clone();
                             if !ty.ty_eq(&param_ty, self).unwrap() {
                                 if let Some(new_ty) = ty.try_cast(&param_ty, self).unwrap() {
@@ -320,14 +337,18 @@ pub trait FuncCaller:
 
                         let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
 
-                        if let (Some(r), Some(r2)) = (node.range(self).unwrap(), param.range(self).unwrap()) {
+                        if let (Some(r), Some(r2)) =
+                            (node.range(self).unwrap(), param.range(self).unwrap())
+                        {
                             let new_min = r.range_min().cast(r2.range_min());
                             let new_max = r.range_max().cast(r2.range_max());
                             let res = node.try_set_range_min(self, new_min).into_expr_err(loc);
                             self.add_if_err(res);
                             let res = node.try_set_range_max(self, new_max).into_expr_err(loc);
                             self.add_if_err(res);
-                            let res = node.try_set_range_exclusions(self, r.exclusions).into_expr_err(loc);
+                            let res = node
+                                .try_set_range_exclusions(self, r.exclusions)
+                                .into_expr_err(loc);
                             self.add_if_err(res);
                         }
                         self.add_edge(node, callee_ctx, Edge::Context(ContextEdge::Variable));
@@ -419,10 +440,12 @@ pub trait FuncCaller:
                     .map(|ret| {
                         let underlying = ret.underlying(self).unwrap();
                         let mut var =
-                            ContextVar::new_from_func_ret(callee_ctx, self, underlying.clone()).unwrap()
+                            ContextVar::new_from_func_ret(callee_ctx, self, underlying.clone())
+                                .unwrap()
                                 .expect("No type for return variable?");
                         if let Some(func_call) = &func_call_str {
-                            var.name = format!("{}_{}", func_call, callee_ctx.new_tmp(self).unwrap());
+                            var.name =
+                                format!("{}_{}", func_call, callee_ctx.new_tmp(self).unwrap());
                             var.display_name = func_call.to_string();
                         }
                         let node = self.add_node(Node::ContextVar(var));
@@ -478,15 +501,20 @@ pub trait FuncCaller:
             mod_node.name(self).into_expr_err(loc)?,
             func_node.name(self).into_expr_err(loc)?
         );
-        let mod_ctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            func_ctx,
-            loc,
-            false,
-            Some(mod_node),
-            false,
-            self,
-            Some(mod_state.clone()),
-        ).into_expr_err(loc)?)));
+        let mod_ctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(
+                    func_ctx,
+                    loc,
+                    false,
+                    Some(mod_node),
+                    false,
+                    self,
+                    Some(mod_state.clone()),
+                )
+                .into_expr_err(loc)?,
+            )),
+        );
         let res = func_ctx.add_child(mod_ctx, self).into_expr_err(loc);
         let _ = self.add_if_err(res);
         let ctx_fork = self.add_node(Node::FunctionCall);
@@ -498,7 +526,9 @@ pub trait FuncCaller:
             Edge::Context(ContextEdge::Subcontext),
         );
 
-        let input_exprs = func_node.modifier_input_vars(mod_state.num, self).into_expr_err(loc)?;
+        let input_exprs = func_node
+            .modifier_input_vars(mod_state.num, self)
+            .into_expr_err(loc)?;
         let inputs: Vec<ContextVarNode> = input_exprs
             .iter()
             .map(|expr| {
@@ -518,12 +548,13 @@ pub trait FuncCaller:
                     new_cvar.name = name.clone();
                     new_cvar.display_name = name;
                     new_cvar.is_tmp = false;
-                    new_cvar.storage =
-                        if let Some(StorageLocation::Storage(_)) = param.underlying(self).unwrap().storage {
-                            new_cvar.storage
-                        } else {
-                            None
-                        };
+                    new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
+                        param.underlying(self).unwrap().storage
+                    {
+                        new_cvar.storage
+                    } else {
+                        None
+                    };
 
                     if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
                         let ty = new_cvar.ty.clone();
@@ -536,14 +567,18 @@ pub trait FuncCaller:
 
                     let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
 
-                    if let (Some(r), Some(r2)) = (node.range(self).unwrap(), param.range(self).unwrap()) {
+                    if let (Some(r), Some(r2)) =
+                        (node.range(self).unwrap(), param.range(self).unwrap())
+                    {
                         let new_min = r.range_min().cast(r2.range_min());
                         let new_max = r.range_max().cast(r2.range_max());
                         let res = node.try_set_range_min(self, new_min).into_expr_err(loc);
                         let _ = self.add_if_err(res);
                         let res = node.try_set_range_max(self, new_max).into_expr_err(loc);
                         let _ = self.add_if_err(res);
-                        let res = node.try_set_range_exclusions(self, r.exclusions).into_expr_err(loc);
+                        let res = node
+                            .try_set_range_exclusions(self, r.exclusions)
+                            .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
                     self.add_edge(node, mod_ctx, Edge::Context(ContextEdge::Variable));
@@ -571,7 +606,11 @@ pub trait FuncCaller:
         ctx: ContextNode,
         modifier_state: ModifierState,
     ) -> Result<ExprRet, ExprErr> {
-        tracing::trace!("resuming from modifier: {}", ctx.associated_fn_name(self).into_expr_err(modifier_state.loc)?);
+        tracing::trace!(
+            "resuming from modifier: {}",
+            ctx.associated_fn_name(self)
+                .into_expr_err(modifier_state.loc)?
+        );
         // pass up the variable changes
         self.inherit_input_changes(
             modifier_state.loc,
@@ -587,7 +626,10 @@ pub trait FuncCaller:
             let mut mstate = modifier_state;
             mstate.num += 1;
             self.call_modifier_for_fn(
-                mods[mstate.num].underlying(self).into_expr_err(mstate.loc)?.loc,
+                mods[mstate.num]
+                    .underlying(self)
+                    .into_expr_err(mstate.loc)?
+                    .loc,
                 ctx,
                 mstate.parent_fn,
                 mstate,
@@ -620,11 +662,17 @@ pub trait FuncCaller:
                     self.advance_var_in_ctx(input_var.latest_version(self), loc, caller_ctx);
                 let latest_updated = updated_var.latest_version(self);
                 if let Some(updated_var_range) = latest_updated.range(self).unwrap() {
-                    let res = new_input.set_range_min(self, updated_var_range.range_min()).into_expr_err(loc);
+                    let res = new_input
+                        .set_range_min(self, updated_var_range.range_min())
+                        .into_expr_err(loc);
                     let _ = self.add_if_err(res);
-                    let res = new_input.set_range_max(self, updated_var_range.range_max()).into_expr_err(loc);
+                    let res = new_input
+                        .set_range_max(self, updated_var_range.range_max())
+                        .into_expr_err(loc);
                     let _ = self.add_if_err(res);
-                    let res = new_input.set_range_exclusions(self, updated_var_range.range_exclusions()).into_expr_err(loc);
+                    let res = new_input
+                        .set_range_exclusions(self, updated_var_range.range_exclusions())
+                        .into_expr_err(loc);
                     let _ = self.add_if_err(res);
                 }
             });
@@ -656,7 +704,8 @@ pub trait FuncCaller:
                             );
                             let _ = new_inheritor_var.set_range_min(self, r.range_min());
                             let _ = new_inheritor_var.set_range_max(self, r.range_max());
-                            let _ = new_inheritor_var.set_range_exclusions(self, r.range_exclusions());
+                            let _ =
+                                new_inheritor_var.set_range_exclusions(self, r.range_exclusions());
                         }
                     } else {
                         let new_in_inheritor = self.add_node(Node::ContextVar(underlying.clone()));

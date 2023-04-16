@@ -1,7 +1,7 @@
 use crate::nodes::GraphError;
 use crate::VarType;
 use crate::{
-    analyzer::{GraphLike, AnalyzerLike, AsDotStr},
+    analyzer::{AnalyzerLike, AsDotStr, GraphLike},
     Node, NodeIdx,
 };
 use solang_parser::pt::{
@@ -15,12 +15,15 @@ impl VarNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Var, GraphError> {
         match analyzer.node(*self) {
             Node::Var(func) => Ok(func),
-            e => Err(GraphError::NodeConfusion(format!("Node type confusion: expected node to be Var but it was: {e:?}"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Var but it was: {e:?}"
+            ))),
         }
     }
 
     pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        Ok(self.underlying(analyzer)?
+        Ok(self
+            .underlying(analyzer)?
             .name
             .clone()
             .expect("Unnamed function")
