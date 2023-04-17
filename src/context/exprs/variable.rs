@@ -16,7 +16,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> Result<ExprRet, ExprErr> {
         tracing::trace!("Getting variable: {}, loc: {:?}", &ident.name, ident.loc);
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-            let var = self.advance_var_in_ctx(cvar, ident.loc, ctx);
+            let var = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
             Ok(ExprRet::Single((ctx, var.0.into())))
         } else if let Some(env) = self.env_variable(ident, ctx)? {
             Ok(env)
@@ -29,8 +29,8 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             match self.node(cvar) {
                 Node::ContextVar(_) => {
                     let cvar = ContextVarNode::from(cvar).latest_version(self);
-                    let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx);
-                    ctx_cvar.update_deps(ctx, self);
+                    let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
+                    ctx_cvar.update_deps(ctx, self).into_expr_err(ident.loc)?;
                     Ok(ExprRet::Single((ctx, ctx_cvar.0.into())))
                 }
                 _ => Ok(ExprRet::Single((ctx, cvar))),

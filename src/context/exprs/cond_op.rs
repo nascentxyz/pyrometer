@@ -20,11 +20,11 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         let true_subctx = ContextNode::from(self.add_node(Node::Context(
             Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
         )));
-        ctx.add_fork(true_subctx, self);
+        ctx.add_fork(true_subctx, self).into_expr_err(loc)?;
         let false_subctx = ContextNode::from(self.add_node(Node::Context(
             Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
         )));
-        ctx.add_fork(false_subctx, self);
+        ctx.add_fork(false_subctx, self).into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
         self.add_edge(
@@ -63,11 +63,11 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         let true_subctx = ContextNode::from(self.add_node(Node::Context(
             Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
         )));
-        ctx.add_fork(true_subctx, self);
+        ctx.add_fork(true_subctx, self).into_expr_err(loc)?;
         let false_subctx = ContextNode::from(self.add_node(Node::Context(
             Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
         )));
-        ctx.add_fork(false_subctx, self);
+        ctx.add_fork(false_subctx, self).into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
         self.add_edge(

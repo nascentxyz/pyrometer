@@ -170,19 +170,48 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             return Ok(ExprRet::Single((ctx, fn_node)));
                         }
                     } else {
-                        return Err(ExprErr::ContractFunctionNotFound(
-                            loc,
-                            format!(
-                                "No function with name {:?} in contract: {:?}. Functions: [{:#?}]",
-                                ident.name,
-                                con_node.name(self),
-                                con_node
-                                    .funcs(self)
-                                    .iter()
-                                    .map(|func| func.name(self))
-                                    .collect::<Vec<_>>()
-                            ),
-                        ));
+                        match &*ident.name {
+                            "name" => {
+                                let c = Concrete::from(con_node.name(self).unwrap());
+                                let cnode = self.add_node(Node::Concrete(c));
+                                let cvar = ContextVar::new_from_concrete(loc, cnode.into(), self)
+                                    .into_expr_err(loc)?;
+                                let node = self.add_node(Node::ContextVar(cvar));
+                                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                return Ok(ExprRet::Single((ctx, node)))
+                            }
+                            "creationCode"
+                            | "runtimeCode" => {
+                                let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                                let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
+                                    .into_expr_err(loc)?;
+                                let node = self.add_node(Node::ContextVar(cvar));
+                                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                return Ok(ExprRet::Single((ctx, node)))
+                            }
+                            "interfaceId" => {
+                                // TODO: actually calculate this
+                                let bn = self.builtin_or_add(Builtin::Bytes(4));
+                                let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
+                                    .into_expr_err(loc)?;
+                                let node = self.add_node(Node::ContextVar(cvar));
+                                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                return Ok(ExprRet::Single((ctx, node)))
+                            }
+                            _ => return Err(ExprErr::ContractFunctionNotFound(
+                                loc,
+                                format!(
+                                    "No function with name {:?} in contract: {:?}. Functions: {:?}",
+                                    ident.name,
+                                    con_node.name(self).unwrap(),
+                                    con_node
+                                        .funcs(self)
+                                        .iter()
+                                        .map(|func| func.name(self).unwrap())
+                                        .collect::<Vec<_>>()
+                                ),
+                            )),
+                        }
                     }
                 }
                 VarType::BuiltIn(bn, _) => {
@@ -609,7 +638,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     ident,
                 );
             }
-            e => todo!("{:?}", e),
+            e => return Err(ExprErr::Todo(loc, format!("Member access on type: {e:?} is not yet supported"))),
         }
         Ok(ExprRet::Single((ctx, member_idx)))
     }
@@ -660,6 +689,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
                         }
+                        "codehash" => {
+                            // TODO: try to be smarter based on the address input
+                            let bn = self.builtin_or_add(Builtin::Bytes(32));
+                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
+                                .into_expr_err(loc)?;
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
                         "balance" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::Uint(256));
@@ -668,6 +706,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
+                        }
+                        _ if ident.name.starts_with("send") => {
+                            let bn = self.builtin_or_add(Builtin::Bool);
+                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
+                                .into_expr_err(loc)?;
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
+                        _ if ident.name.starts_with("transfer") => {
+                            Ok(ExprRet::Multi(vec![]))
                         }
                         _ => Err(ExprErr::MemberAccessNotFound(
                             loc,
@@ -679,10 +728,20 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     loc,
                     format!("Unknown member access on bool: {:?}", ident.name),
                 )),
-                Builtin::String => Err(ExprErr::MemberAccessNotFound(
-                    loc,
-                    format!("Unknown member access on string: {:?}", ident.name),
-                )),
+                Builtin::String => {
+                    match ident.name.split('(').collect::<Vec<_>>()[0] {
+                        "concat" => {
+                            // TODO: improve this to take into account concrete elements
+                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
+                                .into_expr_err(loc)?;
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
+                        _ => Err(ExprErr::MemberAccessNotFound(loc,format!("Unknown member access on string: {:?}", ident.name))),
+                    }
+                }
                 Builtin::Bytes(size) => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!("Unknown member access on bytes{}: {:?}", size, ident.name),
@@ -691,10 +750,20 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     loc,
                     format!("Unknown member access on rational: {:?}", ident.name),
                 )),
-                Builtin::DynamicBytes => Err(ExprErr::MemberAccessNotFound(
-                    loc,
-                    format!("Unknown member access on bytes[]: {:?}", ident.name),
-                )),
+                Builtin::DynamicBytes => {
+                    match ident.name.split('(').collect::<Vec<_>>()[0] {
+                        "concat" => {
+                            // TODO: improve this to take into account concrete elements
+                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
+                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
+                                .into_expr_err(loc)?;
+                            let node = self.add_node(Node::ContextVar(cvar));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single((ctx, node)))
+                        }
+                        _ => Err(ExprErr::MemberAccessNotFound(loc,format!("Unknown member access on bytes: {:?}", ident.name))),
+                    }
+                },
                 Builtin::Array(_) => {
                     if ident.name.starts_with("push") {
                         if is_storage {
@@ -1013,7 +1082,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             };
             let len_node = self.add_node(Node::ContextVar(len_var));
 
-            let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, array_ctx);
+            let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, array_ctx).unwrap();
             if next_arr
                 .underlying(self)
                 .unwrap()
@@ -1027,12 +1096,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                        next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                        let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                        let _ = self.add_if_err(res);
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                        next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)));
+                        let res = next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                        let _ = self.add_if_err(res);
                     }
                 }
             }
@@ -1057,7 +1128,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     ContextVarNode::from(arr).latest_version(self),
                     loc,
                     array_ctx,
-                );
+                )?;
                 let arr = ContextVarNode::from(arr).first_version(self);
                 let name = format!("{}.length", arr.name(self).into_expr_err(loc)?);
                 tracing::trace!("Length access: {}", name);
@@ -1066,7 +1137,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     .into_expr_err(loc)?
                 {
                     let len_var = len_var.latest_version(self);
-                    let new_len = self.advance_var_in_ctx(len_var, loc, array_ctx);
+                    let new_len = self.advance_var_in_ctx(len_var, loc, array_ctx)?;
                     if update_len_bound
                         && next_arr
                             .underlying(self)
@@ -1081,12 +1152,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
-                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                                let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let _ = self.add_if_err(res);
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
-                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                                let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let _ = self.add_if_err(res);
                             }
                         }
                     }
@@ -1120,12 +1193,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                                next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                                let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let _ = self.add_if_err(res);
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                                next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd)));
+                                let res = next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let _ = self.add_if_err(res);
                             }
                         }
                     }

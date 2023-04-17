@@ -308,7 +308,7 @@ impl Analyzer {
             });
             funcs.iter().for_each(|func| {
                 // add params now that parsing is done
-                func.set_params_and_ret(self);
+                func.set_params_and_ret(self).unwrap();
             });
         });
 

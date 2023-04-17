@@ -659,7 +659,7 @@ pub trait FuncCaller:
         if caller_ctx != callee_ctx {
             renamed_inputs.iter().for_each(|(input_var, updated_var)| {
                 let new_input =
-                    self.advance_var_in_ctx(input_var.latest_version(self), loc, caller_ctx);
+                    self.advance_var_in_ctx(input_var.latest_version(self), loc, caller_ctx).unwrap();
                 let latest_updated = updated_var.latest_version(self);
                 if let Some(updated_var_range) = latest_updated.range(self).unwrap() {
                     let res = new_input
@@ -701,7 +701,7 @@ pub trait FuncCaller:
                                 inheritor_var,
                                 underlying.loc.expect("No loc for val change"),
                                 inheritor_ctx,
-                            );
+                            ).unwrap();
                             let _ = new_inheritor_var.set_range_min(self, r.range_min());
                             let _ = new_inheritor_var.set_range_max(self, r.range_max());
                             let _ =

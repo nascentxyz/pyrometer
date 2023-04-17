@@ -633,7 +633,7 @@ impl ContextNode {
             let context = self.underlying_mut(analyzer)?;
             context.killed = Some(kill_loc);
             if let Some(parent_ctx) = context.parent_ctx {
-                parent_ctx.end_if_all_forks_ended(analyzer, kill_loc);
+                parent_ctx.end_if_all_forks_ended(analyzer, kill_loc)?;
             }
         }
         Ok(())

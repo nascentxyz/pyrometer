@@ -30,7 +30,8 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
             let subctx = ContextNode::from(self.add_node(Node::Context(
                 Context::new_subctx(ctx, loc, false, None, false, self, None).into_expr_err(loc)?,
             )));
-            ctx.add_child(subctx, self);
+            let res = ctx.add_child(subctx, self).into_expr_err(loc);
+            let _ = self.add_if_err(res);
             let ctx_fork = self.add_node(Node::FunctionCall);
             self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
             self.add_edge(
@@ -51,9 +52,11 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
                         .default_range(self)
                         .unwrap()
                     {
-                        let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ctx);
-                        new_inheritor_var.set_range_min(self, r.min);
-                        new_inheritor_var.set_range_max(self, r.max);
+                        let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
+                        let res = new_inheritor_var.set_range_min(self, r.min).into_expr_err(loc);
+                        let _ = self.add_if_err(res);
+                        let res = new_inheritor_var.set_range_max(self, r.max).into_expr_err(loc);
+                        let _ = self.add_if_err(res);
                     }
                 }
             });
@@ -72,7 +75,8 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
         let subctx = ContextNode::from(self.add_node(Node::Context(
             Context::new_subctx(ctx, loc, false, None, false, self, None).into_expr_err(loc)?,
         )));
-        ctx.add_child(subctx, self);
+        let res = ctx.add_child(subctx, self).into_expr_err(loc);
+        let _ = self.add_if_err(res);
         let ctx_fork = self.add_node(Node::FunctionCall);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
         self.add_edge(
@@ -93,9 +97,11 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
                     .default_range(self)
                     .unwrap()
                 {
-                    let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ctx);
-                    new_inheritor_var.set_range_min(self, r.min);
-                    new_inheritor_var.set_range_max(self, r.max);
+                    let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
+                    let res = new_inheritor_var.set_range_min(self, r.min).into_expr_err(loc);
+                    let _ = self.add_if_err(res);
+                    let res = new_inheritor_var.set_range_max(self, r.max).into_expr_err(loc);
+                    let _ = self.add_if_err(res);
                 }
             }
         });

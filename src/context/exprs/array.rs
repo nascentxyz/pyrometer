@@ -13,20 +13,34 @@ impl<T> Array for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> 
 pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<ExprRet, ExprErr> {
-        let (ctx, inner_ty) = self
-            .parse_ctx_expr(ty_expr, ctx)?
-            .expect_single(ty_expr.loc())?;
-        if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-            let dyn_b = Builtin::Array(var_type);
-            if let Some(idx) = self.builtins().get(&dyn_b) {
-                Ok(ExprRet::Single((ctx, *idx)))
-            } else {
-                let idx = self.add_node(Node::Builtin(dyn_b.clone()));
-                self.builtins_mut().insert(dyn_b, idx);
-                Ok(ExprRet::Single((ctx, idx)))
-            }
-        } else {
-            Err(ExprErr::ArrayTy(ty_expr.loc(), "Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.".to_string()))
+        let ret = self.parse_ctx_expr(ty_expr, ctx)?;
+        self.match_ty(ty_expr, ret)
+    }
+
+    fn match_ty(&mut self, ty_expr: &Expression, ret: ExprRet) -> Result<ExprRet, ExprErr> {
+        match ret {
+            ExprRet::Single((ctx, inner_ty)) | ExprRet::SingleLiteral((ctx, inner_ty)) => {
+                if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
+                    let dyn_b = Builtin::Array(var_type);
+                    if let Some(idx) = self.builtins().get(&dyn_b) {
+                        Ok(ExprRet::Single((ctx, *idx)))
+                    } else {
+                        let idx = self.add_node(Node::Builtin(dyn_b.clone()));
+                        self.builtins_mut().insert(dyn_b, idx);
+                        Ok(ExprRet::Single((ctx, idx)))
+                    }
+                } else {
+                    Err(ExprErr::ArrayTy(ty_expr.loc(), "Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.".to_string()))
+                }
+            },
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(inner.into_iter().map(|i| self.match_ty(ty_expr, i)).collect::<Result<Vec<_>, ExprErr>>()?)),
+            ExprRet::Fork(w1, w2) => {
+                Ok(ExprRet::Fork(
+                    Box::new(self.match_ty(ty_expr, *w1)?),
+                    Box::new(self.match_ty(ty_expr, *w2)?),
+                ))
+            },
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
         }
     }
 
@@ -56,7 +70,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) | (ExprRet::Single((ctx, parent)), ExprRet::SingleLiteral((_rhs_ctx, index))) => {
                 let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).first_version(self);
-                let idx = self.advance_var_in_ctx(index, loc, ctx);
+                let idx = self.advance_var_in_ctx(index, loc, ctx)?;
                 if !parent.is_mapping(self).into_expr_err(loc)? {
                     let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
                     self.handle_require_inner(
@@ -74,7 +88,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                 if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
                     let index_var = index_var.latest_version(self);
-                    let index_var = self.advance_var_in_ctx(index_var, loc, ctx);
+                    let index_var = self.advance_var_in_ctx(index_var, loc, ctx)?;
                     Ok(ExprRet::Single((ctx, index_var.into())))
                 } else {
                     let index_var = ContextVar {

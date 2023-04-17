@@ -49,18 +49,18 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                lhs_cvar.try_increase_size(self);
-                rhs_cvar.try_increase_size(self);
+                lhs_cvar.try_increase_size(self).into_expr_err(loc)?;
+                rhs_cvar.try_increase_size(self).into_expr_err(loc)?;
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
             (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
-                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self);
+                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self).into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
-                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self);
+                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self).into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
@@ -70,25 +70,19 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Multi(rhs_sides)) => Ok(ExprRet::Multi(
+            (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => Ok(ExprRet::Multi(
                 rhs_sides
                     .iter()
                     .map(|expr_ret| {
-                        let (_rhs_ctx, rhs) = expr_ret.expect_single(loc)?;
-                        let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                        let rhs_cvar = ContextVarNode::from(rhs).latest_version(self);
-                        self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
+                        self.op_match(loc, lhs, expr_ret, op, assign)
                     })
                     .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
             )),
-            (ExprRet::Multi(lhs_sides), ExprRet::Single((_rhs_ctx, rhs))) => Ok(ExprRet::Multi(
+            (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => Ok(ExprRet::Multi(
                 lhs_sides
                     .iter()
                     .map(|expr_ret| {
-                        let (lhs_ctx, lhs) = expr_ret.expect_single(loc)?;
-                        let lhs_cvar = ContextVarNode::from(lhs).latest_version(self);
-                        let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                        self.op(loc, lhs_cvar, rhs_cvar, lhs_ctx, op, assign)
+                        self.op_match(loc, expr_ret, rhs, op, assign)
                     })
                     .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
             )),
@@ -132,7 +126,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             assign
         );
         let new_lhs = if assign {
-            self.advance_var_in_ctx(lhs_cvar, loc, ctx)
+            self.advance_var_in_ctx(lhs_cvar, loc, ctx)?
         } else {
             let mut new_lhs_underlying = ContextVar {
                 loc: Some(loc),
@@ -158,7 +152,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             };
 
             // will potentially mutate the ty from concrete to builtin with a concrete range
-            new_lhs_underlying.ty.concrete_to_builtin(self);
+            new_lhs_underlying.ty.concrete_to_builtin(self).into_expr_err(loc)?;
 
             let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
             self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
@@ -184,11 +178,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             .expect("No range?")
                             .range_eq(&Elem::from(Concrete::from(U256::zero())))
                         {
-                            ctx.kill(self, loc);
+                            let res = ctx.kill(self, loc).into_expr_err(loc);
+                            let _ = self.add_if_err(res);
+
                             return Ok(ExprRet::CtxKilled);
                         }
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx);
+                        let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let zero_node = self.add_node(Node::ContextVar(
                             ContextVar::new_from_concrete(Loc::Implicit, zero_node.into(), self)
@@ -221,14 +217,15 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         };
 
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self);
+                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
 
                         let range = tmp_rhs.range(self).into_expr_err(loc)?.expect("No range?");
                         if range.min_is_negative(self).into_expr_err(loc)? {
                             let mut range_excls = range.range_exclusions();
                             let excl = Elem::from(Concrete::from(I256::zero()));
                             range_excls.push(excl);
-                            tmp_rhs.set_range_exclusions(self, range_excls);
+                            tmp_rhs.set_range_exclusions(self, range_excls).into_expr_err(loc)?;
+
                         } else {
                             // the new min is max(1, rhs.min)
                             let min = Elem::max(
@@ -246,7 +243,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 ),
                             );
 
-                            tmp_rhs.set_range_min(self, min);
+                            tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
                             new_rhs = tmp_rhs;
                         }
                     }
@@ -264,13 +261,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                     Some(std::cmp::Ordering::Less)
                                         | Some(std::cmp::Ordering::Equal)
                                 ) {
-                                    ctx.kill(self, loc);
+                                    ctx.kill(self, loc).into_expr_err(loc)?;
+
                                     return Ok(ExprRet::CtxKilled);
                                 }
                             }
                         }
                     } else if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
+                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
                             tmp_lhs
@@ -284,7 +282,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 }),
                             Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
                         );
-                        tmp_lhs.set_range_min(self, min);
+                        tmp_lhs.set_range_min(self, min).into_expr_err(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -314,13 +312,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         };
 
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self);
+                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
                 RangeOp::Add => {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
+                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
 
                         // the new max is min(lhs.max, (2**256 - rhs.min))
                         let max = Elem::min(
@@ -332,7 +330,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 - Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
                         );
 
-                        tmp_lhs.set_range_max(self, max);
+                        tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
 
                         let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
                         let max_node = self.add_node(Node::ContextVar(
@@ -372,13 +370,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         };
 
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self);
+                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
                 RangeOp::Mul => {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx);
+                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
 
                         // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
                         let max = Elem::min(
@@ -393,7 +391,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 ),
                         );
 
-                        tmp_lhs.set_range_max(self, max);
+                        tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
 
                         let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
                         let max_node = self.add_node(Node::ContextVar(
@@ -433,7 +431,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         };
 
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self);
+                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
                 RangeOp::Exp => {
@@ -446,11 +444,11 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 .range_ord(&Elem::from(Concrete::from(U256::zero()))),
                             Some(std::cmp::Ordering::Less)
                         ) {
-                            ctx.kill(self, loc);
+                            ctx.kill(self, loc).into_expr_err(loc)?;
                             return Ok(ExprRet::CtxKilled);
                         }
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx);
+                        let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
                             tmp_rhs
@@ -460,7 +458,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Elem::from(Concrete::from(U256::zero())),
                         );
 
-                        tmp_rhs.set_range_min(self, min);
+                        tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
 
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let zero_node = self.add_node(Node::ContextVar(
@@ -494,7 +492,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         };
 
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self);
+                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                         new_rhs = tmp_rhs;
                     }
                 }
@@ -513,8 +511,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         let func = SolcRange::dyn_fn_from_op(op);
         let new_range = func(lhs_range, new_rhs, loc);
-        new_lhs.set_range_min(self, new_range.range_min());
-        new_lhs.set_range_max(self, new_range.range_max());
+        new_lhs.set_range_min(self, new_range.range_min()).into_expr_err(loc)?;
+        new_lhs.set_range_max(self, new_range.range_max()).into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
         // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.
@@ -534,7 +532,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if old_lhs_range.contains(&zero_range, self)
                     && rhs_range.contains(&zero_range, self)
                 {
-                    new_lhs.set_range_min(self, zero);
+                    new_lhs.set_range_min(self, zero).into_expr_err(loc)?;
                 }
             }
         }

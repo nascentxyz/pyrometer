@@ -182,11 +182,57 @@ pub trait IntrinsicFuncCaller:
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
+                        "sha256" => {
+                            self.parse_ctx_expr(&input_exprs[0], ctx)?
+                                .expect_single(*loc)?;
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Bytes(32)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            Ok(ExprRet::Single((ctx, cvar)))
+                        }
+                        "ripemd160" => {
+                            self.parse_ctx_expr(&input_exprs[0], ctx)?
+                                .expect_single(*loc)?;
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Bytes(20)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            Ok(ExprRet::Single((ctx, cvar)))
+                        }
+                        "blockhash" => {
+                            self.parse_ctx_expr(&input_exprs[0], ctx)?
+                                .expect_single(*loc)?;
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Bytes(32)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            Ok(ExprRet::Single((ctx, cvar)))
+                        }
+                        "gasleft" => {
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Uint(64)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            Ok(ExprRet::Single((ctx, cvar)))
+                        }
                         "ecrecover" => {
-                            input_exprs.iter().for_each(|expr| {
+                            for expr in input_exprs.iter() {
                                 // we want to parse even though we dont need the variables here
-                                let _ = self.parse_ctx_expr(expr, ctx);
-                            });
+                                let _ = self.parse_ctx_expr(expr, ctx)?;
+                            }
                             let var = ContextVar::new_from_builtin(
                                 *loc,
                                 self.builtin_or_add(Builtin::Address).into(),
@@ -196,7 +242,35 @@ pub trait IntrinsicFuncCaller:
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
-                        e => todo!("builtin function: {:?}", e),
+                        "addmod" => {
+                            // TODO: actually calcuate this if possible
+                            for expr in input_exprs.iter() {
+                                let _ = self.parse_ctx_expr(expr, ctx)?;
+                            }
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Uint(256)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            Ok(ExprRet::Single((ctx, cvar)))
+                        }
+                        "mulmod" => {
+                            // TODO: actually calcuate this if possible
+                            for expr in input_exprs.iter() {
+                                let _ = self.parse_ctx_expr(expr, ctx)?;
+                            }
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Uint(256)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            Ok(ExprRet::Single((ctx, cvar)))
+                        }
+                        e => Err(ExprErr::Todo(*loc, format!("builtin function: {e:?} doesn't exist or isn't implemented"))),
                     }
                 } else {
                     panic!("unnamed builtin?")
@@ -249,12 +323,12 @@ pub trait IntrinsicFuncCaller:
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(*loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)));
+                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(*loc)?;
                     }
                 }
 
@@ -289,11 +363,11 @@ pub trait IntrinsicFuncCaller:
                                 new_var.set_range_min(
                                     analyzer,
                                     r.range_min().cast(curr_range.range_min()),
-                                );
+                                ).into_expr_err(*loc)?;
                                 new_var.set_range_max(
                                     analyzer,
                                     r.range_max().cast(curr_range.range_max()),
-                                );
+                                ).into_expr_err(*loc)?;
                                 // cast the range exclusions - TODO: verify this is correct
                                 let mut exclusions = r.range_exclusions();
                                 exclusions.iter_mut().for_each(|range| {
@@ -353,7 +427,7 @@ pub trait IntrinsicFuncCaller:
                     Err(ExprErr::FunctionNotFound(
                         *loc,
                         format!(
-                            "Could not find function: \"{}({})\"",
+                            "Could not find function: \"{}{}\"",
                             ident.name,
                             inputs.try_as_func_input_str(self)
                         ),

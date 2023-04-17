@@ -221,8 +221,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx);
-                let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx);
+                let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx)?;
+                let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx)?;
 
                 self.require(new_lhs, new_rhs, *lhs_ctx, loc, op, rhs_op, recursion_ops)?;
                 Ok(())
@@ -398,7 +398,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
             } else if let Some(arr) = new_lhs.index_to_array(self) {
                 if let Some(index) = new_lhs.index_access_to_index(self) {
-                    let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, ctx);
+                    let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, ctx)?;
                     if next_arr
                         .underlying(self)
                         .into_expr_err(loc)?
@@ -873,7 +873,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         if !tmp_construction.lhs.is_const(self).unwrap() {
             // widen to maximum range :(
             let new_underlying_lhs =
-                self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx);
+                self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx).unwrap();
             if let Some(lhs_range) = tmp_construction.lhs.range(self).unwrap() {
                 match lhs_range.evaled_range_min(self).unwrap() {
                     Elem::Concrete(c) => {
@@ -933,7 +933,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 .1,
             );
             let new_underlying_lhs =
-                self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx);
+                self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx)?;
             if let Some(lhs_range) = new_underlying_lhs
                 .underlying(self)
                 .into_expr_err(loc)?
@@ -1015,7 +1015,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 };
 
                 let new_underlying_rhs =
-                    self.advance_var_in_ctx(rhs.latest_version(self), loc, ctx);
+                    self.advance_var_in_ctx(rhs.latest_version(self), loc, ctx)?;
                 if let Some(lhs_range) = new_underlying_rhs
                     .underlying(self)
                     .into_expr_err(loc)?

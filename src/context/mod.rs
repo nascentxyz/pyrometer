@@ -574,7 +574,7 @@ pub trait ContextBuilder:
                     let latest_var = var.latest_version(self);
                     let res = latest_var.ty(self).into_expr_err(stmt.loc()).cloned();
                     if let Some(r) = self.add_if_err(res).unwrap().default_range(self).unwrap() {
-                        let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx);
+                        let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx).unwrap();
                         let res = new_var.set_range_min(self, r.min).into_expr_err(*loc);
                         let _ = self.add_if_err(res);
                         let res = new_var.set_range_max(self, r.max).into_expr_err(*loc);
@@ -752,8 +752,24 @@ pub trait ContextBuilder:
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
                 self.add_edge(lhs, *rhs_ctx, Edge::Context(ContextEdge::Variable));
                 let rhs = ContextVarNode::from(*rhs);
-                let (_, new_lhs) = self.assign(loc, lhs, rhs, *rhs_ctx)?.expect_single(loc)?;
-                self.add_edge(new_lhs, *rhs_ctx, Edge::Context(ContextEdge::Variable));
+
+                fn match_assign_ret(analyzer: &mut impl GraphLike, ret: ExprRet) {
+                    match ret {
+                        ExprRet::Single((ctx, new_lhs)) | ExprRet::SingleLiteral((ctx, new_lhs)) => {
+                            analyzer.add_edge(new_lhs, ctx, Edge::Context(ContextEdge::Variable));
+                        }
+                        ExprRet::Multi(inner) => inner.into_iter().for_each(|i| match_assign_ret(analyzer, i)),
+                        ExprRet::Fork(w1, w2) => {
+                            match_assign_ret(analyzer, *w1);
+                            match_assign_ret(analyzer, *w2);
+                        },
+                        ExprRet::CtxKilled => {}
+                    }
+                }
+
+                let ret = self.assign(loc, lhs, rhs, *rhs_ctx)?;
+                match_assign_ret(self, ret);
+                
                 Ok(false)
             }
             (ExprRet::Single((lhs_ctx, ty)), None) => {
@@ -1040,7 +1056,7 @@ pub trait ContextBuilder:
                     match ret {
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
                         ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
-                            let mut new_var = analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx);
+                            let mut new_var = analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx).unwrap();
                             let res = new_var.sol_delete_range(analyzer).into_expr_err(*loc);
                             let _ = analyzer.add_if_err(res);
                             ExprRet::Single((ctx, new_var.into()))
@@ -1120,7 +1136,7 @@ pub trait ContextBuilder:
                 if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                     if increment {
                         if pre {
-                            let new_cvar = self.advance_var_in_ctx(cvar, loc, *ctx);
+                            let new_cvar = self.advance_var_in_ctx(cvar, loc, *ctx)?;
                             let res = new_cvar
                                 .set_range_min(self, r.min + one.clone())
                                 .into_expr_err(loc);
@@ -1136,7 +1152,7 @@ pub trait ContextBuilder:
                             Ok(ExprRet::Single((*ctx, cvar.into())))
                         }
                     } else if pre {
-                        let new_cvar = self.advance_var_in_ctx(cvar, loc, *ctx);
+                        let new_cvar = self.advance_var_in_ctx(cvar, loc, *ctx)?;
                         let res = new_cvar
                             .set_range_min(self, r.min - one.clone())
                             .into_expr_err(loc);
@@ -1276,7 +1292,7 @@ pub trait ContextBuilder:
             Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
         );
 
-        let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx);
+        let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?;
         if !lhs_cvar.ty_eq(&rhs_cvar, self).into_expr_err(loc)? {
             let cast_to_min = match lhs_cvar.range_min(self).into_expr_err(loc)? {
                 Some(v) => v,
@@ -1319,7 +1335,7 @@ pub trait ContextBuilder:
 
         if let Some(arr) = lhs_cvar.index_to_array(self) {
             if let Some(index) = lhs_cvar.index_access_to_index(self) {
-                let next_arr = self.advance_var_in_ctx(arr, loc, ctx);
+                let next_arr = self.advance_var_in_ctx(arr, loc, ctx)?;
                 if next_arr
                     .underlying(self)
                     .into_expr_err(loc)?
@@ -1365,7 +1381,7 @@ pub trait ContextBuilder:
         cvar_node: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,
-    ) -> ContextVarNode {
+    ) -> Result<ContextVarNode, ExprErr> {
         if let Some(cvar) = cvar_node.next_version(self) {
             panic!(
                 "Not latest version of: {}",
@@ -1375,7 +1391,7 @@ pub trait ContextBuilder:
         let mut new_cvar = cvar_node
             .latest_version(self)
             .underlying(self)
-            .unwrap()
+            .into_expr_err(loc)?
             .clone();
         new_cvar.loc = Some(loc);
         let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
@@ -1389,7 +1405,7 @@ pub trait ContextBuilder:
             self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         }
 
-        ContextVarNode::from(new_cvarnode)
+        Ok(ContextVarNode::from(new_cvarnode))
     }
 
     fn advance_var_underlying(&mut self, cvar_node: ContextVarNode, loc: Loc) -> &mut ContextVar {
