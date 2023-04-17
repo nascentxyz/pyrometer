@@ -14,13 +14,11 @@ use std::ops::*;
 pub struct Dynamic {
     /// Index of the node that is referenced
     pub idx: NodeIdx,
-    /// Sourcecode location
-    pub loc: Loc,
 }
 
 impl Dynamic {
-    pub fn new(idx: NodeIdx, loc: Loc) -> Self {
-        Self { idx, loc }
+    pub fn new(idx: NodeIdx) -> Self {
+        Self { idx }
     }
 }
 
@@ -375,11 +373,34 @@ impl From<Concrete> for Elem<Concrete> {
 }
 
 impl<T> Elem<T> {
+    pub fn dyn_map(&self) -> Option<&BTreeMap<Self, Self>> {
+        match self {
+            Self::ConcreteDyn(dyn_range) => Some(&dyn_range.val),
+            _ => None,
+        }
+    }
+
+    pub fn dyn_map_mut(&mut self) -> Option<&mut BTreeMap<Self, Self>> {
+        match self {
+            Self::ConcreteDyn(ref mut dyn_range) => Some(&mut dyn_range.val),
+            _ => None,
+        }
+    }
+
     /// Creates a new range element that is a cast from one type to another
     pub fn cast(self, other: Self) -> Self {
         let expr = RangeExpr {
             lhs: Box::new(self),
             op: RangeOp::Cast,
+            rhs: Box::new(other),
+        };
+        Elem::Expr(expr)
+    }
+
+    pub fn concat(self, other: Self) -> Self {
+        let expr = RangeExpr {
+            lhs: Box::new(self),
+            op: RangeOp::Concat,
             rhs: Box::new(other),
         };
         Elem::Expr(expr)
@@ -449,6 +470,20 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
 }
 
 impl Elem<Concrete> {
+    pub fn node_idx(&self) -> Option<NodeIdx> {
+        match self {
+            Self::Dynamic(Dynamic { idx, .. }) => Some(*idx),
+            _ => None,
+        }
+    }
+
+    pub fn concrete(&self) -> Option<Concrete> {
+        match self {
+            Self::Concrete(RangeConcrete { val: c, .. }) => Some(c.clone()),
+            _ => None,
+        }
+    }
+
     pub fn is_negative(
         &self,
         maximize: bool,
@@ -1678,6 +1713,30 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_min
                         .range_bit_xor(&rhs_min)
                         .unwrap_or(Elem::Expr(self.clone()))
+                }
+            }
+            RangeOp::Concat => {
+                // TODO: improve with smarter stuff
+                let candidates = vec![
+                    lhs_min.range_concat(&rhs_min),
+                    lhs_min.range_concat(&rhs_max),
+                    lhs_max.range_concat(&rhs_min),
+                    lhs_max.range_concat(&rhs_max),
+                ];
+                let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                candidates.sort_by(|a, b| match a.range_ord(b) {
+                    Some(r) => r,
+                    _ => std::cmp::Ordering::Less,
+                });
+
+                if candidates.is_empty() {
+                    return Ok(Elem::Expr(self.clone()));
+                }
+
+                if maximize {
+                    candidates[candidates.len() - 1].clone()
+                } else {
+                    candidates[0].clone()
                 }
             }
             _ => Elem::Expr(self.clone()),

@@ -14,7 +14,7 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
     ) -> Result<Option<ExprRet>, ExprErr> {
         match &*ident.name {
-            "msg" => Ok(Some(ExprRet::Single((ctx, self.msg().into())))),
+            "msg" | "tx" => Ok(Some(ExprRet::Single((ctx, self.msg().into())))),
             "block" => Ok(Some(ExprRet::Single((ctx, self.block().into())))),
             "abi" => Ok(Some(ExprRet::Multi(vec![]))),
             "_" => {

@@ -72,7 +72,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::CtxKilled, _) => Ok(ExprRet::CtxKilled),
             (ExprRet::Single((ctx, parent)), ExprRet::Single((_rhs_ctx, index))) | (ExprRet::Single((ctx, parent)), ExprRet::SingleLiteral((_rhs_ctx, index))) => {
                 let index = ContextVarNode::from(index).latest_version(self);
-                let parent = ContextVarNode::from(parent).first_version(self);
+                let parent = ContextVarNode::from(parent).latest_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx)?;
                 if !parent.is_mapping(self).into_expr_err(loc)? {
                     let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
@@ -94,6 +94,8 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let index_var = self.advance_var_in_ctx(index_var, loc, ctx)?;
                     Ok(ExprRet::Single((ctx, index_var.into())))
                 } else {
+                    let ty = parent.ty(self).into_expr_err(loc)?.clone();
+                    let ty = ty.get_index_dynamic_ty(index, self).into_expr_err(loc)?;
                     let index_var = ContextVar {
                         loc: Some(loc),
                         name: name.clone(),
@@ -106,7 +108,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,
-                        ty: parent.ty(self).into_expr_err(loc)?.clone().dynamic_underlying_ty(self).into_expr_err(loc)?,
+                        ty,
                     };
 
                     let idx_node = self.add_node(Node::ContextVar(index_var));

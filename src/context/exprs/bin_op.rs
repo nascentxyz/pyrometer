@@ -284,7 +284,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                         tmp_lhs.ty(self).unwrap().as_dot_str(self)
                                     )
                                 }),
-                            Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                            Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
                         );
                         tmp_lhs.set_range_min(self, min).into_expr_err(loc)?;
 
@@ -331,7 +331,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 .into_expr_err(loc)?
                                 .expect("No range max?"),
                             Elem::from(Concrete::from(U256::MAX))
-                                - Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                                - Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
                         );
 
                         tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
@@ -391,7 +391,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Elem::from(Concrete::from(U256::MAX))
                                 / Elem::max(
                                     Elem::from(Concrete::from(U256::from(1))),
-                                    Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                                    Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
                                 ),
                         );
 
@@ -514,7 +514,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         };
 
         let func = SolcRange::dyn_fn_from_op(op);
-        let new_range = func(lhs_range, new_rhs, loc);
+        let new_range = func(lhs_range, new_rhs);
         new_lhs
             .set_range_min(self, new_range.range_min())
             .into_expr_err(loc)?;

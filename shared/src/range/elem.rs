@@ -58,6 +58,8 @@ pub enum RangeOp {
     BitXor,
     /// Exponentiation
     Exp,
+    /// Concatenation
+    Concat,
 }
 
 impl RangeOp {
@@ -106,6 +108,7 @@ impl ToString for RangeOp {
             BitAnd => "&".to_string(),
             BitOr => "|".to_string(),
             BitXor => "^".to_string(),
+            Concat => "concat".to_string(),
         }
     }
 }

@@ -105,10 +105,12 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
                 self.true_fork_if_cvar(loc, if_expr.clone(), *fork_ctx)
             }
             ExprRet::Multi(ref true_paths) => {
-                true_paths.iter().take(1).try_for_each(|expr_ret| {
-                    let (fork_ctx, _) = expr_ret.expect_single(loc)?;
-                    self.true_fork_if_cvar(loc, if_expr.clone(), fork_ctx)
-                })?;
+                // TODO: validate this
+                // we only take one because we just need the context out of the return
+                true_paths
+                    .iter()
+                    .take(1)
+                    .try_for_each(|expr_ret| self.match_true(loc, expr_ret, if_expr))?;
                 Ok(())
             }
             ExprRet::Fork(true_paths, other_true_paths) => {
@@ -131,10 +133,12 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
                 self.false_fork_if_cvar(loc, if_expr.clone(), *fork_ctx)
             }
             ExprRet::Multi(ref false_paths) => {
-                false_paths.iter().take(1).try_for_each(|expr_ret| {
-                    let (fork_ctx, _) = expr_ret.expect_single(loc)?;
-                    self.false_fork_if_cvar(loc, if_expr.clone(), fork_ctx)
-                })?;
+                // TODO: validate this
+                // we only take one because we just need the context out of the return
+                false_paths
+                    .iter()
+                    .take(1)
+                    .try_for_each(|expr_ret| self.match_false(loc, expr_ret, if_expr))?;
                 Ok(())
             }
             ExprRet::Fork(false_paths, other_false_paths) => {

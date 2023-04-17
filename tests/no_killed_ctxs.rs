@@ -115,6 +115,14 @@ fn test_func_override() {
 }
 
 #[test]
+fn test_intrinsics() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/intrinsics.sol");
+    let sol = include_str!("./test_data/intrinsics.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
 fn test_relative_import() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/relative_imports/relative_import.sol");

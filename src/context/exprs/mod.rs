@@ -62,6 +62,7 @@ pub enum ExprErr {
 
     NonStoragePush(Loc, String),
     IntrinsicNamedArgs(Loc, String),
+    InvalidFunctionInput(Loc, String),
     GraphError(Loc, GraphError),
 }
 
@@ -89,6 +90,7 @@ impl ExprErr {
             FunctionNotFound(loc, ..) => *loc,
             NonStoragePush(loc, ..) => *loc,
             IntrinsicNamedArgs(loc, ..) => *loc,
+            InvalidFunctionInput(loc, ..) => *loc,
             GraphError(loc, ..) => *loc,
         }
     }
@@ -110,6 +112,7 @@ impl ExprErr {
             FunctionNotFound(_, msg, ..) => msg,
             NonStoragePush(_, msg, ..) => msg,
             IntrinsicNamedArgs(_, msg, ..) => msg,
+            InvalidFunctionInput(_, msg, ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(msg), ..) => msg,
         }
     }
@@ -131,6 +134,7 @@ impl ExprErr {
             FunctionNotFound(..) => "Function could not be found",
             NonStoragePush(..) => "Pushing on non-storage based array is unsupported",
             IntrinsicNamedArgs(..) => "Arguments in calls to intrinsic functions cannot be named",
+            InvalidFunctionInput(..) => "Arguments to this function call do not match required types",
             GraphError(..) => "Graph IR Error: This is a bug. Please report it at https://github.com/nascentxyz/pyrometer",
         }
     }

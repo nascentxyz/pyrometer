@@ -100,7 +100,6 @@ impl SolcRange {
             | c @ Concrete::Int(_, _)
             | c @ Concrete::Bool(_)
             | c @ Concrete::Address(_)
-            // | c @ Concrete::String(_)
             | c @ Concrete::Bytes(_, _) => Some(SolcRange::new(
                 Elem::Concrete(RangeConcrete {
                     val: c.clone(),
@@ -112,6 +111,25 @@ impl SolcRange {
                 }),
                 vec![],
             )),
+            Concrete::String(s) => {
+                let val = s
+                    .chars()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let idx = Elem::from(Concrete::from(U256::from(i)));
+                        let mut bytes = [0x00; 32];
+                        v.encode_utf8(&mut bytes[..]);
+                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        (idx, v)
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                let r = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    len: Elem::from(Concrete::from(U256::from(s.len()))),
+                    val,
+                    loc: Loc::Implicit,
+                }));
+                Some(SolcRange::new(r.clone(), r, vec![]))
+            }
             Concrete::DynBytes(b) => {
                 let val = b
                     .iter()
@@ -137,6 +155,7 @@ impl SolcRange {
             }
         }
     }
+
     pub fn try_from_builtin(builtin: &Builtin) -> Option<Self> {
         match builtin {
             Builtin::Uint(size) => {
@@ -254,27 +273,27 @@ impl SolcRange {
         }
     }
 
-    pub fn lte_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn lte_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min,
-            self.max.min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            self.max.min(Elem::Dynamic(Dynamic::new(other.into()))),
             self.exclusions,
         )
     }
 
-    pub fn gte_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn gte_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            self.min.max(Elem::Dynamic(Dynamic::new(other.into()))),
             self.max,
             self.exclusions,
         )
     }
 
-    pub fn lt_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn lt_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min,
             self.max.min(
-                Elem::Dynamic(Dynamic::new(other.into(), loc))
+                Elem::Dynamic(Dynamic::new(other.into()))
                     - Elem::Concrete(RangeConcrete {
                         val: U256::from(1).into(),
                         loc: Loc::Implicit,
@@ -284,10 +303,10 @@ impl SolcRange {
         )
     }
 
-    pub fn gt_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn gt_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min.max(
-                Elem::Dynamic(Dynamic::new(other.into(), loc))
+                Elem::Dynamic(Dynamic::new(other.into()))
                     + Elem::Concrete(RangeConcrete {
                         val: U256::from(1).into(),
                         loc: Loc::Implicit,
@@ -298,9 +317,7 @@ impl SolcRange {
         )
     }
 
-    pub fn dyn_fn_from_op(
-        op: RangeOp,
-    ) -> &'static dyn Fn(SolcRange, ContextVarNode, Loc) -> SolcRange {
+    pub fn dyn_fn_from_op(op: RangeOp) -> &'static dyn Fn(SolcRange, ContextVarNode) -> SolcRange {
         match op {
             RangeOp::Add => &Self::add_dyn,
             RangeOp::Sub => &Self::sub_dyn,
@@ -333,85 +350,85 @@ impl SolcRange {
         }
     }
 
-    pub fn add_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn add_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min + Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max + Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min + Elem::Dynamic(Dynamic::new(other.into())),
+            self.max + Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn sub_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn sub_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min - Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max - Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min - Elem::Dynamic(Dynamic::new(other.into())),
+            self.max - Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn mul_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn mul_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min * Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max * Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min * Elem::Dynamic(Dynamic::new(other.into())),
+            self.max * Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn exp_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn exp_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.pow(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            self.max.pow(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            self.min.pow(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.max.pow(Elem::Dynamic(Dynamic::new(other.into()))),
             self.exclusions,
         )
     }
 
-    pub fn bit_and_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn bit_and_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min & Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max & Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min & Elem::Dynamic(Dynamic::new(other.into())),
+            self.max & Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn bit_or_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn bit_or_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min | Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max | Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min | Elem::Dynamic(Dynamic::new(other.into())),
+            self.max | Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn bit_xor_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn bit_xor_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min ^ Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max ^ Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min ^ Elem::Dynamic(Dynamic::new(other.into())),
+            self.max ^ Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn div_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
-        let elem = Elem::Dynamic(Dynamic::new(other.into(), loc));
+    pub fn div_dyn(self, other: ContextVarNode) -> Self {
+        let elem = Elem::Dynamic(Dynamic::new(other.into()));
         Self::new(self.min / elem.clone(), self.max / elem, self.exclusions)
     }
 
-    pub fn shl_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn shl_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min << Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max << Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min << Elem::Dynamic(Dynamic::new(other.into())),
+            self.max << Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn shr_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn shr_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min >> Elem::Dynamic(Dynamic::new(other.into(), loc)),
-            self.max >> Elem::Dynamic(Dynamic::new(other.into(), loc)),
+            self.min >> Elem::Dynamic(Dynamic::new(other.into())),
+            self.max >> Elem::Dynamic(Dynamic::new(other.into())),
             self.exclusions,
         )
     }
 
-    pub fn mod_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
-        let elem = Elem::Dynamic(Dynamic::new(other.into(), loc));
+    pub fn mod_dyn(self, other: ContextVarNode) -> Self {
+        let elem = Elem::Dynamic(Dynamic::new(other.into()));
         Self::new(
             Elem::from(Concrete::from(U256::zero())),
             elem.clone() - Elem::from(Concrete::from(U256::from(1))).cast(elem),
@@ -419,31 +436,31 @@ impl SolcRange {
         )
     }
 
-    pub fn min_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn min_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            self.max.min(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            self.min.min(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.max.min(Elem::Dynamic(Dynamic::new(other.into()))),
             self.exclusions,
         )
     }
 
-    pub fn max_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
+    pub fn max_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
-            self.max.max(Elem::Dynamic(Dynamic::new(other.into(), loc))),
+            self.min.max(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.max.max(Elem::Dynamic(Dynamic::new(other.into()))),
             self.exclusions,
         )
     }
 
-    pub fn eq_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
-        let min = self.min.eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
-        let max = self.max.eq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
+    pub fn eq_dyn(self, other: ContextVarNode) -> Self {
+        let min = self.min.eq(Elem::Dynamic(Dynamic::new(other.into())));
+        let max = self.max.eq(Elem::Dynamic(Dynamic::new(other.into())));
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 
-    pub fn neq_dyn(self, other: ContextVarNode, loc: Loc) -> Self {
-        let min = self.min.neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
-        let max = self.max.neq(Elem::Dynamic(Dynamic::new(other.into(), loc)));
+    pub fn neq_dyn(self, other: ContextVarNode) -> Self {
+        let min = self.min.neq(Elem::Dynamic(Dynamic::new(other.into())));
+        let max = self.max.neq(Elem::Dynamic(Dynamic::new(other.into())));
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 }

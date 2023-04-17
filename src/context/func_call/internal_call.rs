@@ -1,9 +1,6 @@
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
-use crate::{
-    func_call::{intrinsic_call::IntrinsicFuncCaller, FuncCaller},
-    ContextBuilder, ExprRet,
-};
+use crate::{func_call::FuncCaller, ContextBuilder, ExprRet};
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
@@ -174,18 +171,8 @@ pub trait InternalFuncCaller:
 
         if possible_funcs.is_empty() {
             // this is a builtin, cast, or unknown function?
-            let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx)? {
-                ExprRet::Single((ctx, idx)) => (ctx, idx),
-                m @ ExprRet::Multi(_) => m.expect_single(*loc)?,
-                ExprRet::CtxKilled => return Ok(ExprRet::CtxKilled),
-                e => {
-                    return Err(ExprErr::UnhandledExprRet(
-                        *loc,
-                        format!("Got fork in func call: {e:?}"),
-                    ))
-                }
-            };
-            self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
+            let ret = self.parse_ctx_expr(func_expr, ctx)?;
+            self.match_intrinsic_fallback(loc, input_exprs, ret)
         } else if possible_funcs.len() == 1 {
             let inputs = ExprRet::Multi(
                 input_exprs

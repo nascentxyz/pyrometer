@@ -317,10 +317,7 @@ impl ContextVarNode {
                 val: c.underlying(analyzer)?.clone(),
                 loc,
             })),
-            _ => Ok(Elem::Dynamic(Dynamic {
-                idx: self.0.into(),
-                loc,
-            })),
+            _ => Ok(Elem::Dynamic(Dynamic { idx: self.0.into() })),
         }
     }
 

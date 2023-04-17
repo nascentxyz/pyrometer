@@ -70,10 +70,46 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         ident: &Identifier,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
+        // TODO: this is wrong as it overwrites a function call of the form elem.length(...) i believe
         if ident.name == "length" {
             return self.length(loc, member_expr, ctx);
         }
-        let (_, member_idx) = self.parse_ctx_expr(member_expr, ctx)?.expect_single(loc)?;
+
+        let ret = self.parse_ctx_expr(member_expr, ctx)?;
+        self.match_member(loc, ident, ret)
+    }
+
+    fn match_member(
+        &mut self,
+        loc: Loc,
+        ident: &Identifier,
+        ret: ExprRet,
+    ) -> Result<ExprRet, ExprErr> {
+        match ret {
+            ExprRet::Single((ctx, idx)) | ExprRet::SingleLiteral((ctx, idx)) => {
+                self.member_access_inner(loc, idx, ident, ctx)
+            }
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .into_iter()
+                    .map(|ret| self.match_member(loc, ident, ret))
+                    .collect::<Result<Vec<_>, ExprErr>>()?,
+            )),
+            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                Box::new(self.match_member(loc, ident, *w1)?),
+                Box::new(self.match_member(loc, ident, *w2)?),
+            )),
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
+        }
+    }
+
+    fn member_access_inner(
+        &mut self,
+        loc: Loc,
+        member_idx: NodeIdx,
+        ident: &Identifier,
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Struct(struct_node), _) => {
@@ -732,23 +768,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     loc,
                     format!("Unknown member access on bool: {:?}", ident.name),
                 )),
-                Builtin::String => {
-                    match ident.name.split('(').collect::<Vec<_>>()[0] {
-                        "concat" => {
-                            // TODO: improve this to take into account concrete elements
-                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
-                                .into_expr_err(loc)?;
-                            let node = self.add_node(Node::ContextVar(cvar));
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single((ctx, node)))
-                        }
-                        _ => Err(ExprErr::MemberAccessNotFound(
-                            loc,
-                            format!("Unknown member access on string: {:?}", ident.name),
-                        )),
+                Builtin::String => match ident.name.split('(').collect::<Vec<_>>()[0] {
+                    "concat" => {
+                        let as_fn = self.builtin_fns().get("concat").unwrap();
+                        let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                        Ok(ExprRet::Single((ctx, fn_node.into())))
                     }
-                }
+                    _ => Err(ExprErr::MemberAccessNotFound(
+                        loc,
+                        format!("Unknown member access on string: {:?}", ident.name),
+                    )),
+                },
                 Builtin::Bytes(size) => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!("Unknown member access on bytes{}: {:?}", size, ident.name),
@@ -757,23 +787,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     loc,
                     format!("Unknown member access on rational: {:?}", ident.name),
                 )),
-                Builtin::DynamicBytes => {
-                    match ident.name.split('(').collect::<Vec<_>>()[0] {
-                        "concat" => {
-                            // TODO: improve this to take into account concrete elements
-                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
-                                .into_expr_err(loc)?;
-                            let node = self.add_node(Node::ContextVar(cvar));
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single((ctx, node)))
-                        }
-                        _ => Err(ExprErr::MemberAccessNotFound(
-                            loc,
-                            format!("Unknown member access on bytes: {:?}", ident.name),
-                        )),
+                Builtin::DynamicBytes => match ident.name.split('(').collect::<Vec<_>>()[0] {
+                    "concat" => {
+                        let as_fn = self.builtin_fns().get("concat").unwrap();
+                        let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                        Ok(ExprRet::Single((ctx, fn_node.into())))
                     }
-                }
+                    _ => Err(ExprErr::MemberAccessNotFound(
+                        loc,
+                        format!("Unknown member access on bytes: {:?}", ident.name),
+                    )),
+                },
                 Builtin::Array(_) => {
                     if ident.name.starts_with("push") {
                         if is_storage {
@@ -1107,7 +1131,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     let max = r.evaled_range_max(self).unwrap();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(len_node));
                         let res = next_arr
                             .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc);
@@ -1115,7 +1139,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(len_node));
                         let res = next_arr
                             .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc);
@@ -1167,7 +1191,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
+                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into()));
                                 let res = next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1175,7 +1199,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
+                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into()));
                                 let res = next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1212,7 +1236,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                                rd.len = Elem::Dynamic(Dynamic::new(len_node));
                                 let res = next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1220,7 +1244,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
+                                rd.len = Elem::Dynamic(Dynamic::new(len_node));
                                 let res = next_arr
                                     .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);

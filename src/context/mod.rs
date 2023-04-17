@@ -1135,7 +1135,7 @@ pub trait ContextBuilder:
             }
             ExprRet::Single((ctx, var)) => {
                 let cvar = ContextVarNode::from(*var);
-                let elem = Elem::Dynamic(Dynamic::new(cvar.into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(cvar.into()));
                 let one = Elem::from(Concrete::from(U256::from(1))).cast(elem);
                 if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                     if increment {
@@ -1292,8 +1292,8 @@ pub trait ContextBuilder:
     ) -> Result<ExprRet, ExprErr> {
         // println!("rhs_range: {:?}", rhs_cvar.range(self));
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
-            Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
-            Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into(), loc)),
+            Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into())),
+            Elem::Dynamic(Dynamic::new(rhs_cvar.latest_version(self).into())),
         );
 
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?;
@@ -1353,8 +1353,8 @@ pub trait ContextBuilder:
 
                         if let Some(mut rd) = min.maybe_range_dyn() {
                             rd.val.insert(
-                                Elem::Dynamic(Dynamic::new(index.into(), loc)),
-                                Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                                Elem::Dynamic(Dynamic::new(index.into())),
+                                Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
                             );
                             let res = next_arr
                                 .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
@@ -1364,8 +1364,8 @@ pub trait ContextBuilder:
 
                         if let Some(mut rd) = max.maybe_range_dyn() {
                             rd.val.insert(
-                                Elem::Dynamic(Dynamic::new(index.into(), loc)),
-                                Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc)),
+                                Elem::Dynamic(Dynamic::new(index.into())),
+                                Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
                             );
                             let res = next_arr
                                 .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))

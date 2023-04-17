@@ -3,10 +3,12 @@ use crate::analyzer::AsDotStr;
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::range::elem::RangeElem;
+use crate::range::elem_ty::Dynamic;
 use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeDyn;
 use crate::range::Range;
 use crate::range::SolcRange;
+use crate::ContextVarNode;
 
 use crate::Node;
 use crate::NodeIdx;
@@ -100,9 +102,20 @@ impl VarType {
                     );
                     *self = new_ty;
                 }
-                // Concrete::Bytes(size, val) => ,
-                // Concrete::Address(Address),
-                // Concrete::DynBytes(Vec<u8>),
+                crate::Concrete::String(_) => {
+                    let new_ty = VarType::BuiltIn(
+                        BuiltInNode::from(analyzer.builtin_or_add(Builtin::String)),
+                        SolcRange::from(c),
+                    );
+                    *self = new_ty;
+                }
+                crate::Concrete::DynBytes(_) => {
+                    let new_ty = VarType::BuiltIn(
+                        BuiltInNode::from(analyzer.builtin_or_add(Builtin::DynamicBytes)),
+                        SolcRange::from(c),
+                    );
+                    *self = new_ty;
+                }
                 // Concrete::Array(Vec<Concrete>),
                 _ => {}
             }
@@ -375,6 +388,66 @@ impl VarType {
                 range.evaled_range_max(analyzer).unwrap(),
             )
         }))
+    }
+
+    pub fn try_match_index_dynamic_ty(
+        &self,
+        index: ContextVarNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Option<NodeIdx>, GraphError> {
+        match self {
+            Self::BuiltIn(_node, None) => Ok(None),
+            Self::BuiltIn(_node, Some(r)) => {
+                // check if the index exists as a key
+                let min = r.range_min();
+                if let Some(map) = min.dyn_map() {
+                    let name = index.name(analyzer)?;
+                    let is_const = index.is_const(analyzer)?;
+                    if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
+                        Elem::Dynamic(Dynamic { idx }) => match analyzer.node(*idx) {
+                            Node::ContextVar(_) => {
+                                let cvar = ContextVarNode::from(*idx);
+                                cvar.name(analyzer).unwrap() == name
+                            }
+                            _ => false,
+                        },
+                        c @ Elem::Concrete(..) if is_const => {
+                            let index_val = index.evaled_range_min(analyzer).unwrap().unwrap();
+                            index_val.range_eq(c)
+                        }
+                        _ => false,
+                    }) {
+                        if let Some(idx) = val.node_idx() {
+                            return Ok(idx.into());
+                        } else if let Some(c) = val.concrete() {
+                            let cnode = analyzer.add_node(Node::Concrete(c));
+                            return Ok(cnode.into());
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Builtin but it was: {e:?}"
+            ))),
+        }
+    }
+
+    pub fn get_index_dynamic_ty(
+        &self,
+        index: ContextVarNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<VarType, GraphError> {
+        if let Some(var_ty) = self.try_match_index_dynamic_ty(index, analyzer)? {
+            Ok(VarType::try_from_idx(analyzer, var_ty).unwrap())
+        } else {
+            match self {
+                Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
+                e => Err(GraphError::NodeConfusion(format!(
+                    "Node type confusion: expected node to be Builtin but it was: {e:?}"
+                ))),
+            }
+        }
     }
 
     pub fn dynamic_underlying_ty(

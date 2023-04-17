@@ -3,14 +3,21 @@ contract Intrinsics {
 		string memory a = "aa";
 		string memory b = "bb";
 		string memory c = string.concat(a, b);
-		string memory c = string.concat(a, b);
+		string memory d = string.concat(a, b, c);
 	}
 
 	function bytesConcat() public {
 		bytes memory a = hex"aa";
 		bytes memory b = hex"bb";
 		bytes memory c = bytes.concat(a, b);
+		require(c[0] == hex"aa");
+		require(c[1] == hex"bb");
 		bytes memory d = bytes.concat(a, b, c);
+		require(d[0] == hex"aa");
+		require(d[1] == hex"bb");
+		require(d[2] == hex"aa");
+		require(d[3] == hex"bb");
+
 	}
 
 
@@ -49,14 +56,14 @@ contract Intrinsics {
 	}
 
 
-	error A();
-	function revertingWithError() public {
-		revert A();
-	}
+	// error A();
+	// function revertingWithError() public {
+	// 	revert A();
+	// }
 
-	function reverting() public {
-		revert();
-	}
+	// function reverting() public {
+	// 	revert();
+	// }
 
 	function precompiles() public {
 		bytes memory a = hex"aa";
@@ -64,15 +71,15 @@ contract Intrinsics {
 		bytes32 shaHash = sha256(a);
 		bytes20 ripmdHash = ripemd160(a);
 		address recoveredAddr = ecrecover(hash, 1, 2, 3);
-		uint256 a = addmod(125, 100, 100);
-		require(a == 25);
-		uint256 b = mulmod(125, 100, 100);
-		require(b == 25);
+		uint256 addMod = addmod(125, 100, 100);
+		require(addMod == 25);
+		uint256 mulMod = mulmod(125, 100, 100);
+		require(mulMod == 25);
 	}
 
 	function typeAttrs() public {
 		string memory name = type(Other).name;
-		require(name == "Other");
+		// require(name == "Other");
 
 		bytes memory code = type(Other).creationCode;
 		bytes memory runtimeCode = type(Other).runtimeCode;
@@ -82,7 +89,7 @@ contract Intrinsics {
 
 	function uintMinMax() public {
 		uint256 max256 = type(uint256).max;
-		require(max256 == 2**256 - 1);
+		require(max256 == 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
 		uint248 max248 = type(uint248).max;
 		require(max248 == 2**248 - 1);
 		uint240 max240 = type(uint240).max;

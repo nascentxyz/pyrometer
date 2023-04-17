@@ -114,9 +114,9 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 let range = {
                     let elem = Elem::Expr(RangeExpr {
-                        lhs: Box::new(Elem::Dynamic(Dynamic::new(lhs_cvar.into(), loc))),
+                        lhs: Box::new(Elem::Dynamic(Dynamic::new(lhs_cvar.into()))),
                         op,
-                        rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))),
+                        rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into()))),
                     });
 
                     let exclusions = lhs_cvar

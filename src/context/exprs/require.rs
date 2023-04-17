@@ -329,7 +329,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         {
             let lhs_range_fn = SolcRange::dyn_fn_from_op(op);
             lhs_range.update_deps(ctx, self);
-            let mut new_var_range = lhs_range_fn(lhs_range.clone(), new_rhs, loc);
+            let mut new_var_range = lhs_range_fn(lhs_range.clone(), new_rhs);
 
             if let Some(mut rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
                 rhs_range.update_deps(ctx, self);
@@ -345,7 +345,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (true, false) => {
                         // flip the new range around to be in terms of rhs
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
-                        new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs, loc);
+                        new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
 
                         if self.update_nonconst_from_const(loc, op, new_lhs, new_rhs, rhs_range) {
                             ctx.kill(self, loc).into_expr_err(loc)?;
@@ -383,14 +383,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let max = r.range_max();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
                         backing_arr
                             .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
                         backing_arr
                             .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
@@ -412,8 +412,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.val.insert(
-                                    Elem::Dynamic(Dynamic::new(index.into(), loc)),
-                                    Elem::Dynamic(Dynamic::new(new_rhs.into(), loc)),
+                                    Elem::Dynamic(Dynamic::new(index.into())),
+                                    Elem::Dynamic(Dynamic::new(new_rhs.into())),
                                 );
                                 next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
@@ -422,8 +422,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.val.insert(
-                                    Elem::Dynamic(Dynamic::new(index.into(), loc)),
-                                    Elem::Dynamic(Dynamic::new(new_rhs.into(), loc)),
+                                    Elem::Dynamic(Dynamic::new(index.into())),
+                                    Elem::Dynamic(Dynamic::new(new_rhs.into())),
                                 );
                                 next_arr
                                     .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
@@ -440,14 +440,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let max = r.range_max();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
                         backing_arr
                             .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into(), loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
                         backing_arr
                             .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
@@ -571,7 +571,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
 
                 if !nonconst_range.contains_elem(&elem, self) {
                     return true;
@@ -583,7 +583,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
             RangeOp::Neq => {
                 // check if contains
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
 
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range
@@ -625,7 +625,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gt => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
 
                 // if nonconst max is <= const, we can't make this true
                 let max = nonconst_range.evaled_range_max(self).unwrap();
@@ -643,7 +643,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gte => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
 
                 // if nonconst max is < const, we can't make this true
                 if matches!(
@@ -660,7 +660,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lt => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
 
                 // if nonconst min is >= const, we can't make this true
                 let min = nonconst_range.evaled_range_min(self).unwrap();
@@ -679,7 +679,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lte => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into(), loc));
+                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
 
                 // if nonconst min is > const, we can't make this true
                 let min = nonconst_range.evaled_range_min(self).unwrap();
@@ -755,16 +755,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Neq => {
-                let rhs_elem =
-                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
                 // just add as an exclusion
                 lhs_range.exclusions.push(rhs_elem);
                 new_lhs
                     .set_range_exclusions(self, lhs_range.exclusions)
                     .unwrap();
 
-                let lhs_elem =
-                    Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into(), loc));
+                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
                 // just add as an exclusion
                 rhs_range.exclusions.push(lhs_elem);
                 new_rhs
@@ -773,8 +771,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gt => {
-                let rhs_elem =
-                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
 
                 // if lhs.max is <= rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self).unwrap();
@@ -798,8 +795,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gte => {
-                let rhs_elem =
-                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
 
                 // if lhs.max is < rhs.min, we can't make this true
                 if matches!(
@@ -817,8 +813,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lt => {
-                let rhs_elem =
-                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
 
                 // if lhs min is >= rhs.max, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();
@@ -842,8 +837,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lte => {
-                let rhs_elem =
-                    Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into(), loc));
+                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
 
                 // if nonconst min is > const, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();
@@ -950,7 +944,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .into_expr_err(loc)?
                 {
                     let lhs_range_fn = SolcRange::dyn_fn_from_op(no_flip_op);
-                    let new_lhs_range = lhs_range_fn(lhs_range, adjusted_gt_rhs, loc);
+                    let new_lhs_range = lhs_range_fn(lhs_range, adjusted_gt_rhs);
 
                     new_underlying_lhs
                         .set_range_min(self, new_lhs_range.range_min())
@@ -1033,10 +1027,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     {
                         let new_lhs_range = if needs_inverse {
                             let lhs_range_fn = SolcRange::dyn_fn_from_op(flip_op);
-                            lhs_range_fn(lhs_range, adjusted_gt_rhs, loc)
+                            lhs_range_fn(lhs_range, adjusted_gt_rhs)
                         } else {
                             let lhs_range_fn = SolcRange::dyn_fn_from_op(no_flip_op);
-                            lhs_range_fn(lhs_range, adjusted_gt_rhs, loc)
+                            lhs_range_fn(lhs_range, adjusted_gt_rhs)
                         };
 
                         new_underlying_rhs

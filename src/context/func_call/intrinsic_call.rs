@@ -6,8 +6,12 @@ use crate::{
     },
     ExprRet,
 };
+use ethers_core::types::H256;
+use ethers_core::types::U256;
 use shared::analyzer::Search;
 use shared::analyzer::{AnalyzerLike, GraphLike};
+use shared::nodes::Concrete;
+use shared::range::elem_ty::RangeDyn;
 use shared::{
     context::*,
     nodes::{Builtin, VarType},
@@ -17,6 +21,8 @@ use shared::{
     },
     Edge, Node, NodeIdx,
 };
+use std::collections::BTreeMap;
+use std::collections::VecDeque;
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -170,6 +176,7 @@ pub trait IntrinsicFuncCaller:
                             let new_elem = self.parse_ctx_expr(&input_exprs[1], ctx)?;
                             self.match_assign_sides(*loc, &index, &new_elem)
                         }
+                        "concat" => self.concat(loc, input_exprs, ctx),
                         "keccak256" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?
                                 .expect_single(*loc)?;
@@ -325,13 +332,13 @@ pub trait IntrinsicFuncCaller:
                     let max = r.evaled_range_max(self).into_expr_err(*loc)?;
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar));
                         arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(*loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
+                        rd.len = Elem::Dynamic(Dynamic::new(len_cvar));
                         arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(*loc)?;
                     }
@@ -446,6 +453,172 @@ pub trait IntrinsicFuncCaller:
                 }
             }
             e => Err(ExprErr::FunctionNotFound(*loc, format!("{e:?}"))),
+        }
+    }
+
+    fn concat(
+        &mut self,
+        loc: &Loc,
+        input_exprs: &[Expression],
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
+        let inputs = input_exprs[1..]
+            .iter()
+            .map(|expr| self.parse_ctx_expr(expr, ctx))
+            .collect::<Result<Vec<_>, ExprErr>>()?;
+
+        if inputs.is_empty() {
+            Ok(ExprRet::Multi(vec![]))
+        } else {
+            let start = &inputs[0];
+            if inputs.len() > 1 {
+                self.match_concat(ctx, loc, start.clone(), &inputs[1..], None)
+            } else {
+                self.match_concat(ctx, loc, start.clone(), &[], None)
+            }
+        }
+    }
+
+    fn match_concat(
+        &mut self,
+        ctx: ContextNode,
+        loc: &Loc,
+        curr: ExprRet,
+        inputs: &[ExprRet],
+        accum_node: Option<ContextVarNode>,
+    ) -> Result<ExprRet, ExprErr> {
+        if let Some(accum_node) = accum_node {
+            match curr.flatten() {
+                ExprRet::Single((ctx, var)) | ExprRet::SingleLiteral((ctx, var)) => {
+                    self.concat_inner(*loc, accum_node, ContextVarNode::from(var))?;
+                    Ok(ExprRet::Single((ctx, accum_node.into())))
+                }
+                ExprRet::Multi(inner) => {
+                    inner
+                        .into_iter()
+                        .map(|i| self.match_concat(ctx, loc, i, inputs, Some(accum_node)))
+                        .collect::<Result<Vec<_>, ExprErr>>()?;
+                    Ok(ExprRet::Single((ctx, accum_node.into())))
+                }
+                ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                    Box::new(self.match_concat(ctx, loc, *w1, inputs, Some(accum_node))?),
+                    Box::new(self.match_concat(ctx, loc, *w2, inputs, Some(accum_node))?),
+                )),
+                ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
+            }
+        } else {
+            match curr.flatten() {
+                ExprRet::Single((ctx, var)) | ExprRet::SingleLiteral((ctx, var)) => {
+                    let acc = ContextVarNode::from(var)
+                        .as_tmp(*loc, ctx, self)
+                        .into_expr_err(*loc)?;
+                    inputs
+                        .iter()
+                        .map(|i| self.match_concat(ctx, loc, i.clone(), inputs, Some(acc)))
+                        .collect::<Result<Vec<_>, ExprErr>>()?;
+                    Ok(ExprRet::Single((ctx, acc.into())))
+                }
+                ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                    inner
+                        .into_iter()
+                        .map(|i| self.match_concat(ctx, loc, i, inputs, None))
+                        .collect::<Result<Vec<_>, ExprErr>>()?,
+                )),
+                ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                    Box::new(self.match_concat(ctx, loc, *w1, inputs, None)?),
+                    Box::new(self.match_concat(ctx, loc, *w2, inputs, None)?),
+                )),
+                ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
+            }
+        }
+    }
+
+    fn concat_inner(
+        &mut self,
+        loc: Loc,
+        accum: ContextVarNode,
+        right: ContextVarNode,
+    ) -> Result<(), ExprErr> {
+        match (
+            accum.ty(self).into_expr_err(loc)?,
+            right.ty(self).into_expr_err(loc)?,
+        ) {
+            (VarType::Concrete(accum_cnode), VarType::Concrete(right_cnode)) => {
+                let new_ty = match (
+                    accum_cnode.underlying(self).into_expr_err(loc)?,
+                    right_cnode.underlying(self).into_expr_err(loc)?,
+                ) {
+                    (accum_node @ Concrete::String(..), right_node @ Concrete::String(..)) => {
+                        let new_val = accum_node.clone().concat(right_node).unwrap();
+                        let new_cnode = self.add_node(Node::Concrete(new_val));
+                        VarType::Concrete(new_cnode.into())
+                    }
+                    (accum_node @ Concrete::DynBytes(..), right_node @ Concrete::DynBytes(..)) => {
+                        let new_val = accum_node.clone().concat(right_node).unwrap();
+                        let new_cnode = self.add_node(Node::Concrete(new_val));
+                        VarType::Concrete(new_cnode.into())
+                    }
+                    (a, b) => {
+                        // Invalid solidity
+                        return Err(ExprErr::InvalidFunctionInput(loc, format!("Type mismatch: {a:?} for left hand side and type: {b:?} for right hand side")));
+                    }
+                };
+                accum.underlying_mut(self).into_expr_err(loc)?.ty = new_ty;
+                Ok(())
+            }
+            (VarType::Concrete(accum_cnode), VarType::BuiltIn(_bn, Some(r2))) => {
+                let underlying = accum_cnode.underlying(self).into_expr_err(loc)?;
+                // let val = match underlying {
+                //     Concrete::String(val) => {
+                //         val
+                //             .chars()
+                //             .enumerate()
+                //             .map(|(i, v)| {
+                //                 let idx = Elem::from(Concrete::from(U256::from(i)));
+                //                 let mut bytes = [0x00; 32];
+                //                 v.encode_utf8(&mut bytes[..]);
+                //                 let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                //                 (idx, v)
+                //             })
+                //             .collect::<BTreeMap<_, _>>()
+                //     }
+                //     Concrete::DynBytes(val) => {
+                //         val
+                //             .iter()
+                //             .enumerate()
+                //             .map(|(i, v)| {
+                //                 let idx = Elem::from(Concrete::from(U256::from(i)));
+                //                 let mut bytes = [0x00; 32];
+                //                 bytes[0] = *v;
+                //                 let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                //                 (idx, v)
+                //             })
+                //             .collect::<BTreeMap<_, _>>()
+                //     }
+                //     b => return Err(ExprErr::InvalidFunctionInput(loc, format!("Type mismatch: expected String or Bytes for concat input but found: {b:?}")))
+                // };
+                // TODO: Extend with bn
+
+                let range = SolcRange::from(underlying.clone()).unwrap();
+                let min = range.min.clone().concat(r2.min.clone());
+                let max = range.max.clone().concat(r2.max.clone());
+                accum.set_range_min(self, min).into_expr_err(loc)?;
+                accum.set_range_max(self, max).into_expr_err(loc)?;
+
+                let new_ty =
+                    VarType::BuiltIn(self.builtin_or_add(Builtin::String).into(), Some(range));
+                accum.underlying_mut(self).into_expr_err(loc)?.ty = new_ty;
+                Ok(())
+            }
+            (VarType::BuiltIn(_bn, Some(r)), VarType::BuiltIn(_bn2, Some(r2))) => {
+                // TODO: improve length calculation here
+                let min = r.min.clone().concat(r2.min.clone());
+                let max = r.max.clone().concat(r2.max.clone());
+                accum.set_range_min(self, min).into_expr_err(loc)?;
+                accum.set_range_max(self, max).into_expr_err(loc)?;
+                Ok(())
+            }
+            (_, _) => Ok(()),
         }
     }
 }

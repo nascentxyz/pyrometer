@@ -64,19 +64,34 @@ pub trait FuncCaller:
             }
             Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, input_exprs),
             _ => {
-                let (func_ctx, func_idx) = match self.parse_ctx_expr(func_expr, ctx)? {
-                    ExprRet::Single((ctx, idx)) => (ctx, idx),
-                    m @ ExprRet::Multi(_) => m.expect_single(*loc)?,
-                    ExprRet::CtxKilled => return Ok(ExprRet::CtxKilled),
-                    e => {
-                        return Err(ExprErr::UnhandledExprRet(
-                            *loc,
-                            format!("Got fork in func call: {e:?}"),
-                        ))
-                    }
-                };
+                let ret = self.parse_ctx_expr(func_expr, ctx)?;
+                self.match_intrinsic_fallback(loc, input_exprs, ret)
+            }
+        }
+    }
+
+    fn match_intrinsic_fallback(
+        &mut self,
+        loc: &Loc,
+        input_exprs: &[Expression],
+        ret: ExprRet,
+    ) -> Result<ExprRet, ExprErr> {
+        match ret {
+            ExprRet::Single((func_ctx, func_idx))
+            | ExprRet::SingleLiteral((func_ctx, func_idx)) => {
                 self.intrinsic_func_call(loc, input_exprs, func_idx, func_ctx)
             }
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .into_iter()
+                    .map(|ret| self.match_intrinsic_fallback(loc, input_exprs, ret))
+                    .collect::<Result<Vec<_>, ExprErr>>()?,
+            )),
+            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                Box::new(self.match_intrinsic_fallback(loc, input_exprs, *w1)?),
+                Box::new(self.match_intrinsic_fallback(loc, input_exprs, *w2)?),
+            )),
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
         }
     }
 

@@ -217,6 +217,17 @@ impl Concrete {
         }
     }
 
+    pub fn concat(self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Concrete::String(a), Concrete::String(b)) => Some(Concrete::from(format!("{a}{b}"))),
+            (Concrete::DynBytes(mut a), Concrete::DynBytes(b)) => {
+                a.extend(b);
+                Some(Concrete::from(a))
+            }
+            _ => None,
+        }
+    }
+
     /// Cast the concrete to another type as denoted by a [`Builtin`].
     pub fn cast(self, builtin: Builtin) -> Option<Self> {
         match self {
@@ -577,10 +588,9 @@ impl Concrete {
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0x00; 20]))),
             Concrete::Bool(_) => Some(Concrete::Bool(false)),
-            e => {
-                println!("was other: {e:?}");
-                None
-            }
+            Concrete::String(_) => Some(Concrete::String("".to_string())),
+            Concrete::DynBytes(_) => Some(Concrete::DynBytes(vec![])),
+            Concrete::Array(_) => Some(Concrete::Array(vec![])),
         }
     }
 
@@ -633,7 +643,13 @@ impl Concrete {
                     hex::encode(a)
                 }
             }
-            e => todo!("Concrete as string {e:?}"),
+            Concrete::Array(arr) => format!(
+                "[{}]",
+                arr.iter()
+                    .map(|i| i.as_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 
@@ -710,7 +726,13 @@ impl Concrete {
                     hex::encode(a)
                 }
             }
-            e => todo!("Concrete as string: {e:?}"),
+            Concrete::Array(arr) => format!(
+                "[{}]",
+                arr.iter()
+                    .map(|i| i.as_human_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }

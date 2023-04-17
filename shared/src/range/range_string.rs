@@ -68,10 +68,10 @@ impl ToRangeString for Elem<Concrete> {
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
-            Elem::Dynamic(Dynamic { idx, loc }) => {
+            Elem::Dynamic(Dynamic { idx }) => {
                 let as_var = ContextVarNode::from(*idx);
                 let name = as_var.display_name(analyzer).unwrap();
-                RangeElemString::new(name, *loc)
+                RangeElemString::new(name, as_var.loc(analyzer).unwrap())
             }
             Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
             Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
@@ -168,7 +168,7 @@ impl ToRangeString for RangeDyn<Concrete> {
             let displayed_vals = self
                 .val
                 .iter()
-                .take(5)
+                .take(10)
                 .map(|(key, val)| {
                     if maximize {
                         (key.maximize(analyzer).unwrap(), val)
@@ -232,7 +232,7 @@ impl ToRangeString for RangeExpr<Concrete> {
                 format!("{}({}, {})", self.op.to_string(), lhs_str.s, rhs_str.s),
                 lhs_str.loc,
             )
-        } else if matches!(self.op, RangeOp::Cast) {
+        } else if matches!(self.op, RangeOp::Cast | RangeOp::Concat) {
             let rhs = if maximize {
                 self.rhs.maximize(analyzer).unwrap()
             } else {

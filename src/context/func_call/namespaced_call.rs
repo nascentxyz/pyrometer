@@ -6,6 +6,7 @@ use crate::{
     },
     ExprRet,
 };
+use shared::NodeIdx;
 
 use shared::context::ContextVarNode;
 
@@ -60,7 +61,63 @@ pub trait NameSpaceFuncCaller:
             }
         }
 
-        let (mem_ctx, member) = self.parse_ctx_expr(member_expr, ctx)?.expect_single(*loc)?;
+        let ret = self.parse_ctx_expr(member_expr, ctx)?;
+        self.match_namespaced_member(ctx, *loc, member_expr, ident, input_exprs, ret)
+    }
+
+    fn match_namespaced_member(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        member_expr: &Expression,
+        ident: &Identifier,
+        input_exprs: &[Expression],
+        ret: ExprRet,
+    ) -> Result<ExprRet, ExprErr> {
+        match ret {
+            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
+                self.call_name_spaced_func_inner(ctx, loc, member_expr, ident, input_exprs, inner)
+            }
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .into_iter()
+                    .map(|ret| {
+                        self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
+                    })
+                    .collect::<Result<Vec<_>, ExprErr>>()?,
+            )),
+            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                Box::new(self.match_namespaced_member(
+                    ctx,
+                    loc,
+                    member_expr,
+                    ident,
+                    input_exprs,
+                    *w1,
+                )?),
+                Box::new(self.match_namespaced_member(
+                    ctx,
+                    loc,
+                    member_expr,
+                    ident,
+                    input_exprs,
+                    *w2,
+                )?),
+            )),
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
+        }
+    }
+
+    fn call_name_spaced_func_inner(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        member_expr: &Expression,
+        ident: &Identifier,
+        input_exprs: &[Expression],
+        (mem_ctx, member): (ContextNode, NodeIdx),
+    ) -> Result<ExprRet, ExprErr> {
+        use solang_parser::pt::Expression::*;
         tracing::trace!(
             "namespaced function call: {:?}.{:?}(..)",
             ContextVarNode::from(member).display_name(self),
@@ -89,33 +146,19 @@ pub trait NameSpaceFuncCaller:
 
         if possible_funcs.is_empty() {
             let as_input_str = ExprRet::Multi(inputs).try_as_func_input_str(self);
-            let (func_ctx, func_idx) = match self
-                .parse_ctx_expr(
-                    &MemberAccess(
-                        *loc,
-                        Box::new(member_expr.clone()),
-                        Identifier {
-                            loc: ident.loc,
-                            name: format!("{}{}", ident.name, as_input_str),
-                        },
-                    ),
-                    ctx,
-                )?
-                .flatten()
-            {
-                ExprRet::Single((ctx, idx)) => (ctx, idx),
-                m @ ExprRet::Multi(_) => m.expect_single(*loc)?,
-                ExprRet::CtxKilled => return Ok(ExprRet::CtxKilled),
-                e => {
-                    return Err(ExprErr::UnhandledExprRet(
-                        *loc,
-                        format!("Got fork in func call: {e:?}"),
-                    ))
-                }
-            };
-            let mut modifierd_input_exprs = vec![member_expr.clone()];
-            modifierd_input_exprs.extend(input_exprs.to_vec());
-            self.intrinsic_func_call(loc, &modifierd_input_exprs, func_idx, func_ctx)
+
+            let expr = &MemberAccess(
+                loc,
+                Box::new(member_expr.clone()),
+                Identifier {
+                    loc: ident.loc,
+                    name: format!("{}{}", ident.name, as_input_str),
+                },
+            );
+            let ret = self.parse_ctx_expr(expr, ctx)?;
+            let mut modifier_input_exprs = vec![member_expr.clone()];
+            modifier_input_exprs.extend(input_exprs.to_vec());
+            self.match_intrinsic_fallback(&loc, &modifier_input_exprs, ret)
         } else if possible_funcs.len() == 1 {
             let func = possible_funcs[0];
             if func.params(self).len() < inputs.len() {
@@ -145,10 +188,10 @@ pub trait NameSpaceFuncCaller:
             if let Some(func) =
                 self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
             {
-                self.setup_fn_call(loc, &inputs, func.into(), ctx, None)
+                self.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
             } else {
                 Err(ExprErr::FunctionNotFound(
-                    *loc,
+                    loc,
                     "Could not find function".to_string(),
                 ))
             }

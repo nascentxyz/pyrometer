@@ -25,16 +25,8 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             Ok(ExprRet::Multi(vec![]))
         } else if let Some(parent_ctx) = ctx.underlying(self).into_expr_err(ident.loc)?.parent_ctx {
             // check if we can inherit it
-            let (_pctx, cvar) = self.variable(ident, parent_ctx)?.expect_single(ident.loc)?;
-            match self.node(cvar) {
-                Node::ContextVar(_) => {
-                    let cvar = ContextVarNode::from(cvar).latest_version(self);
-                    let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
-                    ctx_cvar.update_deps(ctx, self).into_expr_err(ident.loc)?;
-                    Ok(ExprRet::Single((ctx, ctx_cvar.0.into())))
-                }
-                _ => Ok(ExprRet::Single((ctx, cvar))),
-            }
+            let ret = self.variable(ident, parent_ctx)?;
+            self.match_variable(ctx, ident, ret)
         } else if let Some(idx) = self.user_types().get(&ident.name) {
             let var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
                 Some(v) => v,
@@ -82,6 +74,38 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let node = self.add_node(Node::Unresolved(ident.clone()));
             self.user_types_mut().insert(ident.name.clone(), node);
             Ok(ExprRet::Single((ctx, node)))
+        }
+    }
+
+    fn match_variable(
+        &mut self,
+        ctx: ContextNode,
+        ident: &Identifier,
+        ret: ExprRet,
+    ) -> Result<ExprRet, ExprErr> {
+        match ret {
+            ExprRet::Single((_pctx, cvar)) | ExprRet::SingleLiteral((_pctx, cvar)) => {
+                match self.node(cvar) {
+                    Node::ContextVar(_) => {
+                        let cvar = ContextVarNode::from(cvar).latest_version(self);
+                        let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
+                        ctx_cvar.update_deps(ctx, self).into_expr_err(ident.loc)?;
+                        Ok(ExprRet::Single((ctx, ctx_cvar.0.into())))
+                    }
+                    _ => Ok(ExprRet::Single((ctx, cvar))),
+                }
+            }
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .into_iter()
+                    .map(|ret| self.match_variable(ctx, ident, ret))
+                    .collect::<Result<Vec<_>, ExprErr>>()?,
+            )),
+            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                Box::new(self.match_variable(ctx, ident, *w1)?),
+                Box::new(self.match_variable(ctx, ident, *w2)?),
+            )),
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
         }
     }
 }
