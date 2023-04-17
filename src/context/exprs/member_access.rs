@@ -178,16 +178,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                     .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single((ctx, node)))
+                                return Ok(ExprRet::Single((ctx, node)));
                             }
-                            "creationCode"
-                            | "runtimeCode" => {
+                            "creationCode" | "runtimeCode" => {
                                 let bn = self.builtin_or_add(Builtin::DynamicBytes);
                                 let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                     .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single((ctx, node)))
+                                return Ok(ExprRet::Single((ctx, node)));
                             }
                             "interfaceId" => {
                                 // TODO: actually calculate this
@@ -196,11 +195,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                     .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single((ctx, node)))
+                                return Ok(ExprRet::Single((ctx, node)));
                             }
-                            _ => return Err(ExprErr::ContractFunctionNotFound(
-                                loc,
-                                format!(
+                            _ => {
+                                return Err(ExprErr::ContractFunctionNotFound(
+                                    loc,
+                                    format!(
                                     "No function with name {:?} in contract: {:?}. Functions: {:?}",
                                     ident.name,
                                     con_node.name(self).unwrap(),
@@ -210,7 +210,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                         .map(|func| func.name(self).unwrap())
                                         .collect::<Vec<_>>()
                                 ),
-                            )),
+                                ))
+                            }
                         }
                     }
                 }
@@ -638,7 +639,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     ident,
                 );
             }
-            e => return Err(ExprErr::Todo(loc, format!("Member access on type: {e:?} is not yet supported"))),
+            e => {
+                return Err(ExprErr::Todo(
+                    loc,
+                    format!("Member access on type: {e:?} is not yet supported"),
+                ))
+            }
         }
         Ok(ExprRet::Single((ctx, member_idx)))
     }
@@ -715,9 +721,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
                         }
-                        _ if ident.name.starts_with("transfer") => {
-                            Ok(ExprRet::Multi(vec![]))
-                        }
+                        _ if ident.name.starts_with("transfer") => Ok(ExprRet::Multi(vec![])),
                         _ => Err(ExprErr::MemberAccessNotFound(
                             loc,
                             format!("Unknown member access on address: {:?}", ident.name),
@@ -739,7 +743,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
                         }
-                        _ => Err(ExprErr::MemberAccessNotFound(loc,format!("Unknown member access on string: {:?}", ident.name))),
+                        _ => Err(ExprErr::MemberAccessNotFound(
+                            loc,
+                            format!("Unknown member access on string: {:?}", ident.name),
+                        )),
                     }
                 }
                 Builtin::Bytes(size) => Err(ExprErr::MemberAccessNotFound(
@@ -761,9 +768,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single((ctx, node)))
                         }
-                        _ => Err(ExprErr::MemberAccessNotFound(loc,format!("Unknown member access on bytes: {:?}", ident.name))),
+                        _ => Err(ExprErr::MemberAccessNotFound(
+                            loc,
+                            format!("Unknown member access on bytes: {:?}", ident.name),
+                        )),
                     }
-                },
+                }
                 Builtin::Array(_) => {
                     if ident.name.starts_with("push") {
                         if is_storage {
@@ -1082,7 +1092,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             };
             let len_node = self.add_node(Node::ContextVar(len_var));
 
-            let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, array_ctx).unwrap();
+            let next_arr = self
+                .advance_var_in_ctx(arr.latest_version(self), loc, array_ctx)
+                .unwrap();
             if next_arr
                 .underlying(self)
                 .unwrap()
@@ -1096,13 +1108,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                        let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                        let res = next_arr
+                            .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                        let res = next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                        let res = next_arr
+                            .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
                 }
@@ -1152,13 +1168,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
-                                let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let res = next_arr
+                                    .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                                    .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(new_len.into(), loc));
-                                let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let res = next_arr
+                                    .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                                    .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
                         }
@@ -1193,13 +1213,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                                let res = next_arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let res = next_arr
+                                    .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                                    .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.len = Elem::Dynamic(Dynamic::new(len_node, loc));
-                                let res = next_arr.set_range_max(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(loc);
+                                let res = next_arr
+                                    .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                                    .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
                         }

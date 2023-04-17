@@ -270,7 +270,10 @@ pub trait IntrinsicFuncCaller:
                             let cvar = self.add_node(Node::ContextVar(var));
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
-                        e => Err(ExprErr::Todo(*loc, format!("builtin function: {e:?} doesn't exist or isn't implemented"))),
+                        e => Err(ExprErr::Todo(
+                            *loc,
+                            format!("builtin function: {e:?} doesn't exist or isn't implemented"),
+                        )),
                     }
                 } else {
                     panic!("unnamed builtin?")
@@ -323,12 +326,14 @@ pub trait IntrinsicFuncCaller:
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(*loc)?;
+                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .into_expr_err(*loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(len_cvar, *loc));
-                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd))).into_expr_err(*loc)?;
+                        arr.set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .into_expr_err(*loc)?;
                     }
                 }
 
@@ -360,14 +365,18 @@ pub trait IntrinsicFuncCaller:
                             {
                                 let curr_range =
                                     SolcRange::try_from_builtin(&ty).expect("No default range");
-                                new_var.set_range_min(
-                                    analyzer,
-                                    r.range_min().cast(curr_range.range_min()),
-                                ).into_expr_err(*loc)?;
-                                new_var.set_range_max(
-                                    analyzer,
-                                    r.range_max().cast(curr_range.range_max()),
-                                ).into_expr_err(*loc)?;
+                                new_var
+                                    .set_range_min(
+                                        analyzer,
+                                        r.range_min().cast(curr_range.range_min()),
+                                    )
+                                    .into_expr_err(*loc)?;
+                                new_var
+                                    .set_range_max(
+                                        analyzer,
+                                        r.range_max().cast(curr_range.range_max()),
+                                    )
+                                    .into_expr_err(*loc)?;
                                 // cast the range exclusions - TODO: verify this is correct
                                 let mut exclusions = r.range_exclusions();
                                 exclusions.iter_mut().for_each(|range| {

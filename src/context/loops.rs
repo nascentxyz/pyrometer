@@ -52,10 +52,15 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
                         .default_range(self)
                         .unwrap()
                     {
-                        let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
-                        let res = new_inheritor_var.set_range_min(self, r.min).into_expr_err(loc);
+                        let new_inheritor_var =
+                            self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
+                        let res = new_inheritor_var
+                            .set_range_min(self, r.min)
+                            .into_expr_err(loc);
                         let _ = self.add_if_err(res);
-                        let res = new_inheritor_var.set_range_max(self, r.max).into_expr_err(loc);
+                        let res = new_inheritor_var
+                            .set_range_max(self, r.max)
+                            .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
                 }
@@ -97,10 +102,15 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
                     .default_range(self)
                     .unwrap()
                 {
-                    let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
-                    let res = new_inheritor_var.set_range_min(self, r.min).into_expr_err(loc);
+                    let new_inheritor_var =
+                        self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
+                    let res = new_inheritor_var
+                        .set_range_min(self, r.min)
+                        .into_expr_err(loc);
                     let _ = self.add_if_err(res);
-                    let res = new_inheritor_var.set_range_max(self, r.max).into_expr_err(loc);
+                    let res = new_inheritor_var
+                        .set_range_max(self, r.max)
+                        .into_expr_err(loc);
                     let _ = self.add_if_err(res);
                 }
             }

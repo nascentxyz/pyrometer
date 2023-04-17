@@ -872,8 +872,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) {
         if !tmp_construction.lhs.is_const(self).unwrap() {
             // widen to maximum range :(
-            let new_underlying_lhs =
-                self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx).unwrap();
+            let new_underlying_lhs = self
+                .advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx)
+                .unwrap();
             if let Some(lhs_range) = tmp_construction.lhs.range(self).unwrap() {
                 match lhs_range.evaled_range_min(self).unwrap() {
                     Elem::Concrete(c) => {

@@ -296,7 +296,7 @@ pub fn builtin_fns_inputs(
                     order: 0,
                     storage: None,
                     name: None,
-                }
+                },
             ],
             vec![FunctionReturn {
                 loc: Loc::Builtin,
@@ -328,7 +328,7 @@ pub fn builtin_fns_inputs(
                     order: 0,
                     storage: None,
                     name: None,
-                }
+                },
             ],
             vec![FunctionReturn {
                 loc: Loc::Builtin,

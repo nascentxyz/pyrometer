@@ -32,14 +32,17 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 } else {
                     Err(ExprErr::ArrayTy(ty_expr.loc(), "Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.".to_string()))
                 }
-            },
-            ExprRet::Multi(inner) => Ok(ExprRet::Multi(inner.into_iter().map(|i| self.match_ty(ty_expr, i)).collect::<Result<Vec<_>, ExprErr>>()?)),
-            ExprRet::Fork(w1, w2) => {
-                Ok(ExprRet::Fork(
-                    Box::new(self.match_ty(ty_expr, *w1)?),
-                    Box::new(self.match_ty(ty_expr, *w2)?),
-                ))
-            },
+            }
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .into_iter()
+                    .map(|i| self.match_ty(ty_expr, i))
+                    .collect::<Result<Vec<_>, ExprErr>>()?,
+            )),
+            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
+                Box::new(self.match_ty(ty_expr, *w1)?),
+                Box::new(self.match_ty(ty_expr, *w2)?),
+            )),
             ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
         }
     }

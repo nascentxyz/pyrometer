@@ -54,13 +54,17 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
             (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
-                ContextVarNode::from(*lhs).cast_from(&ContextVarNode::from(*rhs), self).into_expr_err(loc)?;
+                ContextVarNode::from(*lhs)
+                    .cast_from(&ContextVarNode::from(*rhs), self)
+                    .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
             }
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
-                ContextVarNode::from(*rhs).cast_from(&ContextVarNode::from(*lhs), self).into_expr_err(loc)?;
+                ContextVarNode::from(*rhs)
+                    .cast_from(&ContextVarNode::from(*lhs), self)
+                    .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
@@ -73,17 +77,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => Ok(ExprRet::Multi(
                 rhs_sides
                     .iter()
-                    .map(|expr_ret| {
-                        self.op_match(loc, lhs, expr_ret, op, assign)
-                    })
+                    .map(|expr_ret| self.op_match(loc, lhs, expr_ret, op, assign))
                     .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
             )),
             (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => Ok(ExprRet::Multi(
                 lhs_sides
                     .iter()
-                    .map(|expr_ret| {
-                        self.op_match(loc, expr_ret, rhs, op, assign)
-                    })
+                    .map(|expr_ret| self.op_match(loc, expr_ret, rhs, op, assign))
                     .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
             )),
             (_, ExprRet::CtxKilled) => Ok(ExprRet::CtxKilled),
@@ -152,7 +152,10 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             };
 
             // will potentially mutate the ty from concrete to builtin with a concrete range
-            new_lhs_underlying.ty.concrete_to_builtin(self).into_expr_err(loc)?;
+            new_lhs_underlying
+                .ty
+                .concrete_to_builtin(self)
+                .into_expr_err(loc)?;
 
             let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
             self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
@@ -224,8 +227,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             let mut range_excls = range.range_exclusions();
                             let excl = Elem::from(Concrete::from(I256::zero()));
                             range_excls.push(excl);
-                            tmp_rhs.set_range_exclusions(self, range_excls).into_expr_err(loc)?;
-
+                            tmp_rhs
+                                .set_range_exclusions(self, range_excls)
+                                .into_expr_err(loc)?;
                         } else {
                             // the new min is max(1, rhs.min)
                             let min = Elem::max(
@@ -511,8 +515,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         let func = SolcRange::dyn_fn_from_op(op);
         let new_range = func(lhs_range, new_rhs, loc);
-        new_lhs.set_range_min(self, new_range.range_min()).into_expr_err(loc)?;
-        new_lhs.set_range_max(self, new_range.range_max()).into_expr_err(loc)?;
+        new_lhs
+            .set_range_min(self, new_range.range_min())
+            .into_expr_err(loc)?;
+        new_lhs
+            .set_range_max(self, new_range.range_max())
+            .into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
         // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.

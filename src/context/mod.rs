@@ -755,21 +755,24 @@ pub trait ContextBuilder:
 
                 fn match_assign_ret(analyzer: &mut impl GraphLike, ret: ExprRet) {
                     match ret {
-                        ExprRet::Single((ctx, new_lhs)) | ExprRet::SingleLiteral((ctx, new_lhs)) => {
+                        ExprRet::Single((ctx, new_lhs))
+                        | ExprRet::SingleLiteral((ctx, new_lhs)) => {
                             analyzer.add_edge(new_lhs, ctx, Edge::Context(ContextEdge::Variable));
                         }
-                        ExprRet::Multi(inner) => inner.into_iter().for_each(|i| match_assign_ret(analyzer, i)),
+                        ExprRet::Multi(inner) => inner
+                            .into_iter()
+                            .for_each(|i| match_assign_ret(analyzer, i)),
                         ExprRet::Fork(w1, w2) => {
                             match_assign_ret(analyzer, *w1);
                             match_assign_ret(analyzer, *w2);
-                        },
+                        }
                         ExprRet::CtxKilled => {}
                     }
                 }
 
                 let ret = self.assign(loc, lhs, rhs, *rhs_ctx)?;
                 match_assign_ret(self, ret);
-                
+
                 Ok(false)
             }
             (ExprRet::Single((lhs_ctx, ty)), None) => {
@@ -1056,7 +1059,8 @@ pub trait ContextBuilder:
                     match ret {
                         ExprRet::CtxKilled => ExprRet::CtxKilled,
                         ExprRet::Single((ctx, cvar)) | ExprRet::SingleLiteral((ctx, cvar)) => {
-                            let mut new_var = analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx).unwrap();
+                            let mut new_var =
+                                analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx).unwrap();
                             let res = new_var.sol_delete_range(analyzer).into_expr_err(*loc);
                             let _ = analyzer.add_if_err(res);
                             ExprRet::Single((ctx, new_var.into()))
