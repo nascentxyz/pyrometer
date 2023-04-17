@@ -562,7 +562,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn update_nonconst_from_const(
         &mut self,
-        loc: Loc,
+        _loc: Loc,
         op: RangeOp,
         const_var: ContextVarNode,
         nonconst_var: ContextVarNode,
@@ -700,7 +700,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     /// Given a const var and a nonconst range, update the range based on the op. Returns whether its impossible
     fn update_nonconst_from_nonconst(
         &mut self,
-        loc: Loc,
+        _loc: Loc,
         op: RangeOp,
         new_lhs: ContextVarNode,
         new_rhs: ContextVarNode,

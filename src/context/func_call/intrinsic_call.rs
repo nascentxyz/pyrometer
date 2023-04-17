@@ -6,12 +6,11 @@ use crate::{
     },
     ExprRet,
 };
-use ethers_core::types::H256;
-use ethers_core::types::U256;
+
 use shared::analyzer::Search;
 use shared::analyzer::{AnalyzerLike, GraphLike};
 use shared::nodes::Concrete;
-use shared::range::elem_ty::RangeDyn;
+
 use shared::{
     context::*,
     nodes::{Builtin, VarType},
@@ -21,8 +20,6 @@ use shared::{
     },
     Edge, Node, NodeIdx,
 };
-use std::collections::BTreeMap;
-use std::collections::VecDeque;
 
 use solang_parser::pt::{Expression, Loc};
 
