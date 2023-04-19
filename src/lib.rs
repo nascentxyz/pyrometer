@@ -26,6 +26,7 @@ use petgraph::{graph::*, Directed};
 mod builtin_fns;
 
 pub mod context;
+pub mod graph_solver;
 // pub mod range;
 use context::*;
 pub use shared;

@@ -1,3 +1,4 @@
+use crate::graph_solver::SolverGraph;
 use crate::analyzers::LocSpan;
 use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
 use shared::analyzer::GraphLike;
@@ -1175,6 +1176,8 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             .unwrap()
             .iter()
             .map(|child| {
+                // SolverGraph::new(*child, self);
+                println!("child path: {}", child.path(self));
                 let mut parents = child.parent_list(self).unwrap();
                 parents.reverse();
                 parents.push(*child);

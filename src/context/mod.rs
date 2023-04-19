@@ -91,6 +91,15 @@ impl ExprRet {
         matches!(self, ExprRet::CtxKilled)
     }
 
+    pub fn has_killed(&self) -> bool {
+        match self {
+            ExprRet::CtxKilled => true,
+            ExprRet::Multi(multis) => multis.iter().any(|expr_ret| expr_ret.has_killed()),
+            ExprRet::Fork(w1, w2) => w1.has_killed() && w2.has_killed(),
+            _ => false,
+        }
+    }
+
     pub fn has_fork(&self) -> bool {
         match self {
             ExprRet::Fork(_, _) => true,
@@ -130,7 +139,7 @@ impl ExprRet {
                 }
                 format!("({})", strs.join(", "))
             }
-            _ => todo!("here"),
+            e => todo!("here: {e:?}"),
         }
     }
 
@@ -246,11 +255,11 @@ pub trait ContextBuilder:
         Self: Sized,
     {
         use Statement::*;
-        // if let Some(ctx) = parent_ctx {
-        //     if let Node::Context(_) = self.node(ctx) {
-        //         println!("ctx: {}, stmt: {:?}", ContextNode::from(ctx.into()).path(self), stmt);
-        //     }
-        // }
+        if let Some(ctx) = parent_ctx {
+            if let Node::Context(_) = self.node(ctx) {
+                println!("ctx: {}, stmt: {:?}", ContextNode::from(ctx.into()).path(self), stmt);
+            }
+        }
 
         match stmt {
             Block {

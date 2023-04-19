@@ -145,7 +145,11 @@ pub trait NameSpaceFuncCaller:
         );
 
         if possible_funcs.is_empty() {
-            let as_input_str = ExprRet::Multi(inputs).try_as_func_input_str(self);
+            let inputs = ExprRet::Multi(inputs);
+            if inputs.has_killed() {
+                return Ok(ExprRet::CtxKilled);
+            }
+            let as_input_str = inputs.try_as_func_input_str(self);
 
             let expr = &MemberAccess(
                 loc,
@@ -164,7 +168,11 @@ pub trait NameSpaceFuncCaller:
             if func.params(self).len() < inputs.len() {
                 inputs = inputs[1..].to_vec();
             }
-            self.setup_fn_call(&ident.loc, &ExprRet::Multi(inputs), func.into(), ctx, None)
+            let inputs = ExprRet::Multi(inputs);
+            if inputs.has_killed() {
+                return Ok(ExprRet::CtxKilled);
+            }
+            self.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
         } else {
             // this is the annoying case due to function overloading & type inference on number literals
             let mut lits = vec![false];
@@ -185,6 +193,9 @@ pub trait NameSpaceFuncCaller:
             );
 
             let inputs = ExprRet::Multi(inputs);
+            if inputs.has_killed() {
+                return Ok(ExprRet::CtxKilled);
+            }
             if let Some(func) =
                 self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
             {

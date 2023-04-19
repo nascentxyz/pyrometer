@@ -338,6 +338,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 match (lhs_is_const, rhs_is_const) {
                     (true, true) => {
                         if self.const_killable(op, lhs_range, rhs_range) {
+                            tracing::trace!("const killable");
                             ctx.kill(self, loc).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -347,7 +348,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
 
-                        if self.update_nonconst_from_const(loc, op, new_lhs, new_rhs, rhs_range) {
+                        if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range) {
+                            tracing::trace!("half-const killable");
                             ctx.kill(self, loc).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -362,6 +364,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         if self.update_nonconst_from_nonconst(
                             loc, op, new_lhs, new_rhs, lhs_range, rhs_range,
                         ) {
+                            tracing::trace!("nonconst killable");
                             ctx.kill(self, loc).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -772,6 +775,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
             RangeOp::Gt => {
                 let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
+                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
 
                 // if lhs.max is <= rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self).unwrap();
@@ -790,12 +794,13 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .set_range_min(self, rhs_elem + one.clone().into())
                     .unwrap();
                 new_rhs
-                    .set_range_max(self, lhs_range.range_min() - one.into())
+                    .set_range_max(self, lhs_elem - one.into())
                     .unwrap();
                 false
             }
             RangeOp::Gte => {
                 let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
+                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
 
                 // if lhs.max is < rhs.min, we can't make this true
                 if matches!(
@@ -809,16 +814,18 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 new_lhs.set_range_min(self, rhs_elem).unwrap();
-                new_rhs.set_range_max(self, lhs_range.range_min()).unwrap();
+                new_rhs.set_range_max(self, lhs_elem).unwrap();
                 false
             }
             RangeOp::Lt => {
                 let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
+                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
 
                 // if lhs min is >= rhs.max, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();
+                println!("{min:#?}, {:#?}", rhs_elem.maximize(self).unwrap());
                 if matches!(
-                    min.range_ord(&rhs_elem.minimize(self).unwrap()),
+                    min.range_ord(&rhs_elem.maximize(self).unwrap()),
                     Some(Ordering::Greater) | Some(Ordering::Equal)
                 ) {
                     return true;
@@ -832,24 +839,25 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .set_range_max(self, rhs_elem - one.clone().into())
                     .unwrap();
                 new_rhs
-                    .set_range_min(self, lhs_range.range_max() + one.into())
+                    .set_range_min(self, lhs_elem + one.into())
                     .unwrap();
                 false
             }
             RangeOp::Lte => {
                 let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
+                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
 
                 // if nonconst min is > const, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();
                 if matches!(
-                    min.range_ord(&rhs_elem.minimize(self).unwrap()),
+                    min.range_ord(&rhs_elem.maximize(self).unwrap()),
                     Some(Ordering::Greater)
                 ) {
                     return true;
                 }
 
                 new_lhs.set_range_max(self, rhs_elem).unwrap();
-                new_rhs.set_range_max(self, lhs_range.range_min()).unwrap();
+                new_rhs.set_range_max(self, lhs_elem).unwrap();
                 false
             }
             e => todo!("Non-comparator in require, {e:?}"),

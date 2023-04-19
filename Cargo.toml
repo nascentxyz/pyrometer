@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 petgraph = "0.6.2"
-solang-parser = { version = "0.2.3", features = ["pt-serde"] }
+solang-parser = { version = "0.2.4", features = ["pt-serde"] }
 ethers-core = "*"
 ariadne = "0.2.0"
 shared = { path = "./shared" }
@@ -17,3 +17,7 @@ tracing-subscriber = "0.3"
 
 [workspace]
 members = ["cli", "shared"]
+
+
+[patch.crates-io]
+ariadne = {git = "https://github.com/brockelmore/ariadne"}

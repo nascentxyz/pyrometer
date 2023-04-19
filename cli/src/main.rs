@@ -1,3 +1,4 @@
+use pyrometer::graph_solver::SolverGraph;
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};

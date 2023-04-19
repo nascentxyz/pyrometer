@@ -1,836 +1,923 @@
-/**
- *Submitted for verification at Arbiscan on 2023-01-16
-*/
-
-/*
-    Copyright 2022 JOJO Exchange
-    SPDX-License-Identifier: Apache-2.0
-*/
-// Sources flattened with hardhat v2.12.6 https://hardhat.org
-
-// File @openzeppelin/contracts/utils/Context.sol@v4.8.0
-
-
-pragma solidity ^0.8.0;
-
-/**
- * @dev Provides information about the current execution context, including the
- * sender of the transaction and its data. While these are generally available
- * via msg.sender and msg.data, they should not be accessed in such a direct
- * manner, since when dealing with meta-transactions the account sending and
- * paying for execution may not be the actual sender (as far as an application
- * is concerned).
- *
- * This contract is only required for intermediate, library-like contracts.
- */
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-
-    function _msgData() internal view virtual returns (bytes calldata) {
-        return msg.data;
-    }
-}
-
-
-// File @openzeppelin/contracts/access/Ownable.sol@v4.8.0
-
-
-pragma solidity ^0.8.0;
-
-/**
- * @dev Contract module which provides a basic access control mechanism, where
- * there is an account (an owner) that can be granted exclusive access to
- * specific functions.
- *
- * By default, the owner account will be the one that deploys the contract. This
- * can later be changed with {transferOwnership}.
- *
- * This module is used through inheritance. It will make available the modifier
- * `onlyOwner`, which can be applied to your functions to restrict their use to
- * the owner.
- */
-abstract contract Ownable is Context {
-    address private _owner;
-
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    /**
-     * @dev Initializes the contract setting the deployer as the initial owner.
-     */
-    constructor() {
-        _transferOwnership(_msgSender());
-    }
-
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
-    modifier onlyOwner() {
-        _checkOwner();
-        _;
-    }
-
-    /**
-     * @dev Returns the address of the current owner.
-     */
-    function owner() public view virtual returns (address) {
-        return _owner;
-    }
-
-    /**
-     * @dev Throws if the sender is not the owner.
-     */
-    function _checkOwner() internal view virtual {
-        require(owner() == _msgSender(), "Ownable: caller is not the owner");
-    }
-
-    /**
-     * @dev Leaves the contract without owner. It will not be possible to call
-     * `onlyOwner` functions anymore. Can only be called by the current owner.
-     *
-     * NOTE: Renouncing ownership will leave the contract without an owner,
-     * thereby removing any functionality that is only available to the owner.
-     */
-    function renounceOwnership() public virtual onlyOwner {
-        _transferOwnership(address(0));
-    }
-
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     * Can only be called by the current owner.
-     */
-    function transferOwnership(address newOwner) public virtual onlyOwner {
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
-        _transferOwnership(newOwner);
-    }
-
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     * Internal function without access restriction.
-     */
-    function _transferOwnership(address newOwner) internal virtual {
-        address oldOwner = _owner;
-        _owner = newOwner;
-        emit OwnershipTransferred(oldOwner, newOwner);
-    }
-}
-
-
-// File @openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol@v4.8.0
-
-pragma solidity ^0.8.0;
-
-/**
- * @dev Interface of the ERC20 Permit extension allowing approvals to be made via signatures, as defined in
- * https://eips.ethereum.org/EIPS/eip-2612[EIP-2612].
- *
- * Adds the {permit} method, which can be used to change an account's ERC20 allowance (see {IERC20-allowance}) by
- * presenting a message signed by the account. By not relying on {IERC20-approve}, the token holder account doesn't
- * need to send a transaction, and thus is not required to hold Ether at all.
- */
-interface IERC20Permit {
-    /**
-     * @dev Sets `value` as the allowance of `spender` over ``owner``'s tokens,
-     * given ``owner``'s signed approval.
-     *
-     * IMPORTANT: The same issues {IERC20-approve} has related to transaction
-     * ordering also apply here.
-     *
-     * Emits an {Approval} event.
-     *
-     * Requirements:
-     *
-     * - `spender` cannot be the zero address.
-     * - `deadline` must be a timestamp in the future.
-     * - `v`, `r` and `s` must be a valid `secp256k1` signature from `owner`
-     * over the EIP712-formatted function arguments.
-     * - the signature must use ``owner``'s current nonce (see {nonces}).
-     *
-     * For more information on the signature format, see the
-     * https://eips.ethereum.org/EIPS/eip-2612#specification[relevant EIP
-     * section].
-     */
-    function permit(
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external;
-
-    /**
-     * @dev Returns the current nonce for `owner`. This value must be
-     * included whenever a signature is generated for {permit}.
-     *
-     * Every successful call to {permit} increases ``owner``'s nonce by one. This
-     * prevents a signature from being used multiple times.
-     */
-    function nonces(address owner) external view returns (uint256);
-
-    /**
-     * @dev Returns the domain separator used in the encoding of the signature for {permit}, as defined by {EIP712}.
-     */
-    // solhint-disable-next-line func-name-mixedcase
-    function DOMAIN_SEPARATOR() external view returns (bytes32);
-}
-
-
-// File @openzeppelin/contracts/token/ERC20/IERC20.sol@v4.8.0
-
-pragma solidity ^0.8.0;
-
-/**
- * @dev Interface of the ERC20 standard as defined in the EIP.
- */
-interface IERC20 {
-    /**
-     * @dev Emitted when `value` tokens are moved from one account (`from`) to
-     * another (`to`).
-     *
-     * Note that `value` may be zero.
-     */
-    event Transfer(address indexed from, address indexed to, uint256 value);
-
-    /**
-     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
-     * a call to {approve}. `value` is the new allowance.
-     */
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-
-    /**
-     * @dev Returns the amount of tokens in existence.
-     */
-    function totalSupply() external view returns (uint256);
-
-    /**
-     * @dev Returns the amount of tokens owned by `account`.
-     */
-    function balanceOf(address account) external view returns (uint256);
-
-    /**
-     * @dev Moves `amount` tokens from the caller's account to `to`.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * Emits a {Transfer} event.
-     */
-    function transfer(address to, uint256 amount) external returns (bool);
-
-    /**
-     * @dev Returns the remaining number of tokens that `spender` will be
-     * allowed to spend on behalf of `owner` through {transferFrom}. This is
-     * zero by default.
-     *
-     * This value changes when {approve} or {transferFrom} are called.
-     */
-    function allowance(address owner, address spender) external view returns (uint256);
-
-    /**
-     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * IMPORTANT: Beware that changing an allowance with this method brings the risk
-     * that someone may use both the old and the new allowance by unfortunate
-     * transaction ordering. One possible solution to mitigate this race
-     * condition is to first reduce the spender's allowance to 0 and set the
-     * desired value afterwards:
-     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
-     *
-     * Emits an {Approval} event.
-     */
-    function approve(address spender, uint256 amount) external returns (bool);
-
-    /**
-     * @dev Moves `amount` tokens from `from` to `to` using the
-     * allowance mechanism. `amount` is then deducted from the caller's
-     * allowance.
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     *
-     * Emits a {Transfer} event.
-     */
-    function transferFrom(
-        address from,
-        address to,
-        uint256 amount
-    ) external returns (bool);
-}
-
-
-// File @openzeppelin/contracts/utils/Address.sol@v4.8.0
-
-
-pragma solidity ^0.8.1;
-
-/**
- * @dev Collection of functions related to the address type
- */
-library Address {
-    /**
-     * @dev Returns true if `account` is a contract.
-     *
-     * [IMPORTANT]
-     * ====
-     * It is unsafe to assume that an address for which this function returns
-     * false is an externally-owned account (EOA) and not a contract.
-     *
-     * Among others, `isContract` will return false for the following
-     * types of addresses:
-     *
-     *  - an externally-owned account
-     *  - a contract in construction
-     *  - an address where a contract will be created
-     *  - an address where a contract lived, but was destroyed
-     * ====
-     *
-     * [IMPORTANT]
-     * ====
-     * You shouldn't rely on `isContract` to protect against flash loan attacks!
-     *
-     * Preventing calls from contracts is highly discouraged. It breaks composability, breaks support for smart wallets
-     * like Gnosis Safe, and does not provide security since it can be circumvented by calling from a contract
-     * constructor.
-     * ====
-     */
-    function isContract(address account) internal view returns (bool) {
-        // This method relies on extcodesize/address.code.length, which returns 0
-        // for contracts in construction, since the code is only stored at the end
-        // of the constructor execution.
-
-        return account.code.length > 0;
-    }
-
-    /**
-     * @dev Replacement for Solidity's `transfer`: sends `amount` wei to
-     * `recipient`, forwarding all available gas and reverting on errors.
-     *
-     * https://eips.ethereum.org/EIPS/eip-1884[EIP1884] increases the gas cost
-     * of certain opcodes, possibly making contracts go over the 2300 gas limit
-     * imposed by `transfer`, making them unable to receive funds via
-     * `transfer`. {sendValue} removes this limitation.
-     *
-     * https://diligence.consensys.net/posts/2019/09/stop-using-soliditys-transfer-now/[Learn more].
-     *
-     * IMPORTANT: because control is transferred to `recipient`, care must be
-     * taken to not create reentrancy vulnerabilities. Consider using
-     * {ReentrancyGuard} or the
-     * https://solidity.readthedocs.io/en/v0.5.11/security-considerations.html#use-the-checks-effects-interactions-pattern[checks-effects-interactions pattern].
-     */
-    function sendValue(address payable recipient, uint256 amount) internal {
-        require(address(this).balance >= amount, "Address: insufficient balance");
-
-        (bool success, ) = recipient.call{value: amount}("");
-        require(success, "Address: unable to send value, recipient may have reverted");
-    }
-
-    /**
-     * @dev Performs a Solidity function call using a low level `call`. A
-     * plain `call` is an unsafe replacement for a function call: use this
-     * function instead.
-     *
-     * If `target` reverts with a revert reason, it is bubbled up by this
-     * function (like regular Solidity function calls).
-     *
-     * Returns the raw returned data. To convert to the expected return value,
-     * use https://solidity.readthedocs.io/en/latest/units-and-global-variables.html?highlight=abi.decode#abi-encoding-and-decoding-functions[`abi.decode`].
-     *
-     * Requirements:
-     *
-     * - `target` must be a contract.
-     * - calling `target` with `data` must not revert.
-     *
-     * _Available since v3.1._
-     */
-    function functionCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, 0, "Address: low-level call failed");
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCall-address-bytes-}[`functionCall`], but with
-     * `errorMessage` as a fallback revert reason when `target` reverts.
-     *
-     * _Available since v3.1._
-     */
-    function functionCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, 0, errorMessage);
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCall-address-bytes-}[`functionCall`],
-     * but also transferring `value` wei to `target`.
-     *
-     * Requirements:
-     *
-     * - the calling contract must have an ETH balance of at least `value`.
-     * - the called Solidity function must be `payable`.
-     *
-     * _Available since v3.1._
-     */
-    function functionCallWithValue(
-        address target,
-        bytes memory data,
-        uint256 value
-    ) internal returns (bytes memory) {
-        return functionCallWithValue(target, data, value, "Address: low-level call with value failed");
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCallWithValue-address-bytes-uint256-}[`functionCallWithValue`], but
-     * with `errorMessage` as a fallback revert reason when `target` reverts.
-     *
-     * _Available since v3.1._
-     */
-    function functionCallWithValue(
-        address target,
-        bytes memory data,
-        uint256 value,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        require(address(this).balance >= value, "Address: insufficient balance for call");
-        (bool success, bytes memory returndata) = target.call{value: value}(data);
-        return verifyCallResultFromTarget(target, success, returndata, errorMessage);
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCall-address-bytes-}[`functionCall`],
-     * but performing a static call.
-     *
-     * _Available since v3.3._
-     */
-    function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
-        return functionStaticCall(target, data, "Address: low-level static call failed");
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCall-address-bytes-string-}[`functionCall`],
-     * but performing a static call.
-     *
-     * _Available since v3.3._
-     */
-    function functionStaticCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal view returns (bytes memory) {
-        (bool success, bytes memory returndata) = target.staticcall(data);
-        return verifyCallResultFromTarget(target, success, returndata, errorMessage);
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCall-address-bytes-}[`functionCall`],
-     * but performing a delegate call.
-     *
-     * _Available since v3.4._
-     */
-    function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) {
-        return functionDelegateCall(target, data, "Address: low-level delegate call failed");
-    }
-
-    /**
-     * @dev Same as {xref-Address-functionCall-address-bytes-string-}[`functionCall`],
-     * but performing a delegate call.
-     *
-     * _Available since v3.4._
-     */
-    function functionDelegateCall(
-        address target,
-        bytes memory data,
-        string memory errorMessage
-    ) internal returns (bytes memory) {
-        (bool success, bytes memory returndata) = target.delegatecall(data);
-        return verifyCallResultFromTarget(target, success, returndata, errorMessage);
-    }
-
-    /**
-     * @dev Tool to verify that a low level call to smart-contract was successful, and revert (either by bubbling
-     * the revert reason or using the provided one) in case of unsuccessful call or if target was not a contract.
-     *
-     * _Available since v4.8._
-     */
-    function verifyCallResultFromTarget(
-        address target,
-        bool success,
-        bytes memory returndata,
-        string memory errorMessage
-    ) internal view returns (bytes memory) {
-        if (success) {
-            if (returndata.length == 0) {
-                // only check isContract if the call was successful and the return data is empty
-                // otherwise we already know that it was a contract
-                require(isContract(target), "Address: call to non-contract");
+pragma solidity ^0.8.19;
+/// automatically generated by Daedaluzz
+contract Maze {
+  event AssertionFailed(string message);
+  uint64 private x;
+  uint64 private y;
+  function moveNorth(uint64 p0, uint64 p1, uint64 p2, uint64 p3, uint64 p4, uint64 p5, uint64 p6, uint64 p7) payable external returns (int64) {
+    uint64 ny = y + 1;
+    require(ny < 7);
+    y = ny;
+    return step(p0, p1, p2, p3, p4, p5, p6, p7);
+  }
+  function moveSouth(uint64 p0, uint64 p1, uint64 p2, uint64 p3, uint64 p4, uint64 p5, uint64 p6, uint64 p7) payable external returns (int64) {
+    require(0 < y);
+    uint64 ny = y - 1;
+    y = ny;
+    return step(p0, p1, p2, p3, p4, p5, p6, p7);
+  }
+  function moveEast(uint64 p0, uint64 p1, uint64 p2, uint64 p3, uint64 p4, uint64 p5, uint64 p6, uint64 p7) payable external returns (int64) {
+    uint64 nx = x + 1;
+    require(nx < 7);
+    x = nx;
+    return step(p0, p1, p2, p3, p4, p5, p6, p7);
+  }
+  function moveWest(uint64 p0, uint64 p1, uint64 p2, uint64 p3, uint64 p4, uint64 p5, uint64 p6, uint64 p7) payable external returns (int64) {
+    require(0 < x);
+    uint64 nx = x - 1;
+    x = nx;
+    return step(p0, p1, p2, p3, p4, p5, p6, p7);
+  }
+  function step(uint64 p0, uint64 p1, uint64 p2, uint64 p3, uint64 p4, uint64 p5, uint64 p6, uint64 p7) internal returns (int64) {
+    unchecked {
+      if (x == 0 && y == 0) {
+        // start
+        return 0;
+      }
+      if (x == 0 && y == 1) {
+        if (p4 >= p7) {
+          if (p5 < uint64(uint64(64) * p7)) {
+            if (p1 != uint64(20)) {
+              if (p2 <= uint64(uint64(31) * p2)) {
+                if (p0 > p7) {
+                  if (p0 <= uint64(24)) {
+                    if (p6 < uint64(p7 + p0)) {
+                      if (p4 > uint64(60)) {
+                        if (p5 >= uint64(p2 + p6)) {
+                          if (p1 > p4) {
+                            if (p5 == uint64(64)) {
+                              if (p5 <= uint64(32)) {
+                                if (p4 >= uint64(p6 + p7)) {
+                                  if (p1 < uint64(uint64(4) + p4)) {
+                                    if (p7 > uint64(uint64(1) * p1)) {
+                                      emit AssertionFailed("1");
+                                      assert(false);  // bug
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
-            return returndata;
-        } else {
-            _revert(returndata, errorMessage);
+          }
         }
-    }
-
-    /**
-     * @dev Tool to verify that a low level call was successful, and revert if it wasn't, either by bubbling the
-     * revert reason or using the provided one.
-     *
-     * _Available since v4.3._
-     */
-    function verifyCallResult(
-        bool success,
-        bytes memory returndata,
-        string memory errorMessage
-    ) internal pure returns (bytes memory) {
-        if (success) {
-            return returndata;
-        } else {
-            _revert(returndata, errorMessage);
-        }
-    }
-
-    function _revert(bytes memory returndata, string memory errorMessage) private pure {
-        // Look for revert reason and bubble it up if present
-        if (returndata.length > 0) {
-            // The easiest way to bubble the revert reason is using memory via assembly
-            /// @solidity memory-safe-assembly
-            assembly {
-                let returndata_size := mload(returndata)
-                revert(add(32, returndata), returndata_size)
+        return 1;
+      }
+      if (x == 0 && y == 2) {
+        if (p0 == uint64(uint64(28) + p4)) {
+          if (p1 <= uint64(p7 + p5)) {
+            if (p1 == uint64(p4 + p3)) {
+              if (p6 != p6) {
+                if (p1 == uint64(29)) {
+                  if (p2 < uint64(p5 + p1)) {
+                    emit AssertionFailed("2"); assert(false);  // bug
+                  }
+                }
+              }
             }
-        } else {
-            revert(errorMessage);
+          }
         }
-    }
-}
-
-
-// File @openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol@v4.8.0
-
-
-pragma solidity ^0.8.0;
-
-
-
-/**
- * @title SafeERC20
- * @dev Wrappers around ERC20 operations that throw on failure (when the token
- * contract returns false). Tokens that return no value (and instead revert or
- * throw on failure) are also supported, non-reverting calls are assumed to be
- * successful.
- * To use this library you can add a `using SafeERC20 for IERC20;` statement to your contract,
- * which allows you to call the safe operations as `token.safeTransfer(...)`, etc.
- */
-library SafeERC20 {
-    using Address for address;
-
-    function safeTransfer(
-        IERC20 token,
-        address to,
-        uint256 value
-    ) internal {
-        _callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
-    }
-
-    function safeTransferFrom(
-        IERC20 token,
-        address from,
-        address to,
-        uint256 value
-    ) internal {
-        _callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
-    }
-
-    /**
-     * @dev Deprecated. This function has issues similar to the ones found in
-     * {IERC20-approve}, and its usage is discouraged.
-     *
-     * Whenever possible, use {safeIncreaseAllowance} and
-     * {safeDecreaseAllowance} instead.
-     */
-    function safeApprove(
-        IERC20 token,
-        address spender,
-        uint256 value
-    ) internal {
-        // safeApprove should only be called when setting an initial allowance,
-        // or when resetting it to zero. To increase and decrease it, use
-        // 'safeIncreaseAllowance' and 'safeDecreaseAllowance'
-        require(
-            (value == 0) || (token.allowance(address(this), spender) == 0),
-            "SafeERC20: approve from non-zero to non-zero allowance"
-        );
-        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
-    }
-
-    function safeIncreaseAllowance(
-        IERC20 token,
-        address spender,
-        uint256 value
-    ) internal {
-        uint256 newAllowance = token.allowance(address(this), spender) + value;
-        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-    }
-
-    function safeDecreaseAllowance(
-        IERC20 token,
-        address spender,
-        uint256 value
-    ) internal {
-        unchecked {
-            uint256 oldAllowance = token.allowance(address(this), spender);
-            require(oldAllowance >= value, "SafeERC20: decreased allowance below zero");
-            uint256 newAllowance = oldAllowance - value;
-            _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
-        }
-    }
-
-    function safePermit(
-        IERC20Permit token,
-        address owner,
-        address spender,
-        uint256 value,
-        uint256 deadline,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) internal {
-        uint256 nonceBefore = token.nonces(owner);
-        token.permit(owner, spender, value, deadline, v, r, s);
-        uint256 nonceAfter = token.nonces(owner);
-        require(nonceAfter == nonceBefore + 1, "SafeERC20: permit did not succeed");
-    }
-
-    /**
-     * @dev Imitates a Solidity high-level call (i.e. a regular function call to a contract), relaxing the requirement
-     * on the return value: the return value is optional (but if data is returned, it must not be false).
-     * @param token The token targeted by the call.
-     * @param data The call data (encoded using abi.encode or one of its variants).
-     */
-    function _callOptionalReturn(IERC20 token, bytes memory data) private {
-        // We need to perform a low level call here, to bypass Solidity's return data size checking mechanism, since
-        // we're implementing it ourselves. We use {Address-functionCall} to perform this call, which verifies that
-        // the target address contains contract code and also asserts for success in the low-level call.
-
-        bytes memory returndata = address(token).functionCall(data, "SafeERC20: low-level call failed");
-        if (returndata.length > 0) {
-            // Return data is optional
-            require(abi.decode(returndata, (bool)), "SafeERC20: ERC20 operation did not succeed");
-        }
-    }
-}
-
-
-// File contracts/subaccount/Subaccount.sol
-
-
-pragma solidity 0.8.9;
-
-
-/// @notice Subaccount can help its owner manage risk and positions.
-/// You can open orders with isolated positions via Subaccount.
-/// You can also let others trade for you by setting them as authorized
-/// operators. Operators have no access to fund transfer.
-contract Subaccount {
-    // ========== storage ==========
-
-    /*
-       This is not a standard ownable contract because the ownership
-       can not be transferred. This contract is designed to be
-       initializable to better support clone, which is a low gas
-       deployment solution.
-    */
-    address public owner;
-    bool public initialized;
-
-    // ========== modifier ==========
-
-    modifier onlyOwner() {
-        require(owner == msg.sender, "Ownable: caller is not the owner");
-        _;
-    }
-
-    // ========== event ==========
-    event ExecuteTransaction(address indexed owner, address subaccount, address to, bytes data, uint256 value);
-
-    // ========== functions ==========
-
-    function init(address _owner) external {
-        require(!initialized, "ALREADY INITIALIZED");
-        initialized = true;
-        owner = _owner;
-    }
-
-    function execute(address to, bytes calldata data, uint256 value) external onlyOwner returns (bytes memory){
-        require(to != address(0));
-        (bool success, bytes memory returnData) = to.call{value: value}(data);
-        if (!success) {
-            assembly {
-                let ptr := mload(0x40)
-                let size := returndatasize()
-                returndatacopy(ptr, 0, size)
-                revert(ptr, size)
+        return 2;
+      }
+      if (x == 0 && y == 3) {
+        if (p1 > uint64(16)) {
+          if (p5 < uint64(uint64(28) * p0)) {
+            if (p2 <= uint64(uint64(33) + p0)) {
+              if (p1 > uint64(51)) {
+                if (p0 <= uint64(p2 + p3)) {
+                  if (p4 > uint64(p2 * p0)) {
+                    if (p2 != uint64(p1 * p4)) {
+                      if (p4 <= uint64(p4 + p2)) {
+                        if (p4 <= uint64(uint64(61) * p6)) {
+                          if (p3 == p7) {
+                            if (p2 == uint64(55)) {
+                              if (p5 > uint64(8)) {
+                                if (p6 <= uint64(p7 * p3)) {
+                                  if (p2 < uint64(p2 + p5)) {
+                                    if (p2 == uint64(p7 + p1)) {
+                                      emit AssertionFailed("3"); assert(false);  // bug
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
+          }
         }
-        emit ExecuteTransaction(owner, address(this), to, data, value);
-        return returnData;
-    }
-}
-
-
-// File @openzeppelin/contracts/proxy/Clones.sol@v4.8.0
-
-
-pragma solidity ^0.8.0;
-
-/**
- * @dev https://eips.ethereum.org/EIPS/eip-1167[EIP 1167] is a standard for
- * deploying minimal proxy contracts, also known as "clones".
- *
- * > To simply and cheaply clone contract functionality in an immutable way, this standard specifies
- * > a minimal bytecode implementation that delegates all calls to a known, fixed address.
- *
- * The library includes functions to deploy a proxy using either `create` (traditional deployment) or `create2`
- * (salted deterministic deployment). It also includes functions to predict the addresses of clones deployed using the
- * deterministic method.
- *
- * _Available since v3.4._
- */
-library Clones {
-    /**
-     * @dev Deploys and returns the address of a clone that mimics the behaviour of `implementation`.
-     *
-     * This function uses the create opcode, which should never revert.
-     */
-    function clone(address implementation) internal returns (address instance) {
-        /// @solidity memory-safe-assembly
-        assembly {
-            // Cleans the upper 96 bits of the `implementation` word, then packs the first 3 bytes
-            // of the `implementation` address with the bytecode before the address.
-            mstore(0x00, or(shr(0xe8, shl(0x60, implementation)), 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000))
-            // Packs the remaining 17 bytes of `implementation` with the bytecode after the address.
-            mstore(0x20, or(shl(0x78, implementation), 0x5af43d82803e903d91602b57fd5bf3))
-            instance := create(0, 0x09, 0x37)
+        return 3;
+      }
+      if (x == 0 && y == 4) {
+        require(false);  // wall
+        return 4;
+      }
+      if (x == 0 && y == 5) {
+        if (p4 <= uint64(p5 * p7)) {
+          if (p0 < uint64(uint64(9) * p3)) {
+            emit AssertionFailed("5"); assert(false);  // bug
+          }
         }
-        require(instance != address(0), "ERC1167: create failed");
-    }
-
-    /**
-     * @dev Deploys and returns the address of a clone that mimics the behaviour of `implementation`.
-     *
-     * This function uses the create2 opcode and a `salt` to deterministically deploy
-     * the clone. Using the same `implementation` and `salt` multiple time will revert, since
-     * the clones cannot be deployed twice at the same address.
-     */
-    function cloneDeterministic(address implementation, bytes32 salt) internal returns (address instance) {
-        /// @solidity memory-safe-assembly
-        assembly {
-            // Cleans the upper 96 bits of the `implementation` word, then packs the first 3 bytes
-            // of the `implementation` address with the bytecode before the address.
-            mstore(0x00, or(shr(0xe8, shl(0x60, implementation)), 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000))
-            // Packs the remaining 17 bytes of `implementation` with the bytecode after the address.
-            mstore(0x20, or(shl(0x78, implementation), 0x5af43d82803e903d91602b57fd5bf3))
-            instance := create2(0, 0x09, 0x37, salt)
+        return 5;
+      }
+      if (x == 0 && y == 6) {
+        if (p6 >= p2) {
+          if (p1 == uint64(uint64(22) + p2)) {
+            emit AssertionFailed("6"); assert(false);  // bug
+          }
         }
-        require(instance != address(0), "ERC1167: create2 failed");
-    }
-
-    /**
-     * @dev Computes the address of a clone deployed using {Clones-cloneDeterministic}.
-     */
-    function predictDeterministicAddress(
-        address implementation,
-        bytes32 salt,
-        address deployer
-    ) internal pure returns (address predicted) {
-        /// @solidity memory-safe-assembly
-        assembly {
-            let ptr := mload(0x40)
-            mstore(add(ptr, 0x38), deployer)
-            mstore(add(ptr, 0x24), 0x5af43d82803e903d91602b57fd5bf3ff)
-            mstore(add(ptr, 0x14), implementation)
-            mstore(ptr, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73)
-            mstore(add(ptr, 0x58), salt)
-            mstore(add(ptr, 0x78), keccak256(add(ptr, 0x0c), 0x37))
-            predicted := keccak256(add(ptr, 0x43), 0x55)
+        return 6;
+      }
+      if (x == 1 && y == 0) {
+        require(false);  // wall
+        return 7;
+      }
+      if (x == 1 && y == 1) {
+        if (p2 < uint64(uint64(0) * p4)) {
+          if (p5 < uint64(p3 + p7)) {
+            emit AssertionFailed("8"); assert(false);  // bug
+          }
         }
+        return 8;
+      }
+      if (x == 1 && y == 2) {
+        require(false);  // wall
+        return 9;
+      }
+      if (x == 1 && y == 3) {
+        if (p6 == uint64(p0 + p1)) {
+          if (p0 == uint64(uint64(33) * p0)) {
+            emit AssertionFailed("10"); assert(false);  // bug
+          }
+        }
+        return 10;
+      }
+      if (x == 1 && y == 4) {
+        if (p1 <= p4) {
+          if (p0 <= uint64(uint64(56) + p4)) {
+            if (p3 != uint64(uint64(1) + p1)) {
+              emit AssertionFailed("11"); assert(false);  // bug
+            }
+          }
+        }
+        return 11;
+      }
+      if (x == 1 && y == 5) {
+        if (p6 < uint64(uint64(62) * p3)) {
+          if (p3 > uint64(29)) {
+            if (p6 >= uint64(uint64(54) + p7)) {
+              if (p7 > uint64(uint64(10) + p0)) {
+                if (p7 >= uint64(p3 * p3)) {
+                  if (p2 <= uint64(p0 * p4)) {
+                    if (p1 < uint64(p4 + p2)) {
+                      if (p0 < p6) {
+                        if (p2 > uint64(uint64(23) * p1)) {
+                          if (p4 > uint64(uint64(64) * p2)) {
+                            if (p3 < uint64(uint64(40) * p0)) {
+                              if (p4 >= uint64(36)) {
+                                if (p6 < uint64(uint64(54) + p6)) {
+                                  if (p7 > uint64(p1 + p5)) {
+                                    if (p1 > p1) {
+                                      if (p1 <= uint64(uint64(64) * p1)) {
+                                        emit AssertionFailed("12"); assert(false);  // bug
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 12;
+      }
+      if (x == 1 && y == 6) {
+        if (p2 > uint64(uint64(17) * p6)) {
+          if (p2 > uint64(p1 * p0)) {
+            if (p4 >= uint64(p2 + p3)) {
+              if (p4 == uint64(43)) {
+                if (p3 > uint64(22)) {
+                  if (p7 > p4) {
+                    if (p4 < uint64(p5 * p4)) {
+                      if (p0 == uint64(p5 * p5)) {
+                        if (p6 < uint64(p1 * p3)) {
+                          if (p3 >= uint64(uint64(52) + p6)) {
+                            if (p4 <= uint64(p4 * p0)) {
+                              if (p2 != p1) {
+                                if (p0 == p4) {
+                                  if (p3 != uint64(p2 * p3)) {
+                                    emit AssertionFailed("13"); assert(false);  // bug
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 13;
+      }
+      if (x == 2 && y == 0) {
+        require(false);  // wall
+        return 14;
+      }
+      if (x == 2 && y == 1) {
+        require(false);  // wall
+        return 15;
+      }
+      if (x == 2 && y == 2) {
+        if (p5 >= uint64(10)) {
+          if (p2 >= uint64(p6 * p1)) {
+            if (p5 == p4) {
+              if (p3 >= uint64(uint64(25) * p6)) {
+                if (p2 != uint64(uint64(11) + p7)) {
+                  if (p3 == uint64(uint64(5) * p6)) {
+                    if (p5 != uint64(p1 * p3)) {
+                      if (p0 == uint64(31)) {
+                        if (p7 >= p4) {
+                          if (p2 >= uint64(p1 * p3)) {
+                            if (p6 != uint64(p4 + p3)) {
+                              if (p7 > uint64(p3 * p0)) {
+                                if (p1 < uint64(p2 + p2)) {
+                                  if (p6 <= uint64(uint64(5) + p3)) {
+                                    emit AssertionFailed("16"); assert(false);  // bug
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 16;
+      }
+      if (x == 2 && y == 3) {
+        if (p6 == uint64(uint64(63) * p0)) {
+          if (p6 >= p7) {
+            emit AssertionFailed("17"); assert(false);  // bug
+          }
+        }
+        return 17;
+      }
+      if (x == 2 && y == 4) {
+        if (p7 >= uint64(p7 + p1)) {
+          if (p2 == uint64(uint64(54) * p4)) {
+            if (p0 >= uint64(p1 * p6)) {
+              if (p4 <= p6) {
+                if (p3 <= uint64(39)) {
+                  if (p1 < uint64(47)) {
+                    if (p2 <= uint64(p3 * p1)) {
+                      if (p0 <= uint64(52)) {
+                        if (p0 == uint64(uint64(26) + p2)) {
+                          if (p6 <= p7) {
+                            if (p5 == uint64(p6 * p6)) {
+                              if (p4 <= uint64(59)) {
+                                if (p5 == uint64(uint64(34) * p5)) {
+                                  if (p0 > uint64(p4 + p7)) {
+                                    if (p0 < uint64(p4 + p0)) {
+                                      if (p1 < uint64(p0 + p5)) {
+                                        emit AssertionFailed("18"); assert(false);  // bug
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 18;
+      }
+      if (x == 2 && y == 5) {
+        if (p1 < p7) {
+          if (p0 < uint64(uint64(6) * p2)) {
+            if (p2 == uint64(p2 + p4)) {
+              if (p5 < uint64(13)) {
+                if (p2 == p3) {
+                  if (p2 > uint64(uint64(34) + p3)) {
+                    if (p4 > uint64(uint64(45) + p2)) {
+                      if (p1 <= p6) {
+                        if (p1 > p1) {
+                          if (p0 >= p6) {
+                            if (p3 != uint64(51)) {
+                              if (p0 > p2) {
+                                if (p6 < uint64(uint64(48) + p6)) {
+                                  if (p6 == uint64(p5 + p4)) {
+                                    if (p2 >= uint64(uint64(6) * p0)) {
+                                      emit AssertionFailed("19"); assert(false);  // bug
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 19;
+      }
+      if (x == 2 && y == 6) {
+        require(false);  // wall
+        return 20;
+      }
+      if (x == 3 && y == 0) {
+        if (p3 >= uint64(uint64(15) * p1)) {
+          if (p7 == uint64(64)) {
+            if (p7 > uint64(uint64(54) + p5)) {
+              if (p4 <= p5) {
+                if (p2 == uint64(uint64(16) * p0)) {
+                  if (p4 > uint64(13)) {
+                    if (p2 != p6) {
+                      if (p1 < uint64(uint64(16) + p1)) {
+                        if (p4 > uint64(uint64(23) + p1)) {
+                          if (p6 <= uint64(p2 + p4)) {
+                            if (p5 > uint64(p7 * p1)) {
+                              if (p5 <= p6) {
+                                if (p1 >= uint64(uint64(7) * p7)) {
+                                  if (p7 <= uint64(uint64(58) * p4)) {
+                                    if (p4 != uint64(p7 * p3)) {
+                                      emit AssertionFailed("21"); assert(false);  // bug
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 21;
+      }
+      if (x == 3 && y == 1) {
+        if (p3 < uint64(40)) {
+          if (p1 <= uint64(uint64(20) + p3)) {
+            if (p5 < uint64(43)) {
+              if (p2 <= uint64(p4 * p2)) {
+                emit AssertionFailed("22"); assert(false);  // bug
+              }
+            }
+          }
+        }
+        return 22;
+      }
+      if (x == 3 && y == 2) {
+        if (p1 <= uint64(uint64(1) * p6)) {
+          if (p7 == uint64(p3 * p2)) {
+            if (p3 >= uint64(uint64(1) * p1)) {
+              if (p1 == uint64(p1 + p0)) {
+                if (p0 == uint64(uint64(8) + p4)) {
+                  if (p2 != uint64(p6 + p3)) {
+                    emit AssertionFailed("23"); assert(false);  // bug
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 23;
+      }
+      if (x == 3 && y == 3) {
+        if (p3 != uint64(p5 * p7)) {
+          if (p1 < uint64(p6 + p1)) {
+            if (p3 < uint64(p3 + p5)) {
+              if (p5 > uint64(p2 + p2)) {
+                if (p7 >= uint64(p6 * p0)) {
+                  if (p3 < uint64(p7 + p0)) {
+                    if (p2 != uint64(p3 * p7)) {
+                      if (p4 > uint64(p3 * p5)) {
+                        if (p3 >= uint64(p4 * p6)) {
+                          if (p5 < uint64(p2 + p7)) {
+                            if (p4 != uint64(38)) {
+                              if (p6 <= uint64(60)) {
+                                emit AssertionFailed("24"); assert(false);  // bug
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 24;
+      }
+      if (x == 3 && y == 4) {
+        if (p7 != uint64(uint64(6) * p2)) {
+          if (p1 >= uint64(p3 * p0)) {
+            if (p1 > uint64(uint64(53) + p3)) {
+              if (p2 < uint64(22)) {
+                if (p4 == uint64(uint64(33) * p0)) {
+                  if (p1 > uint64(40)) {
+                    if (p5 > uint64(p3 * p1)) {
+                      if (p1 >= uint64(uint64(49) + p5)) {
+                        if (p6 == uint64(uint64(58) + p0)) {
+                          if (p3 > uint64(p7 + p4)) {
+                            if (p2 != uint64(p0 + p4)) {
+                              if (p1 < p4) {
+                                if (p7 <= uint64(uint64(58) * p6)) {
+                                  emit AssertionFailed("25"); assert(false);  // bug
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 25;
+      }
+      if (x == 3 && y == 5) {
+        if (p7 > uint64(uint64(52) * p1)) {
+          if (p3 != p6) {
+            if (p4 >= p6) {
+              if (p0 < uint64(p4 * p1)) {
+                if (p1 < uint64(uint64(64) * p0)) {
+                  if (p4 > p4) {
+                    if (p7 <= uint64(uint64(18) * p5)) {
+                      if (p7 == uint64(uint64(55) * p2)) {
+                        if (p1 < uint64(uint64(53) * p0)) {
+                          if (p1 != uint64(uint64(59) * p6)) {
+                            if (p6 == uint64(p5 * p7)) {
+                              emit AssertionFailed("26"); assert(false);  // bug
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 26;
+      }
+      if (x == 3 && y == 6) {
+        if (p1 > p7) {
+          if (p2 >= uint64(43)) {
+            if (p5 == uint64(3)) {
+              emit AssertionFailed("27"); assert(false);  // bug
+            }
+          }
+        }
+        return 27;
+      }
+      if (x == 4 && y == 0) {
+        if (p0 >= uint64(uint64(49) + p2)) {
+          if (p0 > uint64(uint64(16) + p6)) {
+            if (p3 > uint64(p6 + p1)) {
+              if (p7 < uint64(uint64(30) + p1)) {
+                if (p7 > p2) {
+                  emit AssertionFailed("28"); assert(false);  // bug
+                }
+              }
+            }
+          }
+        }
+        return 28;
+      }
+      if (x == 4 && y == 1) {
+        if (p4 > uint64(p6 + p7)) {
+          if (p0 == uint64(uint64(51) + p0)) {
+            if (p6 == p6) {
+              if (p6 != uint64(29)) {
+                if (p6 >= uint64(1)) {
+                  if (p0 != uint64(p4 + p2)) {
+                    if (p1 <= uint64(uint64(1) * p3)) {
+                      if (p1 != uint64(uint64(64) * p5)) {
+                        if (p6 != uint64(uint64(59) * p0)) {
+                          if (p6 < uint64(23)) {
+                            if (p3 > p2) {
+                              if (p0 <= uint64(uint64(26) + p1)) {
+                                if (p6 > uint64(p5 * p6)) {
+                                  if (p5 >= uint64(uint64(1) + p3)) {
+                                    if (p5 <= uint64(uint64(33) + p0)) {
+                                      emit AssertionFailed("29"); assert(false);  // bug
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 29;
+      }
+      if (x == 4 && y == 2) {
+        if (p4 >= p4) {
+          if (p0 < uint64(p1 * p0)) {
+            if (p5 > uint64(uint64(20) + p3)) {
+              if (p3 == uint64(p3 + p3)) {
+                if (p2 >= uint64(p6 * p2)) {
+                  if (p6 >= uint64(p0 + p4)) {
+                    if (p0 > uint64(uint64(53) * p6)) {
+                      if (p1 > uint64(18)) {
+                        if (p4 == uint64(uint64(36) + p7)) {
+                          if (p7 < uint64(uint64(62) * p0)) {
+                            if (p6 == uint64(p3 + p3)) {
+                              if (p0 > p3) {
+                                if (p2 < uint64(45)) {
+                                  if (p5 != uint64(p5 + p1)) {
+                                    emit AssertionFailed("30"); assert(false);  // bug
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 30;
+      }
+      if (x == 4 && y == 3) {
+        if (p6 != uint64(p1 + p1)) {
+          if (p4 < uint64(45)) {
+            if (p5 == uint64(62)) {
+              if (p7 == uint64(36)) {
+                if (p0 > p6) {
+                  if (p4 > uint64(uint64(21) * p6)) {
+                    if (p0 != uint64(uint64(59) + p0)) {
+                      if (p5 >= uint64(p4 + p1)) {
+                        emit AssertionFailed("31"); assert(false);  // bug
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 31;
+      }
+      if (x == 4 && y == 4) {
+        if (p1 != p7) {
+          if (p2 != uint64(uint64(39) + p5)) {
+            if (p4 == uint64(uint64(7) + p2)) {
+              if (p3 >= uint64(18)) {
+                emit AssertionFailed("32"); assert(false);  // bug
+              }
+            }
+          }
+        }
+        return 32;
+      }
+      if (x == 4 && y == 5) {
+        if (p0 != uint64(p5 * p4)) {
+          if (p2 <= p0) {
+            if (p7 != uint64(uint64(57) + p4)) {
+              if (p7 > p1) {
+                if (p2 == uint64(p2 + p0)) {
+                  emit AssertionFailed("33"); assert(false);  // bug
+                }
+              }
+            }
+          }
+        }
+        return 33;
+      }
+      if (x == 4 && y == 6) {
+        if (p3 == p6) {
+          if (p2 >= p4) {
+            if (p1 > uint64(p6 + p2)) {
+              if (p1 >= uint64(p1 + p5)) {
+                if (p5 >= uint64(uint64(38) * p5)) {
+                  if (p4 == uint64(uint64(26) + p5)) {
+                    if (p1 == uint64(p3 * p0)) {
+                      if (p6 >= uint64(64)) {
+                        if (p7 != uint64(uint64(26) * p7)) {
+                          if (p7 >= uint64(p1 * p4)) {
+                            if (p2 < uint64(uint64(9) + p7)) {
+                              if (p7 != uint64(39)) {
+                                if (p5 != p1) {
+                                  if (p0 >= uint64(p3 + p1)) {
+                                    emit AssertionFailed("34"); assert(false);  // bug
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 34;
+      }
+      if (x == 5 && y == 0) {
+        if (p2 <= uint64(uint64(23) * p3)) {
+          if (p6 != uint64(p0 * p7)) {
+            if (p1 >= uint64(uint64(56) * p4)) {
+              if (p3 == uint64(p5 + p6)) {
+                if (p6 <= uint64(uint64(53) * p1)) {
+                  if (p2 == uint64(uint64(9) + p3)) {
+                    if (p4 > uint64(p0 + p1)) {
+                      if (p1 > uint64(p1 * p1)) {
+                        if (p2 == uint64(p7 * p6)) {
+                          if (p1 == uint64(uint64(34) * p5)) {
+                            if (p4 == uint64(p7 + p5)) {
+                              if (p7 > uint64(44)) {
+                                if (p6 == uint64(p4 * p1)) {
+                                  if (p2 < uint64(uint64(50) + p4)) {
+                                    emit AssertionFailed("35"); assert(false);  // bug
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 35;
+      }
+      if (x == 5 && y == 1) {
+        if (p1 <= uint64(uint64(45) * p3)) {
+          if (p1 > uint64(p3 + p1)) {
+            emit AssertionFailed("36"); assert(false);  // bug
+          }
+        }
+        return 36;
+      }
+      if (x == 5 && y == 2) {
+        if (p6 <= uint64(uint64(45) * p6)) {
+          if (p3 != uint64(20)) {
+            if (p1 >= p0) {
+              if (p3 >= p0) {
+                if (p0 == uint64(55)) {
+                  if (p3 != uint64(p2 * p7)) {
+                    emit AssertionFailed("37"); assert(false);  // bug
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 37;
+      }
+      if (x == 5 && y == 3) {
+        if (p5 < uint64(p7 + p3)) {
+          if (p7 != uint64(uint64(6) * p6)) {
+            if (p2 == uint64(uint64(19) * p2)) {
+              if (p2 <= p7) {
+                if (p1 == uint64(p7 + p1)) {
+                  if (p3 != p5) {
+                    if (p3 < uint64(uint64(36) * p4)) {
+                      if (p0 >= uint64(uint64(15) + p4)) {
+                        if (p5 == p1) {
+                          emit AssertionFailed("38"); assert(false);  // bug
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 38;
+      }
+      if (x == 5 && y == 4) {
+        if (p3 >= uint64(p7 * p2)) {
+          if (p2 == uint64(p4 + p4)) {
+            if (p5 > uint64(p2 + p7)) {
+              if (p7 == p6) {
+                if (p1 >= uint64(p4 + p0)) {
+                  if (p3 != uint64(p4 + p4)) {
+                    if (p6 != p2) {
+                      if (p0 >= uint64(23)) {
+                        emit AssertionFailed("39"); assert(false);  // bug
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 39;
+      }
+      if (x == 5 && y == 5) {
+        if (p2 != uint64(6)) {
+          if (p2 < uint64(34)) {
+            if (p4 != p4) {
+              if (p1 == uint64(p3 * p1)) {
+                if (p0 > uint64(9)) {
+                  if (p1 < uint64(p5 * p2)) {
+                    if (p5 != uint64(p1 * p1)) {
+                      emit AssertionFailed("40"); assert(false);  // bug
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 40;
+      }
+      if (x == 5 && y == 6) {
+        if (p5 != uint64(p4 + p0)) {
+          if (p3 == uint64(p6 * p3)) {
+            if (p7 == uint64(p1 * p7)) {
+              emit AssertionFailed("41"); assert(false);  // bug
+            }
+          }
+        }
+        return 41;
+      }
+      if (x == 6 && y == 0) {
+        require(false);  // wall
+        return 42;
+      }
+      if (x == 6 && y == 1) {
+        if (p3 <= uint64(uint64(31) + p2)) {
+          if (p7 != uint64(uint64(52) * p0)) {
+            if (p5 > uint64(p1 * p3)) {
+              if (p5 <= uint64(p0 * p0)) {
+                if (p1 >= uint64(uint64(34) * p0)) {
+                  if (p6 != uint64(p7 * p7)) {
+                    emit AssertionFailed("43"); assert(false);  // bug
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 43;
+      }
+      if (x == 6 && y == 2) {
+        if (p5 == p3) {
+          if (p0 == uint64(p4 + p2)) {
+            if (p7 >= uint64(uint64(50) * p5)) {
+              if (p6 < uint64(p1 + p0)) {
+                if (p6 > uint64(uint64(8) * p5)) {
+                  if (p4 <= uint64(p1 + p4)) {
+                    if (p3 > uint64(uint64(42) + p6)) {
+                      if (p4 <= uint64(uint64(15) * p0)) {
+                        if (p5 >= uint64(uint64(0) + p2)) {
+                          if (p1 == uint64(p6 * p0)) {
+                            if (p1 >= uint64(p7 * p6)) {
+                              if (p1 < uint64(uint64(52) * p5)) {
+                                emit AssertionFailed("44"); assert(false);  // bug
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 44;
+      }
+      if (x == 6 && y == 3) {
+        if (p1 < p0) {
+          if (p5 <= p0) {
+            emit AssertionFailed("45"); assert(false);  // bug
+          }
+        }
+        return 45;
+      }
+      if (x == 6 && y == 4) {
+        if (p0 == uint64(8)) {
+          if (p5 == uint64(uint64(21) + p4)) {
+            if (p1 >= uint64(uint64(29) + p5)) {
+              if (p3 > uint64(uint64(60) + p2)) {
+                emit AssertionFailed("46"); assert(false);  // bug
+              }
+            }
+          }
+        }
+        return 46;
+      }
+      if (x == 6 && y == 5) {
+        if (p3 < p4) {
+          if (p6 >= uint64(p5 * p6)) {
+            if (p0 == uint64(uint64(62) + p5)) {
+              if (p6 != uint64(uint64(32) * p5)) {
+                if (p4 == uint64(10)) {
+                  if (p4 >= uint64(p4 + p7)) {
+                    if (p2 <= uint64(uint64(52) + p6)) {
+                      if (p3 <= uint64(6)) {
+                        if (p7 != p0) {
+                          if (p4 < uint64(p4 * p5)) {
+                            if (p1 >= p3) {
+                              if (p3 > uint64(uint64(27) + p6)) {
+                                emit AssertionFailed("47"); assert(false);  // bug
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 47;
+      }
+      if (x == 6 && y == 6) {
+        if (p1 < uint64(p2 + p5)) {
+          if (p0 <= uint64(33)) {
+            if (p4 < uint64(uint64(47) * p5)) {
+              if (p7 == uint64(uint64(61) * p6)) {
+                if (p7 < uint64(p7 + p1)) {
+                  if (p4 == p2) {
+                    if (p2 == uint64(28)) {
+                      emit AssertionFailed("48"); assert(false);  // bug
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        return 48;
+      }
+      return 49;
     }
-
-    /**
-     * @dev Computes the address of a clone deployed using {Clones-cloneDeterministic}.
-     */
-    function predictDeterministicAddress(address implementation, bytes32 salt)
-        internal
-        view
-        returns (address predicted)
-    {
-        return predictDeterministicAddress(implementation, salt, address(this));
-    }
-}
-
-
-// File contracts/subaccount/SubaccountFactory.sol
-
-
-
-
-pragma solidity 0.8.9;
-
-contract SubaccountFactory {
-    // ========== storage ==========
-
-    // Subaccount template that can be cloned
-    address immutable template;
-
-    // Subaccount can only be added.
-    mapping(address => address[]) subaccountRegistry;
-
-    // ========== event ==========
-
-    event NewSubaccount(
-        address indexed master,
-        uint256 subaccountIndex,
-        address subaccountAddress
-    );
-
-    // ========== constructor ==========
-
-    constructor() {
-        template = address(new Subaccount());
-        Subaccount(template).init(address(this));
-    }
-
-    // ========== functions ==========
-
-    /// @notice https://eips.ethereum.org/EIPS/eip-1167[EIP 1167]
-    /// is a standard protocol for deploying minimal proxy contracts,
-    /// also known as "clones".
-    function newSubaccount() external returns (address subaccount) {
-        subaccount = Clones.clone(template);
-        Subaccount(subaccount).init(msg.sender);
-        subaccountRegistry[msg.sender].push(subaccount);
-        emit NewSubaccount(
-            msg.sender,
-            subaccountRegistry[msg.sender].length - 1,
-            subaccount
-        );
-    }
-
-    function getSubaccounts(address master)
-        external
-        view
-        returns (address[] memory)
-    {
-        return subaccountRegistry[master];
-    }
-
-    function getSubaccount(address master, uint256 index)
-        external
-        view
-        returns (address)
-    {
-        return subaccountRegistry[master][index];
-    }
+  }
 }

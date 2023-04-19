@@ -85,7 +85,7 @@ pub struct Context {
     pub parent_ctx: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
-    pub ctx_deps: HashMap<String, ContextVarNode>,
+    pub ctx_deps: BTreeMap<String, ContextVarNode>,
     /// A string that represents the path taken from the root context (i.e. `fn_entry.fork.1`)
     pub path: String,
     /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement
@@ -705,7 +705,7 @@ impl ContextNode {
     pub fn ctx_deps(
         &self,
         analyzer: &impl GraphLike,
-    ) -> Result<HashMap<String, ContextVarNode>, GraphError> {
+    ) -> Result<BTreeMap<String, ContextVarNode>, GraphError> {
         Ok(self.underlying(analyzer)?.ctx_deps.clone())
     }
 

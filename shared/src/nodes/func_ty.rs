@@ -580,8 +580,7 @@ impl FunctionParamNode {
     }
 
     pub fn ty_str(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer)?.ty)
-            .expect("Non-typeable as type");
+        let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer)?.ty).ok_or(GraphError::NodeConfusion("Non-typeable as type".to_string()))?;
         Ok(var_ty.as_dot_str(analyzer))
     }
 

@@ -103,6 +103,7 @@ pub trait FuncCaller:
         input_paths: &ExprRet,
         funcs: &[FunctionNode],
     ) -> Option<FunctionNode> {
+        let input_paths = input_paths.clone().flatten();
         // try to find the function based on naive signature
         // This doesnt do type inference on NumberLiterals (i.e. 100 could be uintX or intX, and there could
         // be a function that takes an int256 but we evaled as uint256)
@@ -214,6 +215,9 @@ pub trait FuncCaller:
     ) -> Result<ExprRet, ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
+        if input_paths.has_killed() {
+            return Ok(ExprRet::CtxKilled);
+        }
         match input_paths {
             ExprRet::Single((ctx, input_var)) | ExprRet::SingleLiteral((ctx, input_var)) => {
                 // if we get a single var, we expect the func to only take a single
@@ -230,6 +234,9 @@ pub trait FuncCaller:
                 )
             }
             ExprRet::Multi(ref inputs) => {
+                if ExprRet::Multi(inputs.to_vec()).flatten().has_killed() {
+                    return Ok(ExprRet::CtxKilled);
+                }
                 // check if the inputs length matchs func params length
                 // if they do, check that none are forks
                 if inputs.len() == params.len() {
