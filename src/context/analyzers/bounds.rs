@@ -1,6 +1,6 @@
-use crate::graph_solver::SolverGraph;
 use crate::analyzers::LocSpan;
 use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
+
 use shared::analyzer::GraphLike;
 use shared::{
     analyzer::{AnalyzerLike, Search},

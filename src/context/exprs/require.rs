@@ -348,7 +348,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
 
-                        if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range) {
+                        if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)
+                        {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc).into_expr_err(loc)?;
                             return Ok(None);
@@ -500,7 +501,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
         new_lhs.update_deps(ctx, self).into_expr_err(loc)?;
         new_rhs.update_deps(ctx, self).into_expr_err(loc)?;
-        tracing::trace!("{} is tmp: {}", new_lhs.display_name(self).unwrap(), new_lhs.is_tmp(self).unwrap());
+        tracing::trace!(
+            "{} is tmp: {}",
+            new_lhs.display_name(self).unwrap(),
+            new_lhs.is_tmp(self).unwrap()
+        );
         if let Some(tmp) = new_lhs.tmp_of(self).into_expr_err(loc)? {
             if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
                 self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)?;
@@ -798,9 +803,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 new_lhs
                     .set_range_min(self, rhs_elem + one.clone().into())
                     .unwrap();
-                new_rhs
-                    .set_range_max(self, lhs_elem - one.into())
-                    .unwrap();
+                new_rhs.set_range_max(self, lhs_elem - one.into()).unwrap();
                 false
             }
             RangeOp::Gte => {
@@ -842,9 +845,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 new_lhs
                     .set_range_max(self, rhs_elem - one.clone().into())
                     .unwrap();
-                new_rhs
-                    .set_range_min(self, lhs_elem + one.into())
-                    .unwrap();
+                new_rhs.set_range_min(self, lhs_elem + one.into()).unwrap();
                 false
             }
             RangeOp::Lte => {

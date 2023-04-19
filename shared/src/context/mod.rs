@@ -9,7 +9,6 @@ use crate::{Edge, Node, NodeIdx};
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 
 mod var;
 pub use var::*;

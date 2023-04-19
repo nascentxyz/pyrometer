@@ -1,8 +1,8 @@
-use pyrometer::graph_solver::SolverGraph;
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 use pyrometer::context::queries::storage_write::StorageRangeQuery;
+
 use pyrometer::{
     context::{
         analyzers::{bounds::FunctionVarsBoundAnalyzer, ReportDisplay},

@@ -94,11 +94,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         Ok(ExprRet::Fork(Box::new(true_cvars), Box::new(false_cvars)))
     }
 
-    fn match_true(
-        &mut self,
-        true_cvars: &ExprRet,
-        if_expr: &Expression,
-    ) -> Result<(), ExprErr> {
+    fn match_true(&mut self, true_cvars: &ExprRet, if_expr: &Expression) -> Result<(), ExprErr> {
         match true_cvars {
             ExprRet::CtxKilled => Ok(()),
             ExprRet::Single((fork_ctx, _true_cvar))
@@ -121,11 +117,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         }
     }
 
-    fn match_false(
-        &mut self,
-        false_cvars: &ExprRet,
-        if_expr: &Expression,
-    ) -> Result<(), ExprErr> {
+    fn match_false(&mut self, false_cvars: &ExprRet, if_expr: &Expression) -> Result<(), ExprErr> {
         match false_cvars {
             ExprRet::CtxKilled => Ok(()),
             ExprRet::Single((fork_ctx, _false_cvar))

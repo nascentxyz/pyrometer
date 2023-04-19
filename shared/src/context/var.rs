@@ -361,9 +361,7 @@ impl ContextVarNode {
                 .unwrap()
                 .to_range_string(false, analyzer)
                 .s,
-            new_min
-                .to_range_string(false, analyzer)
-                .s
+            new_min.to_range_string(false, analyzer).s
         );
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -389,13 +387,10 @@ impl ContextVarNode {
             "setting range maximum: {:?}, {}, current:\n{:#?}, new:\n{:#?}",
             self,
             self.display_name(analyzer)?,
-            self.range(analyzer)?.unwrap().range_max()
-                // .unwrap()
-                // .to_range_string(true, analyzer)
-                ,
-            new_max
-                // .to_range_string(true, analyzer)
-                // .s
+            self.range(analyzer)?.unwrap().range_max(), // .unwrap()
+            // .to_range_string(true, analyzer)
+            new_max // .to_range_string(true, analyzer)
+                    // .s
         );
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();

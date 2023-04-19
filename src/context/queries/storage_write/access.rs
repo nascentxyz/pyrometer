@@ -107,7 +107,7 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
                     })
                     .filter(|analysis| terminals.contains(&analysis.ctx))
                     .filter(|analysis| !analysis.ctx.is_killed(self).unwrap())
-                    // .filter(|analysis| !analysis.bound_changes.is_empty())
+                // .filter(|analysis| !analysis.bound_changes.is_empty())
                 {
                     // filter spurious bound changes
                     // if analysis.bound_changes.len() > 2 {

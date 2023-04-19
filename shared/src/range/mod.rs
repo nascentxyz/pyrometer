@@ -564,7 +564,7 @@ pub trait Range<T> {
                     if let Some(prev) = latest.previous_version(analyzer) {
                         (dep, prev)
                     } else {
-                        (dep, dep)   
+                        (dep, dep)
                     }
                 } else {
                     (dep, latest)
