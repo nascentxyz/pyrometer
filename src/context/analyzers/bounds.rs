@@ -1177,7 +1177,6 @@ pub trait FunctionVarsBoundAnalyzer: BoundAnalyzer + Search + AnalyzerLike + Siz
             .iter()
             .map(|child| {
                 // SolverGraph::new(*child, self);
-                println!("child path: {}", child.path(self));
                 let mut parents = child.parent_list(self).unwrap();
                 parents.reverse();
                 parents.push(*child);

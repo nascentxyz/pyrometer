@@ -220,8 +220,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
             (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx)?;
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx)?;
 
                 self.require(new_lhs, new_rhs, *lhs_ctx, loc, op, rhs_op, recursion_ops)?;
@@ -303,8 +303,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn require(
         &mut self,
-        new_lhs: ContextVarNode,
-        new_rhs: ContextVarNode,
+        mut new_lhs: ContextVarNode,
+        mut new_rhs: ContextVarNode,
         ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
@@ -320,7 +320,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         let mut any_unsat = false;
         let mut tmp_cvar = None;
 
-        if let Some(mut lhs_range) = new_lhs
+        if let Some(lhs_range) = new_lhs
             .underlying(self)
             .into_expr_err(loc)?
             .ty
@@ -328,11 +328,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             .into_expr_err(loc)?
         {
             let lhs_range_fn = SolcRange::dyn_fn_from_op(op);
-            lhs_range.update_deps(ctx, self);
+            // lhs_range.update_deps(new_lhs, ctx, self);
             let mut new_var_range = lhs_range_fn(lhs_range.clone(), new_rhs);
 
-            if let Some(mut rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
-                rhs_range.update_deps(ctx, self);
+            if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
+                // rhs_range.update_deps(new_rhs, ctx, self);
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
                 match (lhs_is_const, rhs_is_const) {
@@ -498,6 +498,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
         }
 
+        new_lhs.update_deps(ctx, self).into_expr_err(loc)?;
+        new_rhs.update_deps(ctx, self).into_expr_err(loc)?;
+        tracing::trace!("{} is tmp: {}", new_lhs.display_name(self).unwrap(), new_lhs.is_tmp(self).unwrap());
         if let Some(tmp) = new_lhs.tmp_of(self).into_expr_err(loc)? {
             if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
                 self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)?;
@@ -571,6 +574,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         nonconst_var: ContextVarNode,
         mut nonconst_range: SolcRange,
     ) -> bool {
+        tracing::trace!("Setting range for nonconst from const");
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
@@ -710,6 +714,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         mut lhs_range: SolcRange,
         mut rhs_range: SolcRange,
     ) -> bool {
+        tracing::trace!("Setting range for nonconst from nonconst");
         match op {
             RangeOp::Eq => {
                 // check that there is overlap in the ranges
@@ -823,7 +828,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                 // if lhs min is >= rhs.max, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();
-                println!("{min:#?}, {:#?}", rhs_elem.maximize(self).unwrap());
                 if matches!(
                     min.range_ord(&rhs_elem.maximize(self).unwrap()),
                     Some(Ordering::Greater) | Some(Ordering::Equal)

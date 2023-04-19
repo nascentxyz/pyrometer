@@ -553,12 +553,23 @@ pub trait Range<T> {
         deps
     }
 
-    fn update_deps(&mut self, ctx: ContextNode, analyzer: &impl GraphLike) {
+    fn update_deps(&mut self, node: ContextVarNode, ctx: ContextNode, analyzer: &impl GraphLike) {
         let deps = self.dependent_on();
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
             .into_iter()
             .filter(|dep| !dep.is_const(analyzer).unwrap())
-            .map(|dep| (dep, dep.latest_version_in_ctx(ctx, analyzer).unwrap()))
+            .map(|dep| {
+                let latest = dep.latest_version_in_ctx(ctx, analyzer).unwrap();
+                if latest == node {
+                    if let Some(prev) = latest.previous_version(analyzer) {
+                        (dep, prev)
+                    } else {
+                        (dep, dep)   
+                    }
+                } else {
+                    (dep, latest)
+                }
+            })
             .collect();
 
         let mut min = self.range_min();

@@ -41,7 +41,6 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         // println!("true_stmt: {true_stmt:#?}");
 
         self.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
-        println!("\n\n HERE: {:?} \n\n", true_subctx.killed_loc(self));
         self.parse_ctx_statement(true_stmt, false, Some(true_subctx));
 
         if let Some(false_stmt) = false_stmt {
@@ -168,7 +167,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
             Expression::Variable(ref ident) => Expression::Variable(ident.clone()),
             e => e,
         };
-        println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
+        // println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
         self.handle_require(&[if_expr], true_fork_ctx)
     }
 
@@ -188,7 +187,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
             Expression::Variable(ref ident) => Expression::Not(ident.loc, Box::new(if_expr)),
             e => Expression::Not(e.loc(), Box::new(e)),
         };
-        println!("inverse if expr: {inv_if_expr:?}");
+        // println!("inverse if expr: {inv_if_expr:?}");
         self.handle_require(&[inv_if_expr], false_fork_ctx)
     }
 }

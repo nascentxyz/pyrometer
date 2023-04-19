@@ -145,13 +145,14 @@ impl ContextVarNode {
         ))
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn update_deps(
         &mut self,
         ctx: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         if let Some(mut range) = self.range(analyzer)? {
-            range.update_deps(ctx, analyzer);
+            range.update_deps(*self, ctx, analyzer);
             self.set_range_min(analyzer, range.min)?;
             self.set_range_max(analyzer, range.max)?;
         }
@@ -356,12 +357,11 @@ impl ContextVarNode {
         tracing::trace!(
             "setting range minimum: {}, current: {}, new: {}",
             self.display_name(analyzer)?,
-            self.evaled_range_min(analyzer)?
+            self.range_min(analyzer)?
                 .unwrap()
                 .to_range_string(false, analyzer)
                 .s,
             new_min
-                .minimize(analyzer)?
                 .to_range_string(false, analyzer)
                 .s
         );
@@ -386,16 +386,16 @@ impl ContextVarNode {
         new_max: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
-            "setting range maximum: {}, current: {}, new: {}",
+            "setting range maximum: {:?}, {}, current:\n{:#?}, new:\n{:#?}",
+            self,
             self.display_name(analyzer)?,
-            self.evaled_range_max(analyzer)?
-                .unwrap()
-                .to_range_string(true, analyzer)
-                .s,
+            self.range(analyzer)?.unwrap().range_max()
+                // .unwrap()
+                // .to_range_string(true, analyzer)
+                ,
             new_max
-                .maximize(analyzer)?
-                .to_range_string(true, analyzer)
-                .s
+                // .to_range_string(true, analyzer)
+                // .s
         );
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();

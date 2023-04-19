@@ -255,11 +255,11 @@ pub trait ContextBuilder:
         Self: Sized,
     {
         use Statement::*;
-        if let Some(ctx) = parent_ctx {
-            if let Node::Context(_) = self.node(ctx) {
-                println!("ctx: {}, stmt: {:?}", ContextNode::from(ctx.into()).path(self), stmt);
-            }
-        }
+        // if let Some(ctx) = parent_ctx {
+        //     if let Node::Context(_) = self.node(ctx) {
+        //         println!("ctx: {}, stmt: {:?}", ContextNode::from(ctx.into()).path(self), stmt);
+        //     }
+        // }
 
         match stmt {
             Block {
@@ -910,7 +910,7 @@ pub trait ContextBuilder:
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
         use Expression::*;
-        // println!("ctx: {}, {:?}", ctx.underlying(self).path, expr);
+        // println!("ctx: {}, {:?}", ctx.underlying(self).unwrap().path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
