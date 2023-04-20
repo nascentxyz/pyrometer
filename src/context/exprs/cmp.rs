@@ -126,6 +126,13 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
+                // println!(
+                //     "cmp range: {range:#?},\nmin: {:?},\nmax: {:?}\nlhs_range: {:#?}\nrhs_range: {:#?}",
+                //     range.evaled_range_min(self),
+                //     range.evaled_range_max(self),
+                //     lhs_cvar.range(self),
+                //     rhs_cvar.range(self),
+                // );
 
                 tracing::trace!(
                     "cmp: {} {} {}",

@@ -151,5 +151,5 @@ pub trait RangeElem<T> {
     /// e.g.: take the basic expression `x + y`, in normal checked solidity math
     /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
     /// cyclic dependency.
-    fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<T>);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx);
 }

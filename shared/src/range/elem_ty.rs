@@ -41,7 +41,7 @@ impl RangeElem<Concrete> for Dynamic {
         }
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
+    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
@@ -94,6 +94,13 @@ pub struct RangeDyn<T> {
     pub val: BTreeMap<Elem<T>, Elem<T>>,
     pub loc: Loc,
 }
+impl<T> RangeDyn<T> {
+    pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
+        false
+        // self.len.contains_node(node_idx)
+        // || self.val.iter().any(|(k, v)| k.contains_node(node_idx) || v.contains_node(node_idx))
+    }
+}
 
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn range_eq(&self, _other: &Self) -> bool {
@@ -122,7 +129,19 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             .for_each(|(_, val)| val.update_deps(mapping));
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
+        self.len.filter_recursion(node_idx, new_idx);
+        self.val = self
+            .val
+            .clone()
+            .into_iter()
+            .map(|(mut k, mut v)| {
+                k.filter_recursion(node_idx, new_idx);
+                v.filter_recursion(node_idx, new_idx);
+                (k, v)
+            })
+            .collect();
+    }
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
@@ -272,7 +291,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     }
     fn update_deps(&mut self, _mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {}
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: Elem<Concrete>) {}
+    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
 
     fn maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
@@ -306,6 +325,10 @@ impl<T> RangeExpr<T> {
             rhs: Box::new(rhs),
         }
     }
+
+    pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
+        self.lhs.contains_node(node_idx) || self.lhs.contains_node(node_idx)
+    }
 }
 
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
@@ -328,9 +351,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         self.rhs.update_deps(mapping);
     }
 
-    fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<Concrete>) {
-        self.lhs.filter_recursion(node_idx, old.clone());
-        self.rhs.filter_recursion(node_idx, old);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
+        self.lhs.filter_recursion(node_idx, new_idx);
+        self.rhs.filter_recursion(node_idx, new_idx);
     }
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
@@ -373,6 +396,16 @@ impl From<Concrete> for Elem<Concrete> {
 }
 
 impl<T> Elem<T> {
+    pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
+        match self {
+            Self::Dynamic(d) => d.idx == node_idx,
+            Self::Concrete(_) => false,
+            Self::Expr(expr) => expr.contains_node(node_idx),
+            Self::ConcreteDyn(d) => d.contains_node(node_idx),
+            Self::Null => false,
+        }
+    }
+
     pub fn dyn_map(&self) -> Option<&BTreeMap<Self, Self>> {
         match self {
             Self::ConcreteDyn(dyn_range) => Some(&dyn_range.val),
@@ -574,19 +607,18 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn filter_recursion(&mut self, node_idx: NodeIdx, old: Self) {
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
         match self {
-            Self::Dynamic(d) => {
+            Self::Dynamic(ref mut d) => {
                 if d.idx == node_idx {
-                    *self = old
+                    d.idx = new_idx
                 }
             }
             Self::Concrete(_) => {}
-            Self::Expr(expr) => expr.filter_recursion(node_idx, old),
-            Self::ConcreteDyn(d) => d.filter_recursion(node_idx, old),
+            Self::Expr(expr) => expr.filter_recursion(node_idx, new_idx),
+            Self::ConcreteDyn(d) => d.filter_recursion(node_idx, new_idx),
             Self::Null => {}
         }
-        // println!("filter recursion {:?}", self);
     }
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
@@ -1266,120 +1298,48 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Eq => {
                 if maximize {
                     // check if either lhs element is contained by rhs
-                    match (
-                        lhs_min.range_ord(&rhs_min),
-                        lhs_min.range_ord(&rhs_max),
-                        lhs_min.maybe_concrete(),
-                    ) {
-                        (_, _, None) => {}
-                        (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        ) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
+                    match lhs_min.range_ord(&rhs_max) {
+                        Some(std::cmp::Ordering::Less) => {
+                            // we know our min is less than the max
+                            // check that the max is greater than or eq their min
+                            let max_greater_than_min = matches!(
+                                lhs_max.range_ord(&rhs_min),
+                                Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                            );
+                            Elem::Concrete(RangeConcrete {
+                                val: Concrete::Bool(max_greater_than_min),
+                                loc: Loc::Implicit,
+                            })
                         }
-                        _ => {}
+                        Some(std::cmp::Ordering::Equal) => Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(true),
+                            loc: Loc::Implicit,
+                        }),
+                        _ => Elem::Expr(self.clone()),
                     }
-
-                    match (
-                        lhs_max.range_ord(&rhs_min),
-                        lhs_max.range_ord(&rhs_max),
-                        lhs_max.maybe_concrete(),
-                    ) {
-                        (_, _, None) => {}
-                        (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        ) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
-                        }
-                        (_, _, Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(false),
-                                loc: c.loc,
-                            }))
-                        }
-                    }
-
-                    Elem::Expr(self.clone())
                 } else {
-                    // check if either lhs element is *not* contained by rhs
-                    match (
-                        lhs_min.range_ord(&rhs_min),
-                        lhs_min.range_ord(&rhs_max),
-                        lhs_min.maybe_concrete(),
-                    ) {
-                        (_, _, None) => {}
-                        (Some(std::cmp::Ordering::Less), _, Some(c))
-                        | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(false),
-                                loc: c.loc,
-                            }))
-                        }
-                        _ => {}
+                    // the only cases where this isnt minimized to false is when both are const.
+                    // this is because we could always choose two values that aren't equal if there
+                    // is any wiggle room in either of the ranges
+                    let lhs_is_const =
+                        matches!(lhs_min.range_ord(&lhs_max), Some(std::cmp::Ordering::Equal));
+                    let rhs_is_const =
+                        matches!(rhs_min.range_ord(&rhs_max), Some(std::cmp::Ordering::Equal));
+                    if rhs_is_const && lhs_is_const {
+                        let are_const_eq =
+                            matches!(lhs_min.range_ord(&lhs_max), Some(std::cmp::Ordering::Equal));
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(are_const_eq),
+                            loc: Loc::Implicit,
+                        })
+                    } else {
+                        // at least one of them isn't const so we could select a value
+                        // where they dont match
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(false),
+                            loc: Loc::Implicit,
+                        })
                     }
-
-                    match (
-                        lhs_max.range_ord(&rhs_min),
-                        lhs_max.range_ord(&rhs_max),
-                        lhs_max.maybe_concrete(),
-                    ) {
-                        (_, _, None) => {}
-                        (Some(std::cmp::Ordering::Less), _, Some(c))
-                        | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(false),
-                                loc: c.loc,
-                            }))
-                        }
-                        (_, _, Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
-                        }
-                    }
-
-                    Elem::Expr(self.clone())
                 }
             }
             RangeOp::Neq => {

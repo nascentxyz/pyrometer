@@ -232,11 +232,15 @@ impl ContextNode {
 
     /// *All* subcontexts (including subcontexts of subcontexts, recursively)
     pub fn subcontexts(&self, analyzer: &impl GraphLike) -> Vec<ContextNode> {
-        analyzer
-            .search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext))
-            .into_iter()
-            .map(ContextNode::from)
-            .collect()
+        let underlying = self.underlying(analyzer).unwrap();
+        let mut subctxs = underlying.forks.clone();
+        subctxs.extend(underlying.children.clone());
+        subctxs
+        // analyzer
+        //     .search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext))
+        //     .into_iter()
+        //     .map(ContextNode::from)
+        //     .collect()
     }
 
     /// Gets the associated contract for the function for the context
@@ -354,8 +358,11 @@ impl ContextNode {
             );
 
             // extend with inherited functions
-            let inherited_contracts =
-                analyzer.search_children(contract.0.into(), &Edge::InheritedContract);
+            let inherited_contracts = analyzer.search_children_via(
+                contract.0.into(),
+                &Edge::InheritedContract,
+                &Edge::InheritedContract,
+            );
             funcs.extend(
                 inherited_contracts
                     .into_iter()
@@ -410,7 +417,7 @@ impl ContextNode {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         analyzer
-            .search_children(source, &Edge::Struct)
+            .search_children_depth(source, &Edge::Struct, 1, 0)
             .into_iter()
             .map(StructNode::from)
             .collect::<Vec<_>>()
@@ -478,7 +485,7 @@ impl ContextNode {
     /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
         analyzer
-            .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
+            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
             .into_iter()
             .filter_map(|cvar_node| {
                 let cvar_node = ContextVarNode::from(cvar_node);
@@ -499,7 +506,7 @@ impl ContextNode {
         name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         if let Some(var) = analyzer
-            .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
+            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
             .into_iter()
             .filter_map(|cvar_node| {
                 let cvar_node = ContextVarNode::from(cvar_node);
@@ -524,7 +531,7 @@ impl ContextNode {
     /// Gets all variables associated with a context
     pub fn vars(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
         analyzer
-            .search_children(self.0.into(), &Edge::Context(ContextEdge::Variable))
+            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
             .into_iter()
             .map(ContextVarNode::from)
             .collect()

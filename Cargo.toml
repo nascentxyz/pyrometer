@@ -21,3 +21,6 @@ members = ["cli", "shared"]
 
 [patch.crates-io]
 ariadne = {git = "https://github.com/brockelmore/ariadne"}
+
+[profile.release]
+debug = true

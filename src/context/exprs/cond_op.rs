@@ -41,6 +41,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         // println!("true_stmt: {true_stmt:#?}");
 
         self.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
+        // println!("\n\n HERE: {:?} \n\n", true_subctx.killed_loc(self));
         self.parse_ctx_statement(true_stmt, false, Some(true_subctx));
 
         if let Some(false_stmt) = false_stmt {

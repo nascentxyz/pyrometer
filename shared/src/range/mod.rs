@@ -520,11 +520,11 @@ impl Range<Concrete> for SolcRange {
     fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) {
         self.exclusions = new;
     }
-    fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy) {
-        self.min.filter_recursion(self_idx, old);
+    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx) {
+        self.min.filter_recursion(self_idx, new_idx);
     }
-    fn filter_max_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy) {
-        self.max.filter_recursion(self_idx, old);
+    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx) {
+        self.max.filter_recursion(self_idx, new_idx);
     }
 }
 
@@ -545,8 +545,8 @@ pub trait Range<T> {
     fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>)
     where
         Self: std::marker::Sized;
-    fn filter_min_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
-    fn filter_max_recursion(&mut self, self_idx: NodeIdx, old: Self::ElemTy);
+    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);
+    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);
     fn dependent_on(&self) -> Vec<ContextVarNode> {
         let mut deps = self.range_min().dependent_on();
         deps.extend(self.range_max().dependent_on());
@@ -638,20 +638,22 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     }
 
     fn overlaps(&self, other: &Self, analyzer: &impl GraphLike) -> bool {
-        let min_contains = matches!(
-            self.evaled_range_min(analyzer)
-                .unwrap()
-                .range_ord(&other.evaled_range_min(analyzer).unwrap()),
-            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
-        );
+        let lhs_min = self.evaled_range_min(analyzer).unwrap();
+        let rhs_max = other.evaled_range_max(analyzer).unwrap();
 
-        let max_contains = matches!(
-            self.evaled_range_max(analyzer)
-                .unwrap()
-                .range_ord(&other.evaled_range_max(analyzer).unwrap()),
-            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
-        );
-
-        min_contains || max_contains
+        match lhs_min.range_ord(&rhs_max) {
+            Some(std::cmp::Ordering::Less) => {
+                // we know our min is less than the other max
+                // check that the max is greater than or eq their min
+                let lhs_max = self.evaled_range_max(analyzer).unwrap();
+                let rhs_min = other.evaled_range_min(analyzer).unwrap();
+                matches!(
+                    lhs_max.range_ord(&rhs_min),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                )
+            }
+            Some(std::cmp::Ordering::Equal) => true,
+            _ => false,
+        }
     }
 }

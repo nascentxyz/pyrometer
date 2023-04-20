@@ -333,6 +333,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
                 // rhs_range.update_deps(new_rhs, ctx, self);
+                // println!("{lhs_range:#?} {:#?} {:#?}, {rhs_range:?} {:#?} {:#?}", lhs_range.evaled_range_min(self), lhs_range.evaled_range_max(self), rhs_range.evaled_range_min(self), rhs_range.evaled_range_max(self));
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
                 match (lhs_is_const, rhs_is_const) {

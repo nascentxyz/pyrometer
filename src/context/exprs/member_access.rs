@@ -917,8 +917,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Option<ExprRet> {
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {
             // search for local library based functions
-            let using_func_children =
-                self.search_children(ty, &Edge::LibraryFunction(associated_contract.into()));
+            let using_func_children = self.search_children_depth(
+                ty,
+                &Edge::LibraryFunction(associated_contract.into()),
+                1,
+                0,
+            );
             if let Some(found_fn) = using_func_children
                 .iter()
                 .find(|child| FunctionNode::from(**child).name(self).unwrap() == ident.name)
@@ -929,8 +933,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             }
 
             // search for local library contracts
-            let using_libs_children =
-                self.search_children(ty, &Edge::LibraryContract(associated_contract.into()));
+            let using_libs_children = self.search_children_depth(
+                ty,
+                &Edge::LibraryContract(associated_contract.into()),
+                1,
+                0,
+            );
             if let Some(found_fn) = using_libs_children.iter().find_map(|lib_contract| {
                 ContractNode::from(*lib_contract)
                     .funcs(self)
@@ -945,7 +953,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
         // Search for global funcs
         let source = ctx.associated_source(self);
-        let using_func_children = self.search_children(ty, &Edge::LibraryFunction(source));
+        let using_func_children =
+            self.search_children_depth(ty, &Edge::LibraryFunction(source), 1, 0);
         if let Some(found_fn) = using_func_children
             .iter()
             .find(|child| FunctionNode::from(**child).name(self).unwrap() == ident.name)
@@ -956,7 +965,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         }
 
         // search for global library contracts
-        let using_libs_children = self.search_children(ty, &Edge::LibraryContract(source));
+        let using_libs_children =
+            self.search_children_depth(ty, &Edge::LibraryContract(source), 1, 0);
         if let Some(found_fn) = using_libs_children.iter().find_map(|lib_contract| {
             ContractNode::from(*lib_contract)
                 .funcs(self)
@@ -976,15 +986,24 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {
             // search for local library based functions
             funcs.extend(
-                self.search_children(ty, &Edge::LibraryFunction(associated_contract.into()))
-                    .into_iter()
-                    .map(FunctionNode::from)
-                    .collect::<Vec<_>>(),
+                self.search_children_depth(
+                    ty,
+                    &Edge::LibraryFunction(associated_contract.into()),
+                    1,
+                    0,
+                )
+                .into_iter()
+                .map(FunctionNode::from)
+                .collect::<Vec<_>>(),
             );
 
             // search for local library contracts
-            let using_libs_children =
-                self.search_children(ty, &Edge::LibraryContract(associated_contract.into()));
+            let using_libs_children = self.search_children_depth(
+                ty,
+                &Edge::LibraryContract(associated_contract.into()),
+                1,
+                0,
+            );
             funcs.extend(
                 using_libs_children
                     .iter()
@@ -996,13 +1015,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         // Search for global funcs
         let source = ctx.associated_source(self);
         funcs.extend(
-            self.search_children(ty, &Edge::LibraryFunction(source))
+            self.search_children_depth(ty, &Edge::LibraryFunction(source), 1, 0)
                 .into_iter()
                 .map(FunctionNode::from)
                 .collect::<Vec<_>>(),
         );
 
-        let using_libs_children = self.search_children(ty, &Edge::LibraryContract(source));
+        let using_libs_children =
+            self.search_children_depth(ty, &Edge::LibraryContract(source), 1, 0);
         funcs.extend(
             using_libs_children
                 .iter()

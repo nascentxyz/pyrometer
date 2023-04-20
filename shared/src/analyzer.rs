@@ -499,6 +499,35 @@ pub trait Search: GraphLike {
         this_children
     }
 
+    fn search_children_via(
+        &self,
+        start: NodeIdx,
+        edge_ty: &Edge,
+        via_edge_ty: &Edge,
+    ) -> BTreeSet<NodeIdx> {
+        let edges = self
+            .graph()
+            .edges_directed(start, Direction::Incoming)
+            .filter(|edge| edge.weight() == via_edge_ty);
+        let mut this_children: BTreeSet<NodeIdx> = edges
+            .clone()
+            .filter_map(|edge| {
+                if edge.weight() == edge_ty {
+                    Some(edge.source())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        this_children.extend(
+            edges
+                .flat_map(|edge| self.search_children(edge.source(), edge_ty))
+                .collect::<BTreeSet<NodeIdx>>(),
+        );
+        this_children
+    }
+
     fn search_children_depth(
         &self,
         start: NodeIdx,

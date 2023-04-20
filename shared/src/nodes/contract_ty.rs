@@ -85,7 +85,7 @@ impl ContractNode {
     /// Gets all associated functions from the underlying node data for the [`Contract`]
     pub fn funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         analyzer
-            .search_children(self.0.into(), &Edge::Func)
+            .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
             .into_iter()
             .map(FunctionNode::from)
             .collect()
@@ -94,7 +94,7 @@ impl ContractNode {
     /// Gets all associated modifiers from the underlying node data for the [`Contract`]
     pub fn modifiers(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
         analyzer
-            .search_children(self.0.into(), &Edge::Modifier)
+            .search_children_depth(self.0.into(), &Edge::Modifier, 1, 0)
             .into_iter()
             .map(FunctionNode::from)
             .collect()
