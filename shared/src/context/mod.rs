@@ -6,7 +6,7 @@ use crate::StructNode;
 use std::collections::BTreeSet;
 
 use crate::{Edge, Node, NodeIdx};
-use petgraph::{visit::EdgeRef, Direction};
+
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
