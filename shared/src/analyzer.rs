@@ -499,16 +499,45 @@ pub trait Search: GraphLike {
         this_children
     }
 
-    fn search_children_via(
+    fn find_child_exclude_via(
         &self,
         start: NodeIdx,
         edge_ty: &Edge,
-        via_edge_ty: &Edge,
+        exclude_edges: &[Edge],
+        find_fn: &impl Fn(NodeIdx, &Self) -> Option<NodeIdx>,
+    ) -> Option<NodeIdx> {
+        let edges = self.graph().edges_directed(start, Direction::Incoming).filter(|edge| !exclude_edges.contains(edge.weight()));
+        if let Some(node) = edges
+            .clone()
+            .filter_map(|edge| {
+                if edge.weight() == edge_ty {
+                    Some(edge.source())
+                } else {
+                    None
+                }
+            })
+            .find(|node| {
+                find_fn(*node, self).is_some()
+            }) {
+            Some(node)
+        } else {
+            edges
+                .clone()
+                .map(|edge| edge.source())
+                .find_map(|node| self.find_child_exclude_via(node, edge_ty, exclude_edges, find_fn))
+        }
+    }
+
+    fn search_children_exclude_via(
+        &self,
+        start: NodeIdx,
+        edge_ty: &Edge,
+        exclude_edges: &[Edge],
     ) -> BTreeSet<NodeIdx> {
         let edges = self
             .graph()
             .edges_directed(start, Direction::Incoming)
-            .filter(|edge| edge.weight() == via_edge_ty);
+            .filter(|edge| !exclude_edges.contains(edge.weight()));
         let mut this_children: BTreeSet<NodeIdx> = edges
             .clone()
             .filter_map(|edge| {
@@ -522,7 +551,7 @@ pub trait Search: GraphLike {
 
         this_children.extend(
             edges
-                .flat_map(|edge| self.search_children(edge.source(), edge_ty))
+                .flat_map(|edge| self.search_children_exclude_via(edge.source(), edge_ty, exclude_edges))
                 .collect::<BTreeSet<NodeIdx>>(),
         );
         this_children

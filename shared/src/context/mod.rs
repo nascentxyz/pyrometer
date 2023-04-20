@@ -358,10 +358,10 @@ impl ContextNode {
             );
 
             // extend with inherited functions
-            let inherited_contracts = analyzer.search_children_via(
+            let inherited_contracts = analyzer.search_children_exclude_via(
                 contract.0.into(),
                 &Edge::InheritedContract,
-                &Edge::InheritedContract,
+                &[Edge::Func],
             );
             funcs.extend(
                 inherited_contracts
@@ -417,7 +417,7 @@ impl ContextNode {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         analyzer
-            .search_children_depth(source, &Edge::Struct, 1, 0)
+            .search_children_exclude_via(source, &Edge::Struct, &[Edge::Func])
             .into_iter()
             .map(StructNode::from)
             .collect::<Vec<_>>()
@@ -485,19 +485,24 @@ impl ContextNode {
     /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
         analyzer
-            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
-            .into_iter()
-            .filter_map(|cvar_node| {
-                let cvar_node = ContextVarNode::from(cvar_node);
-                let cvar = cvar_node.underlying(analyzer).unwrap();
-                if cvar.name == name {
-                    Some(cvar_node)
-                } else {
-                    None
+            .find_child_exclude_via(
+                self.0.into(),
+                &Edge::Context(ContextEdge::Variable),
+                &[Edge::Context(ContextEdge::Prev), Edge::Context(ContextEdge::Call)],
+                &|cvar_node, analyzer| {
+                    if matches!(analyzer.node(cvar_node), Node::ContextVar(..)) {
+                        let cvar_node = ContextVarNode::from(cvar_node);
+                        let cvar = cvar_node.underlying(analyzer).unwrap();
+                        if cvar.name == name {
+                            Some(cvar_node.into())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 }
-            })
-            .take(1)
-            .next()
+            ).map(|idx| idx.into())
     }
 
     pub fn var_by_name_or_recurse(
@@ -539,18 +544,19 @@ impl ContextNode {
 
     /// Gets all variables associated with a context
     pub fn local_vars(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter_map(|edge| {
-                if edge.weight() == &Edge::Context(ContextEdge::Variable) {
-                    Some(edge.source())
-                } else {
-                    None
-                }
-            })
-            .map(ContextVarNode::from)
-            .collect()
+        // analyzer
+        //     .graph()
+        //     .edges_directed(self.0.into(), Direction::Incoming)
+        //     .filter_map(|edge| {
+        //         if edge.weight() == &Edge::Context(ContextEdge::Variable) {
+        //             Some(edge.source())
+        //         } else {
+        //             None
+        //         }
+        //     })
+        //     .map(ContextVarNode::from)
+        //     .collect()
+        self.vars(analyzer)
     }
 
     /// Gets the latest version of a variable associated with a context

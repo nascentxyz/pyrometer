@@ -8,9 +8,10 @@ contract Logical {
     function cond_not(uint256 a) public {
         bool s = a < 100;
         if (!s) {
-            require(s);
+            require(!s);
+        } else {
+            require(s);    
         }
-        require(s);
     }
 
     function cond_if(uint256 a) public {
