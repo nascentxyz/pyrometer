@@ -1,4 +1,3 @@
-use shared::analyzer::GraphError;
 use crate::context::exprs::IntoExprErr;
 use crate::context::func_call::{
     internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
@@ -8,6 +7,7 @@ use crate::context::ContextBuilder;
 use crate::context::ExprErr;
 use crate::ExprRet;
 use shared::analyzer::AsDotStr;
+use shared::analyzer::GraphError;
 use shared::analyzer::GraphLike;
 use shared::context::*;
 use std::collections::BTreeMap;
@@ -450,12 +450,14 @@ pub trait FuncCaller:
 
             // update any requirements
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs)?;
-            self.inherit_storage_changes(caller_ctx, callee_ctx).into_expr_err(loc)?;
+            self.inherit_storage_changes(caller_ctx, callee_ctx)
+                .into_expr_err(loc)?;
 
             Ok(self.ctx_rets(callee_ctx))
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs)?;
-            self.inherit_storage_changes(caller_ctx, callee_ctx).into_expr_err(loc)?;
+            self.inherit_storage_changes(caller_ctx, callee_ctx)
+                .into_expr_err(loc)?;
             Ok(ExprRet::Multi(
                 func_node
                     .returns(self)
@@ -641,7 +643,8 @@ pub trait FuncCaller:
             ctx,
             &modifier_state.renamed_inputs,
         )?;
-        self.inherit_storage_changes(modifier_state.parent_ctx, ctx).into_expr_err(modifier_state.loc)?;
+        self.inherit_storage_changes(modifier_state.parent_ctx, ctx)
+            .into_expr_err(modifier_state.loc)?;
 
         let mods = modifier_state.parent_fn.modifiers(self);
         if modifier_state.num + 1 < mods.len() {
@@ -680,26 +683,30 @@ pub trait FuncCaller:
         renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
     ) -> Result<(), ExprErr> {
         if caller_ctx != callee_ctx {
-            renamed_inputs.iter().try_for_each(|(input_var, updated_var)| {
-                let new_input = self
-                    .advance_var_in_ctx(input_var.latest_version(self), loc, caller_ctx)?;
-                let latest_updated = updated_var.latest_version(self);
-                if let Some(updated_var_range) = latest_updated.range(self).into_expr_err(loc)? {
-                    let res = new_input
-                        .set_range_min(self, updated_var_range.range_min())
-                        .into_expr_err(loc);
-                    let _ = self.add_if_err(res);
-                    let res = new_input
-                        .set_range_max(self, updated_var_range.range_max())
-                        .into_expr_err(loc);
-                    let _ = self.add_if_err(res);
-                    let res = new_input
-                        .set_range_exclusions(self, updated_var_range.range_exclusions())
-                        .into_expr_err(loc);
-                    let _ = self.add_if_err(res);
-                }
-                Ok(())
-            })?;
+            renamed_inputs
+                .iter()
+                .try_for_each(|(input_var, updated_var)| {
+                    let new_input =
+                        self.advance_var_in_ctx(input_var.latest_version(self), loc, caller_ctx)?;
+                    let latest_updated = updated_var.latest_version(self);
+                    if let Some(updated_var_range) =
+                        latest_updated.range(self).into_expr_err(loc)?
+                    {
+                        let res = new_input
+                            .set_range_min(self, updated_var_range.range_min())
+                            .into_expr_err(loc);
+                        let _ = self.add_if_err(res);
+                        let res = new_input
+                            .set_range_max(self, updated_var_range.range_max())
+                            .into_expr_err(loc);
+                        let _ = self.add_if_err(res);
+                        let res = new_input
+                            .set_range_exclusions(self, updated_var_range.range_exclusions())
+                            .into_expr_err(loc);
+                        let _ = self.add_if_err(res);
+                    }
+                    Ok(())
+                })?;
         }
         Ok(())
     }
@@ -711,7 +718,11 @@ pub trait FuncCaller:
     }
 
     /// Inherit the storage changes from a function call
-    fn inherit_storage_changes(&mut self, inheritor_ctx: ContextNode, grantor_ctx: ContextNode) -> Result<(), GraphError> {
+    fn inherit_storage_changes(
+        &mut self,
+        inheritor_ctx: ContextNode,
+        grantor_ctx: ContextNode,
+    ) -> Result<(), GraphError> {
         if inheritor_ctx != grantor_ctx {
             let vars = grantor_ctx.local_vars(self);
             vars.iter().try_for_each(|old_var| {
@@ -727,7 +738,8 @@ pub trait FuncCaller:
                                     inheritor_var,
                                     underlying.loc.expect("No loc for val change"),
                                     inheritor_ctx,
-                                ).unwrap();
+                                )
+                                .unwrap();
                             let _ = new_inheritor_var.set_range_min(self, r.range_min());
                             let _ = new_inheritor_var.set_range_max(self, r.range_max());
                             let _ =

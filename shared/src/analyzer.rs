@@ -506,7 +506,10 @@ pub trait Search: GraphLike {
         exclude_edges: &[Edge],
         find_fn: &impl Fn(NodeIdx, &Self) -> Option<NodeIdx>,
     ) -> Option<NodeIdx> {
-        let edges = self.graph().edges_directed(start, Direction::Incoming).filter(|edge| !exclude_edges.contains(edge.weight()));
+        let edges = self
+            .graph()
+            .edges_directed(start, Direction::Incoming)
+            .filter(|edge| !exclude_edges.contains(edge.weight()));
         if let Some(node) = edges
             .clone()
             .filter_map(|edge| {
@@ -516,9 +519,8 @@ pub trait Search: GraphLike {
                     None
                 }
             })
-            .find(|node| {
-                find_fn(*node, self).is_some()
-            }) {
+            .find(|node| find_fn(*node, self).is_some())
+        {
             Some(node)
         } else {
             edges
@@ -551,7 +553,9 @@ pub trait Search: GraphLike {
 
         this_children.extend(
             edges
-                .flat_map(|edge| self.search_children_exclude_via(edge.source(), edge_ty, exclude_edges))
+                .flat_map(|edge| {
+                    self.search_children_exclude_via(edge.source(), edge_ty, exclude_edges)
+                })
                 .collect::<BTreeSet<NodeIdx>>(),
         );
         this_children

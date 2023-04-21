@@ -147,20 +147,6 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         if_expr: Expression,
         true_fork_ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let if_expr = match if_expr {
-            Expression::Equal(loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
-            Expression::And(loc, lhs, rhs) => Expression::And(loc, lhs, rhs),
-            Expression::Or(loc, lhs, rhs) => Expression::Or(loc, lhs, rhs),
-            Expression::Not(loc, lhs) => Expression::Not(loc, lhs),
-            Expression::NotEqual(loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
-            Expression::Less(loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
-            Expression::More(loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
-            Expression::MoreEqual(loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
-            Expression::LessEqual(loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
-            Expression::Variable(ref ident) => Expression::Variable(ident.clone()),
-            e => e,
-        };
-        // println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
         self.handle_require(&[if_expr], true_fork_ctx)
     }
 
@@ -170,16 +156,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         if_expr: Expression,
         false_fork_ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let inv_if_expr = match if_expr {
-            Expression::Equal(loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
-            Expression::NotEqual(loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
-            Expression::Less(loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
-            Expression::More(loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
-            Expression::MoreEqual(loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
-            Expression::LessEqual(loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
-            Expression::Variable(ref ident) => Expression::Not(ident.loc, Box::new(if_expr)),
-            e => Expression::Not(e.loc(), Box::new(e)),
-        };
+        let inv_if_expr = Expression::Not(if_expr.loc(), Box::new(if_expr));
         // println!("inverse if expr: {inv_if_expr:?}");
         self.handle_require(&[inv_if_expr], false_fork_ctx)
     }

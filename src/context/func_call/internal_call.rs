@@ -85,7 +85,13 @@ pub trait InternalFuncCaller:
                 .copied()
                 .collect::<Vec<_>>();
             if possible_structs.is_empty() {
-                Err(ExprErr::FunctionNotFound(*loc, format!("No functions or structs found for named function call: {:?}", ident.name)))
+                Err(ExprErr::FunctionNotFound(
+                    *loc,
+                    format!(
+                        "No functions or structs found for named function call: {:?}",
+                        ident.name
+                    ),
+                ))
             } else if possible_structs.len() == 1 {
                 let strukt = possible_structs[0];
                 let var =

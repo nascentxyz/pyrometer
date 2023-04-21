@@ -488,7 +488,10 @@ impl ContextNode {
             .find_child_exclude_via(
                 self.0.into(),
                 &Edge::Context(ContextEdge::Variable),
-                &[Edge::Context(ContextEdge::Prev), Edge::Context(ContextEdge::Call)],
+                &[
+                    Edge::Context(ContextEdge::Prev),
+                    Edge::Context(ContextEdge::Call),
+                ],
                 &|cvar_node, analyzer| {
                     if matches!(analyzer.node(cvar_node), Node::ContextVar(..)) {
                         let cvar_node = ContextVarNode::from(cvar_node);
@@ -501,8 +504,9 @@ impl ContextNode {
                     } else {
                         None
                     }
-                }
-            ).map(|idx| idx.into())
+                },
+            )
+            .map(|idx| idx.into())
     }
 
     pub fn var_by_name_or_recurse(

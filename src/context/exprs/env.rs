@@ -31,7 +31,8 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                     // TODO: inherit the input changes as well
                     // println!("inheriting back from parent into modifier");
-                    self.inherit_storage_changes(ctx, mod_state.parent_ctx).into_expr_err(ident.loc)?;
+                    self.inherit_storage_changes(ctx, mod_state.parent_ctx)
+                        .into_expr_err(ident.loc)?;
 
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
                     Ok(Some(res))
