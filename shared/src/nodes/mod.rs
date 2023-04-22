@@ -471,6 +471,13 @@ impl VarType {
         }
     }
 
+    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => Ok(node.is_dyn(analyzer)?),
+            _ => Ok(false),
+        }
+    }
+
     pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match (self, other) {
             (VarType::User(s, _), VarType::User(o, _)) => Ok(s == o),

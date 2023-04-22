@@ -1,8 +1,10 @@
+use crate::context::yul::YulBuilder;
 use ethers_core::types::U256;
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphLike;
 use shared::context::*;
 use solang_parser::helpers::CodeLocation;
+use solang_parser::pt::YulStatement;
 
 use shared::range::elem_ty::Dynamic;
 
@@ -28,6 +30,8 @@ use exprs::*;
 
 pub mod analyzers;
 pub mod queries;
+
+pub mod yul;
 
 #[derive(Debug, Clone)]
 pub enum ExprRet {
@@ -564,32 +568,34 @@ pub trait ContextBuilder:
                 // TODO: We cheat in loops by just widening so breaks dont matter yet
             }
             Assembly {
-                loc,
+                loc: _,
                 dialect: _,
                 flags: _,
-                block: _yul_block,
+                block: yul_block,
             } => {
                 tracing::trace!("parsing assembly");
-                // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about any variables anymore.
-                // We should evaluate what variables are modified and consider mstores and sstores.
                 let ctx = ContextNode::from(
                     parent_ctx
                         .expect("No context for variable definition?")
                         .into(),
                 );
-                let vars = ctx.local_vars(self);
-                vars.iter().for_each(|var| {
-                    // widen to max range
-                    let latest_var = var.latest_version(self);
-                    let res = latest_var.ty(self).into_expr_err(stmt.loc()).cloned();
-                    if let Some(r) = self.add_if_err(res).unwrap().default_range(self).unwrap() {
-                        let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx).unwrap();
-                        let res = new_var.set_range_min(self, r.min).into_expr_err(*loc);
-                        let _ = self.add_if_err(res);
-                        let res = new_var.set_range_max(self, r.max).into_expr_err(*loc);
-                        let _ = self.add_if_err(res);
-                    }
-                });
+                self.parse_ctx_yul_statement(&YulStatement::Block(yul_block.clone()), ctx);
+                // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about any variables anymore.
+                // We should evaluate what variables are modified and consider mstores and sstores.
+
+                // let vars = ctx.local_vars(self);
+                // vars.iter().for_each(|var| {
+                //     // widen to max range
+                //     let latest_var = var.latest_version(self);
+                //     let res = latest_var.ty(self).into_expr_err(stmt.loc()).cloned();
+                //     if let Some(r) = self.add_if_err(res).unwrap().default_range(self).unwrap() {
+                //         let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx).unwrap();
+                //         let res = new_var.set_range_min(self, r.min).into_expr_err(*loc);
+                //         let _ = self.add_if_err(res);
+                //         let res = new_var.set_range_max(self, r.max).into_expr_err(*loc);
+                //         let _ = self.add_if_err(res);
+                //     }
+                // });
             }
             Return(loc, maybe_ret_expr) => {
                 tracing::trace!("parsing return");
@@ -859,7 +865,10 @@ pub trait ContextBuilder:
             (m @ ExprRet::Multi(_), Some(ExprRet::Fork(world1, world2))) => Ok(self
                 .match_var_def(var_decl, loc, m, Some(world1))?
                 && self.match_var_def(var_decl, loc, m, Some(world2))?),
-            (e, f) => todo!("any: {:?} {:?}", e, f),
+            (e, f) => Err(ExprErr::Todo(
+                loc,
+                "Unhandled ExprRet combination in `match_var_def`".to_string(),
+            )),
         }
     }
 
@@ -1204,8 +1213,8 @@ pub trait ContextBuilder:
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?;
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?;
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
+        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?.flatten();
         self.match_assign_sides(loc, &lhs_paths, &rhs_paths)
     }
 
@@ -1239,12 +1248,14 @@ pub trait ContextBuilder:
                         .collect::<Result<_, ExprErr>>()?,
                 ))
             }
-            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => Ok(ExprRet::Multi(
-                lhs_sides
-                    .iter()
-                    .map(|expr_ret| self.match_assign_sides(loc, expr_ret, r))
-                    .collect::<Result<_, ExprErr>>()?,
-            )),
+            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
+                Ok(ExprRet::Multi(
+                    lhs_sides
+                        .iter()
+                        .map(|expr_ret| self.match_assign_sides(loc, expr_ret, r))
+                        .collect::<Result<_, ExprErr>>()?,
+                ))
+            }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {

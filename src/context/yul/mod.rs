@@ -1,27 +1,45 @@
-use solang_parser::pt::{YulExpression, YulStatement};
+use crate::context::exprs::IntoExprErr;
+use crate::context::ContextBuilder;
+use crate::context::ExprParser;
+use crate::AnalyzerLike;
+use crate::ExprErr;
+use crate::ExprRet;
+use shared::context::ContextVar;
+use shared::context::ContextVarNode;
+use shared::nodes::Builtin;
+use shared::nodes::VarType;
+use shared::{
+    context::{ContextEdge, ContextNode},
+    Edge, Node,
+};
+use solang_parser::helpers::CodeLocation;
+use solang_parser::pt::Expression;
+use solang_parser::pt::Loc;
+use solang_parser::pt::YulFunctionCall;
+use solang_parser::pt::{YulExpression, YulFor, YulStatement, YulSwitch};
 
 mod yul_cond_op;
 pub use yul_cond_op::*;
 
-impl<T> YulBuilder for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + ExprParser {}
+mod yul_funcs;
+pub use yul_funcs::*;
+
+impl<T> YulBuilder for T where
+    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + ExprParser
+{
+}
 pub trait YulBuilder:
     AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + ExprParser
 {
-	fn parse_ctx_yul_statement(
-        &mut self,
-        stmt: &YulStatement,
-        ctx: ContextNode,
-    ) where
+    #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
+    fn parse_ctx_yul_statement(&mut self, stmt: &YulStatement, ctx: ContextNode)
+    where
         Self: Sized,
     {
-        if let Some(true) =
-            self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc()))
-        {
+        if let Some(true) = self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc())) {
             return;
         }
-        if let Some(live_forks) =
-            self.add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc()))
-        {
+        if let Some(live_forks) = self.add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc())) {
             if live_forks.is_empty() {
                 self.parse_ctx_yul_stmt_inner(stmt, ctx)
             } else {
@@ -33,84 +51,144 @@ pub trait YulBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn parse_ctx_yul_stmt_inner(
-        &mut self,
-        stmt: &YulStatement,
-        ctx: ContextNode,
-    ) where
+    fn parse_ctx_yul_stmt_inner(&mut self, stmt: &YulStatement, ctx: ContextNode)
+    where
         Self: Sized,
     {
-    	use YulStatement::*;
-    	let forks = self
-                    .add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc()))
-                    .unwrap();
-    	match stmt {
-		    Assign(loc, yul_exprs, yul_expr) => {
-		    	if forks.is_empty() {
-			    	if let Some(lhs_side) = self.add_if_err(yul_exprs.iter().map(|expr| {
-			    		self.parse_ctx_yul_expr(expr, ctx)
-			    	}).collect::<Result<Vec<ExprRet>, ExprErr>>()) {
-			    		if let Some(rhs_side) = self.add_if_err(self.parse_ctx_yul_expr(yul_expr, ctx)) {
-			    			let _ = self.add_if_err(self.match_assign_sides(stmt.loc(), &ExprRet::Multi(lhs_side), rhs_side));
-				    	}
-			    	}
-			    } else {
-			    	forks.into_iter().for_each(|ctx| {
-			    		if let Some(lhs_side) = self.add_if_err(yul_exprs.iter().map(|expr| {
-				    		self.parse_ctx_yul_expr(expr, ctx)
-				    	}).collect::<Result<Vec<ExprRet>, ExprErr>>()) {
-				    		if let Some(rhs_side) = self.add_if_err(self.parse_ctx_yul_expr(yul_expr, ctx)) {
-				    			let _ = self.add_if_err(self.match_assign_sides(stmt.loc(), &ExprRet::Multi(lhs_side), rhs_side));
-					    	}
-				    	}
-			    	});
-			    }
-		    },
-		    VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
-		    
-		    },
-		    If(loc, yul_expr, yul_block) => {
-		    	if forks.is_empty() {
-			    	let _ = self.add_if_err(self.yul_cond_op_stmt(loc, yul_expr, yul_block, ctx));
-			    } else {
-			    	forks.into_iter().for_each(|ctx| {
-			    		let _ = self.add_if_err(self.yul_cond_op_stmt(loc, yul_expr, yul_block, ctx));
-			    	});
-			    }
-		    },
-		    For(YulFor { loc, init_block, condition, post_block, execution_block }) => {
-		    
-		    },
-		    Switch(YulSwitch { loc, condition, cases, default }) => {
+        use YulStatement::*;
+        let forks = self
+            .add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc()))
+            .unwrap();
+        match stmt {
+            Assign(_loc, yul_exprs, yul_expr) => {
+                if forks.is_empty() {
+                    let ret = yul_exprs
+                        .iter()
+                        .map(|expr| self.parse_ctx_yul_expr(expr, ctx))
+                        .collect::<Result<Vec<ExprRet>, ExprErr>>();
+                    if let Some(lhs_side) = self.add_if_err(ret) {
+                        let ret = self.parse_ctx_yul_expr(yul_expr, ctx);
+                        if let Some(rhs_side) = self.add_if_err(ret) {
+                            let ret = self.match_assign_sides(
+                                stmt.loc(),
+                                &ExprRet::Multi(lhs_side),
+                                &rhs_side,
+                            );
+                            let _ = self.add_if_err(ret);
+                        }
+                    }
+                } else {
+                    forks.into_iter().for_each(|ctx| {
+                        let ret = yul_exprs
+                            .iter()
+                            .map(|expr| self.parse_ctx_yul_expr(expr, ctx))
+                            .collect::<Result<Vec<ExprRet>, ExprErr>>();
+                        if let Some(lhs_side) = self.add_if_err(ret) {
+                            let ret = self.parse_ctx_yul_expr(yul_expr, ctx);
+                            if let Some(rhs_side) = self.add_if_err(ret) {
+                                let ret = self.match_assign_sides(
+                                    stmt.loc(),
+                                    &ExprRet::Multi(lhs_side),
+                                    &rhs_side,
+                                );
+                                let _ = self.add_if_err(ret);
+                            }
+                        }
+                    });
+                }
+            }
+            VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
+                let nodes = yul_idents
+                    .iter()
+                    .map(|ident| {
+                        let b_ty = self.builtin_or_add(Builtin::Uint(256));
+                        let var = ContextVar {
+                            loc: Some(ident.loc),
+                            name: ident.id.name.clone(),
+                            display_name: ident.id.name.clone(),
+                            storage: None,
+                            is_tmp: false,
+                            tmp_of: None,
+                            is_symbolic: true,
+                            ty: VarType::try_from_idx(self, b_ty).unwrap(),
+                        };
+                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        self.advance_var_in_ctx(cvar, *loc, ctx).unwrap()
+                    })
+                    .collect::<Vec<_>>();
 
-		    },
-		    Leave(loc) => {
-
-		    },
-		    Break(loc) => {
-
-		    },
-		    Continue(loc) => {
-
-		    },
-		    Block(yul_block) => {
-		    	yul_block.statements.for_each(|stmt| {
-		    		self.parse_ctx_yul_stmt_inner(stmt)
-		    	});
-		    },
-		    FunctionDefinition(yul_func_def) => {
-		    	
-		    },
-		    FunctionCall(yul_func_call) => {
-
-		    },
-		    Error(loc) => {
-
-		    },
-    	}
+                if let Some(yul_expr) = maybe_yul_expr {
+                    let ret = self.parse_ctx_yul_expr(yul_expr, ctx);
+                    if let Some(ret) = self.add_if_err(ret) {
+                        let ret = self.match_assign_yul(*loc, &nodes, ret);
+                        let _ = self.add_if_err(ret);
+                    }
+                }
+            }
+            If(loc, yul_expr, yul_block) => {
+                if forks.is_empty() {
+                    let ret = self.yul_cond_op_stmt(*loc, yul_expr, yul_block, ctx);
+                    let _ = self.add_if_err(ret);
+                } else {
+                    forks.into_iter().for_each(|ctx| {
+                        let ret = self.yul_cond_op_stmt(*loc, yul_expr, yul_block, ctx);
+                        let _ = self.add_if_err(ret);
+                    });
+                }
+            }
+            For(YulFor {
+                loc,
+                init_block,
+                condition,
+                post_block,
+                execution_block,
+            }) => {
+                todo!()
+            }
+            Switch(YulSwitch {
+                loc,
+                condition,
+                cases,
+                default,
+            }) => {
+                todo!()
+            }
+            Leave(loc) => {
+                todo!()
+            }
+            Break(loc) => {
+                todo!()
+            }
+            Continue(loc) => {
+                todo!()
+            }
+            Block(yul_block) => {
+                yul_block
+                    .statements
+                    .iter()
+                    .for_each(|stmt| self.parse_ctx_yul_stmt_inner(stmt, ctx));
+            }
+            FunctionDefinition(yul_func_def) => {
+                todo!()
+            }
+            FunctionCall(yul_func_call) => {
+                let ret = self.yul_func_call(yul_func_call, ctx);
+                let _ = self.add_if_err(ret);
+            }
+            Error(loc) => {
+                todo!()
+            }
+        }
     }
 
-    fn parse_ctx_yul_expr(&mut self, expr: &YulExpression, ctx: ContextNode) -> Result<ExprRet, ExprErr> {
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn parse_ctx_yul_expr(
+        &mut self,
+        expr: &YulExpression,
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
+        tracing::trace!("Parsing yul expression: {expr:?}");
         if ctx.is_ended(self).into_expr_err(expr.loc())? {
             return Ok(ExprRet::CtxKilled);
         }
@@ -137,16 +215,88 @@ pub trait YulBuilder:
         expr: &YulExpression,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-    	use YulExpression::*;
-    	match expr {
-		    BoolLiteral(loc, b, _) => self.bool_literal(ctx, *loc, b),
-		    NumberLiteral(loc, int, expr, _unit) => self.number_literal(ctx, *loc, int, exp, false),
-		    HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
-		    HexStringLiteral(lit, _) => self.hex_literals(ctx, [lit]),
-		    StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
-		    Variable(ident) => self.variable(ident, ctx),
-		    FunctionCall(_) => Err(Todo(expr.loc(), "Yul function calls not yet supported")),
-		    SuffixAccess(loc, yul_member_expr, ident) => Err(Todo(expr.loc(), "Yul member access not yet supported")),
-    	}
+        use YulExpression::*;
+        match expr {
+            BoolLiteral(loc, b, _) => self.bool_literal(ctx, *loc, *b),
+            NumberLiteral(loc, int, expr, _unit) => {
+                self.number_literal(ctx, *loc, int, expr, false)
+            }
+            HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
+            HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),
+            StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
+            Variable(ident) => self.variable(ident, ctx),
+            FunctionCall(yul_func_call) => self.yul_func_call(yul_func_call, ctx),
+            SuffixAccess(_loc, _yul_member_expr, _ident) => Err(ExprErr::Todo(
+                expr.loc(),
+                "Yul member access not yet supported".to_string(),
+            )),
+        }
+    }
+
+    fn match_assign_yul(
+        &mut self,
+        loc: Loc,
+        nodes: &[ContextVarNode],
+        ret: ExprRet,
+    ) -> Result<(), ExprErr> {
+        match ret {
+            s @ ExprRet::Single(_) | s @ ExprRet::SingleLiteral(_) => {
+                self.match_assign_yul_inner(loc, &nodes[0], s)?;
+            }
+            ExprRet::Multi(inner) => {
+                if inner.len() == nodes.len() {
+                    inner
+                        .into_iter()
+                        .zip(nodes.iter())
+                        .map(|(ret, node)| self.match_assign_yul_inner(loc, node, ret))
+                        .collect::<Result<Vec<_>, ExprErr>>()?;
+                } else {
+                    return Err(ExprErr::Todo(
+                        loc,
+                        "Differing number of assignees and assignors in yul expression".to_string(),
+                    ));
+                };
+            }
+            ExprRet::Fork(w1, w2) => {
+                self.match_assign_yul(loc, nodes, *w1)?;
+                self.match_assign_yul(loc, nodes, *w2)?;
+            }
+            ExprRet::CtxKilled => {}
+        }
+
+        Ok(())
+    }
+
+    fn match_assign_yul_inner(
+        &mut self,
+        loc: Loc,
+        node: &ContextVarNode,
+        ret: ExprRet,
+    ) -> Result<(), ExprErr> {
+        match ret.flatten() {
+            ExprRet::Single((_ctx, idx)) | ExprRet::SingleLiteral((_ctx, idx)) => {
+                let assign = ContextVarNode::from(idx);
+                let assign_ty = assign.underlying(self).into_expr_err(loc)?.ty.clone();
+                if assign_ty.is_dyn(self).into_expr_err(loc)? {
+                    let b_ty = self.builtin_or_add(Builtin::Bytes(32));
+                    node.underlying_mut(self).into_expr_err(loc)?.ty =
+                        VarType::try_from_idx(self, b_ty).unwrap();
+                } else {
+                    node.underlying_mut(self).into_expr_err(loc)?.ty = assign_ty;
+                }
+            }
+            ExprRet::Multi(_inner) => {
+                return Err(ExprErr::Todo(
+                    loc,
+                    "Multi in single assignment yul expression is unhandled".to_string(),
+                ))
+            }
+            ExprRet::Fork(w1, w2) => {
+                self.match_assign_yul_inner(loc, node, *w1)?;
+                self.match_assign_yul_inner(loc, node, *w2)?;
+            }
+            ExprRet::CtxKilled => {}
+        }
+        Ok(())
     }
 }
