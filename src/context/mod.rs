@@ -865,7 +865,7 @@ pub trait ContextBuilder:
             (m @ ExprRet::Multi(_), Some(ExprRet::Fork(world1, world2))) => Ok(self
                 .match_var_def(var_decl, loc, m, Some(world1))?
                 && self.match_var_def(var_decl, loc, m, Some(world2))?),
-            (e, f) => Err(ExprErr::Todo(
+            (_e, _f) => Err(ExprErr::Todo(
                 loc,
                 "Unhandled ExprRet combination in `match_var_def`".to_string(),
             )),

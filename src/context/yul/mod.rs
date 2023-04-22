@@ -15,7 +15,7 @@ use shared::{
 use solang_parser::helpers::CodeLocation;
 use solang_parser::pt::Expression;
 use solang_parser::pt::Loc;
-use solang_parser::pt::YulFunctionCall;
+
 use solang_parser::pt::{YulExpression, YulFor, YulStatement, YulSwitch};
 
 mod yul_cond_op;
@@ -138,29 +138,29 @@ pub trait YulBuilder:
                 }
             }
             For(YulFor {
-                loc,
-                init_block,
-                condition,
-                post_block,
-                execution_block,
+                loc: _,
+                init_block: _,
+                condition: _,
+                post_block: _,
+                execution_block: _,
             }) => {
                 todo!()
             }
             Switch(YulSwitch {
-                loc,
-                condition,
-                cases,
-                default,
+                loc: _,
+                condition: _,
+                cases: _,
+                default: _,
             }) => {
                 todo!()
             }
-            Leave(loc) => {
+            Leave(_loc) => {
                 todo!()
             }
-            Break(loc) => {
+            Break(_loc) => {
                 todo!()
             }
-            Continue(loc) => {
+            Continue(_loc) => {
                 todo!()
             }
             Block(yul_block) => {
@@ -169,14 +169,14 @@ pub trait YulBuilder:
                     .iter()
                     .for_each(|stmt| self.parse_ctx_yul_stmt_inner(stmt, ctx));
             }
-            FunctionDefinition(yul_func_def) => {
+            FunctionDefinition(_yul_func_def) => {
                 todo!()
             }
             FunctionCall(yul_func_call) => {
                 let ret = self.yul_func_call(yul_func_call, ctx);
                 let _ = self.add_if_err(ret);
             }
-            Error(loc) => {
+            Error(_loc) => {
                 todo!()
             }
         }
