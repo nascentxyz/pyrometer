@@ -162,7 +162,7 @@ pub trait InternalFuncCaller:
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
         // println!("visible funcs: [{:#?}]", funcs.iter().map(|i| i.name(self)).collect::<Vec<_>>());
-        // println!("visible funcs: [{:#?}]", funcs.iter().map(|func| func.name(self)).collect::<Vec<_>>());
+        // println!("visible funcs: [{:#?}], looking for: {}, path: {}", funcs.iter().map(|func| func.name(self)).collect::<Vec<_>>(), ident.name, ctx.path(self));
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()

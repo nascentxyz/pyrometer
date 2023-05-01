@@ -210,8 +210,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             "name" => {
                                 let c = Concrete::from(con_node.name(self).unwrap());
                                 let cnode = self.add_node(Node::Concrete(c));
-                                let cvar = ContextVar::new_from_concrete(loc, cnode.into(), self)
-                                    .into_expr_err(loc)?;
+                                let cvar =
+                                    ContextVar::new_from_concrete(loc, ctx, cnode.into(), self)
+                                        .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single((ctx, node)));
@@ -256,6 +257,19 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         loc,
                         ctx,
                         *bn,
+                        ContextVarNode::from(member_idx)
+                            .is_storage(self)
+                            .into_expr_err(loc)?,
+                        ident,
+                    );
+                }
+                VarType::Concrete(cn) => {
+                    let builtin = cn.underlying(self).into_expr_err(loc)?.as_builtin();
+                    let bn = self.builtin_or_add(builtin).into();
+                    return self.builtin_member_access(
+                        loc,
+                        ctx,
+                        bn,
                         ContextVarNode::from(member_idx)
                             .is_storage(self)
                             .into_expr_err(loc)?,
@@ -432,7 +446,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     };
 
                     let mut var =
-                        ContextVar::new_from_concrete(loc, node, self).into_expr_err(loc)?;
+                        ContextVar::new_from_concrete(loc, ctx, node, self).into_expr_err(loc)?;
                     var.name = name.clone();
                     var.display_name = name;
                     var.is_tmp = false;
@@ -656,7 +670,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         }
                     };
                     let mut var =
-                        ContextVar::new_from_concrete(loc, node, self).into_expr_err(loc)?;
+                        ContextVar::new_from_concrete(loc, ctx, node, self).into_expr_err(loc)?;
                     var.name = name.clone();
                     var.display_name = name;
                     var.is_tmp = false;
@@ -705,21 +719,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             // TODO: check if the address is known to be a certain type and the function signature is known
                             // and call into the function
                             let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
-                            let func = self.builtin_fns().get(builtin_name).unwrap();
-                            let (inputs, outputs) = self
-                                .builtin_fn_inputs()
-                                .get(builtin_name)
-                                .expect("builtin func but no inputs")
-                                .clone();
-                            let func_node = self.add_node(Node::Function(func.clone()));
-                            inputs.into_iter().for_each(|input| {
-                                let input_node = self.add_node(input);
-                                self.add_edge(input_node, func_node, Edge::FunctionParam);
-                            });
-                            outputs.into_iter().for_each(|output| {
-                                let output_node = self.add_node(output);
-                                self.add_edge(output_node, func_node, Edge::FunctionReturn);
-                            });
+                            let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
                             Ok(ExprRet::Single((ctx, func_node)))
                         }
                         "code" => {
@@ -770,9 +770,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 )),
                 Builtin::String => match ident.name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
-                        let as_fn = self.builtin_fns().get("concat").unwrap();
-                        let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
-                        Ok(ExprRet::Single((ctx, fn_node.into())))
+                        let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
+                        Ok(ExprRet::Single((ctx, fn_node)))
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
@@ -789,8 +788,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 )),
                 Builtin::DynamicBytes => match ident.name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
-                        let as_fn = self.builtin_fns().get("concat").unwrap();
-                        let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                        let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
                         Ok(ExprRet::Single((ctx, fn_node.into())))
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
@@ -801,8 +799,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 Builtin::Array(_) => {
                     if ident.name.starts_with("push") {
                         if is_storage {
-                            let as_fn = self.builtin_fns().get("push").unwrap();
-                            let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
+                            let fn_node = self.builtin_fn_or_maybe_add("push").unwrap();
                             Ok(ExprRet::Single((ctx, fn_node.into())))
                         } else {
                             Err(ExprErr::NonStoragePush(
@@ -836,7 +833,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         "max" => {
                             let c = Concrete::from(max);
                             let node = self.add_node(Node::Concrete(c)).into();
-                            let mut var = ContextVar::new_from_concrete(loc, node, self)
+                            let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
                             var.name = format!("int{size}.max");
                             var.display_name = var.name.clone();
@@ -850,7 +847,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let min = max * I256::from(-1i32);
                             let c = Concrete::from(min);
                             let node = self.add_node(Node::Concrete(c)).into();
-                            let mut var = ContextVar::new_from_concrete(loc, node, self)
+                            let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
                             var.name = format!("int{size}.min");
                             var.display_name = var.name.clone();
@@ -876,8 +873,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         };
                         let c = Concrete::from(max);
                         let node = self.add_node(Node::Concrete(c)).into();
-                        let mut var =
-                            ContextVar::new_from_concrete(loc, node, self).into_expr_err(loc)?;
+                        let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
+                            .into_expr_err(loc)?;
                         var.name = format!("uint{size}.max");
                         var.display_name = var.name.clone();
                         var.is_tmp = true;
@@ -890,8 +887,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         let min = U256::zero();
                         let c = Concrete::from(min);
                         let node = self.add_node(Node::Concrete(c)).into();
-                        let mut var =
-                            ContextVar::new_from_concrete(loc, node, self).into_expr_err(loc)?;
+                        let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
+                            .into_expr_err(loc)?;
                         var.name = format!("int{size}.min");
                         var.display_name = var.name.clone();
                         var.is_tmp = true;
@@ -1041,7 +1038,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         ident: &Identifier,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-        let index_paths = self.variable(ident, ctx)?;
+        let index_paths = self.variable(ident, ctx, None)?;
         self.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)
     }
 
@@ -1129,6 +1126,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 is_tmp: false,
                 tmp_of: None,
                 is_symbolic: true,
+                is_return: false,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                     SolcRange::try_from_builtin(&Builtin::Uint(256)),
@@ -1237,6 +1235,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,
+                        is_return: false,
                         ty: VarType::BuiltIn(
                             BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                             SolcRange::try_from_builtin(&Builtin::Uint(256)),

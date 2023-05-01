@@ -21,6 +21,7 @@ use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
 
 pub mod internal_call;
 pub mod intrinsic_call;
+pub mod modifier;
 pub mod namespaced_call;
 
 impl<T> FuncCaller for T where
@@ -182,16 +183,6 @@ pub trait FuncCaller:
             ),
         };
 
-        // TODO: this is probably wrong
-        // if let Some(r) = var.fallback_range(self) {
-        //     if var.storage.is_some() {
-        //         if let Elem::Concrete(c) = r.range_max() {
-        //             if let Some(size) = c.val.int_size() {
-        //                 var.set_range_max(Elem::from(Concrete::Uint(size, 0.into())), None)
-        //             }
-        //         }
-        //     }
-        // }
         let new_cvarnode = self.add_node(Node::ContextVar(var));
         self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
         if let Some(func_node) = ContextVarNode::from(new_cvarnode)
@@ -199,7 +190,7 @@ pub trait FuncCaller:
             .into_expr_err(*loc)?
             .func_node(self)
         {
-            self.func_call(ctx, *loc, inputs, func_node, func_call_str)
+            self.func_call(ctx, *loc, inputs, func_node, func_call_str, None)
         } else {
             unreachable!()
         }
@@ -213,6 +204,7 @@ pub trait FuncCaller:
         input_paths: &ExprRet,
         func: FunctionNode,
         func_call_str: Option<String>,
+        modifier_state: Option<ModifierState>,
     ) -> Result<ExprRet, ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -230,8 +222,8 @@ pub trait FuncCaller:
                     loc,
                     vec![ContextVarNode::from(input_var).latest_version(self)],
                     params,
-                    None,
                     func_call_str,
+                    modifier_state,
                 )
             }
             ExprRet::Multi(ref inputs) => {
@@ -256,8 +248,8 @@ pub trait FuncCaller:
                             loc,
                             input_vars,
                             params,
-                            None,
                             func_call_str,
+                            modifier_state,
                         )
                     } else {
                         panic!(
@@ -267,62 +259,75 @@ pub trait FuncCaller:
                         )
                     }
                 } else {
-                    panic!("Length mismatch: {inputs:?} {params:?}");
+                    Err(ExprErr::InvalidFunctionInput(
+                        loc,
+                        format!("Length mismatch: {inputs:?} {params:?}"),
+                    ))
                 }
             }
             ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
-                Box::new(self.func_call(ctx, loc, &w1, func, func_call_str.clone())?),
-                Box::new(self.func_call(ctx, loc, &w2, func, func_call_str)?),
+                Box::new(self.func_call(
+                    ctx,
+                    loc,
+                    &w1,
+                    func,
+                    func_call_str.clone(),
+                    modifier_state.clone(),
+                )?),
+                Box::new(self.func_call(ctx, loc, &w2, func, func_call_str, modifier_state)?),
             )),
             e => todo!("here: {:?}", e),
         }
     }
 
-    /// Checks if there are any modifiers and executes them prior to executing the function
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn func_call_inner(
+    fn create_call_ctx(
         &mut self,
-        entry_call: bool,
-        ctx: ContextNode,
-        func_node: FunctionNode,
+        curr_ctx: ContextNode,
         loc: Loc,
-        inputs: Vec<ContextVarNode>,
-        params: Vec<FunctionParamNode>,
+        func_node: FunctionNode,
         modifier_state: Option<ModifierState>,
-        func_call_str: Option<String>,
-    ) -> Result<ExprRet, ExprErr> {
-        let fn_ext = ctx.is_fn_ext(func_node, self).into_expr_err(loc)?;
-        let callee_ctx = if entry_call {
-            ctx
-        } else {
-            let callee_ctx = ContextNode::from(
-                self.add_node(Node::Context(
-                    Context::new_subctx(
-                        ctx,
-                        loc,
-                        false,
-                        Some(func_node),
-                        fn_ext,
-                        self,
-                        modifier_state.clone(),
-                    )
-                    .into_expr_err(loc)?,
-                )),
-            );
-            let res = ctx.add_child(callee_ctx, self).into_expr_err(loc);
-            let _ = self.add_if_err(res);
-            let ctx_fork = self.add_node(Node::FunctionCall);
-            self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
-            self.add_edge(ctx_fork, func_node, Edge::Context(ContextEdge::Call));
-            self.add_edge(
-                NodeIdx::from(callee_ctx.0),
-                ctx_fork,
-                Edge::Context(ContextEdge::Subcontext),
-            );
-            callee_ctx
-        };
+    ) -> Result<ContextNode, ExprErr> {
+        let fn_ext = curr_ctx.is_fn_ext(func_node, self).into_expr_err(loc)?;
+        let callee_ctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(
+                    curr_ctx,
+                    None,
+                    loc,
+                    None,
+                    Some(func_node),
+                    fn_ext,
+                    self,
+                    modifier_state.clone(),
+                )
+                .into_expr_err(loc)?,
+            )),
+        );
+        curr_ctx
+            .set_child_call(callee_ctx, self)
+            .into_expr_err(loc)?;
+        let ctx_fork = self.add_node(Node::FunctionCall);
+        self.add_edge(ctx_fork, curr_ctx, Edge::Context(ContextEdge::Subcontext));
+        self.add_edge(ctx_fork, func_node, Edge::Context(ContextEdge::Call));
+        self.add_edge(
+            NodeIdx::from(callee_ctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+        Ok(callee_ctx)
+    }
 
-        let renamed_inputs = params
+    /// Maps inputs to function parameters such that if there is a renaming i.e. `a(uint256 x)` is called via `a(y)`,
+    /// we map `y -> x` for future lookups
+    fn map_inputs_to_params(
+        &mut self,
+        loc: Loc,
+        entry_call: bool,
+        params: Vec<FunctionParamNode>,
+        inputs: Vec<ContextVarNode>,
+        callee_ctx: ContextNode,
+    ) -> Result<BTreeMap<ContextVarNode, ContextVarNode>, ExprErr> {
+        Ok(params
             .iter()
             .zip(inputs.iter())
             .filter_map(|(param, input)| {
@@ -359,6 +364,11 @@ pub trait FuncCaller:
                         }
 
                         let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+                        self.add_edge(
+                            node,
+                            input.latest_version(self),
+                            Edge::Context(ContextEdge::InputVariable),
+                        );
 
                         if let (Some(r), Some(r2)) =
                             (node.range(self).unwrap(), param.range(self).unwrap())
@@ -383,19 +393,54 @@ pub trait FuncCaller:
                     None
                 }
             })
-            .collect::<BTreeMap<_, ContextVarNode>>();
+            .collect::<BTreeMap<_, ContextVarNode>>())
+    }
 
+    /// Checks if there are any modifiers and executes them prior to executing the function
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn func_call_inner(
+        &mut self,
+        entry_call: bool,
+        ctx: ContextNode,
+        func_node: FunctionNode,
+        loc: Loc,
+        inputs: Vec<ContextVarNode>,
+        params: Vec<FunctionParamNode>,
+        func_call_str: Option<String>,
+        modifier_state: Option<ModifierState>,
+    ) -> Result<ExprRet, ExprErr> {
+        // pseudocode:
+        //  1. Create context for the call
+        //  2. Check for modifiers
+        //  3. Call modifier 0, then 1, then 2, etc.
+        //  4. Call this function
+        //  5. Finish modifier 2, then 1, then 0
+
+        let callee_ctx = if entry_call {
+            ctx
+        } else {
+            self.create_call_ctx(ctx, loc, func_node, modifier_state)?
+        };
+
+        // handle remapping of variable names and bringing variables into the new context
+        let renamed_inputs =
+            self.map_inputs_to_params(loc, entry_call, params, inputs, callee_ctx)?;
+
+        // begin modifier handling by making sure modifiers were set
         if !func_node.modifiers_set(self).into_expr_err(loc)? {
             self.set_modifiers(func_node, ctx)?;
         }
+
+        // get modifiers
         let mods = func_node.modifiers(self);
-        if let Some(mod_state) = modifier_state {
+
+        if let Some(mod_state) = &ctx.underlying(self).into_expr_err(loc)?.modifier_state {
             // we are iterating through modifiers
             if mod_state.num + 1 < mods.len() {
                 // use the next modifier
-                let mut mstate = mod_state;
+                let mut mstate = mod_state.clone();
                 mstate.num += 1;
-                self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate, func_call_str)
+                self.call_modifier_for_fn(loc, callee_ctx, func_node, mstate)
             } else {
                 // out of modifiers, execute the actual function call
                 self.execute_call_inner(
@@ -410,7 +455,7 @@ pub trait FuncCaller:
         } else if !mods.is_empty() {
             // we have modifiers and havent executed them, start the process of executing them
             let state = ModifierState::new(0, loc, func_node, callee_ctx, ctx, renamed_inputs);
-            self.call_modifier_for_fn(loc, callee_ctx, func_node, state, func_call_str)
+            self.call_modifier_for_fn(loc, callee_ctx, func_node, state)
         } else {
             // no modifiers, just execute the function
             self.execute_call_inner(
@@ -447,13 +492,7 @@ pub trait FuncCaller:
             });
 
             self.parse_ctx_statement(&body, false, Some(callee_ctx));
-
-            // update any requirements
-            self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs)?;
-            self.inherit_storage_changes(caller_ctx, callee_ctx)
-                .into_expr_err(loc)?;
-
-            Ok(self.ctx_rets(callee_ctx))
+            self.ctx_rets(loc, caller_ctx, callee_ctx, &renamed_inputs)
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, &renamed_inputs)?;
             self.inherit_storage_changes(caller_ctx, callee_ctx)
@@ -483,30 +522,95 @@ pub trait FuncCaller:
         }
     }
 
-    fn ctx_rets(&mut self, ctx: ContextNode) -> ExprRet {
-        let forks = ctx.forks(self).unwrap();
-        if !forks.is_empty() {
-            assert!(forks.len() % 2 == 0);
-            ExprRet::Multi(
-                forks
-                    .chunks(2)
-                    .map(|fork_pairs| {
-                        let w1 = self.ctx_rets(fork_pairs[0]);
-                        let w2 = self.ctx_rets(fork_pairs[1]);
-                        ExprRet::Fork(Box::new(w1), Box::new(w2))
-                    })
-                    .collect(),
-            )
-        } else {
-            let rets = ctx
-                .underlying(self)
-                .unwrap()
-                .ret
-                .clone()
-                .into_iter()
-                .map(|(_, node)| ExprRet::Single((ctx, node.into())))
-                .collect();
-            ExprRet::Multi(rets)
+    fn ctx_rets(
+        &mut self,
+        loc: Loc,
+        caller_ctx: ContextNode,
+        callee_ctx: ContextNode,
+        renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
+    ) -> Result<ExprRet, ExprErr> {
+        match callee_ctx.underlying(self).into_expr_err(loc)?.child {
+            Some(CallFork::Fork(w1, w2)) => Ok(ExprRet::Fork(
+                Box::new(self.ctx_rets(loc, caller_ctx, w1, renamed_inputs)?),
+                Box::new(self.ctx_rets(loc, caller_ctx, w2, renamed_inputs)?),
+            )),
+            Some(CallFork::Call(c)) => {
+                // follow rabbit hole
+                self.ctx_rets(loc, caller_ctx, c, renamed_inputs)
+            }
+            None => {
+                let callee_depth = callee_ctx.underlying(self).into_expr_err(loc)?.depth;
+                if callee_depth != 0 {
+                    let ret_subctx = ContextNode::from(
+                        self.add_node(Node::Context(
+                            Context::new_subctx(
+                                callee_ctx,
+                                Some(caller_ctx),
+                                loc,
+                                None,
+                                None,
+                                false,
+                                self,
+                                caller_ctx
+                                    .underlying(self)
+                                    .into_expr_err(loc)?
+                                    .modifier_state
+                                    .clone(),
+                            )
+                            .unwrap(),
+                        )),
+                    );
+                    self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
+                    let res = callee_ctx
+                        .set_child_call(ret_subctx, self)
+                        .into_expr_err(loc);
+                    let _ = self.add_if_err(res);
+
+                    // when continuing execution, we inherit the vars
+                    // caller_ctx.vars(self).iter().try_for_each(|var| {
+                    //     self.advance_var_in_ctx(var.latest_version(self), loc, ret_subctx)?;
+                    //     Ok(())
+                    // })?;
+
+                    // update any requirements
+                    // self.inherit_input_changes(loc, ret_subctx, callee_ctx, renamed_inputs)?;
+                    // self.inherit_storage_changes(ret_subctx, callee_ctx)
+                    //     .into_expr_err(loc)?;
+                    let rets = callee_ctx
+                        .underlying(self)
+                        .unwrap()
+                        .ret
+                        .clone()
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (_, node))| {
+                            let tmp_ret = node
+                                .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                                .unwrap();
+                            tmp_ret.underlying_mut(self).unwrap().is_return = true;
+                            tmp_ret.underlying_mut(self).unwrap().display_name =
+                                format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
+                            self.add_edge(
+                                tmp_ret,
+                                ret_subctx,
+                                Edge::Context(ContextEdge::Variable),
+                            );
+                            ExprRet::Single((ret_subctx, tmp_ret.into()))
+                        })
+                        .collect();
+                    Ok(ExprRet::Multi(rets))
+                } else {
+                    let rets = callee_ctx
+                        .underlying(self)
+                        .unwrap()
+                        .ret
+                        .clone()
+                        .into_iter()
+                        .map(|(_, node)| ExprRet::Single((callee_ctx, node.into())))
+                        .collect();
+                    Ok(ExprRet::Multi(rets))
+                }
+            }
         }
     }
 
@@ -518,7 +622,6 @@ pub trait FuncCaller:
         func_ctx: ContextNode,
         func_node: FunctionNode,
         mod_state: ModifierState,
-        func_call_str: Option<String>,
     ) -> Result<ExprRet, ExprErr> {
         let mod_node = func_node.modifiers(self)[mod_state.num];
         tracing::trace!(
@@ -526,102 +629,17 @@ pub trait FuncCaller:
             mod_node.name(self).into_expr_err(loc)?,
             func_node.name(self).into_expr_err(loc)?
         );
-        let mod_ctx = ContextNode::from(
-            self.add_node(Node::Context(
-                Context::new_subctx(
-                    func_ctx,
-                    loc,
-                    false,
-                    Some(mod_node),
-                    false,
-                    self,
-                    Some(mod_state.clone()),
-                )
-                .into_expr_err(loc)?,
-            )),
-        );
-        let res = func_ctx.add_child(mod_ctx, self).into_expr_err(loc);
-        let _ = self.add_if_err(res);
-        let ctx_fork = self.add_node(Node::FunctionCall);
-        self.add_edge(ctx_fork, func_ctx, Edge::Context(ContextEdge::Subcontext));
-        self.add_edge(ctx_fork, mod_node, Edge::Context(ContextEdge::Call));
-        self.add_edge(
-            NodeIdx::from(mod_ctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
 
         let input_exprs = func_node
             .modifier_input_vars(mod_state.num, self)
             .into_expr_err(loc)?;
-        let inputs: Vec<ContextVarNode> = input_exprs
-            .iter()
-            .map(|expr| {
-                let (_ctx, input) = self.parse_ctx_expr(expr, mod_ctx)?.expect_single(loc)?;
-                Ok(input.into())
-            })
-            .collect::<Result<Vec<_>, ExprErr>>()?;
-
-        let params = mod_node.params(self);
-        let renamed_inputs = params
-            .iter()
-            .zip(inputs.iter())
-            .filter_map(|(param, input)| {
-                if let Some(name) = param.maybe_name(self).unwrap() {
-                    let mut new_cvar = input.latest_version(self).underlying(self).unwrap().clone();
-                    new_cvar.loc = Some(param.loc(self).unwrap());
-                    new_cvar.name = name.clone();
-                    new_cvar.display_name = name;
-                    new_cvar.is_tmp = false;
-                    new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
-                        param.underlying(self).unwrap().storage
-                    {
-                        new_cvar.storage
-                    } else {
-                        None
-                    };
-
-                    if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
-                        let ty = new_cvar.ty.clone();
-                        if !ty.ty_eq(&param_ty, self).unwrap() {
-                            if let Some(new_ty) = ty.try_cast(&param_ty, self).unwrap() {
-                                new_cvar.ty = new_ty;
-                            }
-                        }
-                    }
-
-                    let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
-
-                    if let (Some(r), Some(r2)) =
-                        (node.range(self).unwrap(), param.range(self).unwrap())
-                    {
-                        let new_min = r.range_min().cast(r2.range_min());
-                        let new_max = r.range_max().cast(r2.range_max());
-                        let res = node.try_set_range_min(self, new_min).into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        let res = node.try_set_range_max(self, new_max).into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        let res = node
-                            .try_set_range_exclusions(self, r.exclusions)
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                    }
-                    self.add_edge(node, mod_ctx, Edge::Context(ContextEdge::Variable));
-                    Some((*input, node))
-                } else {
-                    None
-                }
-            })
-            .collect::<BTreeMap<_, ContextVarNode>>();
-
-        self.execute_call_inner(
-            mod_node.underlying(self).into_expr_err(loc)?.loc,
-            func_ctx,
-            mod_ctx,
-            mod_node,
-            renamed_inputs,
-            func_call_str,
-        )
+        let input_paths = ExprRet::Multi(
+            input_exprs
+                .iter()
+                .map(|expr| self.parse_ctx_expr(expr, func_ctx))
+                .collect::<Result<Vec<_>, ExprErr>>()?,
+        );
+        self.func_call(func_ctx, loc, &input_paths, mod_node, None, Some(mod_state))
     }
 
     /// Resumes the parent function of a modifier
@@ -636,15 +654,6 @@ pub trait FuncCaller:
             ctx.associated_fn_name(self)
                 .into_expr_err(modifier_state.loc)?
         );
-        // pass up the variable changes
-        self.inherit_input_changes(
-            modifier_state.loc,
-            modifier_state.parent_ctx,
-            ctx,
-            &modifier_state.renamed_inputs,
-        )?;
-        self.inherit_storage_changes(modifier_state.parent_ctx, ctx)
-            .into_expr_err(modifier_state.loc)?;
 
         let mods = modifier_state.parent_fn.modifiers(self);
         if modifier_state.num + 1 < mods.len() {
@@ -659,18 +668,87 @@ pub trait FuncCaller:
                 ctx,
                 mstate.parent_fn,
                 mstate,
-                None,
             )
         } else {
-            // actually execute the parent function
-            self.execute_call_inner(
-                modifier_state.loc,
-                modifier_state.parent_caller_ctx,
+            let new_parent_subctx = ContextNode::from(
+                self.add_node(Node::Context(
+                    Context::new_subctx(
+                        ctx,
+                        Some(modifier_state.parent_ctx),
+                        modifier_state.loc,
+                        None,
+                        None,
+                        false,
+                        self,
+                        None,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            // self.inherit_input_changes(modifier_state.loc, new_parent_subctx, ctx, &modifier_state.renamed_inputs)?;
+
+            self.add_edge(
+                new_parent_subctx,
                 modifier_state.parent_ctx,
+                Edge::Context(ContextEdge::Continue),
+            );
+            ctx.set_child_call(new_parent_subctx, self)
+                .into_expr_err(modifier_state.loc)?;
+
+            // modifier_state.parent_ctx.vars(self).iter().try_for_each(|var| {
+            //     self.advance_var_in_ctx(var.latest_version(self), modifier_state.loc, new_parent_subctx)?;
+            //     Ok(())
+            // })?;
+
+            // pass up the variable changes
+            // self.inherit_input_changes(
+            //     modifier_state.loc,
+            //     new_parent_subctx,
+            //     ctx,
+            //     &modifier_state.renamed_inputs,
+            // )?;
+            // self.inherit_storage_changes(new_parent_subctx, ctx)
+            //     .into_expr_err(modifier_state.loc)?;
+
+            // actually execute the parent function
+            let res = self.execute_call_inner(
+                modifier_state.loc,
+                ctx,
+                new_parent_subctx,
                 modifier_state.parent_fn,
-                modifier_state.renamed_inputs,
+                modifier_state.renamed_inputs.clone(),
                 None,
-            )
+            )?;
+
+            let modifier_after_subctx = ContextNode::from(
+                self.add_node(Node::Context(
+                    Context::new_subctx(
+                        new_parent_subctx,
+                        Some(ctx),
+                        modifier_state.loc,
+                        None,
+                        None,
+                        false,
+                        self,
+                        None,
+                    )
+                    .unwrap(),
+                )),
+            );
+
+            // self.inherit_input_changes(modifier_state.loc, modifier_after_subctx, new_parent_subctx, &modifier_state.renamed_inputs)?;
+
+            new_parent_subctx
+                .set_child_call(modifier_after_subctx, self)
+                .into_expr_err(modifier_state.loc)?;
+            self.add_edge(
+                modifier_after_subctx,
+                ctx,
+                Edge::Context(ContextEdge::Continue),
+            );
+
+            Ok(res)
         }
     }
 
@@ -729,7 +807,12 @@ pub trait FuncCaller:
                 let var = old_var.latest_version(self);
                 let underlying = var.underlying(self)?;
                 if var.is_storage(self)? {
-                    // println!("{} -- {} --> {}", grantor_ctx.associated_fn_name(self)?, underlying.name, inheritor_ctx.associated_fn_name(self)?);
+                    println!(
+                        "{} -- {} --> {}",
+                        grantor_ctx.path(self),
+                        underlying.name,
+                        inheritor_ctx.path(self)
+                    );
                     if let Some(inheritor_var) = inheritor_ctx.var_by_name(self, &underlying.name) {
                         let inheritor_var = inheritor_var.latest_version(self);
                         if let Some(r) = underlying.ty.range(self)? {
@@ -751,6 +834,11 @@ pub trait FuncCaller:
                             new_in_inheritor,
                             inheritor_ctx,
                             Edge::Context(ContextEdge::Variable),
+                        );
+                        self.add_edge(
+                            new_in_inheritor,
+                            var,
+                            Edge::Context(ContextEdge::InheritedVariable),
                         );
                     }
                 }
@@ -781,7 +869,24 @@ pub trait FuncCaller:
                         let args_str = args
                             .iter()
                             .map(|expr| {
-                                let ret = self.parse_ctx_expr(expr, ctx)?;
+                                let callee_ctx = ContextNode::from(
+                                    self.add_node(Node::Context(
+                                        Context::new_subctx(
+                                            ctx,
+                                            None,
+                                            Loc::Implicit,
+                                            None,
+                                            None,
+                                            false,
+                                            self,
+                                            None,
+                                        )
+                                        .into_expr_err(Loc::Implicit)?,
+                                    )),
+                                );
+                                let res = ctx.set_child_call(callee_ctx, self);
+                                let ret = self.parse_ctx_expr(expr, callee_ctx)?;
+                                ctx.delete_child(self);
                                 Ok(ret.try_as_func_input_str(self))
                             })
                             .collect::<Result<Vec<_>, ExprErr>>()?

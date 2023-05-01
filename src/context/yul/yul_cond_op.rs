@@ -25,14 +25,20 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         true_stmt: &YulBlock,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
-        )));
-        ctx.add_fork(true_subctx, self).into_expr_err(loc)?;
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
-        )));
-        ctx.add_fork(false_subctx, self).into_expr_err(loc)?;
+        let true_subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        let false_subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        ctx.set_child_fork(true_subctx, false_subctx, self)
+            .into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
         self.add_edge(
@@ -76,7 +82,8 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             | ExprRet::SingleLiteral((fork_ctx, _true_cvar)) => {
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, cnode, self).into_expr_err(loc)?,
+                    ContextVar::new_from_concrete(Loc::Implicit, *fork_ctx, cnode, self)
+                        .into_expr_err(loc)?,
                 );
                 let rhs_paths = ExprRet::Single((
                     *fork_ctx,
@@ -121,7 +128,8 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                 // we wrap the conditional in an `iszero` to invert
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, cnode, self).into_expr_err(loc)?,
+                    ContextVar::new_from_concrete(Loc::Implicit, *fork_ctx, cnode, self)
+                        .into_expr_err(loc)?,
                 );
                 let rhs_paths = ExprRet::Single((
                     *fork_ctx,

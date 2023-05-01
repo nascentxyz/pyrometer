@@ -13,20 +13,39 @@ impl<T> Variable for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprEr
 
 pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
-    fn variable(&mut self, ident: &Identifier, ctx: ContextNode) -> Result<ExprRet, ExprErr> {
-        tracing::trace!("Getting variable: {}, loc: {:?}", &ident.name, ident.loc);
+    fn variable(
+        &mut self,
+        ident: &Identifier,
+        ctx: ContextNode,
+        recursion_target: Option<ContextNode>,
+    ) -> Result<ExprRet, ExprErr> {
+        tracing::trace!(
+            "Getting variable: {}, loc: {:?}, ctx: {}",
+            &ident.name,
+            ident.loc,
+            ctx.path(self)
+        );
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-            let var = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
-            Ok(ExprRet::Single((ctx, var.0.into())))
+            if recursion_target.is_some() {
+                Ok(ExprRet::Single((ctx, cvar.into())))
+            } else {
+                let var = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
+                Ok(ExprRet::Single((ctx, var.0.into())))
+            }
         } else if let Some(env) = self.env_variable(ident, ctx)? {
             Ok(env)
         } else if ident.name == "_" {
+            tracing::trace!("Warning: got _, must be in modifier");
             // if we've reached this point, we are evaluating a modifier and it was the "_" keyword
             Ok(ExprRet::Multi(vec![]))
         } else if let Some(parent_ctx) = ctx.underlying(self).into_expr_err(ident.loc)?.parent_ctx {
             // check if we can inherit it
-            let ret = self.variable(ident, parent_ctx)?;
-            self.match_variable(ctx, ident, ret)
+            if let Some(recursion_target) = recursion_target {
+                self.variable(ident, parent_ctx, Some(recursion_target))
+            } else {
+                let ret = self.variable(ident, parent_ctx, Some(ctx))?;
+                self.match_variable(ctx, ident, ret)
+            }
         } else if let Some(idx) = self.user_types().get(&ident.name) {
             let var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
                 Some(v) => v,
@@ -44,21 +63,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let new_cvarnode = self.add_node(Node::ContextVar(var));
             self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
             Ok(ExprRet::Single((ctx, new_cvarnode)))
-        } else if let Some(func) = self.builtin_fns().get(&ident.name) {
-            let (inputs, outputs) = self
-                .builtin_fn_inputs()
-                .get(&ident.name)
-                .expect("builtin func but no inputs")
-                .clone();
-            let func_node = self.add_node(Node::Function(func.clone()));
-            inputs.into_iter().for_each(|input| {
-                let input_node = self.add_node(input);
-                self.add_edge(input_node, func_node, Edge::FunctionParam);
-            });
-            outputs.into_iter().for_each(|output| {
-                let output_node = self.add_node(output);
-                self.add_edge(output_node, func_node, Edge::FunctionReturn);
-            });
+        } else if let Some(func_node) = self.builtin_fn_or_maybe_add(&ident.name) {
             Ok(ExprRet::Single((ctx, func_node)))
         } else if let Some(_func) = ctx
             .visible_funcs(self)

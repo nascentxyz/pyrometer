@@ -1,7 +1,4 @@
-use crate::analyzers::{
-    bounds::{BoundAnalysis, BoundAnalyzer},
-    *,
-};
+use crate::analyzers::{VarBoundAnalyzer, *};
 use shared::{
     analyzer::*,
     nodes::{ContractNode, FunctionNode},
@@ -16,7 +13,7 @@ use std::collections::BTreeMap;
 pub struct StorageRangeReport {
     pub target: SolcRange,
     pub write_loc: Option<LocStrSpan>,
-    pub analysis: BoundAnalysis,
+    pub analysis: VarBoundAnalysis,
 }
 
 impl ReportDisplay for StorageRangeReport {
@@ -125,15 +122,15 @@ impl ReportDisplay for StorageRangeReport {
 
         let mut reports = vec![report.finish()];
 
-        if self.analysis.report_config.show_subctxs {
-            reports.extend(
-                self.analysis
-                    .sub_ctxs
-                    .iter()
-                    .flat_map(|analysis| analysis.reports(analyzer))
-                    .collect::<Vec<_>>(),
-            );
-        }
+        // if self.analysis.report_config.show_subctxs {
+        //     reports.extend(
+        //         self.analysis
+        //             .sub_ctxs
+        //             .iter()
+        //             .flat_map(|analysis| analysis.reports(analyzer))
+        //             .collect::<Vec<_>>(),
+        //     );
+        // }
 
         reports
     }
@@ -153,8 +150,8 @@ impl ReportDisplay for StorageRangeReport {
     }
 }
 
-impl<T> StorageRangeQuery for T where T: BoundAnalyzer + Search + AnalyzerLike + Sized {}
-pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
+impl<T> StorageRangeQuery for T where T: VarBoundAnalyzer + Search + AnalyzerLike + Sized {}
+pub trait StorageRangeQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
     fn func_query(
         &self,

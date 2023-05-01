@@ -51,7 +51,7 @@ pub enum Node {
 pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
     use crate::Node::*;
     match analyzer.node(idx) {
-        Context(_) => ContextNode::from(idx).as_string(),
+        Context(_) => ContextNode::from(idx).as_dot_str(analyzer),
         ContextVar(_) => ContextVarNode::from(idx).as_dot_str(analyzer),
         ContextFork => "Context Fork".to_string(),
         FunctionCall => "Function Call".to_string(),

@@ -4,10 +4,16 @@ use petgraph::graph::Graph;
 use petgraph::Directed;
 use shared::context::ContextNode;
 use shared::context::TmpConstruction;
+use shared::range::elem::RangeOp;
 use shared::NodeIdx;
 
-pub enum SolverEdge {
-    DependsOn,
+pub struct SolverEdge {
+    pub op: RangeOp,
+    pub index: usize,
+}
+
+pub enum SolverNode {
+    Var(String),
 }
 
 type SG = Graph<Node, SolverEdge, Directed, usize>;
@@ -21,36 +27,53 @@ impl SolverGraph {
     pub fn new(ctx: ContextNode, analyzer: &impl GraphLike) -> Self {
         let deps = ctx.ctx_deps(analyzer).unwrap();
         let mut sg = SG::default();
-        deps.iter().for_each(|(_k, v)| {
-            let underlying = v.underlying(analyzer).unwrap();
-            if let Some(tmp) = underlying.tmp_of {
-                Self::recurse_node(&mut sg, analyzer, tmp);
-            }
-
-            println!("here: {:#?}", underlying.tmp_of);
-        });
+        deps.iter().for_each(|(_k, v)| {});
 
         todo!()
     }
 
-    pub fn recurse_node(_graph: &mut SG, analyzer: &impl GraphLike, tmp: TmpConstruction) {
-        if tmp.lhs.is_tmp(analyzer).unwrap() {
-            println!("lhs is tmp");
-        }
-        let _lhs = analyzer.node(tmp.lhs.0);
-        let _rhs = match tmp.rhs {
-            Some(rhs) => {
-                if rhs.is_tmp(analyzer).unwrap() {
-                    println!("rhs is tmp");
-                }
-                Some(analyzer.node(rhs.0).clone())
-            }
-            None => None,
-        };
-        // println!("{lhs:#?} {rhs:#?}");
-    }
+    //     pub fn recurse_node(idx: NodeIdx, graph: &mut SG, analyzer: &impl GraphLike) -> NodeIdx {
 
-    pub fn independent_nodes(&self) -> Vec<NodeIdx> {
-        todo!()
-    }
+    //     	match elem {
+    //     		Elem::Concrete(RangeConcrete { val, ..}) => {
+
+    //     		}
+    //     		Elem::Dynamic(Dynamic { idx }) => {
+    //     			match analyzer.node(idx) {
+    //     				Node::ContextVar(_) => {
+    //     					ContextVarNode::from(idx).range(analyzer)
+    //     				}
+    //     			}
+    //     		}
+    //     		Elem::Expr(RangeExpr { lhs, op, rhs }) => {
+    //     			let lhs = Self::recurse_node(lhs, graph, analyzer);
+    //     			let rhs = Self::recurse_node(rhs, graph, analyzer);
+
+    //     		}
+    //     		Elem::ConcreteDyn(RangeDyn { len, val, .. }) => {
+
+    //     		}
+    //     		Elem::Null => {
+
+    //     		}
+    //     	}
+    //         if tmp.lhs.is_tmp(analyzer).unwrap() {
+    //             println!("lhs is tmp");
+    //         }
+    //         let _lhs = analyzer.node(tmp.lhs.0);
+    //         let _rhs = match tmp.rhs {
+    //             Some(rhs) => {
+    //                 if rhs.is_tmp(analyzer).unwrap() {
+    //                     println!("rhs is tmp");
+    //                 }
+    //                 Some(analyzer.node(rhs.0).clone())
+    //             }
+    //             None => None,
+    //         };
+    //         // println!("{lhs:#?} {rhs:#?}");
+    //     }
+
+    //     pub fn independent_nodes(&self) -> Vec<NodeIdx> {
+    //         todo!()
+    //     }
 }

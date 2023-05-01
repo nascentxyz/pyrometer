@@ -53,6 +53,20 @@ impl AsDotStr for VarType {
 }
 
 impl VarType {
+    pub fn set_range(&mut self, new_range: SolcRange) -> Result<(), GraphError> {
+        match self {
+            VarType::User(TypeNode::Enum(_), ref mut r)
+            | VarType::User(TypeNode::Contract(_), ref mut r)
+            | VarType::BuiltIn(_, ref mut r) => {
+                *r = Some(new_range);
+                Ok(())
+            }
+            _ => Err(GraphError::NodeConfusion(
+                "This type cannot have a range".to_string(),
+            )),
+        }
+    }
+
     pub fn is_dyn_builtin(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.is_dyn(analyzer),

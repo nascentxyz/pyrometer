@@ -55,8 +55,8 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         index_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-        let inner_tys = self.parse_ctx_expr(ty_expr, ctx)?;
         let index_tys = self.parse_ctx_expr(index_expr, ctx)?;
+        let inner_tys = self.parse_ctx_expr(ty_expr, ctx)?;
         self.index_into_array_inner(loc, inner_tys, index_tys)
     }
 
@@ -108,6 +108,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,
+                        is_return: false,
                         ty,
                     };
 

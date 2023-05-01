@@ -49,8 +49,10 @@ pub struct Analyzer {
     pub builtins: HashMap<Builtin, NodeIdx>,
     pub user_types: HashMap<String, NodeIdx>,
     pub builtin_fns: HashMap<String, Function>,
+    pub builtin_fn_nodes: HashMap<String, NodeIdx>,
     pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
     pub expr_errs: Vec<ExprErr>,
+    pub max_depth: usize,
 }
 
 impl Default for Analyzer {
@@ -68,8 +70,10 @@ impl Default for Analyzer {
             builtins: Default::default(),
             user_types: Default::default(),
             builtin_fns: builtin_fns::builtin_fns(),
+            builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
             expr_errs: Default::default(),
+            max_depth: 100,
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -98,6 +102,18 @@ impl GraphLike for Analyzer {
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
     type ExprErr = ExprErr;
+
+    fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx> {
+        &self.builtin_fn_nodes
+    }
+
+    fn builtin_fn_nodes_mut(&mut self) -> &mut HashMap<String, NodeIdx> {
+        &mut self.builtin_fn_nodes
+    }
+
+    fn max_depth(&self) -> usize {
+        self.max_depth
+    }
 
     fn add_expr_err(&mut self, err: ExprErr) {
         self.expr_errs.push(err);
@@ -178,7 +194,7 @@ impl AnalyzerLike for Analyzer {
                         idx
                     }
                 } else {
-                    todo!("???")
+                    inner_ty
                 }
             }
             ArraySubscript(_loc, ty_expr, Some(index_expr)) => {

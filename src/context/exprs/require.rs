@@ -28,8 +28,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
         match inputs.get(0).expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
 
                 self.handle_require_inner(
                     *loc,
@@ -41,8 +41,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 )
             }
             Expression::NotEqual(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
+
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -53,8 +54,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 )
             }
             Expression::Less(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
+
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -65,8 +67,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 )
             }
             Expression::More(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
+
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -77,8 +80,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 )
             }
             Expression::MoreEqual(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
+
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -89,8 +93,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 )
             }
             Expression::LessEqual(loc, lhs, rhs) => {
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
                 let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
+                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
+
                 self.handle_require_inner(
                     *loc,
                     &lhs_paths,
@@ -106,7 +111,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let cnode =
                     ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(false))));
                 let tmp_false = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, cnode, self)
+                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(*loc)?,
                 );
                 let rhs_paths =
@@ -125,7 +130,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let lhs_paths = self.cmp(*loc, lhs, RangeOp::And, rhs, ctx)?;
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, cnode, self)
+                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(*loc)?,
                 );
                 let node = self.add_node(tmp_true);
@@ -145,7 +150,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let lhs_paths = self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx)?;
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, cnode, self)
+                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(*loc)?,
                 );
                 let node = self.add_node(tmp_true);
@@ -164,7 +169,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let should_be_bool = self.parse_ctx_expr(other, ctx)?.flatten();
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, cnode, self)
+                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(other.loc())?,
                 );
                 let rhs_paths =
@@ -480,6 +485,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 tmp_of: Some(TmpConstruction::new(new_lhs, op, Some(new_rhs))),
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
+                is_return: false,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     SolcRange::from(Concrete::Bool(true)),
@@ -652,7 +658,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 // we add one to the element because its strict >
                 let max_conc = max.maybe_concrete().expect("Was not concrete");
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
-                nonconst_var.set_range_min(self, elem + one.into()).unwrap();
+                nonconst_var
+                    .set_range_min(self, (elem + one.into()).max(nonconst_range.range_min()))
+                    .unwrap();
                 false
             }
             RangeOp::Gte => {
@@ -669,7 +677,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return true;
                 }
 
-                nonconst_var.set_range_min(self, elem).unwrap();
+                nonconst_var
+                    .set_range_min(self, elem.max(nonconst_range.range_min()))
+                    .unwrap();
                 false
             }
             RangeOp::Lt => {
@@ -688,7 +698,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let min_conc = min.maybe_concrete().expect("Was not concrete");
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
-                nonconst_var.set_range_max(self, elem - one.into()).unwrap();
+                nonconst_var
+                    .set_range_max(self, (elem - one.into()).min(nonconst_range.range_max()))
+                    .unwrap();
                 false
             }
             RangeOp::Lte => {
@@ -703,7 +715,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return true;
                 }
 
-                nonconst_var.set_range_max(self, elem).unwrap();
+                nonconst_var
+                    .set_range_max(self, elem.min(nonconst_range.range_max()))
+                    .unwrap();
                 false
             }
             e => todo!("Non-comparator in require, {e:?}"),
@@ -802,9 +816,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                 // we add/sub one to the element because its strict >
                 new_lhs
-                    .set_range_min(self, rhs_elem + one.clone().into())
+                    .set_range_min(
+                        self,
+                        (rhs_elem + one.clone().into()).max(lhs_range.range_min()),
+                    )
                     .unwrap();
-                new_rhs.set_range_max(self, lhs_elem - one.into()).unwrap();
+                new_rhs
+                    .set_range_max(self, (lhs_elem - one.into()).min(lhs_range.range_max()))
+                    .unwrap();
                 false
             }
             RangeOp::Gte => {
@@ -822,8 +841,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return true;
                 }
 
-                new_lhs.set_range_min(self, rhs_elem).unwrap();
-                new_rhs.set_range_max(self, lhs_elem).unwrap();
+                new_lhs
+                    .set_range_min(self, rhs_elem.max(lhs_range.range_min()))
+                    .unwrap();
+                new_rhs
+                    .set_range_max(self, lhs_elem.min(rhs_range.range_max()))
+                    .unwrap();
                 false
             }
             RangeOp::Lt => {
@@ -844,9 +867,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
                 new_lhs
-                    .set_range_max(self, rhs_elem - one.clone().into())
+                    .set_range_max(
+                        self,
+                        (rhs_elem - one.clone().into()).min(lhs_range.range_max()),
+                    )
                     .unwrap();
-                new_rhs.set_range_min(self, lhs_elem + one.into()).unwrap();
+                new_rhs
+                    .set_range_min(self, (lhs_elem + one.into()).max(rhs_range.range_min()))
+                    .unwrap();
                 false
             }
             RangeOp::Lte => {
@@ -862,8 +890,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return true;
                 }
 
-                new_lhs.set_range_max(self, rhs_elem).unwrap();
-                new_rhs.set_range_max(self, lhs_elem).unwrap();
+                new_lhs
+                    .set_range_max(self, rhs_elem.min(lhs_range.range_max()))
+                    .unwrap();
+                new_rhs
+                    .set_range_min(self, lhs_elem.max(rhs_range.range_min()))
+                    .unwrap();
                 false
             }
             e => todo!("Non-comparator in require, {e:?}"),
@@ -942,7 +974,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 .1,
             );
             let new_underlying_lhs =
-                self.advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx)?;
+                self.advance_var_in_curr_ctx(tmp_construction.lhs.latest_version(self), loc)?;
             if let Some(lhs_range) = new_underlying_lhs
                 .underlying(self)
                 .into_expr_err(loc)?
@@ -996,7 +1028,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             self.add_node(Node::Concrete(Concrete::Int(256, I256::from(-1i32))))
                                 .index(),
                         );
-                        let lhs_cvar = ContextVar::new_from_concrete(loc, concrete, self)
+                        let lhs_cvar = ContextVar::new_from_concrete(loc, ctx, concrete, self)
                             .into_expr_err(loc)?;
                         let tmp_lhs =
                             ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
@@ -1024,7 +1056,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 };
 
                 let new_underlying_rhs =
-                    self.advance_var_in_ctx(rhs.latest_version(self), loc, ctx)?;
+                    self.advance_var_in_curr_ctx(rhs.latest_version(self), loc)?;
                 if let Some(lhs_range) = new_underlying_rhs
                     .underlying(self)
                     .into_expr_err(loc)?

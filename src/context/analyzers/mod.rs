@@ -8,12 +8,17 @@ use shared::analyzer::Search;
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
+mod func_analyzer;
+pub use func_analyzer::*;
+mod var_analyzer;
+pub use var_analyzer::*;
+
 pub trait ContextAnalyzer:
-    AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer
+    AnalyzerLike + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 impl<T> ContextAnalyzer for T where
-    T: AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer
+    T: AnalyzerLike + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 

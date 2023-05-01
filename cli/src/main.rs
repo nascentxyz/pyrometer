@@ -1,13 +1,13 @@
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
+use pyrometer::context::analyzers::FunctionVarsBoundAnalyzer;
 use pyrometer::context::queries::storage_write::StorageRangeQuery;
 
 use pyrometer::{
     context::{
-        analyzers::{bounds::FunctionVarsBoundAnalyzer, ReportDisplay},
-        queries::storage_write::AccessStorageWriteQuery,
-        *,
+        analyzers::ReportDisplay, queries::ecrecover::TaintQuery,
+        queries::storage_write::AccessStorageWriteQuery, *,
     },
     Analyzer,
 };
@@ -50,6 +50,8 @@ struct Args {
     pub show_inits: Option<bool>,
     #[clap(long, short)]
     pub access_query: Vec<String>,
+    #[clap(long, short)]
+    pub query: Vec<String>,
     #[clap(long, short)]
     pub write_query: Vec<String>,
 }
@@ -217,6 +219,13 @@ fn main() {
                 }
             });
     }
+
+    args.query.iter().for_each(|query| {
+        println!("HERE, {query}");
+        analyzer.taint_query(entry, query.to_string());
+        // .print_reports(&mut source_map, &analyzer);
+        println!();
+    });
 
     args.access_query.iter().for_each(|query| {
         let split: Vec<&str> = query.split('.').collect();

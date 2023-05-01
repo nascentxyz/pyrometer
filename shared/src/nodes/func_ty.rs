@@ -11,6 +11,7 @@ use crate::{
     Node, NodeIdx,
 };
 use petgraph::{visit::EdgeRef, Direction};
+use solang_parser::helpers::CodeLocation;
 use solang_parser::pt::ParameterList;
 use solang_parser::pt::Statement;
 use solang_parser::pt::Type;
@@ -33,6 +34,20 @@ impl FunctionNode {
         }
     }
 
+    pub fn body_loc(&self, analyzer: &impl GraphLike) -> Result<Option<Loc>, GraphError> {
+        if let Some(body_stmt) = &self.underlying(analyzer)?.body {
+            Ok(Some(body_stmt.loc()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn definition_loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+        let underlying = &self.underlying(analyzer)?;
+        Ok(underlying.loc)
+    }
+
+    /// Gets an ordered list of modifiers for a given function
     pub fn modifiers(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
         analyzer
             .graph()
@@ -104,7 +119,10 @@ impl FunctionNode {
         }
     }
 
-    pub fn loc_specified_name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn loc_specified_name(
+        &self,
+        analyzer: &(impl GraphLike + AnalyzerLike),
+    ) -> Result<String, GraphError> {
         if let Some(con) = self.maybe_associated_contract(analyzer) {
             Ok(format!("{}.{}", con.name(analyzer)?, self.name(analyzer)?))
         } else {
@@ -133,7 +151,10 @@ impl FunctionNode {
             .next()
     }
 
-    pub fn maybe_associated_contract(&self, analyzer: &impl GraphLike) -> Option<ContractNode> {
+    pub fn maybe_associated_contract(
+        &self,
+        analyzer: &(impl GraphLike + AnalyzerLike),
+    ) -> Option<ContractNode> {
         let parent = analyzer
             .search_for_ancestor_multi(
                 self.0.into(),
@@ -145,7 +166,10 @@ impl FunctionNode {
                     Edge::FallbackFunc,
                 ],
             )
-            .unwrap_or_else(|| panic!("detached function: {:?}", self.name(analyzer)));
+            .unwrap_or_else(|| {
+                analyzer.open_dot();
+                panic!("detached function: {:?}", self.name(analyzer))
+            });
         match analyzer.node(parent) {
             Node::Contract(_) => Some(parent.into()),
             _ => None,

@@ -95,6 +95,10 @@ pub struct RangeDyn<T> {
     pub loc: Loc,
 }
 impl<T> RangeDyn<T> {
+    pub fn set_len(&mut self, new_len: Elem<T>) {
+        self.len = new_len;
+    }
+
     pub fn contains_node(&self, _node_idx: NodeIdx) -> bool {
         false
         // self.len.contains_node(node_idx)

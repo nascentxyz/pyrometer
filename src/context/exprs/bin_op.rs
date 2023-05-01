@@ -32,8 +32,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<ExprRet, ExprErr> {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?.flatten();
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
         self.op_match(loc, &lhs_paths, &rhs_paths, op, assign)
     }
 
@@ -147,6 +147,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 is_tmp: true,
                 is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?
                     || rhs_cvar.is_symbolic(self).into_expr_err(loc)?,
+                is_return: false,
                 tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                 ty: lhs_cvar.underlying(self).into_expr_err(loc)?.ty.clone(),
             };
@@ -189,10 +190,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
                         let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                        let zero_node = self.add_node(Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, zero_node.into(), self)
-                                .into_expr_err(loc)?,
-                        ));
+                        let var = ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            ctx,
+                            zero_node.into(),
+                            self,
+                        );
+                        let zero_node = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -213,6 +217,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 Some(zero_node.into()),
                             )),
                             is_symbolic: true,
+                            is_return: false,
                             ty: VarType::BuiltIn(
                                 BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                                 SolcRange::from(Concrete::Bool(true)),
@@ -309,6 +314,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 Some(new_rhs),
                             )),
                             is_symbolic: true,
+                            is_return: false,
                             ty: VarType::BuiltIn(
                                 BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                                 SolcRange::from(Concrete::Bool(true)),
@@ -337,10 +343,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
 
                         let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
-                        let max_node = self.add_node(Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, max_node.into(), self)
-                                .into_expr_err(loc)?,
-                        ));
+                        let tmp_max = ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            ctx,
+                            max_node.into(),
+                            self,
+                        );
+                        let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
                         let (_, tmp_rhs) = self
                             .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)?
@@ -367,6 +376,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 Some(tmp_rhs.into()),
                             )),
                             is_symbolic: true,
+                            is_return: false,
                             ty: VarType::BuiltIn(
                                 BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                                 SolcRange::from(Concrete::Bool(true)),
@@ -398,10 +408,13 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
 
                         let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
-                        let max_node = self.add_node(Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, max_node.into(), self)
-                                .into_expr_err(loc)?,
-                        ));
+                        let tmp_max = ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            ctx,
+                            max_node.into(),
+                            self,
+                        );
+                        let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
                         let (_, tmp_rhs) = self
                             .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)?
@@ -428,6 +441,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 Some(tmp_rhs.into()),
                             )),
                             is_symbolic: true,
+                            is_return: false,
                             ty: VarType::BuiltIn(
                                 BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                                 SolcRange::from(Concrete::Bool(true)),
@@ -465,10 +479,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
 
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                        let zero_node = self.add_node(Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, zero_node.into(), self)
-                                .into_expr_err(loc)?,
-                        ));
+                        let tmp_zero = ContextVar::new_from_concrete(
+                            Loc::Implicit,
+                            ctx,
+                            zero_node.into(),
+                            self,
+                        );
+                        let zero_node =
+                            self.add_node(Node::ContextVar(tmp_zero.into_expr_err(loc)?));
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -489,6 +507,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 Some(zero_node.into()),
                             )),
                             is_symbolic: true,
+                            is_return: false,
                             ty: VarType::BuiltIn(
                                 BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                                 SolcRange::from(Concrete::Bool(true)),

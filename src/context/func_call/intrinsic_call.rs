@@ -233,18 +233,92 @@ pub trait IntrinsicFuncCaller:
                             Ok(ExprRet::Single((ctx, cvar)))
                         }
                         "ecrecover" => {
+                            let call_ctx = self.add_node(Node::Context(
+                                Context::new_subctx(
+                                    ctx,
+                                    None,
+                                    *loc,
+                                    None,
+                                    Some(func_idx.into()),
+                                    true,
+                                    self,
+                                    None,
+                                )
+                                .into_expr_err(*loc)?,
+                            ));
+                            ctx.set_child_call(call_ctx.into(), self)
+                                .into_expr_err(*loc)?;
+                            let call_node = self.add_node(Node::FunctionCall);
+                            self.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
+                            self.add_edge(call_node, ctx, Edge::Context(ContextEdge::Subcontext));
+                            self.add_edge(
+                                call_ctx,
+                                call_node,
+                                Edge::Context(ContextEdge::Subcontext),
+                            );
+                            let mut inner_vals = vec![];
                             for expr in input_exprs.iter() {
                                 // we want to parse even though we dont need the variables here
-                                let _ = self.parse_ctx_expr(expr, ctx)?;
+                                // we could in theory actually evaluate this
+                                match self.parse_ctx_expr(expr, ctx)? {
+                                    ExprRet::Single((_, var))
+                                    | ExprRet::SingleLiteral((_, var)) => {
+                                        inner_vals.push(
+                                            ContextVarNode::from(var).display_name(self).unwrap(),
+                                        );
+                                    }
+                                    _ => inner_vals.push("<unknown>".to_string()),
+                                }
                             }
-                            let var = ContextVar::new_from_builtin(
+                            let inner_name = inner_vals.into_iter().collect::<Vec<_>>().join(", ");
+
+                            let mut var = ContextVar::new_from_builtin(
                                 *loc,
                                 self.builtin_or_add(Builtin::Address).into(),
                                 self,
                             )
                             .into_expr_err(*loc)?;
+                            var.display_name = format!("ecrecover({})", inner_name);
+                            var.is_symbolic = true;
+                            var.is_return = true;
                             let cvar = self.add_node(Node::ContextVar(var));
-                            Ok(ExprRet::Single((ctx, cvar)))
+                            self.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Variable));
+                            self.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Return));
+                            ContextNode::from(call_ctx)
+                                .add_return_node(*loc, cvar.into(), self)
+                                .into_expr_err(*loc)?;
+
+                            let ret_ctx = self.add_node(Node::Context(
+                                Context::new_subctx(
+                                    call_ctx.into(),
+                                    Some(ctx),
+                                    *loc,
+                                    None,
+                                    None,
+                                    true,
+                                    self,
+                                    None,
+                                )
+                                .into_expr_err(*loc)?,
+                            ));
+                            ContextNode::from(call_ctx)
+                                .set_child_call(ret_ctx.into(), self)
+                                .into_expr_err(*loc)?;
+                            self.add_edge(ret_ctx, call_ctx, Edge::Context(ContextEdge::Continue));
+
+                            let tmp_ret = ContextVarNode::from(cvar)
+                                .as_tmp(
+                                    ContextNode::from(call_ctx).underlying(self).unwrap().loc,
+                                    ret_ctx.into(),
+                                    self,
+                                )
+                                .unwrap();
+                            tmp_ret.underlying_mut(self).unwrap().is_return = true;
+                            tmp_ret.underlying_mut(self).unwrap().display_name =
+                                format!("ecrecover({}).return", inner_name);
+                            self.add_edge(tmp_ret, ret_ctx, Edge::Context(ContextEdge::Variable));
+
+                            Ok(ExprRet::Single((ret_ctx.into(), tmp_ret.into())))
                         }
                         "addmod" => {
                             // TODO: actually calcuate this if possible
@@ -297,6 +371,7 @@ pub trait IntrinsicFuncCaller:
                     storage: None,
                     is_tmp: true,
                     is_symbolic: false,
+                    is_return: false,
                     tmp_of: None,
                     ty: ty.expect("No type for node"),
                 };
@@ -311,6 +386,7 @@ pub trait IntrinsicFuncCaller:
                     is_tmp: true,
                     tmp_of: None,
                     is_symbolic: true,
+                    is_return: false,
                     ty: ContextVarNode::from(len_cvar)
                         .underlying(self)
                         .into_expr_err(*loc)?

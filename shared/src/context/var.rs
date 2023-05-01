@@ -50,8 +50,9 @@ impl AsDotStr for ContextVarNode {
         };
 
         format!(
-            "{} -- {} -- range: {}",
+            "{} - {} -- {} -- range: {}",
             underlying.display_name,
+            self.0,
             underlying.ty.as_string(analyzer).unwrap(),
             range_str
         )
@@ -213,6 +214,52 @@ impl ContextVarNode {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn return_assignments(&self, analyzer: &impl GraphLike) -> Vec<Self> {
+        let latest = self.latest_version(analyzer);
+        let mut earlier = latest;
+        let mut return_assignments = vec![];
+        while let Some(prev) = earlier.previous_version(analyzer) {
+            if earlier.is_return_assignment(analyzer) {
+                return_assignments.push(earlier)
+            }
+            earlier = prev;
+        }
+        return_assignments
+    }
+
+    pub fn ext_return_assignments(&self, analyzer: &impl GraphLike) -> Vec<Self> {
+        let latest = self.latest_version(analyzer);
+        let mut earlier = latest;
+        let mut return_assignments = vec![];
+        if earlier.is_ext_return_assignment(analyzer) {
+            return_assignments.push(earlier)
+        }
+        while let Some(prev) = earlier.previous_version(analyzer) {
+            earlier = prev;
+            if earlier.is_ext_return_assignment(analyzer) {
+                return_assignments.push(earlier)
+            }
+        }
+        return_assignments
+    }
+
+    pub fn is_return_assignment(&self, analyzer: &impl GraphLike) -> bool {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .any(|edge| {
+                Edge::Context(ContextEdge::ReturnAssign(true)) == *edge.weight()
+                    || Edge::Context(ContextEdge::ReturnAssign(false)) == *edge.weight()
+            })
+    }
+
+    pub fn is_ext_return_assignment(&self, analyzer: &impl GraphLike) -> bool {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .any(|edge| Edge::Context(ContextEdge::ReturnAssign(true)) == *edge.weight())
     }
 
     pub fn is_const(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -616,7 +663,9 @@ impl ContextVarNode {
             .underlying(analyzer)?
             .clone()
             .as_cast_tmp(loc, ctx, cast_ty, analyzer)?;
-        Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
+        let node = analyzer.add_node(Node::ContextVar(new_underlying));
+        analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        Ok(node.into())
     }
 
     pub fn as_tmp(
@@ -734,6 +783,7 @@ pub struct ContextVar {
     pub is_tmp: bool,
     pub tmp_of: Option<TmpConstruction>,
     pub is_symbolic: bool,
+    pub is_return: bool,
     pub ty: VarType,
 }
 
@@ -761,17 +811,24 @@ impl ContextVar {
 
     pub fn new_from_concrete(
         loc: Loc,
+        ctx: ContextNode,
         concrete_node: ConcreteNode,
-        analyzer: &impl GraphLike,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Self, GraphError> {
+        let name = format!(
+            "tmp_{}({})",
+            ctx.new_tmp(analyzer)?,
+            concrete_node.underlying(analyzer)?.as_string()
+        );
         Ok(ContextVar {
             loc: Some(loc),
-            name: concrete_node.underlying(analyzer)?.as_string(),
+            name,
             display_name: concrete_node.underlying(analyzer)?.as_string(),
             storage: None,
             is_tmp: true,
             tmp_of: None,
             is_symbolic: false,
+            is_return: false,
             ty: VarType::Concrete(concrete_node),
         })
     }
@@ -806,6 +863,7 @@ impl ContextVar {
         new_tmp.loc = Some(loc);
         new_tmp.is_tmp = true;
         new_tmp.name = format!("tmp{}_{}({})", self.name, ctx.new_tmp(analyzer)?, self.name);
+        new_tmp.display_name = format!("tmp_{}", self.name);
         Ok(new_tmp)
     }
 
@@ -822,6 +880,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: true,
+            is_return: false,
             ty: VarType::User(
                 TypeNode::Contract(contract_node),
                 SolcRange::try_from_builtin(&Builtin::Address),
@@ -847,6 +906,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: true,
+            is_return: false,
             ty: VarType::User(TypeNode::Struct(struct_node), None),
         })
     }
@@ -858,12 +918,13 @@ impl ContextVar {
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
-            name: bn_node.underlying(analyzer)?.as_string(analyzer)?,
-            display_name: bn_node.underlying(analyzer)?.as_string(analyzer)?,
+            name: format!("tmp_{}", bn_node.underlying(analyzer)?.as_string(analyzer)?),
+            display_name: format!("tmp_{}", bn_node.underlying(analyzer)?.as_string(analyzer)?),
             storage: None,
             is_tmp: true,
             tmp_of: None,
             is_symbolic: false,
+            is_return: false,
             ty: VarType::try_from_idx(analyzer, bn_node.into()).unwrap(),
         })
     }
@@ -1096,6 +1157,7 @@ impl ContextVar {
                 is_tmp: false,
                 tmp_of: None,
                 is_symbolic: true,
+                is_return: false,
                 ty,
             })
         } else {
@@ -1122,6 +1184,7 @@ impl ContextVar {
                 is_tmp: false,
                 tmp_of: None,
                 is_symbolic: true,
+                is_return: false,
                 ty,
             })
         } else {
@@ -1145,6 +1208,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: true,
+            is_return: false,
             ty: VarType::User(
                 TypeNode::Enum(enum_node),
                 Some(enum_node.range_from_variant(variant, analyzer)?),
@@ -1169,6 +1233,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: index.underlying(analyzer)?.is_symbolic,
+            is_return: false,
             ty: parent_var.dynamic_underlying_ty(analyzer)?,
         })
     }
@@ -1185,6 +1250,7 @@ impl ContextVar {
             is_tmp: false,
             tmp_of: None,
             is_symbolic: false,
+            is_return: false,
             ty: VarType::User(TypeNode::Func(func), None),
         })
     }
@@ -1203,6 +1269,7 @@ impl ContextVar {
                     is_tmp: false,
                     tmp_of: None,
                     is_symbolic: true,
+                    is_return: false,
                     ty,
                 })
             } else {
@@ -1224,6 +1291,7 @@ impl ContextVar {
                     is_tmp: false,
                     tmp_of: None,
                     is_symbolic: true,
+                    is_return: true,
                     ty,
                 })
             } else {
@@ -1254,6 +1322,7 @@ impl ContextVar {
                 is_tmp,
                 tmp_of: None,
                 is_symbolic: true,
+                is_return: true,
                 ty,
             }))
         } else {

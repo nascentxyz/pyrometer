@@ -39,11 +39,11 @@ pub trait YulBuilder:
         if let Some(true) = self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc())) {
             return;
         }
-        if let Some(live_forks) = self.add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc())) {
-            if live_forks.is_empty() {
+        if let Some(live_edges) = self.add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc())) {
+            if live_edges.is_empty() {
                 self.parse_ctx_yul_stmt_inner(stmt, ctx)
             } else {
-                live_forks.iter().for_each(|fork_ctx| {
+                live_edges.iter().for_each(|fork_ctx| {
                     self.parse_ctx_yul_stmt_inner(stmt, *fork_ctx);
                 });
             }
@@ -57,7 +57,7 @@ pub trait YulBuilder:
     {
         use YulStatement::*;
         let forks = self
-            .add_if_err(ctx.live_forks(self).into_expr_err(stmt.loc()))
+            .add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc()))
             .unwrap();
         match stmt {
             Assign(_loc, yul_exprs, yul_expr) => {
@@ -110,6 +110,7 @@ pub trait YulBuilder:
                             is_tmp: false,
                             tmp_of: None,
                             is_symbolic: true,
+                            is_return: false,
                             ty: VarType::try_from_idx(self, b_ty).unwrap(),
                         };
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
@@ -193,11 +194,11 @@ pub trait YulBuilder:
             return Ok(ExprRet::CtxKilled);
         }
 
-        if ctx.live_forks(self).into_expr_err(expr.loc())?.is_empty() {
+        if ctx.live_edges(self).into_expr_err(expr.loc())?.is_empty() {
             self.parse_ctx_yul_expr_inner(expr, ctx)
         } else {
             let rets: Vec<ExprRet> = ctx
-                .live_forks(self)
+                .live_edges(self)
                 .into_expr_err(expr.loc())?
                 .iter()
                 .map(|fork_ctx| self.parse_ctx_yul_expr(expr, *fork_ctx))
@@ -224,7 +225,7 @@ pub trait YulBuilder:
             HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),
             StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
-            Variable(ident) => self.variable(ident, ctx),
+            Variable(ident) => self.variable(ident, ctx, None),
             FunctionCall(yul_func_call) => self.yul_func_call(yul_func_call, ctx),
             SuffixAccess(_loc, _yul_member_expr, _ident) => Err(ExprErr::Todo(
                 expr.loc(),

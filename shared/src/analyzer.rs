@@ -1,4 +1,5 @@
 use crate::as_dot_str;
+use crate::context::ContextEdge;
 use crate::range::Range;
 use crate::BlockNode;
 
@@ -20,12 +21,18 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum GraphError {
     NodeConfusion(String),
+    MaxStackDepthReached(String),
+    ChildRedefinition(String),
+    DetachedVariable(String),
 }
 
 pub trait AnalyzerLike: GraphLike {
     type Expr;
     type ExprErr;
     fn builtin_fns(&self) -> &HashMap<String, Function>;
+    fn builtin_fn_nodes_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
+    fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx>;
+    fn max_depth(&self) -> usize;
     fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
     fn builtins(&self) -> &HashMap<Builtin, NodeIdx>;
     fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx>;
@@ -36,6 +43,35 @@ pub trait AnalyzerLike: GraphLike {
             let idx = self.add_node(Node::Builtin(builtin.clone()));
             self.builtins_mut().insert(builtin, idx);
             idx
+        }
+    }
+    fn builtin_fn_or_maybe_add(&mut self, builtin_name: &str) -> Option<NodeIdx> {
+        println!("adding function name: {}", builtin_name);
+        if let Some(idx) = self.builtin_fn_nodes().get(builtin_name) {
+            Some(*idx)
+        } else if let Some(func) = self.builtin_fns().get(builtin_name) {
+            let (inputs, outputs) = self
+                .builtin_fn_inputs()
+                .get(builtin_name)
+                .expect("builtin func but no inputs")
+                .clone();
+            let func_node = self.add_node(Node::Function(func.clone()));
+            inputs.into_iter().for_each(|input| {
+                let input_node = self.add_node(input);
+                self.add_edge(input_node, func_node, Edge::FunctionParam);
+            });
+            outputs.into_iter().for_each(|output| {
+                let output_node = self.add_node(output);
+                self.add_edge(output_node, func_node, Edge::FunctionReturn);
+            });
+
+            self.add_edge(func_node, self.entry(), Edge::Func);
+
+            self.builtin_fn_nodes_mut()
+                .insert(builtin_name.to_string(), func_node);
+            Some(func_node)
+        } else {
+            None
         }
     }
     fn user_types(&self) -> &HashMap<String, NodeIdx>;
@@ -135,9 +171,18 @@ pub trait GraphLike {
         &self,
         node: NodeIdx,
         cluster_num: usize,
+        is_killed: bool,
         handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
         handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
     ) -> String {
+        if self
+            .graph()
+            .edges_directed(node, Direction::Outgoing)
+            .collect::<Vec<_>>()
+            .is_empty()
+        {
+            return "".to_string();
+        }
         let new_graph = self.graph().filter_map(
             |_idx, node| match node {
                 Node::ContextVar(_cvar) => {
@@ -162,10 +207,20 @@ pub trait GraphLike {
                 {
                     handled_nodes.lock().unwrap().insert(*child);
                 }
+
+                // if g.graph.edges_directed(*child, Direction::Outgoing).collect::<Vec<_>>().is_empty() {
+                //     return "".to_string()
+                // }
                 let post_str = match self.node(*child) {
-                    Node::Context(_) => {
+                    Node::Context(c) => {
                         cn += 2;
-                        self.cluster_str(*child, cn, handled_nodes.clone(), handled_edges.clone())
+                        self.cluster_str(
+                            *child,
+                            cn,
+                            c.killed.is_some(),
+                            handled_nodes.clone(),
+                            handled_edges.clone(),
+                        )
                     }
                     _ => "".to_string(),
                 };
@@ -195,7 +250,11 @@ pub trait GraphLike {
         format!(
             "    subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
             cluster_num,
-            if cluster_num % 2 == 0 {
+            if is_killed && cluster_num % 2 == 0 {
+                "        bgcolor=\"#7a0b0b\""
+            } else if is_killed {
+                "        bgcolor=\"#e04646\""
+            } else if cluster_num % 2 == 0 {
                 "        bgcolor=\"#545e87\""
             } else {
                 "        bgcolor=\"#1a1b26\""
@@ -229,9 +288,14 @@ pub trait GraphLike {
             self.graph().edge_indices().collect::<Vec<_>>(),
         );
         let mut cluster_num = 0;
+        // let mut skip = BTreeSet::default();
         let nodes_str = nodes
             .iter()
             .filter_map(|node| {
+                // if self.graph().edges_directed(*node, Direction::Outgoing).collect::<Vec<_>>().is_empty() {
+                // skip.insert(*node);
+                // return None
+                // }
                 if !handled_nodes.lock().unwrap().contains(node) {
                     match self.node(*node) {
                         Node::Function(_) => {
@@ -239,6 +303,7 @@ pub trait GraphLike {
                             Some(self.cluster_str(
                                 *node,
                                 cluster_num,
+                                false,
                                 handled_nodes.clone(),
                                 handled_edges.clone(),
                             ))
@@ -261,6 +326,9 @@ pub trait GraphLike {
             .filter_map(|edge| {
                 if !handled_edges.lock().unwrap().contains(&edge) {
                     let (from, to) = self.graph().edge_endpoints(edge).unwrap();
+                    // if skip.contains(&from) || skip.contains(&to) {
+                    //     return None;
+                    // }
                     let from = from.index();
                     let to = to.index();
                     Some(format!(

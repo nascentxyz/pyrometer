@@ -27,60 +27,28 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
         }
 
         if let Some(body) = maybe_body {
-            let subctx = ContextNode::from(self.add_node(Node::Context(
-                Context::new_subctx(ctx, loc, false, None, false, self, None).into_expr_err(loc)?,
-            )));
-            let res = ctx.add_child(subctx, self).into_expr_err(loc);
-            let _ = self.add_if_err(res);
-            let ctx_fork = self.add_node(Node::FunctionCall);
-            self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
-            self.add_edge(
-                NodeIdx::from(subctx.0),
-                ctx_fork,
-                Edge::Context(ContextEdge::Subcontext),
-            );
-            self.parse_ctx_statement(body, false, Some(subctx));
-            let vars = subctx.local_vars(self);
-            vars.iter().for_each(|var| {
-                // widen to max range
-                if let Some(inheritor_var) = ctx.var_by_name(self, &var.name(self).unwrap()) {
-                    let inheritor_var = inheritor_var.latest_version(self);
-                    if let Some(r) = var
-                        .underlying(self)
-                        .unwrap()
-                        .ty
-                        .default_range(self)
-                        .unwrap()
-                    {
-                        let new_inheritor_var =
-                            self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
-                        let res = new_inheritor_var
-                            .set_range_min(self, r.min)
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        let res = new_inheritor_var
-                            .set_range_max(self, r.max)
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                    }
+            if let Some(live_edges) = self.add_if_err(ctx.live_edges(self).into_expr_err(loc)) {
+                if live_edges.is_empty() {
+                    self.reset_vars(loc, ctx, body)?;
+                } else {
+                    live_edges.iter().try_for_each(|fork_ctx| {
+                        self.reset_vars(loc, *fork_ctx, body)?;
+                        Ok(())
+                    })?;
                 }
-            });
+            }
         }
         Ok(())
     }
 
-    fn while_loop(
-        &mut self,
-        loc: Loc,
-        ctx: ContextNode,
-        _limiter: &Expression,
-        body: &Statement,
-    ) -> Result<(), ExprErr> {
-        // TODO: improve this
-        let subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, false, None, false, self, None).into_expr_err(loc)?,
-        )));
-        let res = ctx.add_child(subctx, self).into_expr_err(loc);
+    fn reset_vars(&mut self, loc: Loc, ctx: ContextNode, body: &Statement) -> Result<(), ExprErr> {
+        let subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, None, None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        let res = ctx.set_child_call(subctx, self).into_expr_err(loc);
         let _ = self.add_if_err(res);
         let ctx_fork = self.add_node(Node::FunctionCall);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
@@ -103,7 +71,7 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
                     .unwrap()
                 {
                     let new_inheritor_var =
-                        self.advance_var_in_ctx(inheritor_var, loc, ctx).unwrap();
+                        self.advance_var_in_ctx(inheritor_var, loc, subctx).unwrap();
                     let res = new_inheritor_var
                         .set_range_min(self, r.min)
                         .into_expr_err(loc);
@@ -116,5 +84,16 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
             }
         });
         Ok(())
+    }
+
+    fn while_loop(
+        &mut self,
+        loc: Loc,
+        ctx: ContextNode,
+        _limiter: &Expression,
+        body: &Statement,
+    ) -> Result<(), ExprErr> {
+        // TODO: improve this
+        self.reset_vars(loc, ctx, body)
     }
 }

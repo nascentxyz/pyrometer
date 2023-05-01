@@ -53,6 +53,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     is_tmp: true,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::Not, None)),
                     is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
+                    is_return: false,
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                         Some(range),
@@ -83,8 +84,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
         let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?.flatten();
+        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
         self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
     }
 
@@ -164,6 +165,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         || ContextVarNode::from(*rhs)
                             .is_symbolic(self)
                             .into_expr_err(loc)?,
+                    is_return: false,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),

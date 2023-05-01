@@ -3,6 +3,7 @@ use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::nodes::GraphError;
 use crate::Builtin;
 use crate::Concrete;
+use crate::ContextNode;
 use crate::ContextVar;
 
 use crate::Node;
@@ -59,16 +60,14 @@ impl Msg {
         &self,
         elem: &str,
         loc: Loc,
+        ctx: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<ContextVar, GraphError> {
         let (node, name) = match elem {
             "data" => {
                 if let Some(d) = self.data.clone() {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)).into(),
-                        "msg.data".to_string(),
-                    )
+                    (analyzer.add_node(Node::Concrete(c)), "msg.data".to_string())
                 } else {
                     let b = Builtin::DynamicBytes;
                     let node = analyzer.builtin_or_add(b);
@@ -84,7 +83,7 @@ impl Msg {
                 if let Some(d) = self.sender {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "msg.sender".to_string(),
                     )
                 } else {
@@ -118,7 +117,7 @@ impl Msg {
                 if let Some(d) = self.value {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "msg.value".to_string(),
                     )
                 } else {
@@ -135,7 +134,7 @@ impl Msg {
                 if let Some(d) = self.origin {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "tx.origin".to_string(),
                     )
                 } else {
@@ -152,7 +151,7 @@ impl Msg {
                 if let Some(d) = self.gasprice {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "tx.gasprice".to_string(),
                     )
                 } else {
@@ -168,7 +167,7 @@ impl Msg {
             "gaslimit" => {
                 if let Some(d) = self.gaslimit {
                     let c = Concrete::from(d);
-                    (analyzer.add_node(Node::Concrete(c)).into(), "".to_string())
+                    (analyzer.add_node(Node::Concrete(c)), "".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
@@ -184,7 +183,7 @@ impl Msg {
             }
         };
 
-        let mut var = ContextVar::new_from_concrete(loc, node, analyzer)?;
+        let mut var = ContextVar::new_from_concrete(loc, ctx, node.into(), analyzer)?;
         var.name = name.clone();
         var.display_name = name;
         var.is_tmp = false;

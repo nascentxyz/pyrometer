@@ -25,14 +25,13 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .modifier_state
                     .clone()
                 {
-                    // println!("going back to function execution from modifier: {}", mod_state.num);
                     let res = self.resume_from_modifier(ctx, mod_state.clone())?;
-                    // println!("back in modifier: {}", mod_state.num);
+                    println!("HERERERERE: {res:?}");
 
                     // TODO: inherit the input changes as well
                     // println!("inheriting back from parent into modifier");
-                    self.inherit_storage_changes(ctx, mod_state.parent_ctx)
-                        .into_expr_err(ident.loc)?;
+                    // self.inherit_storage_changes(ctx, mod_state.parent_ctx)
+                    //     .into_expr_err(ident.loc)?;
 
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
                     Ok(Some(res))

@@ -24,17 +24,17 @@ pub fn remapping_assert_no_ctx_killed(path_str: String, remapping_file: String, 
 }
 
 pub fn no_ctx_killed(analyzer: Analyzer, entry: NodeIdx) {
+    assert!(
+        analyzer.expr_errs.is_empty(),
+        "Analyzer encountered parse errors"
+    );
     let funcs = analyzer.search_children(entry, &Edge::Func);
     for func in funcs.into_iter() {
         if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
             assert!(ctx.killed_loc(&analyzer).unwrap().is_none());
-            ctx.underlying(&analyzer)
-                .unwrap()
-                .children
-                .iter()
-                .for_each(|subctx| {
-                    assert!(subctx.killed_loc(&analyzer).unwrap().is_none());
-                });
+            ctx.all_edges(&analyzer).unwrap().iter().for_each(|subctx| {
+                assert!(subctx.killed_loc(&analyzer).unwrap().is_none());
+            });
         }
     }
 }

@@ -17,14 +17,20 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         false_stmt: &Option<Box<Statement>>,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
-        )));
-        ctx.add_fork(true_subctx, self).into_expr_err(loc)?;
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
-        )));
-        ctx.add_fork(false_subctx, self).into_expr_err(loc)?;
+        let true_subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        let false_subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        ctx.set_child_fork(true_subctx, false_subctx, self)
+            .into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
         self.add_edge(
@@ -38,18 +44,14 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
             Edge::Context(ContextEdge::Subcontext),
         );
 
-        // println!("true_stmt: {true_stmt:#?}");
-
         self.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
-        // println!("\n\n HERE: {:?} \n\n", true_subctx.killed_loc(self));
         self.parse_ctx_statement(true_stmt, false, Some(true_subctx));
 
+        self.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
         if let Some(false_stmt) = false_stmt {
-            self.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
             self.parse_ctx_statement(false_stmt, false, Some(false_subctx));
-        } else {
-            self.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
         }
+
         Ok(())
     }
 
@@ -65,14 +67,20 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!("conditional operator");
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
-        )));
-        ctx.add_fork(true_subctx, self).into_expr_err(loc)?;
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(
-            Context::new_subctx(ctx, loc, true, None, false, self, None).into_expr_err(loc)?,
-        )));
-        ctx.add_fork(false_subctx, self).into_expr_err(loc)?;
+        let true_subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        let false_subctx = ContextNode::from(
+            self.add_node(Node::Context(
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
+                    .into_expr_err(loc)?,
+            )),
+        );
+        ctx.set_child_fork(true_subctx, false_subctx, self)
+            .into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
         self.add_edge(
@@ -157,7 +165,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         false_fork_ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         let inv_if_expr = Expression::Not(if_expr.loc(), Box::new(if_expr));
-        // println!("inverse if expr: {inv_if_expr:?}");
+        println!("inverse if expr: {inv_if_expr:?}");
         self.handle_require(&[inv_if_expr], false_fork_ctx)
     }
 }

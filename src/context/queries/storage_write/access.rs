@@ -1,4 +1,4 @@
-use crate::analyzers::{bounds::BoundAnalyzer, *};
+use crate::analyzers::{VarBoundAnalyzer, *};
 use shared::{
     analyzer::*,
     context::ContextNode,
@@ -60,8 +60,8 @@ impl ReportDisplay for AccessStorageWriteReport {
     }
 }
 
-impl<T> AccessStorageWriteQuery for T where T: BoundAnalyzer + Search + AnalyzerLike + Sized {}
-pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
+impl<T> AccessStorageWriteQuery for T where T: VarBoundAnalyzer + Search + AnalyzerLike + Sized {}
+pub trait AccessStorageWriteQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
     fn access_query(
         &self,
@@ -71,154 +71,155 @@ pub trait AccessStorageWriteQuery: BoundAnalyzer + Search + AnalyzerLike + Sized
         contract_name: String,
         storage_var_name: String,
     ) -> AccessStorageWriteReport {
+        todo!()
         // perform analysis on the contract for the storage var
         // collect bound changes of the var
-        let contract = self
-            .search_children(entry, &crate::Edge::Contract)
-            .into_iter()
-            .filter(|contract| ContractNode::from(*contract).name(self).unwrap() == contract_name)
-            .take(1)
-            .next()
-            .expect("No contract with provided name");
+        // let contract = self
+        //     .search_children(entry, &crate::Edge::Contract)
+        //     .into_iter()
+        //     .filter(|contract| ContractNode::from(*contract).name(self).unwrap() == contract_name)
+        //     .take(1)
+        //     .next()
+        //     .expect("No contract with provided name");
 
-        let con_node = ContractNode::from(contract);
-        let mut write_ctxs = vec![];
-        for func in con_node
-            .funcs(self)
-            .iter()
-            .filter(|func| func.is_public_or_ext(self).unwrap())
-        {
-            let ctx = func.body_ctx(self);
-            let terminals = ctx.terminal_child_list(self).unwrap();
-            let vars = self.recurse(ctx, storage_var_name.clone());
-            for var in vars {
-                for analysis in terminals
-                    .iter()
-                    .map(|child| {
-                        let mut parents = child.parent_list(self).unwrap();
-                        parents.reverse();
-                        parents.push(*child);
-                        self.bounds_for_var_in_family_tree(
-                            file_mapping,
-                            parents.clone(),
-                            var.clone(),
-                            report_config,
-                        )
-                    })
-                    .filter(|analysis| terminals.contains(&analysis.ctx))
-                    .filter(|analysis| !analysis.ctx.is_killed(self).unwrap())
-                // .filter(|analysis| !analysis.bound_changes.is_empty())
-                {
-                    // filter spurious bound changes
-                    // if analysis.bound_changes.len() > 2 {
-                    //     if let Some(init) = analysis.var_def.1 {
-                    //         if init.evaled_range_min(self)
-                    //             == analysis.bound_changes[0].1.evaled_range_min(self)
-                    //             && init.evaled_range_max(self)
-                    //                 == analysis.bound_changes[0].1.evaled_range_max(self)
-                    //         {
-                    //             continue;
-                    //         }
-                    //     }
-                    // }
+        // let con_node = ContractNode::from(contract);
+        // let mut write_ctxs = vec![];
+        // for func in con_node
+        //     .funcs(self)
+        //     .iter()
+        //     .filter(|func| func.is_public_or_ext(self).unwrap())
+        // {
+        //     let ctx = func.body_ctx(self);
+        //     let terminals = ctx.terminal_fork_list(self).unwrap();
+        //     let vars = self.recurse(ctx, storage_var_name.clone());
+        //     for var in vars {
+        //         for analysis in terminals
+        //             .iter()
+        //             .map(|child| {
+        //                 let mut parents = child.parent_list(self).unwrap();
+        //                 parents.reverse();
+        //                 parents.push(*child);
+        //                 self.bounds_for_var_in_family_tree(
+        //                     file_mapping,
+        //                     parents.clone(),
+        //                     var.clone(),
+        //                     report_config,
+        //                 )
+        //             })
+        //             .filter(|analysis| terminals.contains(&analysis.ctx))
+        //             .filter(|analysis| !analysis.ctx.is_killed(self).unwrap())
+        //         // .filter(|analysis| !analysis.bound_changes.is_empty())
+        //         {
+        //             // filter spurious bound changes
+        //             // if analysis.bound_changes.len() > 2 {
+        //             //     if let Some(init) = analysis.var_def.1 {
+        //             //         if init.evaled_range_min(self)
+        //             //             == analysis.bound_changes[0].1.evaled_range_min(self)
+        //             //             && init.evaled_range_max(self)
+        //             //                 == analysis.bound_changes[0].1.evaled_range_max(self)
+        //             //         {
+        //             //             continue;
+        //             //         }
+        //             //     }
+        //             // }
 
-                    write_ctxs.push(analysis.ctx);
-                }
-            }
-        }
+        //             write_ctxs.push(analysis.ctx);
+        //         }
+        //     }
+        // }
 
-        if write_ctxs.is_empty() {
-            AccessStorageWriteReport::new(vec![format!(
-                "No write access for storage var \"{storage_var_name}\" after constructor"
-            )])
-        } else {
-            let msgs = write_ctxs
-                .iter()
-                .map(|ctx| {
-                    let bounds_string = ctx
-                        .ctx_deps(self)
-                        .unwrap()
-                        .iter()
-                        .filter_map(|(_name, cvar)| {
-                            let min = if report_config.eval_bounds {
-                                cvar.range(self)
-                                    .unwrap()?
-                                    .evaled_range_min(self)
-                                    .unwrap()
-                                    .to_range_string(false, self)
-                                    .s
-                            } else if report_config.simplify_bounds {
-                                cvar.range(self)
-                                    .unwrap()?
-                                    .simplified_range_min(self)
-                                    .unwrap()
-                                    .to_range_string(false, self)
-                                    .s
-                            } else {
-                                cvar.range(self)
-                                    .unwrap()?
-                                    .range_min()
-                                    .to_range_string(false, self)
-                                    .s
-                            };
+        // if write_ctxs.is_empty() {
+        //     AccessStorageWriteReport::new(vec![format!(
+        //         "No write access for storage var \"{storage_var_name}\" after constructor"
+        //     )])
+        // } else {
+        //     let msgs = write_ctxs
+        //         .iter()
+        //         .map(|ctx| {
+        //             let bounds_string = ctx
+        //                 .ctx_deps(self)
+        //                 .unwrap()
+        //                 .iter()
+        //                 .filter_map(|(_name, cvar)| {
+        //                     let min = if report_config.eval_bounds {
+        //                         cvar.range(self)
+        //                             .unwrap()?
+        //                             .evaled_range_min(self)
+        //                             .unwrap()
+        //                             .to_range_string(false, self)
+        //                             .s
+        //                     } else if report_config.simplify_bounds {
+        //                         cvar.range(self)
+        //                             .unwrap()?
+        //                             .simplified_range_min(self)
+        //                             .unwrap()
+        //                             .to_range_string(false, self)
+        //                             .s
+        //                     } else {
+        //                         cvar.range(self)
+        //                             .unwrap()?
+        //                             .range_min()
+        //                             .to_range_string(false, self)
+        //                             .s
+        //                     };
 
-                            let max = if report_config.eval_bounds {
-                                cvar.range(self)
-                                    .unwrap()?
-                                    .evaled_range_max(self)
-                                    .unwrap()
-                                    .to_range_string(true, self)
-                                    .s
-                            } else if report_config.simplify_bounds {
-                                cvar.range(self)
-                                    .unwrap()?
-                                    .simplified_range_max(self)
-                                    .unwrap()
-                                    .to_range_string(true, self)
-                                    .s
-                            } else {
-                                cvar.range(self)
-                                    .unwrap()?
-                                    .range_max()
-                                    .to_range_string(true, self)
-                                    .s
-                            };
-                            if min == max {
-                                Some(format!(
-                                    "\"{}\" == {}",
-                                    cvar.display_name(self).unwrap(),
-                                    min,
-                                ))
-                            } else {
-                                Some(format!(
-                                    "\"{}\" ∈ [ {}, {} ]",
-                                    cvar.display_name(self).unwrap(),
-                                    min,
-                                    max,
-                                ))
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ∧ ");
+        //                     let max = if report_config.eval_bounds {
+        //                         cvar.range(self)
+        //                             .unwrap()?
+        //                             .evaled_range_max(self)
+        //                             .unwrap()
+        //                             .to_range_string(true, self)
+        //                             .s
+        //                     } else if report_config.simplify_bounds {
+        //                         cvar.range(self)
+        //                             .unwrap()?
+        //                             .simplified_range_max(self)
+        //                             .unwrap()
+        //                             .to_range_string(true, self)
+        //                             .s
+        //                     } else {
+        //                         cvar.range(self)
+        //                             .unwrap()?
+        //                             .range_max()
+        //                             .to_range_string(true, self)
+        //                             .s
+        //                     };
+        //                     if min == max {
+        //                         Some(format!(
+        //                             "\"{}\" == {}",
+        //                             cvar.display_name(self).unwrap(),
+        //                             min,
+        //                         ))
+        //                     } else {
+        //                         Some(format!(
+        //                             "\"{}\" ∈ [ {}, {} ]",
+        //                             cvar.display_name(self).unwrap(),
+        //                             min,
+        //                             max,
+        //                         ))
+        //                     }
+        //                 })
+        //                 .collect::<Vec<_>>()
+        //                 .join(" ∧ ");
 
-                    if bounds_string.is_empty() {
-                        format!(
-                            "Unrestricted write access of storage var \"{}\" via: function \"{}\"",
-                            storage_var_name,
-                            ctx.associated_fn_name(self).unwrap()
-                        )
-                    } else {
-                        format!(
-                            "Write access of storage var \"{}\" via: function \"{}\" if {}",
-                            storage_var_name,
-                            ctx.associated_fn_name(self).unwrap(),
-                            bounds_string
-                        )
-                    }
-                })
-                .collect();
-            AccessStorageWriteReport::new(msgs)
-        }
+        //             if bounds_string.is_empty() {
+        //                 format!(
+        //                     "Unrestricted write access of storage var \"{}\" via: function \"{}\"",
+        //                     storage_var_name,
+        //                     ctx.associated_fn_name(self).unwrap()
+        //                 )
+        //             } else {
+        //                 format!(
+        //                     "Write access of storage var \"{}\" via: function \"{}\" if {}",
+        //                     storage_var_name,
+        //                     ctx.associated_fn_name(self).unwrap(),
+        //                     bounds_string
+        //                 )
+        //             }
+        //         })
+        //         .collect();
+        //     AccessStorageWriteReport::new(msgs)
+        // }
     }
 
     fn recurse(&self, ctx: ContextNode, storage_var_name: String) -> Vec<String> {

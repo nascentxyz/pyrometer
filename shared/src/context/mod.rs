@@ -1,6 +1,7 @@
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike, Search};
 use crate::nodes::FunctionNode;
+use crate::AsDotStr;
 use crate::ContractNode;
 use crate::StructNode;
 use std::collections::BTreeSet;
@@ -12,6 +13,28 @@ use std::collections::BTreeMap;
 
 mod var;
 pub use var::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub enum CallFork {
+    Call(ContextNode),
+    Fork(ContextNode, ContextNode),
+}
+
+impl CallFork {
+    pub fn maybe_call(&self) -> Option<ContextNode> {
+        match self {
+            CallFork::Call(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    pub fn maybe_fork(&self) -> Option<(ContextNode, ContextNode)> {
+        match self {
+            CallFork::Fork(w1, w2) => Some((*w1, *w2)),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ContextEdge {
@@ -39,6 +62,9 @@ pub enum ContextEdge {
 
     // Control flow
     Return,
+    Continue,
+    InputVariable,
+    ReturnAssign(bool),
 
     // Range analysis
     Range,
@@ -95,10 +121,9 @@ pub struct Context {
     pub fn_call: Option<FunctionNode>,
     /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
     pub ext_fn_call: Option<FunctionNode>,
-    /// A vector of forks of this context
-    pub forks: Vec<ContextNode>,
-    /// A vector of children of this context
-    pub children: Vec<ContextNode>,
+    /// The child context. This is either of the form `Call(child_context)` or `Fork(world1, world2)`. Once
+    /// a child is defined we should *never* evaluate an expression in this context.
+    pub child: Option<CallFork>,
     /// A counter for temporary variables - this lets a context create unique temporary variables
     pub tmp_var_ctr: usize,
     /// The location in source of the context
@@ -107,6 +132,8 @@ pub struct Context {
     pub ret: Vec<(Loc, ContextVarNode)>,
     /// Range adjustments to occur after the statement finishes. Useful for post in/decrement
     pub post_statement_range_adjs: Vec<(ContextVarNode, Loc, bool)>,
+    /// Depth tracker
+    pub depth: usize,
 }
 
 impl Context {
@@ -122,25 +149,34 @@ impl Context {
             is_fork: false,
             fn_call: None,
             ext_fn_call: None,
-            forks: vec![],
-            children: vec![],
+            child: None,
             ret: vec![],
             loc,
             modifier_state: None,
             post_statement_range_adjs: vec![],
+            depth: 0,
         }
     }
 
     /// Creates a new subcontext from an existing context
     pub fn new_subctx(
         parent_ctx: ContextNode,
+        returning_ctx: Option<ContextNode>,
         loc: Loc,
-        is_fork: bool,
+        fork_expr: Option<&str>,
         fn_call: Option<FunctionNode>,
         fn_ext: bool,
-        analyzer: &impl GraphLike,
+        analyzer: &impl AnalyzerLike,
         modifier_state: Option<ModifierState>,
     ) -> Result<Self, GraphError> {
+        let mut depth = parent_ctx.underlying(analyzer)?.depth + 1;
+
+        if analyzer.max_depth() < depth {
+            return Err(GraphError::MaxStackDepthReached(format!(
+                "Stack depth limit reached: {}",
+                depth - 1
+            )));
+        }
         let (fn_name, ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
             if fn_ext {
                 (fn_call.name(analyzer)?, Some(fn_call), None)
@@ -151,45 +187,60 @@ impl Context {
             ("anonymous_fn_call".to_string(), None, None)
         };
 
+        let path = format!(
+            "{}.{}",
+            parent_ctx.underlying(analyzer)?.path,
+            if let Some(ref fork_expr) = fork_expr {
+                format!("fork{{ {} }}", fork_expr)
+            } else if let Some(returning_ctx) = returning_ctx {
+                depth = depth.saturating_sub(2);
+                format!(
+                    "resume{{ {} }}",
+                    returning_ctx.associated_fn_name(analyzer)?
+                )
+            } else {
+                fn_name
+            }
+        );
+
+        tracing::trace!("new subcontext path: {path}, depth: {depth}");
         Ok(Context {
             parent_fn: parent_ctx.underlying(analyzer)?.parent_fn,
             parent_ctx: Some(parent_ctx),
-            path: format!(
-                "{}.{}",
-                parent_ctx.underlying(analyzer)?.path,
-                if is_fork {
-                    format!("fork-{}", parent_ctx.underlying(analyzer)?.forks.len())
-                } else {
-                    format!(
-                        "{}-{}",
-                        fn_name,
-                        parent_ctx.underlying(analyzer)?.children.len()
-                    )
-                }
-            ),
-            is_fork,
+            path,
+            is_fork: fork_expr.is_some(),
             fn_call,
             ext_fn_call,
             ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),
             killed: None,
-            forks: vec![],
-            children: vec![],
+            child: None,
             tmp_var_ctr: parent_ctx.underlying(analyzer)?.tmp_var_ctr,
             ret: vec![],
             loc,
             modifier_state,
             post_statement_range_adjs: vec![],
+            depth,
         })
     }
 
-    /// Add a fork to this context
-    pub fn add_fork(&mut self, fork_node: ContextNode) {
-        self.forks.push(fork_node);
+    /// Set the child context to a fork
+    pub fn set_child_fork(&mut self, world1: ContextNode, world2: ContextNode) {
+        assert!(self.child.is_none(), "Tried to redefine child context");
+        self.child = Some(CallFork::Fork(world1, world2));
     }
 
-    /// Add a child to this context
-    pub fn add_child(&mut self, child_node: ContextNode) {
-        self.children.push(child_node);
+    /// Set the child context to a call
+    pub fn set_child_call(&mut self, call_ctx: ContextNode) -> bool {
+        if self.child.is_some() {
+            false
+        } else {
+            self.child = Some(CallFork::Call(call_ctx));
+            true
+        }
+    }
+
+    pub fn delete_child(&mut self) {
+        self.child = None;
     }
 
     pub fn as_string(&mut self) -> String {
@@ -207,46 +258,84 @@ pub struct CtxTree {
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 /// A wrapper of a node index that corresponds to a [`Context`]
 pub struct ContextNode(pub usize);
+
+impl AsDotStr for ContextNode {
+    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+        format!("Context {{ {} }}", self.path(analyzer))
+    }
+}
+
 impl ContextNode {
+    // pub fn called_functions(&self, analyzer: &impl GraphLike) -> Result<Vec<FunctionNode>, GraphError> {
+    //     self.underlying(analyzer)?.children.iter().filter_map(|child| {
+    //         match child.maybe_call()?.underlying(analyzer) {
+    //             Ok(underlying) => {
+    //                 match (underlying.fn_call, underlying.ext_fn_call) {
+    //                     (Some(fn_call), _) => Some(Ok(fn_call)),
+    //                     (_, Some(ext_fn_call)) => Some(Ok(ext_fn_call)),
+    //                     (None, None) => None
+    //                 }
+    //             }
+    //             Err(_) => None
+    //         }
+    //     }).collect()
+    // }
+
+    pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
+        self.local_vars(analyzer)
+            .iter()
+            .flat_map(|var| var.return_assignments(analyzer))
+            .collect()
+    }
+
+    pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
+        println!("vars_assigned_from_ext_fn_ret: {}", self.path(analyzer));
+        self.local_vars(analyzer)
+            .iter()
+            .flat_map(|var| var.ext_return_assignments(analyzer))
+            .collect()
+    }
+
+    pub fn depth(&self, analyzer: &impl GraphLike) -> usize {
+        self.underlying(analyzer).unwrap().depth
+    }
+
     /// The path of the underlying context
     pub fn path(&self, analyzer: &impl GraphLike) -> String {
         self.underlying(analyzer).unwrap().path.clone()
     }
 
-    pub fn into_ctx_tree(&self, analyzer: &impl GraphLike) -> CtxTree {
-        let forks = self.forks(analyzer).unwrap();
-        CtxTree {
-            node: *self,
-            lhs: if !forks.is_empty() {
-                Some(Box::new(forks[0].into_ctx_tree(analyzer)))
-            } else {
-                None
-            },
-            rhs: if !forks.is_empty() {
-                Some(Box::new(forks[1].into_ctx_tree(analyzer)))
-            } else {
-                None
-            },
-        }
-    }
+    // pub fn into_ctx_tree(&self, analyzer: &impl GraphLike) -> CtxTree {
+    //     let forks = self.forks(analyzer).unwrap();
+    //     CtxTree {
+    //         node: *self,
+    //         lhs: if !forks.is_empty() {
+    //             Some(Box::new(forks[0].into_ctx_tree(analyzer)))
+    //         } else {
+    //             None
+    //         },
+    //         rhs: if !forks.is_empty() {
+    //             Some(Box::new(forks[1].into_ctx_tree(analyzer)))
+    //         } else {
+    //             None
+    //         },
+    //     }
+    // }
 
     /// *All* subcontexts (including subcontexts of subcontexts, recursively)
     pub fn subcontexts(&self, analyzer: &impl GraphLike) -> Vec<ContextNode> {
         let underlying = self.underlying(analyzer).unwrap();
-        let mut subctxs = underlying.forks.clone();
-        subctxs.extend(underlying.children.clone());
-        subctxs
-        // analyzer
-        //     .search_children(self.0.into(), &Edge::Context(ContextEdge::Subcontext))
-        //     .into_iter()
-        //     .map(ContextNode::from)
-        //     .collect()
+        match underlying.child {
+            Some(CallFork::Call(c)) => vec![c],
+            Some(CallFork::Fork(w1, w2)) => vec![w1, w2],
+            None => vec![],
+        }
     }
 
     /// Gets the associated contract for the function for the context
     pub fn associated_contract(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &(impl GraphLike + AnalyzerLike),
     ) -> Result<ContractNode, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -257,7 +346,7 @@ impl ContextNode {
     /// Tries to get the associated function for the context
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &(impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ContractNode>, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -282,7 +371,7 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_modifiers(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &(impl GraphLike + AnalyzerLike),
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
@@ -321,7 +410,8 @@ impl ContextNode {
                     let as_vec = modifier_set.iter().collect::<Vec<_>>();
 
                     if as_vec.len() > 2 {
-                        panic!("3+ visible functions with the same name. This is invalid solidity")
+                        println!("{}", as_vec.iter().map(|i| i.name(analyzer).unwrap()).collect::<Vec<_>>().join(", "));
+                        panic!("3+ visible functions with the same name. This is invalid solidity, {as_vec:#?}")
                     } else if as_vec.len() == 2 {
                         as_vec[0].get_overriding(as_vec[1], analyzer)
                     } else {
@@ -383,7 +473,8 @@ impl ContextNode {
                     let as_vec = funcs_set.iter().collect::<Vec<_>>();
 
                     if as_vec.len() > 2 {
-                        panic!("3+ visible functions with the same name. This is invalid solidity")
+                        println!("{}", as_vec.iter().map(|i| i.name(analyzer).unwrap()).collect::<Vec<_>>().join(", "));
+                        panic!("3+ visible functions with the same name. This is invalid solidity, {as_vec:#?}")
                     } else if as_vec.len() == 2 {
                         as_vec[0].get_overriding(as_vec[1], analyzer)
                     } else {
@@ -425,14 +516,21 @@ impl ContextNode {
 
     /// Gets the associated function for the context
     pub fn associated_fn(&self, analyzer: &impl GraphLike) -> Result<FunctionNode, GraphError> {
-        Ok(self.underlying(analyzer)?.parent_fn)
+        let underlying = self.underlying(analyzer)?;
+        if let Some(fn_call) = underlying.fn_call {
+            Ok(fn_call)
+        } else if let Some(ext_fn_call) = underlying.ext_fn_call {
+            Ok(ext_fn_call)
+        } else {
+            Ok(underlying.parent_fn)
+        }
     }
 
     /// Checks whether a function is external to the current context
     pub fn is_fn_ext(
         &self,
         fn_node: FunctionNode,
-        analyzer: &impl GraphLike,
+        analyzer: &(impl GraphLike + AnalyzerLike),
     ) -> Result<bool, GraphError> {
         match fn_node.maybe_associated_contract(analyzer) {
             None => Ok(false),
@@ -456,7 +554,7 @@ impl ContextNode {
 
     /// Gets the associated function name for the context
     pub fn associated_fn_name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
-        self.underlying(analyzer)?.parent_fn.name(analyzer)
+        self.associated_fn(analyzer)?.name(analyzer)
     }
 
     /// Gets a mutable reference to the underlying context in the graph
@@ -585,42 +683,138 @@ impl ContextNode {
     }
 
     /// Returns all forks associated with the context
-    pub fn forks(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
-        let context = self.underlying(analyzer)?;
-        Ok(context.forks.clone())
+    pub fn calls(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+        let descendents = self.descendents(analyzer)?;
+        Ok(descendents
+            .into_iter()
+            .filter_map(|c| c.maybe_call())
+            .collect())
     }
 
-    /// Returns all *live* forks associated with the context
-    pub fn live_forks(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
-        let context = self.underlying(analyzer)?;
-        let mut live = vec![];
-        for fork in context.forks.iter() {
-            if !fork.is_ended(analyzer)? {
-                live.push(*fork);
+    /// Returns all forks associated with the context
+    // pub fn forks(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+    // todo!()
+    // let descendents = self.descendents(analyzer)?;
+    // Ok(descendents.into_iter().filter_map(|c| c.maybe_fork()).collect())
+    // }
+
+    // /// Returns all *live* forks associated with the context
+    // pub fn live_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+    //     let forks = self.forks(analyzer)?;
+    //     let mut live = vec![];
+    //     for fork in forks {
+    //         if !fork.is_ended(analyzer)? {
+    //             live.push(fork);
+    //         }
+    //     }
+    //     Ok(live)
+    // }
+
+    /// Returns tail contexts associated with the context
+    pub fn live_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+        let edges = self.all_edges(analyzer)?;
+        // println!("\nall edges: [\n{}]\n", edges.iter().map(|i| format!("   {},\n", i.path(analyzer))).collect::<Vec<_>>().join(""));
+        Ok(edges
+            .into_iter()
+            .filter(|edge| !edge.killed_or_ret(analyzer).unwrap())
+            .collect())
+    }
+
+    /// Returns tail contexts associated with the context
+    pub fn all_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+        if let Some(child) = self.underlying(analyzer)?.child {
+            let mut lineage = vec![];
+            match child {
+                CallFork::Call(call) => {
+                    let call_edges = call.all_edges(analyzer)?;
+                    if call_edges.is_empty() {
+                        lineage.push(call)
+                    } else {
+                        lineage.extend(call_edges);
+                    }
+                }
+                CallFork::Fork(w1, w2) => {
+                    let fork_edges = w1.all_edges(analyzer)?;
+                    if fork_edges.is_empty() {
+                        lineage.push(w1)
+                    } else {
+                        lineage.extend(fork_edges);
+                    }
+
+                    let fork_edges = w2.all_edges(analyzer)?;
+                    if fork_edges.is_empty() {
+                        lineage.push(w2)
+                    } else {
+                        lineage.extend(fork_edges);
+                    }
+                }
             }
+            Ok(lineage)
+        } else {
+            Ok(vec![])
         }
-        Ok(live)
+    }
+
+    pub fn descendents(&self, analyzer: &impl GraphLike) -> Result<Vec<CallFork>, GraphError> {
+        if let Some(child) = self.underlying(analyzer)?.child {
+            let mut descendents = vec![child];
+            match child {
+                CallFork::Call(c) => descendents.extend(c.descendents(analyzer)?),
+                CallFork::Fork(w1, w2) => {
+                    descendents.extend(w1.descendents(analyzer)?);
+                    descendents.extend(w2.descendents(analyzer)?);
+                }
+            }
+            Ok(descendents)
+        } else {
+            Ok(vec![])
+        }
     }
 
     /// Adds a fork to the context
-    pub fn add_fork(
+    pub fn set_child_fork(
         &self,
-        fork: ContextNode,
+        w1: ContextNode,
+        w2: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
-        context.add_fork(fork);
+        context.set_child_fork(w1, w2);
         Ok(())
     }
 
     /// Adds a child to the context
-    pub fn add_child(
+    pub fn set_child_call(
         &self,
-        child: ContextNode,
+        call: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
-        context.add_child(child);
+        if !context.set_child_call(call) {
+            let child_str = match context.child {
+                Some(CallFork::Fork(w1, w2)) => {
+                    format!("fork {{ {}, {} }}", w1.path(analyzer), w2.path(analyzer))
+                }
+                Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
+                None => unreachable!(),
+            };
+            Err(GraphError::ChildRedefinition(format!(
+                "Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
+                self.path(analyzer),
+                child_str,
+                call.path(analyzer)
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn delete_child(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        let context = self.underlying_mut(analyzer)?;
+        context.delete_child();
         Ok(())
     }
 
@@ -631,11 +825,28 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         kill_loc: Loc,
     ) -> Result<(), GraphError> {
+        println!("killing: {}", self.path(analyzer));
         let context = self.underlying_mut(analyzer)?;
+        let child = context.child;
+        let parent = context.parent_ctx;
         context.killed = Some(kill_loc);
-        if let Some(parent_ctx) = context.parent_ctx {
+
+        if let Some(child) = child {
+            match child {
+                CallFork::Call(call) => {
+                    call.kill(analyzer, kill_loc)?;
+                }
+                CallFork::Fork(w1, w2) => {
+                    w1.kill(analyzer, kill_loc)?;
+                    w2.kill(analyzer, kill_loc)?;
+                }
+            }
+        }
+
+        if let Some(parent_ctx) = parent {
             parent_ctx.end_if_all_forks_ended(analyzer, kill_loc)?;
         }
+
         Ok(())
     }
 
@@ -645,7 +856,7 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         kill_loc: Loc,
     ) -> Result<(), GraphError> {
-        if self.live_forks(analyzer)?.is_empty() {
+        if self.live_edges(analyzer)?.is_empty() {
             let context = self.underlying_mut(analyzer)?;
             context.killed = Some(kill_loc);
             if let Some(parent_ctx) = context.parent_ctx {
@@ -666,36 +877,107 @@ impl ContextNode {
         Ok(parents)
     }
 
-    /// Gets all terminal children
+    pub fn recursive_calls(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Vec<ContextNode>, GraphError> {
+        // Ok(
+        let calls = self.calls(analyzer)?;
+        Ok(calls
+            .iter()
+            .flat_map(|call| {
+                let mut inner_calls = call.recursive_calls(analyzer).unwrap();
+                inner_calls.insert(0, *call);
+                inner_calls
+            })
+            .collect::<Vec<ContextNode>>())
+    }
+
+    /// Gets the lineage for a context
+    /// A lineage is of the form `[ancestor N, .. , ancestor0, SELF, call0, .., call N]`. It
+    /// gives the user a full picture of control flow
+    pub fn lineage(
+        &self,
+        analyzer: &impl GraphLike,
+        entry: bool,
+    ) -> Result<Vec<ContextNode>, GraphError> {
+        todo!()
+        // let context = self.underlying(analyzer)?;
+        // let mut parents = if entry {
+        //     let mut calls = self.recursive_calls(analyzer)?;
+        //     calls.insert(0, *self);
+        //     calls
+        // } else {
+        //     vec![]
+        // };
+
+        // if let Some(parent_ctx) = context.parent_ctx {
+        //     let parent = parent_ctx.underlying(analyzer)?;
+        //     let mut children = parent.children.clone();
+        //     let mut count = false;
+        //     children.reverse();
+        //     for child in children.into_iter() {
+        //         if child == CallFork::Fork(*self) {
+        //             count = true;
+        //         } else if count {
+        //             if let CallFork::Call(c) = child { parents.push(c) }
+        //         }
+        //     }
+        //     parents.push(parent_ctx);
+        //     parents.extend(parent_ctx.lineage(analyzer, false)?);
+        // }
+
+        // Ok(parents)
+    }
+
+    /// Gets all terminal forks
+    // pub fn terminal_list(
+    //     &self,
+    //     analyzer: &impl GraphLike,
+    // ) -> Result<Vec<ContextNode>, GraphError> {
+    //     let children = &self.underlying(analyzer)?.children;
+    //     if children.is_empty() {
+    //         Ok(vec![*self])
+    //     } else {
+    //         let mut forks = vec![];
+
+    //         for child in children.iter() {
+    //             forks.extend(child.either().terminal_list(analyzer)?)
+    //         }
+    //         Ok(forks)
+    //     }
+    // }
+
+    /// Gets all terminal forks
+    // pub fn terminal_fork_list(
+    //     &self,
+    //     analyzer: &impl GraphLike,
+    // ) -> Result<Vec<ContextNode>, GraphError> {
+    //     let curr_forks = self.forks(analyzer)?;
+    //     if curr_forks.is_empty() {
+    //         Ok(vec![*self])
+    //     } else {
+    //         let mut forks = vec![];
+
+    //         for fork in curr_forks.into_iter() {
+    //             forks.extend(fork.terminal_fork_list(analyzer)?)
+    //         }
+    //         Ok(forks)
+    //     }
+    // }
+
     pub fn terminal_child_list(
         &self,
         analyzer: &impl GraphLike,
     ) -> Result<Vec<ContextNode>, GraphError> {
-        let context = self.underlying(analyzer)?;
-        if context.forks.is_empty() {
-            Ok(vec![*self])
-        } else {
-            let mut forks = vec![];
-
-            for fork in context.forks.clone().into_iter() {
-                forks.extend(fork.terminal_child_list(analyzer)?)
-            }
-            Ok(forks)
-        }
-    }
-
-    pub fn returning_child_list(
-        &self,
-        analyzer: &impl GraphLike,
-    ) -> Result<Vec<ContextNode>, GraphError> {
-        let context = self.underlying(analyzer)?;
-        if context.children.is_empty() {
+        let calls = self.calls(analyzer)?;
+        if calls.is_empty() {
             Ok(vec![*self])
         } else {
             let mut children = vec![];
 
-            for child in context.children.clone().into_iter() {
-                children.extend(child.returning_child_list(analyzer)?)
+            for child in calls.into_iter() {
+                children.extend(child.terminal_child_list(analyzer)?)
             }
             Ok(children)
         }
@@ -709,7 +991,27 @@ impl ContextNode {
     /// Returns whether the context is killed
     pub fn is_ended(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        Ok(underlying.killed.is_some() || !underlying.ret.is_empty())
+        println!(
+            "{} is ended via: (child: {}, killed: {}, returns: {})",
+            self.path(analyzer),
+            underlying.child.is_some(),
+            underlying.killed.is_some(),
+            !underlying.ret.is_empty()
+        );
+        Ok(underlying.child.is_some() || underlying.killed.is_some() || !underlying.ret.is_empty())
+    }
+
+    pub fn killed_or_ret(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        println!(
+            "{} is killed or returns via: (killed: {}, returns: {}, modifier active: {})",
+            self.path(analyzer),
+            underlying.killed.is_some(),
+            !underlying.ret.is_empty(),
+            underlying.modifier_state.is_some()
+        );
+        Ok(underlying.killed.is_some()
+            || (!underlying.ret.is_empty() && underlying.modifier_state.is_none()))
     }
 
     /// Returns an option to where the context was killed
@@ -736,6 +1038,8 @@ impl ContextNode {
             let dep_name = dep.name(analyzer)?;
             let underlying = self.underlying_mut(analyzer)?;
             underlying.ctx_deps.insert(dep_name, dep);
+        } else {
+            println!("HERERERERE {:#?}", dep.underlying(analyzer));
         }
         Ok(())
     }

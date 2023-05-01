@@ -52,12 +52,10 @@ pub trait NameSpaceFuncCaller:
         if let Variable(Identifier { name, .. }) = member_expr {
             if name == "abi" {
                 let func_name = format!("abi.{}", ident.name);
-                let as_fn = self
-                    .builtin_fns()
-                    .get(&func_name)
+                let fn_node = self
+                    .builtin_fn_or_maybe_add(&func_name)
                     .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
-                let fn_node = FunctionNode::from(self.add_node(as_fn.clone()));
-                return self.intrinsic_func_call(loc, input_exprs, fn_node.into(), ctx);
+                return self.intrinsic_func_call(loc, input_exprs, fn_node, ctx);
             }
         }
 

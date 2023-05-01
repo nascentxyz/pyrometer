@@ -52,6 +52,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         is_tmp: false,
                         is_symbolic: false,
                         tmp_of: None,
+                        is_return: false,
                         ty,
                     };
                     let input_node = self.add_node(Node::ContextVar(var));
@@ -75,6 +76,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 is_tmp: true,
                                 is_symbolic: false,
                                 tmp_of: None,
+                                is_return: false,
                                 ty,
                             };
                             let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
