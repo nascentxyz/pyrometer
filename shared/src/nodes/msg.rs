@@ -99,10 +99,7 @@ impl Msg {
             "sig" => {
                 if let Some(d) = self.sig {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)).into(),
-                        "msg.sig".to_string(),
-                    )
+                    (analyzer.add_node(Node::Concrete(c)), "msg.sig".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Bytes(4));
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;

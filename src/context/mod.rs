@@ -6,7 +6,6 @@ use shared::analyzer::GraphLike;
 use shared::context::*;
 use solang_parser::helpers::CodeLocation;
 use solang_parser::pt::YulStatement;
-use std::collections::BTreeMap;
 
 use shared::range::elem_ty::Dynamic;
 

@@ -120,7 +120,7 @@ impl ReportDisplay for StorageRangeReport {
 
         report.add_labels(self.analysis.labels(analyzer));
 
-        let mut reports = vec![report.finish()];
+        let reports = vec![report.finish()];
 
         // if self.analysis.report_config.show_subctxs {
         //     reports.extend(

@@ -13,7 +13,6 @@ use shared::context::ContextVarNode;
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::ContextNode,
-    nodes::*,
 };
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 

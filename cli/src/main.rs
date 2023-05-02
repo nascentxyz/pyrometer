@@ -180,7 +180,7 @@ fn main() {
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
-                        println!("{:#?}", analyzer.call_trace(ctx));
+                        // println!("{:#?}", analyzer.call_trace(ctx));
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);
@@ -188,11 +188,11 @@ fn main() {
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
-                analyzer
-                    .call_trace(ctx)
-                    .unwrap()
-                    .into_iter()
-                    .for_each(|i| println!("{i}\n"));
+                // analyzer
+                //     .call_trace(ctx)
+                //     .unwrap()
+                //     .into_iter()
+                //     .for_each(|i| println!("{i}\n"));
                 let analysis = analyzer
                     .bounds_for_all(&file_mapping, ctx, config)
                     .as_cli_compat(&file_mapping);

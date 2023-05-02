@@ -978,7 +978,7 @@ pub trait FuncCaller:
                                         .into_expr_err(Loc::Implicit)?,
                                     )),
                                 );
-                                let res = ctx.set_child_call(callee_ctx, self);
+                                let _res = ctx.set_child_call(callee_ctx, self);
                                 let ret = self.parse_ctx_expr(expr, callee_ctx)?;
                                 ctx.delete_child(self);
                                 Ok(ret.try_as_func_input_str(self))

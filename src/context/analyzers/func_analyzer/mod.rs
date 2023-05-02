@@ -1,8 +1,7 @@
 use crate::analyzers::range_parts;
 use crate::analyzers::VarBoundAnalysis;
 use crate::analyzers::VarBoundAnalyzer;
-use crate::analyzers::MAX_COLOR;
-use crate::analyzers::MIN_COLOR;
+
 use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
 use ariadne::ReportKind;
 use std::collections::BTreeSet;
@@ -11,7 +10,6 @@ use shared::analyzer::GraphLike;
 use shared::{
     analyzer::{AnalyzerLike, Search},
     context::*,
-    range::{range_string::*, Range},
 };
 
 use ariadne::{Color, Config, Fmt, Label, Report, Span};

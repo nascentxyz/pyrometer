@@ -3,9 +3,8 @@ use crate::Node;
 use petgraph::graph::Graph;
 use petgraph::Directed;
 use shared::context::ContextNode;
-use shared::context::TmpConstruction;
+
 use shared::range::elem::RangeOp;
-use shared::NodeIdx;
 
 pub struct SolverEdge {
     pub op: RangeOp,
@@ -26,8 +25,8 @@ pub struct SolverGraph {
 impl SolverGraph {
     pub fn new(ctx: ContextNode, analyzer: &impl GraphLike) -> Self {
         let deps = ctx.ctx_deps(analyzer).unwrap();
-        let mut sg = SG::default();
-        deps.iter().for_each(|(_k, v)| {});
+        let _sg = SG::default();
+        deps.iter().for_each(|(_k, _v)| {});
 
         todo!()
     }

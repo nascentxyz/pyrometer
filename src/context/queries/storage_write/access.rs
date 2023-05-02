@@ -2,8 +2,7 @@ use crate::analyzers::{VarBoundAnalyzer, *};
 use shared::{
     analyzer::*,
     context::ContextNode,
-    nodes::{ContractNode, TypeNode, VarType},
-    range::{range_string::ToRangeString, Range},
+    nodes::{TypeNode, VarType},
     NodeIdx,
 };
 
@@ -65,11 +64,11 @@ pub trait AccessStorageWriteQuery: VarBoundAnalyzer + Search + AnalyzerLike + Si
     #[allow(clippy::too_many_arguments)]
     fn access_query(
         &self,
-        entry: NodeIdx,
-        file_mapping: &'_ BTreeMap<usize, String>,
-        report_config: ReportConfig,
-        contract_name: String,
-        storage_var_name: String,
+        _entry: NodeIdx,
+        _file_mapping: &'_ BTreeMap<usize, String>,
+        _report_config: ReportConfig,
+        _contract_name: String,
+        _storage_var_name: String,
     ) -> AccessStorageWriteReport {
         todo!()
         // perform analysis on the contract for the storage var

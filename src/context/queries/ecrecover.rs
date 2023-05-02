@@ -1,11 +1,9 @@
 use crate::analyzers::{VarBoundAnalyzer, *};
 use shared::context::CallFork;
-use shared::nodes::FunctionNode;
-use shared::{analyzer::*, nodes::ContractNode, NodeIdx};
-use shared::{context::ContextEdge, Edge};
+
+use shared::{analyzer::*, NodeIdx};
 
 use ariadne::{Cache, Color, Config, Label, Report, ReportKind};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct TaintReport {
@@ -60,7 +58,7 @@ impl ReportDisplay for TaintReport {
 impl<T> TaintQuery for T where T: VarBoundAnalyzer + Search + AnalyzerLike + Sized {}
 pub trait TaintQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
-    fn taint_query(&self, entry: NodeIdx, contract_name: String) {
+    fn taint_query(&self, _entry: NodeIdx, _contract_name: String) {
         // let contract = self
         //     .search_children(entry, &crate::Edge::Contract)
         //     .into_iter()
@@ -81,7 +79,7 @@ pub trait TaintQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
         // }
     }
 
-    fn recurse_children(&self, child: CallFork) {
+    fn recurse_children(&self, _child: CallFork) {
         // let node = child.either();
         // let ext_ret_assignments = node.vars_assigned_from_ext_fn_ret(self);
         // println!("\n\next ret assignments: {:#?}\n\n", ext_ret_assignments);

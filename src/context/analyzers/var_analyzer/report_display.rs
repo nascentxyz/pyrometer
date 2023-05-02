@@ -77,7 +77,7 @@ impl ReportDisplay for VarBoundAnalysis {
             );
         }
 
-        let mut reports = vec![report.finish()];
+        let reports = vec![report.finish()];
 
         // if self.report_config.show_subctxs {
         //     reports.extend(

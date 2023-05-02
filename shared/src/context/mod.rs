@@ -920,8 +920,8 @@ impl ContextNode {
     /// gives the user a full picture of control flow
     pub fn lineage(
         &self,
-        analyzer: &impl GraphLike,
-        entry: bool,
+        _analyzer: &impl GraphLike,
+        _entry: bool,
     ) -> Result<Vec<ContextNode>, GraphError> {
         todo!()
         // let context = self.underlying(analyzer)?;
