@@ -27,6 +27,7 @@ mod builtin_fns;
 
 pub mod context;
 pub mod graph_solver;
+pub mod tracer;
 // pub mod range;
 use context::*;
 pub use shared;

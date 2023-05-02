@@ -224,9 +224,13 @@ impl Context {
     }
 
     /// Set the child context to a fork
-    pub fn set_child_fork(&mut self, world1: ContextNode, world2: ContextNode) {
-        assert!(self.child.is_none(), "Tried to redefine child context");
-        self.child = Some(CallFork::Fork(world1, world2));
+    pub fn set_child_fork(&mut self, world1: ContextNode, world2: ContextNode) -> bool {
+        if self.child.is_some() {
+            false
+        } else {
+            self.child = Some(CallFork::Fork(world1, world2));
+            true
+        }
     }
 
     /// Set the child context to a call
@@ -289,7 +293,7 @@ impl ContextNode {
     }
 
     pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
-        println!("vars_assigned_from_ext_fn_ret: {}", self.path(analyzer));
+        // println!("vars_assigned_from_ext_fn_ret: {}", self.path(analyzer));
         self.local_vars(analyzer)
             .iter()
             .flat_map(|var| var.ext_return_assignments(analyzer))
@@ -779,8 +783,26 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
-        context.set_child_fork(w1, w2);
-        Ok(())
+        if !context.set_child_fork(w1, w2) {
+            let child_str = match context.child {
+                Some(CallFork::Fork(w1, w2)) => {
+                    format!("fork {{ {}, {} }}", w1.path(analyzer), w2.path(analyzer))
+                }
+                Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
+                None => unreachable!(),
+            };
+            Err(GraphError::ChildRedefinition(format!(
+            // panic!(
+                "Tried to redefine a child context, parent: {}, current child: {}, new child: Fork({}, {})",
+                self.path(analyzer),
+                child_str,
+                w1.path(analyzer),
+                w2.path(analyzer),
+            )
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     /// Adds a child to the context
@@ -799,6 +821,7 @@ impl ContextNode {
                 None => unreachable!(),
             };
             Err(GraphError::ChildRedefinition(format!(
+                // panic!(
                 "Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
                 self.path(analyzer),
                 child_str,
@@ -825,7 +848,6 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         kill_loc: Loc,
     ) -> Result<(), GraphError> {
-        println!("killing: {}", self.path(analyzer));
         let context = self.underlying_mut(analyzer)?;
         let child = context.child;
         let parent = context.parent_ctx;
@@ -991,25 +1013,25 @@ impl ContextNode {
     /// Returns whether the context is killed
     pub fn is_ended(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        println!(
-            "{} is ended via: (child: {}, killed: {}, returns: {})",
-            self.path(analyzer),
-            underlying.child.is_some(),
-            underlying.killed.is_some(),
-            !underlying.ret.is_empty()
-        );
+        // println!(
+        //     "{} is ended via: (child: {}, killed: {}, returns: {})",
+        //     self.path(analyzer),
+        //     underlying.child.is_some(),
+        //     underlying.killed.is_some(),
+        //     !underlying.ret.is_empty()
+        // );
         Ok(underlying.child.is_some() || underlying.killed.is_some() || !underlying.ret.is_empty())
     }
 
     pub fn killed_or_ret(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        println!(
-            "{} is killed or returns via: (killed: {}, returns: {}, modifier active: {})",
-            self.path(analyzer),
-            underlying.killed.is_some(),
-            !underlying.ret.is_empty(),
-            underlying.modifier_state.is_some()
-        );
+        // println!(
+        //     "{} is killed or returns via: (killed: {}, returns: {}, modifier active: {})",
+        //     self.path(analyzer),
+        //     underlying.killed.is_some(),
+        //     !underlying.ret.is_empty(),
+        //     underlying.modifier_state.is_some()
+        // );
         Ok(underlying.killed.is_some()
             || (!underlying.ret.is_empty() && underlying.modifier_state.is_none()))
     }
@@ -1038,8 +1060,6 @@ impl ContextNode {
             let dep_name = dep.name(analyzer)?;
             let underlying = self.underlying_mut(analyzer)?;
             underlying.ctx_deps.insert(dep_name, dep);
-        } else {
-            println!("HERERERERE {:#?}", dep.underlying(analyzer));
         }
         Ok(())
     }

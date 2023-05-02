@@ -74,7 +74,7 @@ fn main() {
             simplify_bounds: false,
             show_tmps: false,
             show_consts: false,
-            show_subctxs: true,
+            show_symbolics: false,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
         },
@@ -82,8 +82,8 @@ fn main() {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: false,
-            show_consts: true,
-            show_subctxs: true,
+            show_consts: false,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
         },
@@ -91,8 +91,8 @@ fn main() {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
-            show_consts: true,
-            show_subctxs: true,
+            show_consts: false,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
         },
@@ -100,8 +100,8 @@ fn main() {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
-            show_consts: true,
-            show_subctxs: true,
+            show_consts: false,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: false,
         },
@@ -110,16 +110,16 @@ fn main() {
             simplify_bounds: false,
             show_tmps: true,
             show_consts: true,
-            show_subctxs: true,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
-            show_all_lines: true,
+            show_all_lines: false,
         },
         _ => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
             show_consts: true,
-            show_subctxs: true,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: true,
         },
@@ -180,6 +180,7 @@ fn main() {
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+                        println!("{:#?}", analyzer.call_trace(ctx));
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);
@@ -187,6 +188,11 @@ fn main() {
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+                analyzer
+                    .call_trace(ctx)
+                    .unwrap()
+                    .into_iter()
+                    .for_each(|i| println!("{i}\n"));
                 let analysis = analyzer
                     .bounds_for_all(&file_mapping, ctx, config)
                     .as_cli_compat(&file_mapping);
@@ -221,7 +227,6 @@ fn main() {
     }
 
     args.query.iter().for_each(|query| {
-        println!("HERE, {query}");
         analyzer.taint_query(entry, query.to_string());
         // .print_reports(&mut source_map, &analyzer);
         println!();

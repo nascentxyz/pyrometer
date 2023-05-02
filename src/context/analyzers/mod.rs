@@ -113,7 +113,7 @@ pub struct ReportConfig {
     pub simplify_bounds: bool,
     pub show_tmps: bool,
     pub show_consts: bool,
-    pub show_subctxs: bool,
+    pub show_symbolics: bool,
     pub show_initial_bounds: bool,
     pub show_all_lines: bool,
 }
@@ -124,7 +124,7 @@ impl ReportConfig {
         simplify_bounds: bool,
         show_tmps: bool,
         show_consts: bool,
-        show_subctxs: bool,
+        show_symbolics: bool,
         show_initial_bounds: bool,
         show_all_lines: bool,
     ) -> Self {
@@ -133,7 +133,7 @@ impl ReportConfig {
             simplify_bounds,
             show_tmps,
             show_consts,
-            show_subctxs,
+            show_symbolics,
             show_initial_bounds,
             show_all_lines,
         }
@@ -147,8 +147,8 @@ impl Default for ReportConfig {
             simplify_bounds: false,
             show_tmps: false,
             show_consts: false,
-            show_subctxs: true,
-            show_initial_bounds: true,
+            show_symbolics: true,
+            show_initial_bounds: false,
             show_all_lines: false,
         }
     }

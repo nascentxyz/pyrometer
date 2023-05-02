@@ -34,7 +34,7 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     //     .into_expr_err(ident.loc)?;
 
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
-                    Ok(Some(res))
+                    Ok(None)
                 } else {
                     Ok(None)
                 }

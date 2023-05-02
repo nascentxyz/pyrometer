@@ -23,6 +23,7 @@ pub enum GraphError {
     NodeConfusion(String),
     MaxStackDepthReached(String),
     ChildRedefinition(String),
+    VariableUpdateInOldContext(String),
     DetachedVariable(String),
 }
 
@@ -46,7 +47,6 @@ pub trait AnalyzerLike: GraphLike {
         }
     }
     fn builtin_fn_or_maybe_add(&mut self, builtin_name: &str) -> Option<NodeIdx> {
-        println!("adding function name: {}", builtin_name);
         if let Some(idx) = self.builtin_fn_nodes().get(builtin_name) {
             Some(*idx)
         } else if let Some(func) = self.builtin_fns().get(builtin_name) {
@@ -208,9 +208,13 @@ pub trait GraphLike {
                     handled_nodes.lock().unwrap().insert(*child);
                 }
 
-                // if g.graph.edges_directed(*child, Direction::Outgoing).collect::<Vec<_>>().is_empty() {
-                //     return "".to_string()
-                // }
+                if g.graph
+                    .edges_directed(*child, Direction::Outgoing)
+                    .collect::<Vec<_>>()
+                    .is_empty()
+                {
+                    return "".to_string();
+                }
                 let post_str = match self.node(*child) {
                     Node::Context(c) => {
                         cn += 2;
@@ -288,14 +292,19 @@ pub trait GraphLike {
             self.graph().edge_indices().collect::<Vec<_>>(),
         );
         let mut cluster_num = 0;
-        // let mut skip = BTreeSet::default();
+        let mut skip = BTreeSet::default();
         let nodes_str = nodes
             .iter()
             .filter_map(|node| {
-                // if self.graph().edges_directed(*node, Direction::Outgoing).collect::<Vec<_>>().is_empty() {
-                // skip.insert(*node);
-                // return None
-                // }
+                if self
+                    .graph()
+                    .edges_directed(*node, Direction::Outgoing)
+                    .collect::<Vec<_>>()
+                    .is_empty()
+                {
+                    skip.insert(*node);
+                    return None;
+                }
                 if !handled_nodes.lock().unwrap().contains(node) {
                     match self.node(*node) {
                         Node::Function(_) => {
@@ -326,9 +335,9 @@ pub trait GraphLike {
             .filter_map(|edge| {
                 if !handled_edges.lock().unwrap().contains(&edge) {
                     let (from, to) = self.graph().edge_endpoints(edge).unwrap();
-                    // if skip.contains(&from) || skip.contains(&to) {
-                    //     return None;
-                    // }
+                    if skip.contains(&from) || skip.contains(&to) {
+                        return None;
+                    }
                     let from = from.index();
                     let to = to.index();
                     Some(format!(

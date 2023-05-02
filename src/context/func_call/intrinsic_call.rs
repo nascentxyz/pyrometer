@@ -516,10 +516,15 @@ pub trait IntrinsicFuncCaller:
                     Err(ExprErr::FunctionNotFound(
                         *loc,
                         format!(
-                            "Could not find function: \"{}{}\"",
+                            "Could not find function: \"{}{}\", context: {}, visible functions: {:#?}",
                             ident.name,
-                            inputs.try_as_func_input_str(self)
-                        ),
+                            inputs.try_as_func_input_str(self),
+                            ctx.path(self),
+                            ctx.visible_funcs(self).into_expr_err(*loc)?
+                                .iter()
+                                .map(|func| func.name(self).unwrap())
+                                .collect::<Vec<_>>()
+                        )
                     ))
                 } else {
                     unreachable!()

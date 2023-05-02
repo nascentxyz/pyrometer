@@ -117,6 +117,9 @@ impl ExprErr {
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(msg), ..) => msg,
+            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => {
+                msg
+            }
         }
     }
 
@@ -142,6 +145,7 @@ impl ExprErr {
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(_), ..) => "Graph IR Error: Child redefintion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(_), ..) => "Graph IR Error: Detached Variable. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
         }
     }
 }

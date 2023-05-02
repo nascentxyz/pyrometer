@@ -7,20 +7,20 @@ contract Assembly {
 	}
 	function a(uint256 x, uint256 y) public returns (uint256, uint256) {
 		require(x > 5);
-		(uint256 f, uint256 g) = c(x, y);
+		(uint256 f, uint256 g) = c(x + 1, y + 1);
 		(f, g) = b(x, y);
 		return c(x, y);
 	}
 	function b(uint256 x, uint256 y) public returns (uint256, uint256) {
-		require(x > 100);
+		// require(x > 100);
 		require(y < 100);
-		(x, y) = c(x + 1, y + 1);
+		(uint256 f, uint256 g) = c(x + 1, y + 1);
 		return (x, y);
 	}
-	function c(uint256 x, uint256 y) public returns (uint256, uint256) {
-		require(x > 10);
-		require(x > y);
-		return (x + 1, y + 1);
+	function c(uint256 q, uint256 z) public returns (uint256, uint256) {
+		require(q > 100);
+		require(q > z);
+		return (q + 1, z + 1);
 	}
 	// uint256[] b;
 	// function hasInline(uint256 a, uint256 b) public returns (uint256, uint256){

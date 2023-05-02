@@ -6,6 +6,7 @@ use crate::context::func_call::{
 use crate::context::ContextBuilder;
 use crate::context::ExprErr;
 use crate::ExprRet;
+use itertools::Itertools;
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphError;
 use shared::analyzer::GraphLike;
@@ -252,11 +253,90 @@ pub trait FuncCaller:
                             modifier_state,
                         )
                     } else {
-                        panic!(
-                            "input has fork - need to flatten, {:?}, {:?}",
-                            params,
-                            input_paths.clone().flatten()
-                        )
+                        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
+                        fn match_input(
+                            analyzer: &mut (impl GraphLike + AnalyzerLike),
+                            input: ExprRet,
+                            i: usize,
+                            forks: &mut BTreeMap<usize, Vec<(ContextNode, ContextVarNode)>>,
+                            live_edges: &[ContextNode],
+                        ) {
+                            match input {
+                                ExprRet::SingleLiteral((ctx, var))
+                                | ExprRet::Single((ctx, var)) => {
+                                    let entry = forks.entry(i).or_default();
+
+                                    entry.push((
+                                        ctx,
+                                        ContextVarNode::from(var).latest_version(analyzer),
+                                    ))
+                                }
+                                ExprRet::Fork(w1, w2) => {
+                                    match_input(analyzer, *w1, i, forks, live_edges);
+                                    match_input(analyzer, *w2, i, forks, live_edges);
+                                }
+                                ExprRet::Multi(inner) => {
+                                    inner.iter().for_each(|j| {
+                                        match_input(analyzer, j.clone(), i, forks, live_edges)
+                                    });
+                                }
+                                e => unreachable!("{e:#?}"),
+                            }
+                        }
+
+                        let mut forks = BTreeMap::new();
+                        for (i, input) in inputs.iter().enumerate() {
+                            match_input(self, input.clone(), i, &mut forks, &live_edges);
+                        }
+
+                        let variants = forks
+                            .clone()
+                            .into_values()
+                            .multi_cartesian_product()
+                            .collect::<Vec<_>>();
+                        let valid_variants: Vec<_> = variants
+                            .iter()
+                            .filter(|inputs| {
+                                let (last_ctx, _last_var) = inputs.last().unwrap();
+                                if live_edges.contains(last_ctx) {
+                                    (0..inputs.len() - 1).all(|i| {
+                                        let (prev_ctx, _) = inputs[i];
+                                        last_ctx.parent_list(self).unwrap().contains(&prev_ctx)
+                                    })
+                                } else {
+                                    false
+                                }
+                            })
+                            .collect();
+
+                        Ok(ExprRet::Multi(
+                            valid_variants
+                                .iter()
+                                .map(|input_vars| {
+                                    let (last_ctx, _) = *input_vars.last().unwrap();
+                                    let input_vars = input_vars.iter().map(|(_, i)| *i).collect();
+                                    self.func_call_inner(
+                                        false,
+                                        last_ctx,
+                                        func,
+                                        loc,
+                                        input_vars,
+                                        params.clone(),
+                                        func_call_str.clone(),
+                                        modifier_state.clone(),
+                                    )
+                                })
+                                .collect::<Result<_, _>>()?,
+                        ))
+                        // panic!(
+                        //     "input has fork - need to flatten, {:?}, {:#?}, {:#?}, {:#?}, {:#?}, valid variants: {:#?}",
+                        //     func.name(self),
+                        //     params,
+                        //     input_paths.clone().flatten(),
+                        //     forks,
+                        //     ctx.live_edges(self),
+                        //     valid_variants
+                        // )
                     }
                 } else {
                     Err(ExprErr::InvalidFunctionInput(
@@ -529,18 +609,26 @@ pub trait FuncCaller:
         callee_ctx: ContextNode,
         renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
     ) -> Result<ExprRet, ExprErr> {
+        tracing::trace!(
+            "Handling function call return for: {}, {}",
+            caller_ctx.path(self),
+            callee_ctx.path(self)
+        );
         match callee_ctx.underlying(self).into_expr_err(loc)?.child {
             Some(CallFork::Fork(w1, w2)) => Ok(ExprRet::Fork(
                 Box::new(self.ctx_rets(loc, caller_ctx, w1, renamed_inputs)?),
                 Box::new(self.ctx_rets(loc, caller_ctx, w2, renamed_inputs)?),
             )),
-            Some(CallFork::Call(c)) => {
+            Some(CallFork::Call(c))
+                if c.underlying(self).into_expr_err(loc)?.depth
+                    >= caller_ctx.underlying(self).into_expr_err(loc)?.depth =>
+            {
                 // follow rabbit hole
                 self.ctx_rets(loc, caller_ctx, c, renamed_inputs)
             }
-            None => {
+            _ => {
                 let callee_depth = callee_ctx.underlying(self).into_expr_err(loc)?.depth;
-                if callee_depth != 0 {
+                if callee_depth != caller_ctx.underlying(self).into_expr_err(loc)?.depth {
                     let ret_subctx = ContextNode::from(
                         self.add_node(Node::Context(
                             Context::new_subctx(
@@ -566,16 +654,13 @@ pub trait FuncCaller:
                         .into_expr_err(loc);
                     let _ = self.add_if_err(res);
 
-                    // when continuing execution, we inherit the vars
-                    // caller_ctx.vars(self).iter().try_for_each(|var| {
-                    //     self.advance_var_in_ctx(var.latest_version(self), loc, ret_subctx)?;
-                    //     Ok(())
-                    // })?;
+                    // self.inherit_input_changes(
+                    //     loc,
+                    //     ret_subctx,
+                    //     callee_ctx,
+                    //     renamed_inputs,
+                    // )?;
 
-                    // update any requirements
-                    // self.inherit_input_changes(loc, ret_subctx, callee_ctx, renamed_inputs)?;
-                    // self.inherit_storage_changes(ret_subctx, callee_ctx)
-                    //     .into_expr_err(loc)?;
                     let rets = callee_ctx
                         .underlying(self)
                         .unwrap()
@@ -648,7 +733,7 @@ pub trait FuncCaller:
         &mut self,
         ctx: ContextNode,
         modifier_state: ModifierState,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         tracing::trace!(
             "resuming from modifier: {}",
             ctx.associated_fn_name(self)
@@ -668,7 +753,8 @@ pub trait FuncCaller:
                 ctx,
                 mstate.parent_fn,
                 mstate,
-            )
+            )?;
+            Ok(())
         } else {
             let new_parent_subctx = ContextNode::from(
                 self.add_node(Node::Context(
@@ -685,8 +771,6 @@ pub trait FuncCaller:
                     .unwrap(),
                 )),
             );
-
-            // self.inherit_input_changes(modifier_state.loc, new_parent_subctx, ctx, &modifier_state.renamed_inputs)?;
 
             self.add_edge(
                 new_parent_subctx,
@@ -712,7 +796,7 @@ pub trait FuncCaller:
             //     .into_expr_err(modifier_state.loc)?;
 
             // actually execute the parent function
-            let res = self.execute_call_inner(
+            let _res = self.execute_call_inner(
                 modifier_state.loc,
                 ctx,
                 new_parent_subctx,
@@ -721,34 +805,44 @@ pub trait FuncCaller:
                 None,
             )?;
 
-            let modifier_after_subctx = ContextNode::from(
-                self.add_node(Node::Context(
-                    Context::new_subctx(
-                        new_parent_subctx,
-                        Some(ctx),
-                        modifier_state.loc,
-                        None,
-                        None,
-                        false,
-                        self,
-                        None,
-                    )
-                    .unwrap(),
-                )),
-            );
-
-            // self.inherit_input_changes(modifier_state.loc, modifier_after_subctx, new_parent_subctx, &modifier_state.renamed_inputs)?;
-
-            new_parent_subctx
-                .set_child_call(modifier_after_subctx, self)
+            let edges = new_parent_subctx
+                .live_edges(self)
                 .into_expr_err(modifier_state.loc)?;
-            self.add_edge(
-                modifier_after_subctx,
-                ctx,
-                Edge::Context(ContextEdge::Continue),
-            );
 
-            Ok(res)
+            fn inherit_return_from_call(
+                analyzer: &mut (impl GraphLike + AnalyzerLike),
+                loc: Loc,
+                ctx: ContextNode,
+            ) -> Result<(), ExprErr> {
+                let modifier_after_subctx = ContextNode::from(
+                    analyzer.add_node(Node::Context(
+                        Context::new_subctx(ctx, Some(ctx), loc, None, None, false, analyzer, None)
+                            .unwrap(),
+                    )),
+                );
+
+                ctx.set_child_call(modifier_after_subctx, analyzer)
+                    .into_expr_err(loc)?;
+                analyzer.add_edge(
+                    modifier_after_subctx,
+                    ctx,
+                    Edge::Context(ContextEdge::Continue),
+                );
+
+                let ret = ctx.underlying(analyzer).unwrap().ret.clone();
+                modifier_after_subctx.underlying_mut(analyzer).unwrap().ret = ret;
+                Ok(())
+            }
+
+            if edges.is_empty() {
+                inherit_return_from_call(self, modifier_state.loc, new_parent_subctx)?;
+            } else {
+                edges.iter().try_for_each(|i| {
+                    inherit_return_from_call(self, modifier_state.loc, *i)?;
+                    Ok(())
+                })?;
+            }
+            Ok(())
         }
     }
 
@@ -756,16 +850,16 @@ pub trait FuncCaller:
     fn inherit_input_changes(
         &mut self,
         loc: Loc,
-        caller_ctx: ContextNode,
-        callee_ctx: ContextNode,
+        to_ctx: ContextNode,
+        from_ctx: ContextNode,
         renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
     ) -> Result<(), ExprErr> {
-        if caller_ctx != callee_ctx {
+        if to_ctx != from_ctx {
             renamed_inputs
                 .iter()
                 .try_for_each(|(input_var, updated_var)| {
                     let new_input =
-                        self.advance_var_in_ctx(input_var.latest_version(self), loc, caller_ctx)?;
+                        self.advance_var_in_ctx(input_var.latest_version(self), loc, to_ctx)?;
                     let latest_updated = updated_var.latest_version(self);
                     if let Some(updated_var_range) =
                         latest_updated.range(self).into_expr_err(loc)?

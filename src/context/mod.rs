@@ -379,6 +379,7 @@ pub trait ContextBuilder:
                         )
                         .map(|ctx| {
                             if ctx.is_killed() {
+                                tracing::trace!("killing due to bad funciton call");
                                 let res = ContextNode::from(ctx_node)
                                     .kill(self, fn_loc)
                                     .into_expr_err(fn_loc);
@@ -431,6 +432,9 @@ pub trait ContextBuilder:
                                     self.match_var_def(var_decl, *loc, &lhs_paths, Some(&rhs_paths))
                                         .map(|res| {
                                             if res {
+                                                tracing::trace!(
+                                                    "killing due to bad variable definition"
+                                                );
                                                 let res = ctx.kill(self, *loc).into_expr_err(*loc);
                                                 let _ = self.add_if_err(res);
                                             }
@@ -446,6 +450,9 @@ pub trait ContextBuilder:
                                 self.match_var_def(var_decl, *loc, &lhs_paths, None)
                                     .map(|res| {
                                         if res {
+                                            tracing::trace!(
+                                                "killing due to bad variable definition"
+                                            );
                                             let res = ctx.kill(self, *loc).into_expr_err(*loc);
                                             let _ = self.add_if_err(res);
                                         }
@@ -469,6 +476,9 @@ pub trait ContextBuilder:
                                         )
                                         .map(|res| {
                                             if res {
+                                                tracing::trace!(
+                                                    "killing due to bad variable definition"
+                                                );
                                                 let res = ctx.kill(self, *loc).into_expr_err(*loc);
                                                 let _ = self.add_if_err(res);
                                             }
@@ -484,6 +494,9 @@ pub trait ContextBuilder:
                                     self.match_var_def(var_decl, *loc, &lhs_paths, None)
                                         .map(|res| {
                                             if res {
+                                                tracing::trace!(
+                                                    "killing due to bad variable definition"
+                                                );
                                                 let res = ctx.kill(self, *loc).into_expr_err(*loc);
                                                 let _ = self.add_if_err(res);
                                             }
@@ -530,6 +543,7 @@ pub trait ContextBuilder:
                         .parse_ctx_expr(expr, ContextNode::from(parent.into()))
                         .map(|ctx| {
                             if ctx.is_killed() {
+                                tracing::trace!("killing due to bad expr");
                                 let res = ContextNode::from(parent.into())
                                     .kill(self, *loc)
                                     .into_expr_err(*loc);
@@ -595,6 +609,7 @@ pub trait ContextBuilder:
                                 .map(|paths| {
                                     let paths = paths.flatten();
                                     if paths.is_killed() {
+                                        tracing::trace!("killing due to bad return");
                                         let res = ContextNode::from(parent.into())
                                             .kill(self, *loc)
                                             .into_expr_err(*loc);
@@ -611,6 +626,7 @@ pub trait ContextBuilder:
                                     .map(|paths| {
                                         let paths = paths.flatten();
                                         if paths.is_killed() {
+                                            tracing::trace!("killing due to bad return");
                                             let res = parent.kill(self, *loc).into_expr_err(*loc);
                                             let _ = self.add_if_err(res);
                                             return;
@@ -631,10 +647,12 @@ pub trait ContextBuilder:
                         .add_if_err(parent.live_edges(self).into_expr_err(stmt.loc()))
                         .unwrap();
                     if forks.is_empty() {
+                        tracing::trace!("killing due to revert");
                         let res = parent.kill(self, *loc).into_expr_err(*loc);
                         let _ = self.add_if_err(res);
                     } else {
                         forks.into_iter().for_each(|parent| {
+                            tracing::trace!("killing due to revert");
                             let res = parent.kill(self, *loc).into_expr_err(*loc);
                             let _ = self.add_if_err(res);
                         });
@@ -691,26 +709,17 @@ pub trait ContextBuilder:
             ExprRet::CtxKilled => {}
             ExprRet::Single((ctx, expr)) | ExprRet::SingleLiteral((ctx, expr)) => {
                 let latest = ContextVarNode::from(*expr).latest_version(self);
-                let ret = self.advance_var_in_ctx(latest, *loc, *ctx).unwrap();
+                // let ret = self.advance_var_in_ctx(latest, *loc, *ctx);
                 let path = ctx.path(self);
-                let res = ret.underlying_mut(self).into_expr_err(*loc);
+                let res = latest.underlying_mut(self).into_expr_err(*loc);
                 match res {
                     Ok(var) => {
                         tracing::trace!("Returning: {}, {}", path, var.display_name);
                         var.is_return = true;
 
-                        self.add_edge(ret, *ctx, Edge::Context(ContextEdge::Return));
+                        self.add_edge(latest, *ctx, Edge::Context(ContextEdge::Return));
 
-                        let res = ctx.add_return_node(*loc, ret, self).into_expr_err(*loc);
-
-                        println!(
-                            "{:#?} {:#?}",
-                            ctx.return_nodes(self),
-                            self.graph()
-                                .edges_directed(ret.into(), Direction::Outgoing)
-                                .collect::<Vec<_>>()
-                        );
-
+                        let res = ctx.add_return_node(*loc, latest, self).into_expr_err(*loc);
                         let _ = self.add_if_err(res);
                     }
                     Err(e) => self.add_expr_err(e),
@@ -735,7 +744,6 @@ pub trait ContextBuilder:
         lhs_paths: &ExprRet,
         rhs_paths: Option<&ExprRet>,
     ) -> Result<bool, ExprErr> {
-        // println!("matching var def: {:?} {:?}", lhs_paths, rhs_paths);
         match (lhs_paths, rhs_paths) {
             (ExprRet::CtxKilled, _) | (_, Some(ExprRet::CtxKilled)) => Ok(true),
             (ExprRet::Single((_lhs_ctx, ty)), Some(ExprRet::SingleLiteral((rhs_ctx, rhs)))) => {
@@ -764,7 +772,6 @@ pub trait ContextBuilder:
                     is_return: false,
                     ty,
                 };
-                // println!("here: {var:?}");
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
                 self.add_edge(lhs, *rhs_ctx, Edge::Context(ContextEdge::Variable));
                 let rhs = ContextVarNode::from(*rhs);
@@ -921,7 +928,7 @@ pub trait ContextBuilder:
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
         use Expression::*;
-        println!("ctx: {},\n{:?}\n", ctx.underlying(self).unwrap().path, expr);
+        // println!("ctx: {},\n{:?}\n", ctx.underlying(self).unwrap().path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
@@ -1439,7 +1446,14 @@ pub trait ContextBuilder:
             );
         }
         if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
-            panic!("Context has child: {}, child: {:#?}", ctx.path(self), child,);
+            return Err(ExprErr::GraphError(
+                loc,
+                GraphError::VariableUpdateInOldContext(format!(
+                    "Variable update in old context: parent: {}, child: {:#?}",
+                    ctx.path(self),
+                    child
+                )),
+            ));
         }
         let mut new_cvar = cvar_node
             .latest_version(self)
