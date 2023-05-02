@@ -20,7 +20,11 @@ pub struct Dynamic {
 
 impl Dynamic {
     pub fn new(idx: NodeIdx) -> Self {
-        Self { idx, minimized: None, maximized: None }
+        Self {
+            idx,
+            minimized: None,
+            maximized: None,
+        }
     }
 }
 
@@ -438,7 +442,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
             Ok(*cached)
         } else {
-            self.exec_op(true, analyzer)    
+            self.exec_op(true, analyzer)
         }
     }
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
@@ -522,70 +526,42 @@ impl<T> Elem<T> {
 
     /// Creates a new range element that is a cast from one type to another
     pub fn cast(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Cast,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Cast, other);
         Elem::Expr(expr)
     }
 
     pub fn concat(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Concat,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Concat, other);
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is the minimum of two range elements
     pub fn min(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Min,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Min, other);
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is the maximum of two range elements
     pub fn max(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Max,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Max, other);
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is a boolean of equality of two range elements
     pub fn eq(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Eq,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Eq, other);
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is a boolean of inequality of two range elements
     pub fn neq(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Neq,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Neq, other);
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is one range element to the power of another
     pub fn pow(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Exp,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Exp, other);
         Elem::Expr(expr)
     }
 }
@@ -796,11 +772,7 @@ impl Add for Elem<Concrete> {
     type Output = Self;
 
     fn add(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Add,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Add, other);
         Self::Expr(expr)
     }
 }
@@ -809,11 +781,7 @@ impl Sub for Elem<Concrete> {
     type Output = Self;
 
     fn sub(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Sub,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Sub, other);
         Self::Expr(expr)
     }
 }
@@ -822,11 +790,7 @@ impl Mul for Elem<Concrete> {
     type Output = Self;
 
     fn mul(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Mul,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Mul, other);
         Self::Expr(expr)
     }
 }
@@ -835,11 +799,7 @@ impl Div for Elem<Concrete> {
     type Output = Self;
 
     fn div(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Div,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Div, other);
         Self::Expr(expr)
     }
 }
@@ -848,11 +808,7 @@ impl Shl for Elem<Concrete> {
     type Output = Self;
 
     fn shl(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Shl,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Shl, other);
         Self::Expr(expr)
     }
 }
@@ -861,11 +817,7 @@ impl Shr for Elem<Concrete> {
     type Output = Self;
 
     fn shr(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Shr,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Shr, other);
         Self::Expr(expr)
     }
 }
@@ -874,11 +826,7 @@ impl Rem for Elem<Concrete> {
     type Output = Self;
 
     fn rem(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Mod,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Mod, other);
         Self::Expr(expr)
     }
 }
@@ -887,11 +835,7 @@ impl BitAnd for Elem<Concrete> {
     type Output = Self;
 
     fn bitand(self, other: Self) -> Self::Output {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::BitAnd,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::BitAnd, other);
         Self::Expr(expr)
     }
 }
@@ -900,11 +844,7 @@ impl BitOr for Elem<Concrete> {
     type Output = Self;
 
     fn bitor(self, other: Self) -> Self::Output {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::BitOr,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::BitOr, other);
         Self::Expr(expr)
     }
 }
@@ -913,11 +853,7 @@ impl BitXor for Elem<Concrete> {
     type Output = Self;
 
     fn bitxor(self, other: Self) -> Self::Output {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::BitXor,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::BitXor, other);
         Self::Expr(expr)
     }
 }
@@ -925,21 +861,13 @@ impl BitXor for Elem<Concrete> {
 impl Elem<Concrete> {
     /// Creates a logical AND of two range elements
     pub fn and(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::And,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::And, other);
         Self::Expr(expr)
     }
 
     /// Creates a logical OR of two range elements
     pub fn or(self, other: Self) -> Self {
-        let expr = RangeExpr::new(
-            self,
-            RangeOp::Or,
-            other,
-        );
+        let expr = RangeExpr::new(self, RangeOp::Or, other);
         Self::Expr(expr)
     }
 
@@ -964,7 +892,11 @@ pub trait ExecOp<T> {
     /// and right-hand-side
     fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Cache execution
-    fn cache_exec_op(&mut self, maximize: bool, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn cache_exec_op(
+        &mut self,
+        maximize: bool,
+        analyzer: &impl GraphLike,
+    ) -> Result<(), GraphError>;
     /// Attempts to simplify an expression (i.e. just apply constant folding)
     fn simplify_exec_op(
         &self,
@@ -974,7 +906,11 @@ pub trait ExecOp<T> {
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
-    fn cache_exec_op(&mut self, maximize: bool, analyzer: &impl GraphLike) -> Result<(), GraphError> {
+    fn cache_exec_op(
+        &mut self,
+        maximize: bool,
+        analyzer: &impl GraphLike,
+    ) -> Result<(), GraphError> {
         let res = self.exec_op(maximize, analyzer)?;
         if maximize {
             self.maximized = Some(MinMaxed::Maximized(Box::new(res)));
