@@ -32,12 +32,14 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let var = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
                 Ok(ExprRet::Single((ctx, var.0.into())))
             }
-        } else if let Some(env) = self.env_variable(ident, ctx)? {
-            Ok(env)
         } else if ident.name == "_" {
             tracing::trace!("Warning: got _, must be in modifier");
-            // if we've reached this point, we are evaluating a modifier and it was the "_" keyword
-            Ok(ExprRet::Multi(vec![]))
+            if let Some(env) = self.env_variable(ident, ctx)? {
+                Ok(env)
+            } else {
+                // if we've reached this point, we are evaluating a modifier and it was the "_" keyword
+                Ok(ExprRet::Multi(vec![]))
+            }
         } else if let Some(parent_ctx) = ctx.underlying(self).into_expr_err(ident.loc)?.parent_ctx {
             // check if we can inherit it
             if let Some(recursion_target) = recursion_target {
@@ -46,6 +48,8 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let ret = self.variable(ident, parent_ctx, Some(ctx))?;
                 self.match_variable(ctx, ident, ret)
             }
+        } else if let Some(env) = self.env_variable(ident, ctx)? {
+            Ok(env)
         } else if let Some(idx) = self.user_types().get(&ident.name) {
             let var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
                 Some(v) => v,

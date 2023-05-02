@@ -115,6 +115,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 let range = {
                     let elem = Elem::Expr(RangeExpr {
+                        minimized: None,
+                        maximized: None,
                         lhs: Box::new(Elem::Dynamic(Dynamic::new(lhs_cvar.into()))),
                         op,
                         rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into()))),
@@ -251,6 +253,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             // invert
             if lhs_min.range_eq(&lhs_range.evaled_range_max(self).unwrap()) {
                 let val = Elem::Expr(RangeExpr {
+                    minimized: None,
+                    maximized: None,
                     lhs: Box::new(lhs_min),
                     op: RangeOp::Not,
                     rhs: Box::new(Elem::Null),

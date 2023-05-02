@@ -68,7 +68,7 @@ impl ToRangeString for Elem<Concrete> {
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
-            Elem::Dynamic(Dynamic { idx }) => {
+            Elem::Dynamic(Dynamic { idx, .. }) => {
                 let as_var = ContextVarNode::from(*idx);
                 let name = as_var.display_name(analyzer).unwrap();
                 RangeElemString::new(name, as_var.loc(analyzer).unwrap())

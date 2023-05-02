@@ -1005,6 +1005,8 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(size))),
                     val: existing,
                     loc: other.loc,
@@ -1035,6 +1037,8 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
                     loc: other.loc,
@@ -1065,6 +1069,8 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
                     loc: other.loc,
@@ -1099,6 +1105,8 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                 let mut existing = other.val.clone();
                 existing.extend(self.val.clone());
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: other.len.clone(),
                     val: existing,
                     loc: other.loc,
@@ -1123,6 +1131,8 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                 let mut existing = other.val.clone();
                 existing.extend(self.val.clone());
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: other.len.clone(),
                     val: existing,
                     loc: other.loc,
@@ -1147,6 +1157,8 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                 let mut existing = other.val.clone();
                 existing.extend(self.val.clone());
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: other.len.clone(),
                     val: existing,
                     loc: other.loc,
@@ -1215,6 +1227,8 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
                     loc: other.loc,
@@ -1247,6 +1261,8 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
                     loc: other.loc,
@@ -1289,6 +1305,8 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
 
                 existing.extend(other_vals);
                 Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: self.len.clone() + other.len.clone(),
                     val: existing,
                     loc: other.loc,

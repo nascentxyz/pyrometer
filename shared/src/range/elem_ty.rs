@@ -10,15 +10,17 @@ use std::collections::BTreeMap;
 use std::ops::*;
 
 /// A dynamic range element value
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Dynamic {
     /// Index of the node that is referenced
     pub idx: NodeIdx,
+    pub minimized: Option<MinMaxed<Concrete>>,
+    pub maximized: Option<MinMaxed<Concrete>>,
 }
 
 impl Dynamic {
     pub fn new(idx: NodeIdx) -> Self {
-        Self { idx }
+        Self { idx, minimized: None, maximized: None }
     }
 }
 
@@ -44,52 +46,76 @@ impl RangeElem<Concrete> for Dynamic {
     fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
+            return Ok(*cached);
+        }
+
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
         match &cvar.ty {
             VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.evaled_range_max(analyzer)
                 } else {
-                    Ok(Elem::Dynamic(*self))
+                    Ok(Elem::Dynamic(self.clone()))
                 }
             }
             VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
                 val: concrete_node.underlying(analyzer)?.clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             })),
-            _e => Ok(Elem::Dynamic(*self)),
+            _e => Ok(Elem::Dynamic(self.clone())),
         }
     }
 
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(MinMaxed::Minimized(cached)) = self.maximized.clone() {
+            return Ok(*cached);
+        }
+
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
         match &cvar.ty {
             VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.evaled_range_min(analyzer)
                 } else {
-                    Ok(Elem::Dynamic(*self))
+                    Ok(Elem::Dynamic(self.clone()))
                 }
             }
             VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
                 val: concrete_node.underlying(analyzer)?.clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             })),
-            _e => Ok(Elem::Dynamic(*self)),
+            _e => Ok(Elem::Dynamic(self.clone())),
         }
     }
 
     fn simplify_maximize(&self, _: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::Dynamic(*self))
+        Ok(Elem::Dynamic(self.clone()))
     }
     fn simplify_minimize(&self, _: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::Dynamic(*self))
+        Ok(Elem::Dynamic(self.clone()))
+    }
+
+    fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
+        if self.maximized.is_none() {
+            self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+        }
+        Ok(())
+    }
+
+    fn cache_minimize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
+        if self.minimized.is_none() {
+            self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+        }
+        Ok(())
     }
 }
 
 /// A concrete value for a range element
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeDyn<T> {
+    pub minimized: Option<MinMaxed<T>>,
+    pub maximized: Option<MinMaxed<T>>,
     pub len: Elem<T>,
     pub val: BTreeMap<Elem<T>, Elem<T>>,
     pub loc: Loc,
@@ -148,7 +174,13 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     }
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
+            return Ok(*cached);
+        }
+
         Ok(Elem::ConcreteDyn(Box::new(Self {
+            minimized: None,
+            maximized: None,
             len: self.len.maximize(analyzer)?,
             val: {
                 let mut map = BTreeMap::default();
@@ -162,7 +194,13 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     }
 
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
+            return Ok(*cached);
+        }
+
         Ok(Elem::ConcreteDyn(Box::new(Self {
+            minimized: None,
+            maximized: None,
             len: self.len.minimize(analyzer)?,
             val: {
                 let mut map = BTreeMap::default();
@@ -177,6 +215,8 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
 
     fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
+            minimized: None,
+            maximized: None,
             len: self.len.simplify_maximize(analyzer)?,
             val: {
                 let mut map = BTreeMap::default();
@@ -190,6 +230,8 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     }
     fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
+            minimized: None,
+            maximized: None,
             len: self.len.simplify_minimize(analyzer)?,
             val: {
                 let mut map = BTreeMap::default();
@@ -200,6 +242,20 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             },
             loc: self.loc,
         })))
+    }
+
+    fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
+        if self.maximized.is_none() {
+            self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+        }
+        Ok(())
+    }
+
+    fn cache_minimize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
+        if self.minimized.is_none() {
+            self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+        }
+        Ok(())
     }
 }
 
@@ -310,11 +366,27 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
+
+    fn cache_maximize(&mut self, _g: &impl GraphLike) -> Result<(), GraphError> {
+        Ok(())
+    }
+
+    fn cache_minimize(&mut self, _g: &impl GraphLike) -> Result<(), GraphError> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum MinMaxed<T> {
+    Minimized(Box<Elem<T>>),
+    Maximized(Box<Elem<T>>),
 }
 
 /// A range expression composed of other range [`Elem`]
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeExpr<T> {
+    pub maximized: Option<MinMaxed<T>>,
+    pub minimized: Option<MinMaxed<T>>,
     pub lhs: Box<Elem<T>>,
     pub op: RangeOp,
     pub rhs: Box<Elem<T>>,
@@ -324,6 +396,8 @@ impl<T> RangeExpr<T> {
     /// Creates a new range expression given a left hand side range [`Elem`], a [`RangeOp`], and a a right hand side range [`Elem`].
     pub fn new(lhs: Elem<T>, op: RangeOp, rhs: Elem<T>) -> RangeExpr<T> {
         RangeExpr {
+            maximized: None,
+            minimized: None,
             lhs: Box::new(lhs),
             op,
             rhs: Box::new(rhs),
@@ -361,10 +435,18 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        self.exec_op(true, analyzer)
+        if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
+            Ok(*cached)
+        } else {
+            self.exec_op(true, analyzer)    
+        }
     }
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        self.exec_op(false, analyzer)
+        if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
+            Ok(*cached)
+        } else {
+            self.exec_op(false, analyzer)
+        }
     }
 
     fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
@@ -372,6 +454,20 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
     fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         self.simplify_exec_op(false, analyzer)
+    }
+
+    fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
+        if self.maximized.is_none() {
+            self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+        }
+        Ok(())
+    }
+
+    fn cache_minimize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
+        if self.minimized.is_none() {
+            self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+        }
+        Ok(())
     }
 }
 
@@ -426,70 +522,70 @@ impl<T> Elem<T> {
 
     /// Creates a new range element that is a cast from one type to another
     pub fn cast(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Cast,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Cast,
+            other,
+        );
         Elem::Expr(expr)
     }
 
     pub fn concat(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Concat,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Concat,
+            other,
+        );
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is the minimum of two range elements
     pub fn min(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Min,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Min,
+            other,
+        );
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is the maximum of two range elements
     pub fn max(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Max,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Max,
+            other,
+        );
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is a boolean of equality of two range elements
     pub fn eq(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Eq,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Eq,
+            other,
+        );
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is a boolean of inequality of two range elements
     pub fn neq(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Neq,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Neq,
+            other,
+        );
         Elem::Expr(expr)
     }
 
     /// Creates a new range element that is one range element to the power of another
     pub fn pow(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Exp,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Exp,
+            other,
+        );
         Elem::Expr(expr)
     }
 }
@@ -672,17 +768,39 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         };
         Ok(res)
     }
+
+    fn cache_maximize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError> {
+        use Elem::*;
+        match self {
+            Dynamic(dy) => dy.cache_maximize(analyzer),
+            Concrete(inner) => inner.cache_maximize(analyzer),
+            ConcreteDyn(inner) => inner.cache_maximize(analyzer),
+            Expr(expr) => expr.cache_maximize(analyzer),
+            Null => Ok(()),
+        }
+    }
+
+    fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError> {
+        use Elem::*;
+        match self {
+            Dynamic(dy) => dy.cache_minimize(analyzer),
+            Concrete(inner) => inner.cache_minimize(analyzer),
+            ConcreteDyn(inner) => inner.cache_minimize(analyzer),
+            Expr(expr) => expr.cache_minimize(analyzer),
+            Null => Ok(()),
+        }
+    }
 }
 
 impl Add for Elem<Concrete> {
     type Output = Self;
 
     fn add(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Add,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Add,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -691,11 +809,11 @@ impl Sub for Elem<Concrete> {
     type Output = Self;
 
     fn sub(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Sub,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Sub,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -704,11 +822,11 @@ impl Mul for Elem<Concrete> {
     type Output = Self;
 
     fn mul(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Mul,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Mul,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -717,11 +835,11 @@ impl Div for Elem<Concrete> {
     type Output = Self;
 
     fn div(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Div,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Div,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -730,11 +848,11 @@ impl Shl for Elem<Concrete> {
     type Output = Self;
 
     fn shl(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Shl,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Shl,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -743,11 +861,11 @@ impl Shr for Elem<Concrete> {
     type Output = Self;
 
     fn shr(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Shr,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Shr,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -756,11 +874,11 @@ impl Rem for Elem<Concrete> {
     type Output = Self;
 
     fn rem(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Mod,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Mod,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -769,11 +887,11 @@ impl BitAnd for Elem<Concrete> {
     type Output = Self;
 
     fn bitand(self, other: Self) -> Self::Output {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::BitAnd,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::BitAnd,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -782,11 +900,11 @@ impl BitOr for Elem<Concrete> {
     type Output = Self;
 
     fn bitor(self, other: Self) -> Self::Output {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::BitOr,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::BitOr,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -795,11 +913,11 @@ impl BitXor for Elem<Concrete> {
     type Output = Self;
 
     fn bitxor(self, other: Self) -> Self::Output {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::BitXor,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::BitXor,
+            other,
+        );
         Self::Expr(expr)
     }
 }
@@ -807,21 +925,21 @@ impl BitXor for Elem<Concrete> {
 impl Elem<Concrete> {
     /// Creates a logical AND of two range elements
     pub fn and(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::And,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::And,
+            other,
+        );
         Self::Expr(expr)
     }
 
     /// Creates a logical OR of two range elements
     pub fn or(self, other: Self) -> Self {
-        let expr = RangeExpr {
-            lhs: Box::new(self),
-            op: RangeOp::Or,
-            rhs: Box::new(other),
-        };
+        let expr = RangeExpr::new(
+            self,
+            RangeOp::Or,
+            other,
+        );
         Self::Expr(expr)
     }
 
@@ -845,6 +963,8 @@ pub trait ExecOp<T> {
     /// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
     /// and right-hand-side
     fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    /// Cache execution
+    fn cache_exec_op(&mut self, maximize: bool, analyzer: &impl GraphLike) -> Result<(), GraphError>;
     /// Attempts to simplify an expression (i.e. just apply constant folding)
     fn simplify_exec_op(
         &self,
@@ -854,6 +974,16 @@ pub trait ExecOp<T> {
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
+    fn cache_exec_op(&mut self, maximize: bool, analyzer: &impl GraphLike) -> Result<(), GraphError> {
+        let res = self.exec_op(maximize, analyzer)?;
+        if maximize {
+            self.maximized = Some(MinMaxed::Maximized(Box::new(res)));
+        } else {
+            self.minimized = Some(MinMaxed::Minimized(Box::new(res)));
+        }
+        Ok(())
+    }
+
     fn exec_op(
         &self,
         maximize: bool,

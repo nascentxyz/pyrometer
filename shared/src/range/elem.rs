@@ -116,8 +116,10 @@ impl ToString for RangeOp {
 pub trait RangeElem<T> {
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn cache_maximize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)

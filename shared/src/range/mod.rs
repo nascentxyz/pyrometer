@@ -124,6 +124,8 @@ impl SolcRange {
                     })
                     .collect::<BTreeMap<_, _>>();
                 let r = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(s.len()))),
                     val,
                     loc: Loc::Implicit,
@@ -143,6 +145,8 @@ impl SolcRange {
                     })
                     .collect::<BTreeMap<_, _>>();
                 let r = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::from(b.len()))),
                     val,
                     loc: Loc::Implicit,
@@ -258,11 +262,15 @@ impl SolcRange {
             | Builtin::Array(_)
             | Builtin::Mapping(_, _) => Some(SolcRange::new(
                 Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::zero())),
                     val: Default::default(),
                     loc: Loc::Implicit,
                 })),
                 Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::MAX)),
                     val: Default::default(),
                     loc: Loc::Implicit,
@@ -476,9 +484,15 @@ impl Range<Concrete> for SolcRange {
 
     fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError> {
         if self.min_cached.is_none() {
+            let mut min = self.range_min();
+            min.cache_minimize(analyzer)?;
+            self.min = min;
             self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }
         if self.max_cached.is_none() {
+            let mut max = self.range_max();
+            max.cache_maximize(analyzer)?;
+            self.max = max;
             self.max_cached = Some(self.range_max().maximize(analyzer)?);
         }
         Ok(())

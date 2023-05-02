@@ -418,7 +418,7 @@ impl VarType {
                     let name = index.name(analyzer)?;
                     let is_const = index.is_const(analyzer)?;
                     if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
-                        Elem::Dynamic(Dynamic { idx }) => match analyzer.node(*idx) {
+                        Elem::Dynamic(Dynamic { idx, .. }) => match analyzer.node(*idx) {
                             Node::ContextVar(_) => {
                                 let cvar = ContextVarNode::from(*idx);
                                 cvar.name(analyzer).unwrap() == name
@@ -678,6 +678,8 @@ impl Builtin {
             Builtin::Bytes(s) => SolcRange::from(Concrete::Bytes(*s, H256::zero())),
             Builtin::DynamicBytes | Builtin::Array(_) | Builtin::Mapping(_, _) => {
                 let zero = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
                     len: Elem::from(Concrete::from(U256::zero())),
                     val: Default::default(),
                     loc: Loc::Implicit,

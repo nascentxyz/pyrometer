@@ -165,7 +165,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         false_fork_ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         let inv_if_expr = Expression::Not(if_expr.loc(), Box::new(if_expr));
-        println!("inverse if expr: {inv_if_expr:?}");
+        // println!("inverse if expr: {inv_if_expr:?}");
         self.handle_require(&[inv_if_expr], false_fork_ctx)
     }
 }

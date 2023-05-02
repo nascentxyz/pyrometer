@@ -138,7 +138,8 @@ fn main() {
     let t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) =
         analyzer.parse(&sol, &PathBuf::from(args.path.clone()), true);
-    let _parse_time = t0.elapsed().as_millis();
+    let parse_time = t0.elapsed().as_millis();
+    println!("DONE PARSING: {parse_time}");
     all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
 
