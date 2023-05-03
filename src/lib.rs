@@ -26,7 +26,6 @@ use petgraph::{graph::*, Directed};
 mod builtin_fns;
 
 pub mod context;
-pub mod graph_solver;
 pub mod tracer;
 // pub mod range;
 use context::*;
@@ -301,6 +300,7 @@ impl Analyzer {
                     &mut imported,
                     current_path,
                 );
+                println!("{:#?}", final_pass_part);
                 self.final_pass_items.push(final_pass_part);
                 if entry {
                     self.final_pass();

@@ -1,3 +1,5 @@
+use petgraph::dot::Dot;
+use crate::as_dot_str;
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike, Search};
 use crate::nodes::FunctionNode;
@@ -924,69 +926,7 @@ impl ContextNode {
         _entry: bool,
     ) -> Result<Vec<ContextNode>, GraphError> {
         todo!()
-        // let context = self.underlying(analyzer)?;
-        // let mut parents = if entry {
-        //     let mut calls = self.recursive_calls(analyzer)?;
-        //     calls.insert(0, *self);
-        //     calls
-        // } else {
-        //     vec![]
-        // };
-
-        // if let Some(parent_ctx) = context.parent_ctx {
-        //     let parent = parent_ctx.underlying(analyzer)?;
-        //     let mut children = parent.children.clone();
-        //     let mut count = false;
-        //     children.reverse();
-        //     for child in children.into_iter() {
-        //         if child == CallFork::Fork(*self) {
-        //             count = true;
-        //         } else if count {
-        //             if let CallFork::Call(c) = child { parents.push(c) }
-        //         }
-        //     }
-        //     parents.push(parent_ctx);
-        //     parents.extend(parent_ctx.lineage(analyzer, false)?);
-        // }
-
-        // Ok(parents)
     }
-
-    /// Gets all terminal forks
-    // pub fn terminal_list(
-    //     &self,
-    //     analyzer: &impl GraphLike,
-    // ) -> Result<Vec<ContextNode>, GraphError> {
-    //     let children = &self.underlying(analyzer)?.children;
-    //     if children.is_empty() {
-    //         Ok(vec![*self])
-    //     } else {
-    //         let mut forks = vec![];
-
-    //         for child in children.iter() {
-    //             forks.extend(child.either().terminal_list(analyzer)?)
-    //         }
-    //         Ok(forks)
-    //     }
-    // }
-
-    /// Gets all terminal forks
-    // pub fn terminal_fork_list(
-    //     &self,
-    //     analyzer: &impl GraphLike,
-    // ) -> Result<Vec<ContextNode>, GraphError> {
-    //     let curr_forks = self.forks(analyzer)?;
-    //     if curr_forks.is_empty() {
-    //         Ok(vec![*self])
-    //     } else {
-    //         let mut forks = vec![];
-
-    //         for fork in curr_forks.into_iter() {
-    //             forks.extend(fork.terminal_fork_list(analyzer)?)
-    //         }
-    //         Ok(forks)
-    //     }
-    // }
 
     pub fn terminal_child_list(
         &self,
@@ -1013,25 +953,11 @@ impl ContextNode {
     /// Returns whether the context is killed
     pub fn is_ended(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        // println!(
-        //     "{} is ended via: (child: {}, killed: {}, returns: {})",
-        //     self.path(analyzer),
-        //     underlying.child.is_some(),
-        //     underlying.killed.is_some(),
-        //     !underlying.ret.is_empty()
-        // );
         Ok(underlying.child.is_some() || underlying.killed.is_some() || !underlying.ret.is_empty())
     }
 
     pub fn killed_or_ret(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        // println!(
-        //     "{} is killed or returns via: (killed: {}, returns: {}, modifier active: {})",
-        //     self.path(analyzer),
-        //     underlying.killed.is_some(),
-        //     !underlying.ret.is_empty(),
-        //     underlying.modifier_state.is_some()
-        // );
         Ok(underlying.killed.is_some()
             || (!underlying.ret.is_empty() && underlying.modifier_state.is_none()))
     }
@@ -1083,6 +1009,105 @@ impl ContextNode {
 
     pub fn as_string(&mut self) -> String {
         "Context".to_string()
+    }
+
+    pub fn deps_dag(&self, g: &impl GraphLike) -> Result<(), GraphError> {
+        let deps = self.ctx_deps(g)?;
+        #[derive(Debug, Copy, Clone)]
+        pub enum DepEdge {
+            Lhs,
+            Rhs,
+        } 
+
+        let mut gr: petgraph::Graph<NodeIdx, DepEdge, petgraph::Directed, usize> = petgraph::Graph::default();
+        deps.iter().try_for_each(|(_, dep)| {
+            let mapping = dep.graph_dependent_on(g)?;
+            mapping.into_iter().for_each(|(k, tmp)| {
+                let top = gr.add_node(k.into());
+                let lhs = gr.add_node(tmp.lhs.into());
+                gr.add_edge(top, lhs, DepEdge::Lhs);
+                if let Some(rhs) = tmp.rhs {
+                    let rhs = gr.add_node(rhs.into());    
+                    gr.add_edge(top, rhs, DepEdge::Rhs);
+                }
+            });
+            Ok(())
+        })?;
+
+        let mut dot_str = Vec::new();
+        let raw_start_str = r##"digraph G {
+    node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
+    edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
+    bgcolor="#1a1b26";"##;
+        dot_str.push(raw_start_str.to_string());
+        let nodes_and_edges_str = format!(
+            "{:?}",
+            Dot::with_attr_getters(
+                &gr,
+                &[
+                    petgraph::dot::Config::GraphContentOnly,
+                    petgraph::dot::Config::NodeNoLabel,
+                    petgraph::dot::Config::EdgeNoLabel
+                ],
+                &|_graph, edge_ref| {
+                    let e = edge_ref.weight();
+                    format!("label = \"{e:?}\"")
+                },
+                &|_graph, (idx, node_ref)| {
+                    let inner = match g.node(*node_ref) {
+                        Node::ContextVar(cvar) => {
+                            let range_str = if let Some(r) = cvar.ty.range(g).unwrap() {
+                                r.as_dot_str(g)
+                                // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
+                            } else {
+                                "".to_string()
+                            };
+
+                            format!(
+                                "{} -- {} -- range: {}",
+                                cvar.display_name,
+                                cvar.ty.as_string(g).unwrap(),
+                                range_str
+                            )
+                        }
+                        _ => as_dot_str(idx, g ),
+                    };
+                    format!(
+                        "label = \"{}\", color = \"{}\"",
+                        inner.replace('\"', "\'"),
+                        g.node(*node_ref).dot_str_color()
+                    )
+                }
+            )
+        );
+        dot_str.push(nodes_and_edges_str);
+        let raw_end_str = r#"}"#;
+        dot_str.push(raw_end_str.to_string());
+        let dot_str = dot_str.join("\n");
+
+        println!("{dot_str}");
+        use std::env::temp_dir;
+        use std::fs;
+        use std::io::Write;
+        use std::process::Command;
+        let mut dir = temp_dir();
+        let file_name = "dot.dot";
+        dir.push(file_name);
+
+        let mut file = fs::File::create(dir.clone()).unwrap();
+        file.write_all(dot_str.as_bytes()).unwrap();
+        Command::new("dot")
+            .arg("-Tsvg")
+            .arg(dir)
+            .arg("-o")
+            .arg("dot.svg")
+            .output()
+            .expect("failed to execute process");
+        Command::new("open")
+            .arg("dot.svg")
+            .output()
+            .expect("failed to execute process");
+        Ok(())
     }
 }
 

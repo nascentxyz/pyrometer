@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::context::GraphError;
 use crate::range::elem::RangeElem;
@@ -637,6 +638,35 @@ impl ContextVarNode {
         } else {
             Ok(vec![])
         }
+    }
+
+    pub fn graph_dependent_on(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<BTreeMap<Self, TmpConstruction>, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        let mut tree = BTreeMap::default();
+        if let Some(tmp) = underlying.tmp_of() {
+            tree.insert(*self, tmp);
+            tmp.lhs.graph_dependent_on(analyzer)?.into_iter().for_each(|(key, v)| {
+                if let Some(_v) = tree.get_mut(&key) {
+                    panic!("here")
+                } else {
+                    tree.insert(key, v);
+                }
+            });
+            if let Some(rhs) = tmp.rhs {
+                rhs.graph_dependent_on(analyzer)?.into_iter().for_each(|(key, v)| {
+                    if let Some(_v) = tree.get_mut(&key) {
+                        panic!("here")
+                    } else {
+                        tree.insert(key, v);
+                    }
+                });
+            }
+        }
+
+        Ok(tree)
     }
 
     pub fn is_concrete(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {

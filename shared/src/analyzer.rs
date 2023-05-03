@@ -96,7 +96,7 @@ pub trait AnalyzerLike: GraphLike {
     fn expr_errs(&self) -> Vec<Self::ExprErr>;
 }
 
-struct G<'a> {
+pub struct G<'a> {
     pub graph: &'a Graph<Node, Edge, Directed, usize>,
 }
 impl GraphLike for G<'_> {

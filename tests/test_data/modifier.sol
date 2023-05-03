@@ -18,7 +18,9 @@ contract Modifier {
     modifier Input(uint256 c) {
         require(c == 100);
         a += 1;
+        noop();
         _;
+        a = 1;
         a += 1;
     }
 

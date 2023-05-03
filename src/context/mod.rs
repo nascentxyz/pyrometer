@@ -1,3 +1,4 @@
+use crate::Analyzer;
 use crate::context::yul::YulBuilder;
 use ethers_core::types::U256;
 use shared::analyzer::AsDotStr;
@@ -274,6 +275,7 @@ pub trait ContextBuilder:
                 let ctx_node = match self.node(parent) {
                     Node::Function(fn_node) => {
                         mods_set = fn_node.modifiers_set;
+                        println!("{mods_set:?}, {:?}", fn_node.name);
                         entry_loc = Some(fn_node.loc);
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
@@ -927,7 +929,7 @@ pub trait ContextBuilder:
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
         use Expression::*;
-        // println!("ctx: {},\n{:?}\n", ctx.underlying(self).unwrap().path, expr);
+        println!("ctx: {},\n{:?}\n", ctx.underlying(self).unwrap().path, expr);
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
@@ -1521,5 +1523,14 @@ pub trait ContextBuilder:
         ContextVarNode::from(new_cvarnode)
             .underlying_mut(self)
             .unwrap()
+    }
+
+    fn apply_to_edges(&mut self, ctx: ContextNode, loc: Loc, closure: &impl Fn(ContextNode, &mut Self) -> Result<(), ExprErr>) -> Result<(), ExprErr> {
+        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
+        if live_edges.is_empty() {
+            closure(ctx, self)
+        } else {
+            live_edges.iter().try_for_each(|ctx| closure(*ctx, self))
+        }
     }
 }

@@ -513,7 +513,7 @@ pub trait FuncCaller:
 
         // get modifiers
         let mods = func_node.modifiers(self);
-
+        println!("modifiers: {:#?}", mods);
         if let Some(mod_state) = &ctx.underlying(self).into_expr_err(loc)?.modifier_state {
             // we are iterating through modifiers
             if mod_state.num + 1 < mods.len() {
@@ -950,6 +950,7 @@ pub trait FuncCaller:
         use std::fmt::Write;
         let binding = func.underlying(self).unwrap().clone();
         let modifiers = binding.modifiers_as_base();
+        println!("modifiers in modifiers: {modifiers:#?}");
         if modifiers.is_empty() {
             Ok(vec![])
         } else {
@@ -986,10 +987,13 @@ pub trait FuncCaller:
                             .collect::<Result<Vec<_>, ExprErr>>()?
                             .join(", ");
                         let _ = write!(mod_name, "{args_str}");
+                    } else {
+                        let _ = write!(mod_name, "()");    
                     }
                     let _ = write!(mod_name, "");
 
-                    // println!("func modifiers: {},\n{:?},\n{:#?},\n{}", func.name(self), mod_name, ctx.visible_modifiers(self), ctx.visible_modifiers(self)[0].name(self));
+                    println!("mod_name: {mod_name}");
+                    println!("func modifiers: {},\n{:?},\n{:#?},\n{}", func.name(self).unwrap(), mod_name, ctx.visible_modifiers(self), ctx.visible_modifiers(self).unwrap()[0].name(self).unwrap());
                     let found: Option<FunctionNode> = ctx
                         .visible_modifiers(self)
                         .unwrap()
@@ -1008,6 +1012,7 @@ pub trait FuncCaller:
 
     fn set_modifiers(&mut self, func: FunctionNode, ctx: ContextNode) -> Result<(), ExprErr> {
         let modifiers = self.modifiers(ctx, func)?;
+        println!("modifiers in set_modifiers: {modifiers:#?}");
         modifiers
             .iter()
             .enumerate()

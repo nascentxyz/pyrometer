@@ -189,6 +189,7 @@ fn main() {
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+                // ctx.deps_dag(&analyzer);
                 // analyzer
                 //     .call_trace(ctx)
                 //     .unwrap()
