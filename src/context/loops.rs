@@ -6,7 +6,7 @@ use solang_parser::pt::Statement;
 use crate::context::ContextBuilder;
 use shared::analyzer::GraphLike;
 use shared::context::*;
-use shared::{analyzer::AnalyzerLike, Edge, Node, NodeIdx};
+use shared::{analyzer::AnalyzerLike, Node};
 use solang_parser::pt::Expression;
 
 impl<T> Looper for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike {}

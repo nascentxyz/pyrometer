@@ -225,7 +225,7 @@ pub trait YulBuilder:
 
     fn match_assign_yul(
         &mut self,
-        ctx: ContextNode,
+        _ctx: ContextNode,
         loc: Loc,
         nodes: &[ContextVarNode],
         ret: ExprRet,

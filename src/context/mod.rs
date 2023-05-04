@@ -1,7 +1,7 @@
 use crate::context::yul::YulBuilder;
-use crate::Analyzer;
+
 use ethers_core::types::U256;
-use shared::analyzer::AsDotStr;
+
 use shared::analyzer::GraphError;
 use shared::analyzer::GraphLike;
 use shared::context::*;

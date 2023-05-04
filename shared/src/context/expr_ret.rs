@@ -1,6 +1,6 @@
 use crate::analyzer::AsDotStr;
 use crate::context::GraphError;
-use crate::{ContextNode, ContextVarNode, GraphLike, Node, NodeIdx, VarType};
+use crate::{ContextVarNode, GraphLike, Node, NodeIdx, VarType};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExprRet {
