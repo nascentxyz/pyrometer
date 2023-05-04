@@ -15,6 +15,8 @@ use std::collections::BTreeMap;
 
 mod var;
 pub use var::*;
+mod expr_ret;
+pub use expr_ret::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum CallFork {
@@ -136,6 +138,9 @@ pub struct Context {
     pub post_statement_range_adjs: Vec<(ContextVarNode, Loc, bool)>,
     /// Depth tracker
     pub depth: usize,
+    pub lhs_expr: Option<ExprRet>,
+    pub rhs_expr: Option<ExprRet>,
+    pub expr_ret_stack: Option<ExprRet>,
 }
 
 impl Context {
@@ -157,6 +162,9 @@ impl Context {
             modifier_state: None,
             post_statement_range_adjs: vec![],
             depth: 0,
+            expr_ret_stack: None,
+            lhs_expr: None,
+            rhs_expr: None,
         }
     }
 
@@ -222,6 +230,13 @@ impl Context {
             modifier_state,
             post_statement_range_adjs: vec![],
             depth,
+            expr_ret_stack: if fork_expr.is_some() {
+                parent_ctx.underlying(analyzer)?.expr_ret_stack.clone()
+            } else {
+                None
+            },
+            lhs_expr: None,
+            rhs_expr: None,
         })
     }
 
@@ -286,6 +301,95 @@ impl ContextNode {
     //         }
     //     }).collect()
     // }
+
+    pub fn push_rhs_expr(&self, expr_ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        match &mut underlying_mut.rhs_expr {
+            Some(s @ ExprRet::Single(_)) => {
+                underlying_mut.rhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            }
+            Some(s @ ExprRet::SingleLiteral(_)) => {
+                underlying_mut.rhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            }
+            Some(ExprRet::Multi(ref mut inner)) => {
+                inner.push(expr_ret);
+            }
+            Some(ExprRet::CtxKilled) => {
+                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled);
+                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled);
+                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled);
+            }
+            None => {
+                underlying_mut.rhs_expr = Some(expr_ret);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn pop_rhs_expr(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Option<ExprRet>, GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        Ok(underlying_mut.rhs_expr.take())
+    }
+
+    pub fn push_lhs_expr(&self, expr_ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        match &mut underlying_mut.lhs_expr {
+            Some(s @ ExprRet::Single(_)) => {
+                underlying_mut.lhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            }
+            Some(s @ ExprRet::SingleLiteral(_)) => {
+                underlying_mut.lhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            }
+            Some(ExprRet::Multi(ref mut inner)) => {
+                inner.push(expr_ret);
+            }
+            Some(ExprRet::CtxKilled) => {
+                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled);
+                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled);
+                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled);
+            }
+            None => {
+                underlying_mut.lhs_expr = Some(expr_ret);
+            }
+            
+        }
+        Ok(())
+    }
+
+    pub fn pop_lhs_expr(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Option<ExprRet>, GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        Ok(underlying_mut.lhs_expr.take())
+    }
+
+    pub fn push_expr(&self, expr_ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        match &mut underlying_mut.expr_ret_stack {
+            Some(s @ ExprRet::Single(_)) => {
+                underlying_mut.expr_ret_stack = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            }
+            Some(s @ ExprRet::SingleLiteral(_)) => {
+                underlying_mut.expr_ret_stack = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            }
+            Some(ExprRet::Multi(ref mut inner)) => {
+                inner.push(expr_ret);
+            }
+            Some(ExprRet::CtxKilled) => {
+                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled);
+                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled);
+                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled);
+            }
+            None => {
+                underlying_mut.expr_ret_stack = Some(expr_ret);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn pop_expr(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Option<ExprRet>, GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        Ok(underlying_mut.expr_ret_stack.take())
+    }
 
     pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)

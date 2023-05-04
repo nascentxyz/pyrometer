@@ -1,6 +1,6 @@
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
-use crate::{exprs::Require, AnalyzerLike, ContextBuilder, ExprRet};
+use crate::{exprs::Require, AnalyzerLike, ContextBuilder};
 use shared::{context::*, Edge, Node, NodeIdx};
 
 use solang_parser::pt::CodeLocation;
@@ -65,7 +65,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         true_expr: &Expression,
         false_expr: &Expression,
         ctx: ContextNode,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         tracing::trace!("conditional operator");
         let true_subctx = ContextNode::from(
             self.add_node(Node::Context(
@@ -94,59 +94,15 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
             Edge::Context(ContextEdge::Subcontext),
         );
 
-        let true_cvars = self.parse_ctx_expr(true_expr, true_subctx)?;
-        self.match_true(&true_cvars, if_expr)?;
+        self.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
+        self.parse_ctx_expr(true_expr, true_subctx)?;
+        
 
+        self.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
         let false_cvars = self.parse_ctx_expr(false_expr, false_subctx)?;
-        self.match_false(&false_cvars, if_expr)?;
+        
 
-        Ok(ExprRet::Fork(Box::new(true_cvars), Box::new(false_cvars)))
-    }
-
-    fn match_true(&mut self, true_cvars: &ExprRet, if_expr: &Expression) -> Result<(), ExprErr> {
-        match true_cvars {
-            ExprRet::CtxKilled => Ok(()),
-            ExprRet::Single((fork_ctx, _true_cvar))
-            | ExprRet::SingleLiteral((fork_ctx, _true_cvar)) => {
-                self.true_fork_if_cvar(if_expr.clone(), *fork_ctx)
-            }
-            ExprRet::Multi(ref true_paths) => {
-                // TODO: validate this
-                // we only take one because we just need the context out of the return
-                true_paths
-                    .iter()
-                    .take(1)
-                    .try_for_each(|expr_ret| self.match_true(expr_ret, if_expr))?;
-                Ok(())
-            }
-            ExprRet::Fork(true_paths, other_true_paths) => {
-                self.match_true(true_paths, if_expr)?;
-                self.match_true(other_true_paths, if_expr)
-            }
-        }
-    }
-
-    fn match_false(&mut self, false_cvars: &ExprRet, if_expr: &Expression) -> Result<(), ExprErr> {
-        match false_cvars {
-            ExprRet::CtxKilled => Ok(()),
-            ExprRet::Single((fork_ctx, _false_cvar))
-            | ExprRet::SingleLiteral((fork_ctx, _false_cvar)) => {
-                self.false_fork_if_cvar(if_expr.clone(), *fork_ctx)
-            }
-            ExprRet::Multi(ref false_paths) => {
-                // TODO: validate this
-                // we only take one because we just need the context out of the return
-                false_paths
-                    .iter()
-                    .take(1)
-                    .try_for_each(|expr_ret| self.match_false(expr_ret, if_expr))?;
-                Ok(())
-            }
-            ExprRet::Fork(false_paths, other_false_paths) => {
-                self.match_false(false_paths, if_expr)?;
-                self.match_false(other_false_paths, if_expr)
-            }
-        }
+        Ok(())
     }
 
     /// Creates the true_fork cvar (updates bounds assuming its true)

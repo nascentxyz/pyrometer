@@ -2,7 +2,6 @@ use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
     context::{exprs::env::Env, ContextBuilder},
-    ExprRet,
 };
 use shared::{analyzer::AnalyzerLike, context::*, Edge, Node};
 use solang_parser::pt::Expression;
@@ -18,7 +17,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         ident: &Identifier,
         ctx: ContextNode,
         recursion_target: Option<ContextNode>,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Getting variable: {}, loc: {:?}, ctx: {}",
             &ident.name,
@@ -26,30 +25,31 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             ctx.path(self)
         );
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-            if recursion_target.is_some() {
-                Ok(ExprRet::Single((ctx, cvar.into())))
+            if let Some(recursion_target) = recursion_target {
+                let var = self.advance_var_in_ctx(cvar, ident.loc, recursion_target)?;
+                recursion_target.push_expr(ExprRet::Single(var.into()), self).into_expr_err(ident.loc)?;
+                Ok(())
             } else {
                 let var = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
-                Ok(ExprRet::Single((ctx, var.0.into())))
+                ctx.push_expr(ExprRet::Single(var.0.into()), self).into_expr_err(ident.loc)?;
+                Ok(())
             }
         } else if ident.name == "_" {
-            tracing::trace!("Warning: got _, must be in modifier");
-            if let Some(env) = self.env_variable(ident, ctx)? {
-                Ok(env)
+            if let Some(recursion_target) = recursion_target {
+                self.env_variable(ident, recursion_target)?;
             } else {
-                // if we've reached this point, we are evaluating a modifier and it was the "_" keyword
-                Ok(ExprRet::Multi(vec![]))
+                self.env_variable(ident, ctx)?;
             }
+            Ok(())
         } else if let Some(parent_ctx) = ctx.underlying(self).into_expr_err(ident.loc)?.parent_ctx {
             // check if we can inherit it
             if let Some(recursion_target) = recursion_target {
                 self.variable(ident, parent_ctx, Some(recursion_target))
             } else {
-                let ret = self.variable(ident, parent_ctx, Some(ctx))?;
-                self.match_variable(ctx, ident, ret)
+                self.variable(ident, parent_ctx, Some(ctx))
             }
-        } else if let Some(env) = self.env_variable(ident, ctx)? {
-            Ok(env)
+        } else if (self.env_variable(ident, ctx)?).is_some() {
+            Ok(())
         } else if let Some(idx) = self.user_types().get(&ident.name) {
             let var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
                 Some(v) => v,
@@ -65,10 +65,23 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             };
 
             let new_cvarnode = self.add_node(Node::ContextVar(var));
-            self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
-            Ok(ExprRet::Single((ctx, new_cvarnode)))
+
+            if let Some(recursion_target) = recursion_target {
+                self.add_edge(new_cvarnode, recursion_target, Edge::Context(ContextEdge::Variable));
+                recursion_target.push_expr(ExprRet::Single(new_cvarnode), self).into_expr_err(ident.loc)?;    
+            }  else {
+                self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.push_expr(ExprRet::Single(new_cvarnode), self).into_expr_err(ident.loc)?;  
+            }
+            
+            Ok(())
         } else if let Some(func_node) = self.builtin_fn_or_maybe_add(&ident.name) {
-            Ok(ExprRet::Single((ctx, func_node)))
+            if let Some(recursion_target) = recursion_target {
+                recursion_target.push_expr(ExprRet::Single(func_node), self).into_expr_err(ident.loc)?;
+            } else {
+                ctx.push_expr(ExprRet::Single(func_node), self).into_expr_err(ident.loc)?;
+            }
+            Ok(())
         } else if let Some(_func) = ctx
             .visible_funcs(self)
             .into_expr_err(ident.loc)?
@@ -80,41 +93,50 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 "Function as variables has limited support".to_string(),
             ))
         } else {
-            let node = self.add_node(Node::Unresolved(ident.clone()));
-            self.user_types_mut().insert(ident.name.clone(), node);
-            Ok(ExprRet::Single((ctx, node)))
+            if let Some(recursion_target) = recursion_target {
+                let node = self.add_node(Node::Unresolved(ident.clone()));
+                self.user_types_mut().insert(ident.name.clone(), node);
+                recursion_target.push_expr(ExprRet::Single(node), self).into_expr_err(ident.loc)?;
+            } else {
+                let node = self.add_node(Node::Unresolved(ident.clone()));
+                self.user_types_mut().insert(ident.name.clone(), node);
+                ctx.push_expr(ExprRet::Single(node), self).into_expr_err(ident.loc)?;
+            }
+            Ok(())
         }
     }
 
-    fn match_variable(
-        &mut self,
-        ctx: ContextNode,
-        ident: &Identifier,
-        ret: ExprRet,
-    ) -> Result<ExprRet, ExprErr> {
-        match ret {
-            ExprRet::Single((_pctx, cvar)) | ExprRet::SingleLiteral((_pctx, cvar)) => {
-                match self.node(cvar) {
-                    Node::ContextVar(_) => {
-                        let cvar = ContextVarNode::from(cvar).latest_version(self);
-                        let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
-                        ctx_cvar.update_deps(ctx, self).into_expr_err(ident.loc)?;
-                        Ok(ExprRet::Single((ctx, ctx_cvar.0.into())))
-                    }
-                    _ => Ok(ExprRet::Single((ctx, cvar))),
-                }
-            }
-            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
-                inner
-                    .into_iter()
-                    .map(|ret| self.match_variable(ctx, ident, ret))
-                    .collect::<Result<Vec<_>, ExprErr>>()?,
-            )),
-            ExprRet::Fork(w1, w2) => Ok(ExprRet::Fork(
-                Box::new(self.match_variable(ctx, ident, *w1)?),
-                Box::new(self.match_variable(ctx, ident, *w2)?),
-            )),
-            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
-        }
-    }
+    // fn match_variable(
+    //     &mut self,
+    //     ctx: ContextNode,
+    //     ident: &Identifier,
+    //     ret: ExprRet,
+    // ) -> Result<(), ExprErr> {
+    //     match ret {
+    //         ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
+    //             match self.node(cvar) {
+    //                 Node::ContextVar(_) => {
+    //                     let cvar = ContextVarNode::from(cvar).latest_version(self);
+    //                     let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
+    //                     ctx_cvar.update_deps(ctx, self).into_expr_err(ident.loc)?;
+    //                     ctx.push_expr(ExprRet::Single(ctx_cvar.0.into()), self);
+    //                     Ok(())
+    //                 }
+    //                 _ => {
+    //                     ctx.push_expr(ExprRet::Single(cvar), self);
+    //                     Ok(())
+    //                 }
+    //             }
+    //         }
+    //         ExprRet::Multi(inner) => {
+    //             inner
+    //                 .into_iter()
+    //                 .try_for_each(|ret| self.match_variable(ctx, ident, ret))
+    //         },
+    //         ExprRet::CtxKilled => {
+    //             ctx.push_expr(ExprRet::CtxKilled, self);
+    //             Ok(())
+    //         }
+    //     }
+    // }
 }

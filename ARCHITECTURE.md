@@ -47,7 +47,7 @@ Statement::VariableDefinition(
 )	
 ```
 
-When we parse `Expression::Variable("a")`, we look into the context for an attached `ContextVarNode` whose name is "a". When we find it, we return `ExprRet::Single((ctx, a_as_cvar_node))` and continue on parsing up the expression tree.
+When we parse `Expression::Variable("a")`, we look into the context for an attached `ContextVarNode` whose name is "a". When we find it, we return `ExprRet::Single(a_as_cvar_node)` and continue on parsing up the expression tree.
 
 ## Bounds/Ranges
 When we create a `VarType::Builtin`, we implicitly also create a `bound` or a `range`. The easiest way to think about this is for a simple type: `uint256`. By default, we know that this variable type *must* be between 0 and `type(uint256).max` (`2**256 - 1`).

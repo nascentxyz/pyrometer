@@ -6,7 +6,7 @@ use crate::context::ContextBuilder;
 use crate::context::ExprErr;
 use crate::Concrete;
 use crate::ConcreteNode;
-use crate::ExprRet;
+use shared::context::ExprRet;
 use crate::Node;
 use ethers_core::types::U256;
 use shared::analyzer::AnalyzerLike;
@@ -29,20 +29,36 @@ pub trait YulFuncCaller:
         &mut self,
         func_call: &YulFunctionCall,
         ctx: ContextNode,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         let YulFunctionCall { loc, id, arguments } = func_call;
 
         match &*id.name {
-            "log0" | "log1" | "log2" | "log3" | "log4" => Ok(ExprRet::Multi(vec![])),
+            "log0" | "log1" | "log2" | "log3" | "log4" => {
+                ctx.push_expr(ExprRet::Multi(vec![]), self).into_expr_err(*loc)?;
+                Ok(())
+            }
             "stop" | "revert" | "selfdestruct" | "invalid" => {
                 ctx.kill(self, *loc).into_expr_err(*loc)?;
-                Ok(ExprRet::CtxKilled)
+                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(*loc)?;
+                Ok(())
             }
             "return" => {
-                let size = self.parse_ctx_yul_expr(&arguments[1], ctx)?;
-                self.return_yul(*loc, size)?;
-                ctx.kill(self, *loc).into_expr_err(*loc)?;
-                Ok(ExprRet::CtxKilled)
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(_offset) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul Return had no offset".to_string()))
+                    };
+                    analyzer.parse_ctx_yul_expr(&arguments[1], ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(size) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Yul Return had no size".to_string()))
+                        };
+                        analyzer.return_yul(ctx, loc, size)?;
+                        ctx.kill(analyzer, loc).into_expr_err(loc)?;
+                        ctx.push_expr(ExprRet::CtxKilled, analyzer).into_expr_err(loc)?;
+                        Ok(())
+                    })
+                })
             }
             "add" | "sub" | "mul" | "div" | "sdiv" | "mod" | "smod" | "exp" | "and" | "or"
             | "xor" | "shl" | "shr" | "sar" => {
@@ -72,9 +88,19 @@ pub trait YulFuncCaller:
                     ));
                 }
 
-                let lhs_paths = self.parse_ctx_yul_expr(&arguments[0], ctx)?;
-                let rhs_paths = self.parse_ctx_yul_expr(&arguments[1], ctx)?;
-                self.op_match(*loc, &lhs_paths, &rhs_paths, op, false)
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul Binary operation had no right hand side".to_string()))
+                    };
+                    analyzer.parse_ctx_yul_expr(&arguments[1], ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Yul Binary operation had no left hand side".to_string()))
+                        };
+                        analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, false)
+                    })
+                })
             }
             "lt" | "gt" | "slt" | "sgt" | "eq" => {
                 let op = match &*id.name {
@@ -95,9 +121,19 @@ pub trait YulFuncCaller:
                     ));
                 }
 
-                let lhs_paths = self.parse_ctx_yul_expr(&arguments[0], ctx)?;
-                let rhs_paths = self.parse_ctx_yul_expr(&arguments[1], ctx)?;
-                self.cmp_inner(*loc, &lhs_paths, op, &rhs_paths)
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul Binary operation had no right hand side".to_string()))
+                    };
+                    analyzer.parse_ctx_yul_expr(&arguments[1], ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Yul Binary operation had no left hand side".to_string()))
+                        };
+                        analyzer.cmp_inner(ctx, loc, &lhs_paths, op, &rhs_paths)
+                    })
+                })
             }
             "iszero" => {
                 if arguments.len() != 1 {
@@ -109,32 +145,40 @@ pub trait YulFuncCaller:
                         ),
                     ));
                 }
-                let lhs_paths = self.parse_ctx_yul_expr(&arguments[0], ctx)?;
-                let cnode = ConcreteNode::from(
-                    self.add_node(Node::Concrete(Concrete::from(U256::from(0)))),
-                );
-                let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
-                        .into_expr_err(*loc)?,
-                );
-                let rhs_paths =
-                    ExprRet::Single((ctx, ContextVarNode::from(self.add_node(tmp_true)).into()));
 
-                self.cmp_inner(*loc, &lhs_paths, RangeOp::Eq, &rhs_paths)
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul `iszero` operation had no input".to_string()))
+                    };
+                    let cnode = ConcreteNode::from(
+                        analyzer.add_node(Node::Concrete(Concrete::from(U256::from(0)))),
+                    );
+                    let tmp_true = Node::ContextVar(
+                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                            .into_expr_err(loc)?,
+                    );
+                    let rhs_paths =
+                        ExprRet::Single(ContextVarNode::from(analyzer.add_node(tmp_true)).into());
+
+                    analyzer.cmp_inner(ctx, loc, &lhs_paths, RangeOp::Eq, &rhs_paths)
+                })
             }
             "msize" | "pc" | "mload" | "sload" | "gas" | "returndatasize" => {
                 let b = Builtin::Uint(256);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
                 let node = self.add_node(Node::ContextVar(var));
-                Ok(ExprRet::Single((ctx, node)))
+                ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                Ok(())
             }
             "keccak256" => {
                 let b = Builtin::Bytes(32);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
                 let node = self.add_node(Node::ContextVar(var));
-                Ok(ExprRet::Single((ctx, node)))
+                ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                Ok(())
             }
             "call" | "delegatecall" | "callcode" | "staticcall" => {
                 let b = Builtin::Uint(256);
@@ -147,7 +191,8 @@ pub trait YulFuncCaller:
                 range.max = Elem::from(Concrete::from(U256::from(1)));
                 var.ty.set_range(range).into_expr_err(*loc)?;
                 let node = self.add_node(Node::ContextVar(var));
-                Ok(ExprRet::Single((ctx, node)))
+                ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                Ok(())
             }
             "create" | "create2" => {
                 let b = Builtin::Address;
@@ -156,15 +201,20 @@ pub trait YulFuncCaller:
                         .into_expr_err(*loc)?;
                 var.display_name = format!("{id}_success");
                 let node = self.add_node(Node::ContextVar(var));
-                Ok(ExprRet::Single((ctx, node)))
+                ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                Ok(())
             }
-            "returndatacopy" => Ok(ExprRet::Multi(vec![])),
+            "returndatacopy" => {
+                ctx.push_expr(ExprRet::Multi(vec![]), self).into_expr_err(*loc)?;
+                Ok(())
+            }
             "byte" => {
                 let b = Builtin::Uint(8);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
                 let node = self.add_node(Node::ContextVar(var));
-                Ok(ExprRet::Single((ctx, node)))
+                ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                Ok(())
             }
             "mstore" | "mstore8" => {
                 // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about memory variables anymore.
@@ -188,7 +238,8 @@ pub trait YulFuncCaller:
                     }
                     Ok(())
                 })?;
-                Ok(ExprRet::Multi(vec![]))
+                ctx.push_expr(ExprRet::Multi(vec![]), self).into_expr_err(*loc)?;
+                Ok(())
             }
             "sstore" => {
                 // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about storage variables anymore.
@@ -212,7 +263,8 @@ pub trait YulFuncCaller:
                     }
                     Ok(())
                 })?;
-                Ok(ExprRet::Multi(vec![]))
+                ctx.push_expr(ExprRet::Multi(vec![]), self).into_expr_err(*loc)?;
+                Ok(())
             }
             "not" => Err(ExprErr::Todo(
                 *loc,
@@ -226,10 +278,10 @@ pub trait YulFuncCaller:
         }
     }
 
-    fn return_yul(&mut self, loc: Loc, size: ExprRet) -> Result<(), ExprErr> {
+    fn return_yul(&mut self, ctx: ContextNode, loc: Loc, size: ExprRet) -> Result<(), ExprErr> {
         match size {
             ExprRet::CtxKilled => Ok(()),
-            ExprRet::Single((ctx, size)) | ExprRet::SingleLiteral((ctx, size)) => {
+            ExprRet::Single(size) | ExprRet::SingleLiteral(size) => {
                 let b = Builtin::DynamicBytes;
                 let mut var =
                     ContextVar::new_from_builtin(loc, self.builtin_or_add(b.clone()).into(), self)
@@ -253,12 +305,7 @@ pub trait YulFuncCaller:
             ExprRet::Multi(sizes) => {
                 sizes
                     .into_iter()
-                    .try_for_each(|size| self.return_yul(loc, size))?;
-                Ok(())
-            }
-            ExprRet::Fork(w1, w2) => {
-                self.return_yul(loc, *w1)?;
-                self.return_yul(loc, *w2)?;
+                    .try_for_each(|size| self.return_yul(ctx, loc, size))?;
                 Ok(())
             }
         }
@@ -266,10 +313,10 @@ pub trait YulFuncCaller:
 
     // fn byte_index(&mut self, var: ExprRet, index: ExprRet) -> Result<ExprRet, ExprErr> {
     //     match (var, index) {
-    //         (ExprRet::Single((ctx, var_idx))
-    //          | ExprRet::Single((ctx, var_idx)),
-    //          ExprRet::Single((_, index_idx))
-    //          | ExprRet::Single((_, index_idx)),
+    //         (ExprRet::Single(var_idx)
+    //          | ExprRet::Single(var_idx),
+    //          ExprRet::Single(index_idx)
+    //          | ExprRet::Single(index_idx),
     //         ) => {
 
     //         }

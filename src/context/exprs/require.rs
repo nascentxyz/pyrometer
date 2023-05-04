@@ -3,7 +3,7 @@ use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
     exprs::{BinOp, Variable},
-    AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, ExprRet, Node,
+    AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, Node,
 };
 
 use shared::{
@@ -28,166 +28,256 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
         match inputs.get(0).expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                )
+                self.parse_ctx_expr(rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Require operation `==` had no right hand side".to_string()))
+                    };
+                    let rhs_paths = rhs_paths.flatten();
+                    analyzer.parse_ctx_expr(lhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `==` had no left hand side".to_string()))
+                        };
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths.flatten(),
+                            &rhs_paths,
+                            RangeOp::Eq,
+                            RangeOp::Neq,
+                            (RangeOp::Neq, RangeOp::Eq),
+                        )
+                    })
+                })
             }
             Expression::NotEqual(loc, lhs, rhs) => {
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Neq,
-                    RangeOp::Eq,
-                    (RangeOp::Eq, RangeOp::Neq),
-                )
+                self.parse_ctx_expr(rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Require operation `!=` had no right hand side".to_string()))
+                    };
+                    let rhs_paths = rhs_paths.flatten();
+                    analyzer.parse_ctx_expr(lhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `!=` had no left hand side".to_string()))
+                        };
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths.flatten(),
+                            &rhs_paths,
+                            RangeOp::Neq,
+                            RangeOp::Eq,
+                            (RangeOp::Eq, RangeOp::Neq),
+                        )
+                    })
+                })
             }
             Expression::Less(loc, lhs, rhs) => {
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Lt,
-                    RangeOp::Gt,
-                    (RangeOp::Gte, RangeOp::Lte),
-                )
+                self.parse_ctx_expr(rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Require operation `<` had no right hand side".to_string()))
+                    };
+                    let rhs_paths = rhs_paths.flatten();
+                    analyzer.parse_ctx_expr(lhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `<` had no left hand side".to_string()))
+                        };
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths.flatten(),
+                            &rhs_paths,
+                            RangeOp::Lt,
+                            RangeOp::Gt,
+                            (RangeOp::Gte, RangeOp::Lte),
+                        )
+                    })
+                })
             }
             Expression::More(loc, lhs, rhs) => {
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Gt,
-                    RangeOp::Lt,
-                    (RangeOp::Lte, RangeOp::Gte),
-                )
+                self.parse_ctx_expr(rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Require operation `>` had no right hand side".to_string()))
+                    };
+                    let rhs_paths = rhs_paths.flatten();
+                    analyzer.parse_ctx_expr(lhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `>` had no left hand side".to_string()))
+                        };
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths.flatten(),
+                            &rhs_paths,
+                            RangeOp::Gt,
+                            RangeOp::Lt,
+                            (RangeOp::Lte, RangeOp::Gte),
+                        )
+                    })
+                })
             }
             Expression::MoreEqual(loc, lhs, rhs) => {
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Gte,
-                    RangeOp::Lte,
-                    (RangeOp::Lte, RangeOp::Gte),
-                )
+                self.parse_ctx_expr(rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Require operation `>=` had no right hand side".to_string()))
+                    };
+                    let rhs_paths = rhs_paths.flatten();
+                    analyzer.parse_ctx_expr(lhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `>=` had no left hand side".to_string()))
+                        };
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths.flatten(),
+                            &rhs_paths,
+                            RangeOp::Gte,
+                            RangeOp::Lte,
+                            (RangeOp::Lte, RangeOp::Gte),
+                        )
+                    })
+                })
             }
             Expression::LessEqual(loc, lhs, rhs) => {
-                let rhs_paths = self.parse_ctx_expr(rhs, ctx)?.flatten();
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Lte,
-                    RangeOp::Gte,
-                    (RangeOp::Gte, RangeOp::Lte),
-                )
+                self.parse_ctx_expr(rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Require operation `<=` had no right hand side".to_string()))
+                    };
+                    let rhs_paths = rhs_paths.flatten();
+                    analyzer.parse_ctx_expr(lhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `<=` had no left hand side".to_string()))
+                        };
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths.flatten(),
+                            &rhs_paths,
+                            RangeOp::Lte,
+                            RangeOp::Gte,
+                            (RangeOp::Gte, RangeOp::Lte),
+                        )
+                    })
+                })
             }
             Expression::Not(loc, lhs) => {
-                // println!("was not in require");
-                let lhs_paths = self.parse_ctx_expr(lhs, ctx)?.flatten();
-                let cnode =
-                    ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(false))));
-                let tmp_false = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
-                        .into_expr_err(*loc)?,
-                );
-                let rhs_paths =
-                    ExprRet::Single((ctx, ContextVarNode::from(self.add_node(tmp_false)).into()));
-                // println!("{:?} {:?}", lhs_paths, rhs_paths);
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                )
+                self.parse_ctx_expr(lhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Require operation `NOT` had no left hand side".to_string()))
+                    };
+                    let cnode =
+                        ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(false))));
+                    let tmp_false = Node::ContextVar(
+                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                            .into_expr_err(loc)?,
+                    );
+                    let rhs_paths =
+                        ExprRet::Single(ContextVarNode::from(analyzer.add_node(tmp_false)).into());
+                    analyzer.handle_require_inner(
+                        ctx,
+                        loc,
+                        &lhs_paths,
+                        &rhs_paths,
+                        RangeOp::Eq,
+                        RangeOp::Neq,
+                        (RangeOp::Neq, RangeOp::Eq),
+                    )
+                })
+
             }
             Expression::And(loc, lhs, rhs) => {
-                let lhs_paths = self.cmp(*loc, lhs, RangeOp::And, rhs, ctx)?;
-                let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
-                let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
-                        .into_expr_err(*loc)?,
-                );
-                let node = self.add_node(tmp_true);
-                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                let rhs_paths = ExprRet::Single((ctx, node));
+                self.cmp(*loc, lhs, RangeOp::And, rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Require operation `&&` had no left hand side".to_string()))
+                    };
+                    let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
+                    let tmp_true = Node::ContextVar(
+                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                            .into_expr_err(loc)?,
+                    );
+                    let node = analyzer.add_node(tmp_true);
+                    analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                    let rhs_paths = ExprRet::Single(node);
 
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                )
+                    analyzer.handle_require_inner(
+                        ctx,
+                        loc,
+                        &lhs_paths,
+                        &rhs_paths,
+                        RangeOp::Eq,
+                        RangeOp::Neq,
+                        (RangeOp::Neq, RangeOp::Eq),
+                    )
+                })
             }
             Expression::Or(loc, lhs, rhs) => {
-                let lhs_paths = self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx)?;
-                let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
-                let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
-                        .into_expr_err(*loc)?,
-                );
-                let node = self.add_node(tmp_true);
-                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                let rhs_paths = ExprRet::Single((ctx, node));
-                self.handle_require_inner(
-                    *loc,
-                    &lhs_paths,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                )
+                self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Require operation `||` had no left hand side".to_string()))
+                    };
+                    let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
+                    let tmp_true = Node::ContextVar(
+                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                            .into_expr_err(loc)?,
+                    );
+                    let node = analyzer.add_node(tmp_true);
+                    analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                    let rhs_paths = ExprRet::Single(node);
+                    analyzer.handle_require_inner(
+                        ctx,
+                        loc,
+                        &lhs_paths,
+                        &rhs_paths,
+                        RangeOp::Eq,
+                        RangeOp::Neq,
+                        (RangeOp::Neq, RangeOp::Eq),
+                    )
+                })
             }
             other => {
-                let should_be_bool = self.parse_ctx_expr(other, ctx)?.flatten();
-                let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
-                let tmp_true = Node::ContextVar(
-                    ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
-                        .into_expr_err(other.loc())?,
-                );
-                let rhs_paths =
-                    ExprRet::Single((ctx, ContextVarNode::from(self.add_node(tmp_true)).into()));
-                self.handle_require_inner(
-                    other.loc(),
-                    &should_be_bool,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                )
+                self.parse_ctx_expr(other, ctx)?;
+                self.apply_to_edges(ctx, other.loc(), &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Require operation had no left hand side".to_string()))
+                    };
+                    let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
+                    let tmp_true = Node::ContextVar(
+                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                            .into_expr_err(other.loc())?,
+                    );
+                    let rhs_paths =
+                        ExprRet::Single(ContextVarNode::from(analyzer.add_node(tmp_true)).into());
+                    analyzer.handle_require_inner(
+                        ctx,
+                        loc,
+                        &lhs_paths,
+                        &rhs_paths,
+                        RangeOp::Eq,
+                        RangeOp::Neq,
+                        (RangeOp::Neq, RangeOp::Eq),
+                    )
+                })
             }
         }
     }
 
     fn handle_require_inner(
         &mut self,
+        ctx: ContextNode,
         loc: Loc,
         lhs_paths: &ExprRet,
         rhs_paths: &ExprRet,
@@ -197,50 +287,52 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::CtxKilled) | (ExprRet::CtxKilled, _) => Ok(()),
-            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+            (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self)
                     .into_expr_err(loc)?;
                 self.handle_require_inner(
+                    ctx,
                     loc,
-                    &ExprRet::Single((*lhs_ctx, *lhs)),
+                    &ExprRet::Single(*lhs),
                     rhs_paths,
                     op,
                     rhs_op,
                     recursion_ops,
                 )
             }
-            (ExprRet::Single((_lhs_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
+            (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self)
                     .into_expr_err(loc)?;
                 self.handle_require_inner(
+                    ctx,
                     loc,
                     lhs_paths,
-                    &ExprRet::Single((*rhs_ctx, *rhs)),
+                    &ExprRet::Single(*rhs),
                     op,
                     rhs_op,
                     recursion_ops,
                 )
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+            (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, *lhs_ctx)?;
+                let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, *lhs_ctx)?;
+                let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
 
-                self.require(new_lhs, new_rhs, *lhs_ctx, loc, op, rhs_op, recursion_ops)?;
+                self.require(new_lhs, new_rhs, ctx, loc, op, rhs_op, recursion_ops)?;
                 Ok(())
             }
             (
-                l @ ExprRet::Single((_, _)) | l @ ExprRet::SingleLiteral(_),
+                l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_),
                 ExprRet::Multi(rhs_sides),
             ) => rhs_sides.iter().try_for_each(|expr_ret| {
-                self.handle_require_inner(loc, l, expr_ret, op, rhs_op, recursion_ops)
+                self.handle_require_inner(ctx, loc, l, expr_ret, op, rhs_op, recursion_ops)
             }),
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
                 lhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(loc, expr_ret, r, op, rhs_op, recursion_ops)
+                    self.handle_require_inner(ctx, loc, expr_ret, r, op, rhs_op, recursion_ops)
                 })
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
@@ -249,6 +341,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
                             self.handle_require_inner(
+                                ctx,
                                 loc,
                                 lhs_expr_ret,
                                 rhs_expr_ret,
@@ -261,6 +354,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 } else {
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
                         self.handle_require_inner(
+                            ctx,
                             loc,
                             lhs_paths,
                             rhs_expr_ret,
@@ -270,30 +364,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         )
                     })
                 }
-            }
-            (ExprRet::Fork(lhs_world1, lhs_world2), ExprRet::Fork(rhs_world1, rhs_world2)) => {
-                self.handle_require_inner(loc, lhs_world1, rhs_world1, op, rhs_op, recursion_ops)?;
-                self.handle_require_inner(loc, lhs_world1, rhs_world2, op, rhs_op, recursion_ops)?;
-                self.handle_require_inner(loc, lhs_world2, rhs_world1, op, rhs_op, recursion_ops)?;
-                self.handle_require_inner(loc, lhs_world2, rhs_world2, op, rhs_op, recursion_ops)
-            }
-            (
-                l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_),
-                ExprRet::Fork(world1, world2),
-            ) => {
-                self.handle_require_inner(loc, l, world1, op, rhs_op, recursion_ops)?;
-                self.handle_require_inner(loc, l, world2, op, rhs_op, recursion_ops)
-            }
-            (
-                ExprRet::Fork(world1, world2),
-                r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_),
-            ) => {
-                self.handle_require_inner(loc, r, world1, op, rhs_op, recursion_ops)?;
-                self.handle_require_inner(loc, r, world2, op, rhs_op, recursion_ops)
-            }
-            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => {
-                self.handle_require_inner(loc, m, world1, op, rhs_op, recursion_ops)?;
-                self.handle_require_inner(loc, m, world2, op, rhs_op, recursion_ops)
             }
             (e, f) => Err(ExprErr::UnhandledCombo(
                 loc,
@@ -970,8 +1040,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     inverse,
                     false,
                 )?
-                .expect_single(loc)?
-                .1,
+                .expect_single().into_expr_err(loc)?,
             );
             let new_underlying_lhs =
                 self.advance_var_in_curr_ctx(tmp_construction.lhs.latest_version(self), loc)?;
@@ -1034,21 +1103,18 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
                         let tmp_rhs = ContextVarNode::from(
                             self.op(loc, rhs_cvar, tmp_lhs, ctx, RangeOp::Mul, false)?
-                                .expect_single(loc)?
-                                .1,
+                                .expect_single().into_expr_err(loc)?,
                         );
                         let new_rhs = ContextVarNode::from(
                             self.op(loc, tmp_rhs, tmp_construction.lhs, ctx, inverse, false)?
-                                .expect_single(loc)?
-                                .1,
+                                .expect_single().into_expr_err(loc)?,
                         );
                         (true, new_rhs)
                     }
                     RangeOp::Add => {
                         let new_rhs = ContextVarNode::from(
                             self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?
-                                .expect_single(loc)?
-                                .1,
+                                .expect_single().into_expr_err(loc)?,
                         );
                         (false, new_rhs)
                     }

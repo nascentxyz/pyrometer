@@ -25,6 +25,7 @@ pub enum GraphError {
     ChildRedefinition(String),
     VariableUpdateInOldContext(String),
     DetachedVariable(String),
+    ExpectedSingle(String),
 }
 
 pub trait AnalyzerLike: GraphLike {

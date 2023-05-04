@@ -47,7 +47,9 @@ impl<T> IntoExprErr<T> for Result<T, GraphError> {
 
 #[derive(Debug, Clone)]
 pub enum ExprErr {
-    ExpectedSingle(Loc, String),
+    NoLhs(Loc, String),
+    NoRhs(Loc, String),
+    NoReturn(Loc, String),
     ArrayTy(Loc, String),
     ArrayIndex(Loc, String),
     UnhandledCombo(Loc, String),
@@ -76,7 +78,9 @@ impl ExprErr {
     pub fn loc(&self) -> Loc {
         use ExprErr::*;
         match self {
-            ExpectedSingle(loc, ..) => *loc,
+            NoLhs(loc, ..) => *loc,
+            NoRhs(loc, ..) => *loc,
+            NoReturn(loc, ..) => *loc,
             ArrayTy(loc, ..) => *loc,
             ArrayIndex(loc, ..) => *loc,
             UnhandledCombo(loc, ..) => *loc,
@@ -98,7 +102,9 @@ impl ExprErr {
     pub fn msg(&self) -> &str {
         use ExprErr::*;
         match self {
-            ExpectedSingle(_, msg, ..) => msg,
+            NoLhs(_, msg, ..) => msg,
+            NoRhs(_, msg, ..) => msg,
+            NoReturn(_, msg, ..) => msg,
             ArrayTy(_, msg, ..) => msg,
             ArrayIndex(_, msg, ..) => msg,
             UnhandledCombo(_, msg, ..) => msg,
@@ -117,16 +123,17 @@ impl ExprErr {
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => {
-                msg
-            }
+            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => msg,
+            GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(msg), ..) => msg,
         }
     }
 
     pub fn report_msg(&self) -> &str {
         use ExprErr::*;
         match self {
-            ExpectedSingle(..) => "Expected ExprRet::Single",
+            NoLhs(..) => "No left-hand side passed to expression",
+            NoRhs(..) => "No right-hand side passed to expression",
+            NoReturn(..) => "No returned element from expression",
             ArrayTy(..) => "Unexpected type as array element",
             ArrayIndex(..) => "Unexpected type as array index",
             UnhandledCombo(..) => "Unhandled ExprRet variant combination",
@@ -146,6 +153,7 @@ impl ExprErr {
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(_), ..) => "Graph IR Error: Child redefintion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(_), ..) => "Graph IR Error: Detached Variable. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(_), ..) => "Graph IR Error: Expecting single expression return, got multiple. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
         }
     }
 }

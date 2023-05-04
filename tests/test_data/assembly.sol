@@ -9,11 +9,11 @@ contract Assembly {
 	// }
 	function a() public {
 		if (a < 100) {
-			if (a > 5) {
+		// 	if (a > 5) {
 				b();
-			} else {
-				c();
-			}
+		// 	} else {
+		// 		c();
+		// 	}
 		} else {
 			c();
 		}

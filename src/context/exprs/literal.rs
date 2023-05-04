@@ -1,6 +1,6 @@
 use crate::context::exprs::IntoExprErr;
 use crate::ExprErr;
-use crate::ExprRet;
+use shared::context::ExprRet;
 use ethers_core::types::H256;
 use ethers_core::types::I256;
 use shared::{
@@ -25,7 +25,7 @@ pub trait Literal: AnalyzerLike + Sized {
         integer: &str,
         exponent: &str,
         negative: bool,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         let int = U256::from_dec_str(integer).unwrap();
         let val = if !exponent.is_empty() {
             let exp = U256::from_dec_str(exponent).unwrap();
@@ -52,7 +52,8 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        Ok(ExprRet::SingleLiteral((ctx, node)))
+        ctx.push_expr(ExprRet::SingleLiteral(node), self).into_expr_err(loc)?;
+        Ok(())
     }
 
     fn hex_num_literal(
@@ -61,7 +62,7 @@ pub trait Literal: AnalyzerLike + Sized {
         loc: Loc,
         integer: &str,
         negative: bool,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         let val = U256::from_str_radix(integer, 16).unwrap();
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
@@ -76,10 +77,11 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        Ok(ExprRet::SingleLiteral((ctx, node)))
+        ctx.push_expr(ExprRet::SingleLiteral(node), self).into_expr_err(loc)?;
+        Ok(())
     }
 
-    fn hex_literals(&mut self, ctx: ContextNode, hexes: &[HexLiteral]) -> Result<ExprRet, ExprErr> {
+    fn hex_literals(&mut self, ctx: ContextNode, hexes: &[HexLiteral]) -> Result<(), ExprErr> {
         if hexes.len() == 1 {
             let mut h = H256::default();
             let mut max = 0;
@@ -100,7 +102,8 @@ pub trait Literal: AnalyzerLike + Sized {
             );
             let node = self.add_node(ccvar);
             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-            Ok(ExprRet::SingleLiteral((ctx, node)))
+            ctx.push_expr(ExprRet::SingleLiteral(node), self).into_expr_err(hexes[0].loc)?;
+            Ok(())
         } else {
             todo!("hexes: {:?}", hexes);
         }
@@ -111,7 +114,7 @@ pub trait Literal: AnalyzerLike + Sized {
         ctx: ContextNode,
         loc: Loc,
         addr: &str,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         let addr = Address::from_str(addr).unwrap();
 
         let concrete_node =
@@ -121,10 +124,11 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        Ok(ExprRet::Single((ctx, node)))
+        ctx.push_expr(ExprRet::Single(node), self).into_expr_err(loc)?;
+        Ok(())
     }
 
-    fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<ExprRet, ExprErr> {
+    fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<(), ExprErr> {
         let concrete_node =
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::String(s.to_string()))));
         let ccvar = Node::ContextVar(
@@ -132,16 +136,18 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        Ok(ExprRet::Single((ctx, node)))
+        ctx.push_expr(ExprRet::Single(node), self).into_expr_err(loc)?;
+        Ok(())
     }
 
-    fn bool_literal(&mut self, ctx: ContextNode, loc: Loc, b: bool) -> Result<ExprRet, ExprErr> {
+    fn bool_literal(&mut self, ctx: ContextNode, loc: Loc, b: bool) -> Result<(), ExprErr> {
         let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(b))));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        Ok(ExprRet::Single((ctx, node)))
+        ctx.push_expr(ExprRet::Single(node), self).into_expr_err(loc)?;
+        Ok(())
     }
 }

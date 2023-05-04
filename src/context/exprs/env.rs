@@ -1,7 +1,8 @@
+use shared::context::ExprRet;
 use crate::context::exprs::IntoExprErr;
 use crate::context::func_call::FuncCaller;
 use crate::context::ExprErr;
-use crate::{context::ContextNode, AnalyzerLike, ExprRet};
+use crate::{context::ContextNode, AnalyzerLike};
 use solang_parser::pt::Expression;
 
 use solang_parser::pt::Identifier;
@@ -12,11 +13,17 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         &mut self,
         ident: &Identifier,
         ctx: ContextNode,
-    ) -> Result<Option<ExprRet>, ExprErr> {
+    ) -> Result<Option<()>, ExprErr> {
         match &*ident.name {
-            "msg" | "tx" => Ok(Some(ExprRet::Single((ctx, self.msg().into())))),
-            "block" => Ok(Some(ExprRet::Single((ctx, self.block().into())))),
-            "abi" => Ok(Some(ExprRet::Multi(vec![]))),
+            "msg" | "tx" => {
+                ctx.push_expr(ExprRet::Single(self.msg().into()), self).into_expr_err(ident.loc)?;
+                Ok(Some(()))
+            }
+            "block" => {
+                ctx.push_expr(ExprRet::Single(self.block().into()), self).into_expr_err(ident.loc)?;
+                Ok(Some(()))
+            }
+            "abi" => Ok(Some(())),
             "_" => {
                 #[allow(clippy::manual_map)]
                 if let Some(mod_state) = &ctx
@@ -34,7 +41,7 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     //     .into_expr_err(ident.loc)?;
 
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
-                    Ok(None)
+                    Ok(Some(()))
                 } else {
                     Ok(None)
                 }

@@ -1,6 +1,7 @@
+use shared::context::ExprRet;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
-use crate::{func_call::FuncCaller, ContextBuilder, ExprRet};
+use crate::{func_call::FuncCaller, ContextBuilder};
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
@@ -26,7 +27,7 @@ pub trait InternalFuncCaller:
         ident: &Identifier,
         // _func_expr: &Expression,
         input_args: &[NamedArgument],
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
         // filter down all funcs to those that match
@@ -113,38 +114,44 @@ pub trait InternalFuncCaller:
                     let fc_node = self.add_node(Node::ContextVar(field_cvar));
                     self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
                     self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
-                    let field_as_ret = ExprRet::Single((ctx, fc_node));
+                    let field_as_ret = ExprRet::Single(fc_node);
                     let input = input_args
                         .iter()
                         .find(|arg| arg.name.name == field.name(self).unwrap())
                         .expect("No field in struct in struct construction");
-                    let assignment = self.parse_ctx_expr(&input.expr, ctx)?;
-                    self.match_assign_sides(*loc, &field_as_ret, &assignment)?;
-                    Ok(())
+                    self.parse_ctx_expr(&input.expr, ctx)?;
+                    self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        let Some(assignment) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
+                        };
+                        analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
+                        ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                        Ok(())
+                    })
                 })?;
-                Ok(ExprRet::Single((ctx, cvar)))
+                Ok(())
             } else {
                 todo!("Disambiguate struct construction");
             }
         } else if possible_funcs.len() == 1 {
             let func = possible_funcs[0];
             let params = func.params(self);
-            let inputs = ExprRet::Multi(
-                params
-                    .iter()
-                    .map(|param| {
-                        let input = input_args
-                            .iter()
-                            .find(|arg| arg.name.name == param.name(self).unwrap())
-                            .expect(
-                                "No parameter with named provided in named parameter function call",
-                            );
+            params
+                .iter()
+                .try_for_each(|param| {
+                    let input = input_args
+                        .iter()
+                        .find(|arg| arg.name.name == param.name(self).unwrap())
+                        .expect(
+                            "No parameter with named provided in named parameter function call",
+                        );
 
-                        self.parse_ctx_expr(&input.expr, ctx)
-                    })
-                    .collect::<Result<Vec<_>, ExprErr>>()?,
-            );
-            self.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
+                    self.parse_ctx_expr(&input.expr, ctx)
+                })?;
+            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                let inputs = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
+            })
         } else {
             todo!("Disambiguate named function call");
         }
@@ -157,7 +164,7 @@ pub trait InternalFuncCaller:
         ident: &Identifier,
         func_expr: &Expression,
         input_exprs: &[Expression],
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
@@ -177,19 +184,22 @@ pub trait InternalFuncCaller:
 
         if possible_funcs.is_empty() {
             // this is a builtin, cast, or unknown function?
-            let ret = self.parse_ctx_expr(func_expr, ctx)?;
-            self.match_intrinsic_fallback(loc, input_exprs, ret)
+            self.parse_ctx_expr(func_expr, ctx)?;
+            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                let ret = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
+            })
         } else if possible_funcs.len() == 1 {
-            let inputs = ExprRet::Multi(
-                input_exprs
-                    .iter()
-                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                    .collect::<Result<Vec<_>, ExprErr>>()?,
-            );
-            self.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
+           input_exprs
+                .iter()
+                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
+            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                let inputs = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                analyzer.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
+            })
         } else {
             // this is the annoying case due to function overloading & type inference on number literals
-            let lits = input_exprs
+            let lits: Vec<_> = input_exprs
                 .iter()
                 .map(|expr| {
                     match expr {
@@ -202,23 +212,23 @@ pub trait InternalFuncCaller:
                     }
                 })
                 .collect();
-            let inputs = ExprRet::Multi(
-                input_exprs
-                    .iter()
-                    .map(|expr| self.parse_ctx_expr(expr, ctx))
-                    .collect::<Result<Vec<_>, ExprErr>>()?,
-            );
 
-            if let Some(func) =
-                self.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
-            {
-                self.setup_fn_call(loc, &inputs, func.into(), ctx, None)
-            } else {
-                Err(ExprErr::FunctionNotFound(
-                    *loc,
-                    "Could not find function".to_string(),
-                ))
-            }
+            input_exprs
+                .iter()
+                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
+            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                let inputs = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                if let Some(func) =
+                    analyzer.disambiguate_fn_call(&ident.name, lits.clone(), &inputs, &possible_funcs)
+                {
+                    analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
+                } else {
+                    Err(ExprErr::FunctionNotFound(
+                        loc,
+                        "Could not find function".to_string(),
+                    ))
+                }
+            })
         }
     }
 }

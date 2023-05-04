@@ -1,7 +1,6 @@
 use crate::context::exprs::IntoExprErr;
 use crate::{
     context::{ContextBuilder, ExprErr},
-    ExprRet,
 };
 use ethers_core::types::{I256, U256};
 use shared::analyzer::AsDotStr;
@@ -31,71 +30,86 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
         op: RangeOp,
         assign: bool,
-    ) -> Result<ExprRet, ExprErr> {
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx)?.flatten();
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx)?.flatten();
-        self.op_match(loc, &lhs_paths, &rhs_paths, op, assign)
+    ) -> Result<(), ExprErr> {
+        self.parse_ctx_expr(rhs_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
+            };
+            analyzer.parse_ctx_expr(lhs_expr, ctx)?;
+            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}")))
+                };
+                analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, assign)
+            })
+        })
     }
 
     fn op_match(
         &mut self,
+        ctx: ContextNode,
         loc: Loc,
         lhs_paths: &ExprRet,
         rhs_paths: &ExprRet,
         op: RangeOp,
         assign: bool,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
-            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
+            (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 lhs_cvar.try_increase_size(self).into_expr_err(loc)?;
                 rhs_cvar.try_increase_size(self).into_expr_err(loc)?;
-                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                Ok(())
             }
-            (ExprRet::SingleLiteral((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+            (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self)
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                Ok(())
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::SingleLiteral((_rhs_ctx, rhs))) => {
+            (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self)
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                Ok(())
             }
-            (ExprRet::Single((lhs_ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+            (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                self.op(loc, lhs_cvar, rhs_cvar, *lhs_ctx, op, assign)
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                Ok(())
             }
-            (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => Ok(ExprRet::Multi(
+            (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides
                     .iter()
-                    .map(|expr_ret| self.op_match(loc, lhs, expr_ret, op, assign))
-                    .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
-            )),
-            (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => Ok(ExprRet::Multi(
+                    .map(|expr_ret| self.op_match(ctx, loc, lhs, expr_ret, op, assign))
+                    .collect::<Result<Vec<()>, ExprErr>>()?;
+                Ok(())
+            },
+            (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => {
                 lhs_sides
                     .iter()
-                    .map(|expr_ret| self.op_match(loc, expr_ret, rhs, op, assign))
-                    .collect::<Result<Vec<ExprRet>, ExprErr>>()?,
-            )),
-            (_, ExprRet::CtxKilled) => Ok(ExprRet::CtxKilled),
-            (ExprRet::CtxKilled, _) => Ok(ExprRet::CtxKilled),
-            (ExprRet::Fork(world1, world2), rhs @ ExprRet::Single(..)) => Ok(ExprRet::Fork(
-                Box::new(self.op_match(loc, world1, rhs, op, assign)?),
-                Box::new(self.op_match(loc, world2, rhs, op, assign)?),
-            )),
-            (lhs @ ExprRet::Single(..), ExprRet::Fork(world1, world2)) => Ok(ExprRet::Fork(
-                Box::new(self.op_match(loc, lhs, world1, op, assign)?),
-                Box::new(self.op_match(loc, lhs, world2, op, assign)?),
-            )),
+                    .map(|expr_ret| self.op_match(ctx, loc, expr_ret, rhs, op, assign))
+                    .collect::<Result<Vec<()>, ExprErr>>()?;
+                Ok(())
+            },
+            (_, ExprRet::CtxKilled) => {
+                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+                Ok(())
+            }
+            (ExprRet::CtxKilled, _) => {
+                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+                Ok(())
+            }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => Err(ExprErr::UnhandledCombo(
                 loc,
                 format!("Unhandled combination in binop: {lhs_sides:?} {rhs_sides:?}"),
@@ -351,9 +365,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
-                        let (_, tmp_rhs) = self
+                        let tmp_rhs = self
                             .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)?
-                            .expect_single(loc)?;
+                            .expect_single().into_expr_err(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -416,9 +430,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
-                        let (_, tmp_rhs) = self
+                        let tmp_rhs = self
                             .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)?
-                            .expect_single(loc)?;
+                            .expect_single().into_expr_err(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -563,6 +577,6 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
             }
         }
-        Ok(ExprRet::Single((ctx, new_lhs.into())))
+        Ok(ExprRet::Single(new_lhs.into()))
     }
 }

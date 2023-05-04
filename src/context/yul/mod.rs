@@ -3,7 +3,7 @@ use crate::context::ContextBuilder;
 use crate::context::ExprParser;
 use crate::AnalyzerLike;
 use crate::ExprErr;
-use crate::ExprRet;
+use shared::context::ExprRet;
 use shared::context::ContextVar;
 use shared::context::ContextVarNode;
 use shared::nodes::Builtin;
@@ -60,41 +60,31 @@ pub trait YulBuilder:
             .add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc()))
             .unwrap();
         match stmt {
-            Assign(_loc, yul_exprs, yul_expr) => {
-                if forks.is_empty() {
-                    let ret = yul_exprs
-                        .iter()
-                        .map(|expr| self.parse_ctx_yul_expr(expr, ctx))
-                        .collect::<Result<Vec<ExprRet>, ExprErr>>();
-                    if let Some(lhs_side) = self.add_if_err(ret) {
-                        let ret = self.parse_ctx_yul_expr(yul_expr, ctx);
-                        if let Some(rhs_side) = self.add_if_err(ret) {
-                            let ret = self.match_assign_sides(
-                                stmt.loc(),
-                                &ExprRet::Multi(lhs_side),
-                                &rhs_side,
-                            );
-                            let _ = self.add_if_err(ret);
-                        }
-                    }
-                } else {
-                    forks.into_iter().for_each(|ctx| {
-                        let ret = yul_exprs
-                            .iter()
-                            .map(|expr| self.parse_ctx_yul_expr(expr, ctx))
-                            .collect::<Result<Vec<ExprRet>, ExprErr>>();
-                        if let Some(lhs_side) = self.add_if_err(ret) {
-                            let ret = self.parse_ctx_yul_expr(yul_expr, ctx);
-                            if let Some(rhs_side) = self.add_if_err(ret) {
-                                let ret = self.match_assign_sides(
-                                    stmt.loc(),
-                                    &ExprRet::Multi(lhs_side),
+            Assign(loc, yul_exprs, yul_expr) => {
+                match yul_exprs.iter().try_for_each(|expr| self.parse_ctx_yul_expr(expr, ctx)) {
+                    Ok(()) => {
+                        let ret = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                            let Some(lhs_side) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                return Err(ExprErr::NoLhs(loc, "No left hand side assignments in yul block".to_string()))
+                            };
+
+                            analyzer.parse_ctx_yul_expr(yul_expr, ctx);
+                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                                let Some(rhs_side) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                    return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
+                                };
+
+                                analyzer.match_assign_sides(
+                                    ctx,
+                                    loc,
+                                    &lhs_side,
                                     &rhs_side,
-                                );
-                                let _ = self.add_if_err(ret);
-                            }
-                        }
-                    });
+                                )
+                            })
+                        });
+                        let _ = self.add_if_err(ret);
+                    }
+                    Err(e) => self.add_expr_err(e)
                 }
             }
             VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
@@ -120,11 +110,16 @@ pub trait YulBuilder:
                     .collect::<Vec<_>>();
 
                 if let Some(yul_expr) = maybe_yul_expr {
-                    let ret = self.parse_ctx_yul_expr(yul_expr, ctx);
-                    if let Some(ret) = self.add_if_err(ret) {
-                        let ret = self.match_assign_yul(*loc, &nodes, ret);
-                        let _ = self.add_if_err(ret);
-                    }
+                    self.parse_ctx_yul_expr(yul_expr, ctx);
+                    let ret = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
+                        };
+
+                        analyzer.match_assign_yul(ctx, loc, &nodes, ret)
+
+                    });
+                    let _ = self.add_if_err(ret);
                 }
             }
             If(loc, yul_expr, yul_block) => {
@@ -188,26 +183,17 @@ pub trait YulBuilder:
         &mut self,
         expr: &YulExpression,
         ctx: ContextNode,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         tracing::trace!("Parsing yul expression: {expr:?}");
-        if ctx.is_ended(self).into_expr_err(expr.loc())? {
-            return Ok(ExprRet::CtxKilled);
-        }
 
-        if ctx.live_edges(self).into_expr_err(expr.loc())?.is_empty() {
+        let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
+        if edges.is_empty() {
             self.parse_ctx_yul_expr_inner(expr, ctx)
         } else {
-            let rets: Vec<ExprRet> = ctx
-                .live_edges(self)
-                .into_expr_err(expr.loc())?
+            edges
                 .iter()
-                .map(|fork_ctx| self.parse_ctx_yul_expr(expr, *fork_ctx))
-                .collect::<Result<_, ExprErr>>()?;
-            if rets.len() == 1 {
-                Ok(rets.into_iter().take(1).next().unwrap())
-            } else {
-                Ok(ExprRet::Multi(rets))
-            }
+                .try_for_each(|fork_ctx| self.parse_ctx_yul_expr(expr, *fork_ctx))?;
+            Ok(())
         }
     }
 
@@ -215,7 +201,7 @@ pub trait YulBuilder:
         &mut self,
         expr: &YulExpression,
         ctx: ContextNode,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(), ExprErr> {
         use YulExpression::*;
         match expr {
             BoolLiteral(loc, b, _) => self.bool_literal(ctx, *loc, *b),
@@ -236,6 +222,7 @@ pub trait YulBuilder:
 
     fn match_assign_yul(
         &mut self,
+        ctx: ContextNode,
         loc: Loc,
         nodes: &[ContextVarNode],
         ret: ExprRet,
@@ -258,10 +245,6 @@ pub trait YulBuilder:
                     ));
                 };
             }
-            ExprRet::Fork(w1, w2) => {
-                self.match_assign_yul(loc, nodes, *w1)?;
-                self.match_assign_yul(loc, nodes, *w2)?;
-            }
             ExprRet::CtxKilled => {}
         }
 
@@ -275,7 +258,7 @@ pub trait YulBuilder:
         ret: ExprRet,
     ) -> Result<(), ExprErr> {
         match ret.flatten() {
-            ExprRet::Single((_ctx, idx)) | ExprRet::SingleLiteral((_ctx, idx)) => {
+            ExprRet::Single(idx) | ExprRet::SingleLiteral(idx) => {
                 let assign = ContextVarNode::from(idx);
                 let assign_ty = assign.underlying(self).into_expr_err(loc)?.ty.clone();
                 if assign_ty.is_dyn(self).into_expr_err(loc)? {
@@ -291,10 +274,6 @@ pub trait YulBuilder:
                     loc,
                     "Multi in single assignment yul expression is unhandled".to_string(),
                 ))
-            }
-            ExprRet::Fork(w1, w2) => {
-                self.match_assign_yul_inner(loc, node, *w1)?;
-                self.match_assign_yul_inner(loc, node, *w2)?;
             }
             ExprRet::CtxKilled => {}
         }
