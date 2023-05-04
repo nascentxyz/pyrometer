@@ -1,8 +1,8 @@
-use shared::context::ExprRet;
 use crate::context::exprs::IntoExprErr;
 use crate::context::func_call::FuncCaller;
 use crate::context::ExprErr;
 use crate::{context::ContextNode, AnalyzerLike};
+use shared::context::ExprRet;
 use solang_parser::pt::Expression;
 
 use solang_parser::pt::Identifier;
@@ -16,11 +16,13 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<()>, ExprErr> {
         match &*ident.name {
             "msg" | "tx" => {
-                ctx.push_expr(ExprRet::Single(self.msg().into()), self).into_expr_err(ident.loc)?;
+                ctx.push_expr(ExprRet::Single(self.msg().into()), self)
+                    .into_expr_err(ident.loc)?;
                 Ok(Some(()))
             }
             "block" => {
-                ctx.push_expr(ExprRet::Single(self.block().into()), self).into_expr_err(ident.loc)?;
+                ctx.push_expr(ExprRet::Single(self.block().into()), self)
+                    .into_expr_err(ident.loc)?;
                 Ok(Some(()))
             }
             "abi" => Ok(Some(())),
@@ -32,9 +34,7 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .modifier_state
                     .clone()
                 {
-                    let res = self.resume_from_modifier(ctx, mod_state.clone())?;
-                    println!("HERERERERE: {res:?}");
-
+                    self.resume_from_modifier(ctx, mod_state.clone())?;
                     // TODO: inherit the input changes as well
                     // println!("inheriting back from parent into modifier");
                     // self.inherit_storage_changes(ctx, mod_state.parent_ctx)

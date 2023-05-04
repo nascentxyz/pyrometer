@@ -65,6 +65,7 @@ pub enum ExprErr {
     NonStoragePush(Loc, String),
     IntrinsicNamedArgs(Loc, String),
     InvalidFunctionInput(Loc, String),
+    TakeFromFork(Loc, String),
     GraphError(Loc, GraphError),
 }
 
@@ -95,6 +96,7 @@ impl ExprErr {
             NonStoragePush(loc, ..) => *loc,
             IntrinsicNamedArgs(loc, ..) => *loc,
             InvalidFunctionInput(loc, ..) => *loc,
+            TakeFromFork(loc, ..) => *loc,
             GraphError(loc, ..) => *loc,
         }
     }
@@ -119,11 +121,14 @@ impl ExprErr {
             NonStoragePush(_, msg, ..) => msg,
             IntrinsicNamedArgs(_, msg, ..) => msg,
             InvalidFunctionInput(_, msg, ..) => msg,
+            TakeFromFork(_, msg, ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => msg,
+            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => {
+                msg
+            }
             GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(msg), ..) => msg,
         }
     }
@@ -148,6 +153,7 @@ impl ExprErr {
             NonStoragePush(..) => "Pushing on non-storage based array is unsupported",
             IntrinsicNamedArgs(..) => "Arguments in calls to intrinsic functions cannot be named",
             InvalidFunctionInput(..) => "Arguments to this function call do not match required types",
+            TakeFromFork(..) => "IR Error: Tried to take from an child context that ended up forking",
             GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(_), ..) => "Graph IR Error: Node type confusion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(_), ..) => "Graph IR Error: Child redefintion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",

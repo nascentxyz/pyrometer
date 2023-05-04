@@ -1,8 +1,8 @@
 use crate::context::exprs::IntoExprErr;
 use crate::ExprErr;
-use shared::context::ExprRet;
 use ethers_core::types::H256;
 use ethers_core::types::I256;
+use shared::context::ExprRet;
 use shared::{
     analyzer::AnalyzerLike,
     context::*,
@@ -52,7 +52,8 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::SingleLiteral(node), self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::SingleLiteral(node), self)
+            .into_expr_err(loc)?;
         Ok(())
     }
 
@@ -77,7 +78,8 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::SingleLiteral(node), self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::SingleLiteral(node), self)
+            .into_expr_err(loc)?;
         Ok(())
     }
 
@@ -102,19 +104,15 @@ pub trait Literal: AnalyzerLike + Sized {
             );
             let node = self.add_node(ccvar);
             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-            ctx.push_expr(ExprRet::SingleLiteral(node), self).into_expr_err(hexes[0].loc)?;
+            ctx.push_expr(ExprRet::SingleLiteral(node), self)
+                .into_expr_err(hexes[0].loc)?;
             Ok(())
         } else {
             todo!("hexes: {:?}", hexes);
         }
     }
 
-    fn address_literal(
-        &mut self,
-        ctx: ContextNode,
-        loc: Loc,
-        addr: &str,
-    ) -> Result<(), ExprErr> {
+    fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &str) -> Result<(), ExprErr> {
         let addr = Address::from_str(addr).unwrap();
 
         let concrete_node =
@@ -124,7 +122,8 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::Single(node), self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::Single(node), self)
+            .into_expr_err(loc)?;
         Ok(())
     }
 
@@ -136,7 +135,8 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::Single(node), self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::Single(node), self)
+            .into_expr_err(loc)?;
         Ok(())
     }
 
@@ -147,7 +147,8 @@ pub trait Literal: AnalyzerLike + Sized {
         );
         let node = self.add_node(ccvar);
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::Single(node), self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::Single(node), self)
+            .into_expr_err(loc)?;
         Ok(())
     }
 }

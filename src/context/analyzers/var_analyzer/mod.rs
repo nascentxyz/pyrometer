@@ -243,10 +243,13 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
                         cr_min = nr_min;
                         cr_max = nr_max;
                         cr_excl = nr_excl;
-                        ba.bound_changes.push((
+                        let new = (
                             LocStrSpan::new(file_mapping, next.loc(self).unwrap()),
                             next_range.clone(),
-                        ));
+                        );
+                        if !ba.bound_changes.contains(&new) {
+                            ba.bound_changes.push(new);
+                        }
                     }
                 }
 

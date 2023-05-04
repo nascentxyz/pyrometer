@@ -129,9 +129,8 @@ impl<T> RangeDyn<T> {
         self.len = new_len;
     }
 
-    pub fn contains_node(&self, _node_idx: NodeIdx) -> bool {
-        false
-        // self.len.contains_node(node_idx)
+    pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
+        self.len.contains_node(node_idx)
         // || self.val.iter().any(|(k, v)| k.contains_node(node_idx) || v.contains_node(node_idx))
     }
 }
@@ -409,7 +408,7 @@ impl<T> RangeExpr<T> {
     }
 
     pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
-        self.lhs.contains_node(node_idx) || self.lhs.contains_node(node_idx)
+        self.lhs.contains_node(node_idx) || self.rhs.contains_node(node_idx)
     }
 }
 

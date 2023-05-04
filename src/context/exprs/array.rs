@@ -14,27 +14,35 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         self.parse_ctx_expr(ty_expr, ctx)?;
         self.apply_to_edges(ctx, ty_expr.loc(), &|analyzer, ctx, loc| {
-            if let Some(ret) = ctx.pop_lhs_expr(analyzer).into_expr_err(loc)? {
-                analyzer.match_ty(ctx, ty_expr, ret)    
+            if let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? {
+                analyzer.match_ty(ctx, ty_expr, ret)
             } else {
-                Err(ExprErr::NoLhs(loc, "No array specified for getting array type".to_string()))
+                Err(ExprErr::NoLhs(
+                    loc,
+                    "No array specified for getting array type".to_string(),
+                ))
             }
-            
         })
-        
     }
 
-    fn match_ty(&mut self, ctx: ContextNode, ty_expr: &Expression, ret: ExprRet) -> Result<(), ExprErr> {
+    fn match_ty(
+        &mut self,
+        ctx: ContextNode,
+        ty_expr: &Expression,
+        ret: ExprRet,
+    ) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner_ty) | ExprRet::SingleLiteral(inner_ty) => {
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                     let dyn_b = Builtin::Array(var_type);
                     if let Some(idx) = self.builtins().get(&dyn_b) {
-                        ctx.push_expr(ExprRet::Single(*idx), self).into_expr_err(ty_expr.loc())?;
+                        ctx.push_expr(ExprRet::Single(*idx), self)
+                            .into_expr_err(ty_expr.loc())?;
                     } else {
                         let idx = self.add_node(Node::Builtin(dyn_b.clone()));
                         self.builtins_mut().insert(dyn_b, idx);
-                        ctx.push_expr(ExprRet::Single(idx), self).into_expr_err(ty_expr.loc())?;
+                        ctx.push_expr(ExprRet::Single(idx), self)
+                            .into_expr_err(ty_expr.loc())?;
                     }
                     Ok(())
                 } else {
@@ -47,11 +55,12 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .map(|i| self.match_ty(ctx, ty_expr, i))
                     .collect::<Result<Vec<_>, ExprErr>>()?;
                 Ok(())
-            },
+            }
             ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(ty_expr.loc())?;
+                ctx.push_expr(ExprRet::CtxKilled, self)
+                    .into_expr_err(ty_expr.loc())?;
                 Ok(())
-            },
+            }
         }
     }
 
@@ -65,12 +74,12 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(index_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(index_tys) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(index_tys) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Could not find the index variable".to_string()))
             };
             analyzer.parse_ctx_expr(ty_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(inner_tys) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                let Some(inner_tys) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "Could not find the array".to_string()))
                 };
                 analyzer.index_into_array_inner(ctx, loc, inner_tys, index_tys.clone())

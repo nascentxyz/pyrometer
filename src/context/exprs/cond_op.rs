@@ -96,11 +96,9 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
 
         self.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
         self.parse_ctx_expr(true_expr, true_subctx)?;
-        
 
         self.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
         let false_cvars = self.parse_ctx_expr(false_expr, false_subctx)?;
-        
 
         Ok(())
     }

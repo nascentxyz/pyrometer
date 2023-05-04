@@ -1,6 +1,6 @@
-use crate::context::ContextBuilder;
 use crate::context::exprs::IntoExprErr;
 use crate::context::yul::YulBuilder;
+use crate::context::ContextBuilder;
 use crate::context::ExprErr;
 use crate::Concrete;
 use crate::ConcreteNode;
@@ -56,13 +56,13 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
 
         self.parse_ctx_yul_expr(if_expr, true_subctx)?;
         self.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
             };
 
             analyzer.match_yul_true(ctx, &ret, if_expr)
         })?;
-        
+
         self.parse_ctx_yul_statement(&YulStatement::Block(true_stmt.clone()), true_subctx);
 
         let false_expr = YulExpression::FunctionCall(Box::new(YulFunctionCall {
@@ -75,13 +75,12 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         }));
         self.parse_ctx_yul_expr(&false_expr, false_subctx)?;
         self.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
             };
 
             analyzer.match_yul_false(ctx, &ret, if_expr)
         })?;
-        
 
         Ok(())
     }
@@ -95,16 +94,14 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         let loc = if_expr.loc();
         match true_cvars {
             ExprRet::CtxKilled => {}
-            ExprRet::Single(_true_cvar)
-            | ExprRet::SingleLiteral(_true_cvar) => {
+            ExprRet::Single(_true_cvar) | ExprRet::SingleLiteral(_true_cvar) => {
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
                     ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(loc)?,
                 );
-                let rhs_paths = ExprRet::Single(
-                    ContextVarNode::from(self.add_node(tmp_true)).into(),
-                );
+                let rhs_paths =
+                    ExprRet::Single(ContextVarNode::from(self.add_node(tmp_true)).into());
 
                 self.handle_require_inner(
                     ctx,
@@ -137,17 +134,15 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         let loc = false_expr.loc();
         match false_cvars {
             ExprRet::CtxKilled => {}
-            ExprRet::Single(_false_cvar)
-            | ExprRet::SingleLiteral(_false_cvar) => {
+            ExprRet::Single(_false_cvar) | ExprRet::SingleLiteral(_false_cvar) => {
                 // we wrap the conditional in an `iszero` to invert
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
                     ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(loc)?,
                 );
-                let rhs_paths = ExprRet::Single(
-                    ContextVarNode::from(self.add_node(tmp_true)).into(),
-                );
+                let rhs_paths =
+                    ExprRet::Single(ContextVarNode::from(self.add_node(tmp_true)).into());
 
                 self.handle_require_inner(
                     ctx,

@@ -1,5 +1,5 @@
-use crate::Analyzer;
 use crate::context::yul::YulBuilder;
+use crate::Analyzer;
 use ethers_core::types::U256;
 use shared::analyzer::AsDotStr;
 use shared::analyzer::GraphError;
@@ -197,18 +197,18 @@ pub trait ContextBuilder:
                             .map_err(|e| self.add_expr_err(e));
                     }
 
-                    self
-                        .func_call_inner(
-                            true,
-                            ctx_node.into(),
-                            parent.into().into(),
-                            fn_loc,
-                            inputs,
-                            params,
-                            None,
-                            None,
-                        );
-                    self.apply_to_edges(ctx_node.into(), *loc, &|analyzer, ctx, loc| {
+                    let res = self.func_call_inner(
+                        true,
+                        ctx_node.into(),
+                        parent.into().into(),
+                        fn_loc,
+                        inputs,
+                        params,
+                        None,
+                        None,
+                    );
+                    let _ = self.add_if_err(res);
+                    let res = self.apply_to_edges(ctx_node.into(), *loc, &|analyzer, ctx, loc| {
                         if ctx.is_killed(analyzer).into_expr_err(loc)? {
                             tracing::trace!("killing due to bad funciton call");
                             let res = ContextNode::from(ctx_node)
@@ -218,14 +218,15 @@ pub trait ContextBuilder:
                         }
                         Ok(())
                     });
+                    let _ = self.add_if_err(res);
 
                     return;
                 }
 
-                let res = self.apply_to_edges(ctx_node.into(), *loc, &| analyzer, ctx, _loc| {
-                    statements.iter().for_each(|stmt| {
-                        analyzer.parse_ctx_statement(stmt, *unchecked, Some(ctx))
-                    });
+                let res = self.apply_to_edges(ctx_node.into(), *loc, &|analyzer, ctx, _loc| {
+                    statements
+                        .iter()
+                        .for_each(|stmt| analyzer.parse_ctx_statement(stmt, *unchecked, Some(ctx)));
                     Ok(())
                 });
                 let _ = self.add_if_err(res);
@@ -241,19 +242,25 @@ pub trait ContextBuilder:
                     ctx.path(self)
                 );
 
+                println!("handling var def");
                 if let Some(rhs) = maybe_expr {
+                    println!("had rhs, parsing");
                     match self.parse_ctx_expr(rhs, ctx) {
                         Ok(()) => {
+                            println!("done parsing rhs");
                             let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                println!("popping rhs");
+                                let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "Variable definition had no right hand side".to_string()))
                                 };
+
+                                println!("parsing lhs");
                                 analyzer.parse_ctx_expr(&var_decl.ty, ctx)?;
                                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                    let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                    println!("done parsing lhs, popping");
+                                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                         return Err(ExprErr::NoLhs(loc, "Variable definition had no left hand side".to_string()))
                                     };
-                                    
                                     analyzer.match_var_def(ctx, var_decl, loc, &lhs_paths, Some(&rhs_paths))?;
                                     Ok(())
                                 })
@@ -263,11 +270,15 @@ pub trait ContextBuilder:
                         Err(e) => self.add_expr_err(e),
                     }
                 } else {
-                    self.parse_ctx_expr(&var_decl.ty, ctx);
+                    println!("no rhs, parsing lhs");
+                    let res = self.parse_ctx_expr(&var_decl.ty, ctx);
+                    let _ = self.add_if_err(res);
                     let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        println!("done parsing lhs, popping");
+                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Variable definition had no left hand side".to_string()))
                         };
+                        println!("match var def");
                         analyzer.match_var_def(ctx, var_decl, loc, &lhs_paths, None)?;
                         Ok(())
                     });
@@ -288,9 +299,11 @@ pub trait ContextBuilder:
             While(loc, cond, body) => {
                 tracing::trace!("parsing while, {cond:?}");
                 if let Some(parent) = parent_ctx {
-                    let res = self.apply_to_edges(ContextNode::from(parent.into()), *loc, &|analyzer, ctx, loc| {
-                        analyzer.while_loop(loc, ctx, cond, body)
-                    });
+                    let res = self.apply_to_edges(
+                        ContextNode::from(parent.into()),
+                        *loc,
+                        &|analyzer, ctx, loc| analyzer.while_loop(loc, ctx, cond, body),
+                    );
                     let _ = self.add_if_err(res);
                 }
             }
@@ -318,16 +331,17 @@ pub trait ContextBuilder:
             For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {
                 tracing::trace!("parsing for loop");
                 if let Some(parent) = parent_ctx {
-                    let res = self.apply_to_edges(parent.into().into(), *loc, &|analyzer, ctx, loc| {
-                        analyzer.for_loop(
-                            loc,
-                            ctx,
-                            maybe_for_start,
-                            maybe_for_middle,
-                            maybe_for_end,
-                            maybe_for_body,
-                        )
-                    });
+                    let res =
+                        self.apply_to_edges(parent.into().into(), *loc, &|analyzer, ctx, loc| {
+                            analyzer.for_loop(
+                                loc,
+                                ctx,
+                                maybe_for_start,
+                                maybe_for_middle,
+                                maybe_for_end,
+                                maybe_for_body,
+                            )
+                        });
                     let _ = self.add_if_err(res);
                 }
             }
@@ -354,7 +368,7 @@ pub trait ContextBuilder:
                         .expect("No context for variable definition?")
                         .into(),
                 );
-                let _ = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                let _ = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
                     analyzer.parse_ctx_yul_statement(&YulStatement::Block(yul_block.clone()), ctx);
                     Ok(())
                 });
@@ -363,9 +377,10 @@ pub trait ContextBuilder:
                 tracing::trace!("parsing return");
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
-                        self.parse_ctx_expr(ret_expr, parent.into().into());
+                        let res = self.parse_ctx_expr(ret_expr, parent.into().into());
+                        let _ = self.add_if_err(res);
                         let res = self.apply_to_edges(parent.into().into(), *loc, &|analyzer, ctx, loc| {
-                            let Ok(Some(ret)) = ctx.pop_expr(analyzer) else {
+                            let Ok(Some(ret)) = ctx.pop_expr(loc, analyzer) else {
                                 return Err(ExprErr::NoLhs(loc, "Return did not have a associated expression".to_string()));
                             };
 
@@ -495,6 +510,7 @@ pub trait ContextBuilder:
                 )
             }
             (ExprRet::Single(ty), Some(ExprRet::Single(rhs))) => {
+                println!("ty: {ty:#?}, rhs: {rhs:#?}");
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let var = ContextVar {
@@ -514,8 +530,7 @@ pub trait ContextBuilder:
 
                 fn match_assign_ret(analyzer: &mut impl GraphLike, ctx: ContextNode, ret: ExprRet) {
                     match ret {
-                        ExprRet::Single(new_lhs)
-                        | ExprRet::SingleLiteral(new_lhs) => {
+                        ExprRet::Single(new_lhs) | ExprRet::SingleLiteral(new_lhs) => {
                             analyzer.add_edge(new_lhs, ctx, Edge::Context(ContextEdge::Variable));
                         }
                         ExprRet::Multi(inner) => inner
@@ -525,15 +540,11 @@ pub trait ContextBuilder:
                     }
                 }
 
-                self.assign(loc, lhs, rhs, ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Ok(Some(ret)) = ctx.pop_expr(analyzer) else {
-                        return Err(ExprErr::NoReturn(loc, "No returned element from variable definition".to_string()));
-                    };
+                    let ret = analyzer.assign(loc, lhs, rhs, ctx)?;
                     match_assign_ret(analyzer, ctx, ret);
                     Ok(())
                 })?;
-                
 
                 Ok(false)
             }
@@ -555,14 +566,12 @@ pub trait ContextBuilder:
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 Ok(false)
             }
-            (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => {
-                Ok(rhs_sides
-                    .iter()
-                    .map(|expr_ret| self.match_var_def(ctx, var_decl, loc, l, Some(expr_ret)))
-                    .collect::<Result<Vec<_>, ExprErr>>()?
-                    .iter()
-                    .all(|e| *e))
-            }
+            (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => Ok(rhs_sides
+                .iter()
+                .map(|expr_ret| self.match_var_def(ctx, var_decl, loc, l, Some(expr_ret)))
+                .collect::<Result<Vec<_>, ExprErr>>()?
+                .iter()
+                .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => Ok(lhs_sides
                 .iter()
                 .map(|expr_ret| self.match_var_def(ctx, var_decl, loc, expr_ret, r))
@@ -618,21 +627,25 @@ pub trait ContextBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
-    fn parse_ctx_expr_inner(
-        &mut self,
-        expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
+    fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         use Expression::*;
-        println!("ctx: {},\n{:?}\n", ctx.underlying(self).unwrap().path, expr);
+        println!(
+            "ctx: {}, current stack: {}, \n{:?}\n",
+            ctx.underlying(self).unwrap().path,
+            if let Some(r) = &ctx.underlying(self).unwrap().expr_ret_stack {
+                r.debug_str(self)
+            } else {
+                "None".to_string()
+            },
+            expr
+        );
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
-            StringLiteral(lits) => {
-                lits.iter()
-                    .try_for_each(|lit| self.string_literal(ctx, lit.loc, &lit.string))
-            },
+            StringLiteral(lits) => lits
+                .iter()
+                .try_for_each(|lit| self.string_literal(ctx, lit.loc, &lit.string)),
             BoolLiteral(loc, b) => self.bool_literal(ctx, *loc, *b),
             HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexLiteral(hexes) => self.hex_literals(ctx, hexes),
@@ -773,8 +786,6 @@ pub trait ContextBuilder:
             }
 
             Delete(loc, expr) => {
-                
-
                 fn delete_match(
                     ctx: ContextNode,
                     loc: &Loc,
@@ -782,7 +793,7 @@ pub trait ContextBuilder:
                     ret: ExprRet,
                 ) {
                     match ret {
-                        ExprRet::CtxKilled => {},
+                        ExprRet::CtxKilled => {}
                         ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
                             let mut new_var =
                                 analyzer.advance_var_in_ctx(cvar.into(), *loc, ctx).unwrap();
@@ -799,7 +810,7 @@ pub trait ContextBuilder:
 
                 self.parse_ctx_expr(expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Delete operation had no right hand side".to_string()))
                     };
 
@@ -812,7 +823,7 @@ pub trait ContextBuilder:
             PreIncrement(loc, expr) => {
                 self.parse_ctx_expr(expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "PreIncrement operation had no right hand side".to_string()))
                     };
                     analyzer.match_in_de_crement(ctx, true, true, loc, &ret)
@@ -821,7 +832,7 @@ pub trait ContextBuilder:
             PostIncrement(loc, expr) => {
                 self.parse_ctx_expr(expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "PostIncrement operation had no right hand side".to_string()))
                     };
                     analyzer.match_in_de_crement(ctx, false, true, loc, &ret)
@@ -830,7 +841,7 @@ pub trait ContextBuilder:
             PreDecrement(loc, expr) => {
                 self.parse_ctx_expr(expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "PreDecrement operation had no right hand side".to_string()))
                     };
                     analyzer.match_in_de_crement(ctx, true, false, loc, &ret)
@@ -839,7 +850,7 @@ pub trait ContextBuilder:
             PostDecrement(loc, expr) => {
                 self.parse_ctx_expr(expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "PostDecrement operation had no right hand side".to_string()))
                     };
                     analyzer.match_in_de_crement(ctx, false, false, loc, &ret)
@@ -877,9 +888,9 @@ pub trait ContextBuilder:
     ) -> Result<(), ExprErr> {
         match rhs {
             ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self);
+                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                 Ok(())
-            },
+            }
             ExprRet::SingleLiteral(var) => {
                 let res = ContextVarNode::from(*var)
                     .try_increase_size(self)
@@ -901,14 +912,16 @@ pub trait ContextBuilder:
                             let _ = self.add_if_err(res);
                             let res = new_cvar.set_range_max(self, r.max + one).into_expr_err(loc);
                             let _ = self.add_if_err(res);
-                            ctx.push_expr(ExprRet::Single(new_cvar.into()), self);
+                            ctx.push_expr(ExprRet::Single(new_cvar.into()), self)
+                                .into_expr_err(loc)?;
                             Ok(())
                         } else {
                             ctx.underlying_mut(self)
                                 .into_expr_err(loc)?
                                 .post_statement_range_adjs
                                 .push((cvar, loc, increment));
-                            ctx.push_expr(ExprRet::Single(cvar.into()), self);
+                            ctx.push_expr(ExprRet::Single(cvar.into()), self)
+                                .into_expr_err(loc)?;
                             Ok(())
                         }
                     } else if pre {
@@ -919,25 +932,25 @@ pub trait ContextBuilder:
                         let _ = self.add_if_err(res);
                         let res = new_cvar.set_range_max(self, r.max - one).into_expr_err(loc);
                         let _ = self.add_if_err(res);
-                        ctx.push_expr(ExprRet::Single(new_cvar.into()), self);
+                        ctx.push_expr(ExprRet::Single(new_cvar.into()), self)
+                            .into_expr_err(loc)?;
                         Ok(())
                     } else {
                         ctx.underlying_mut(self)
                             .into_expr_err(loc)?
                             .post_statement_range_adjs
                             .push((cvar, loc, increment));
-                        ctx.push_expr(ExprRet::Single(cvar.into()), self);
+                        ctx.push_expr(ExprRet::Single(cvar.into()), self)
+                            .into_expr_err(loc)?;
                         Ok(())
                     }
                 } else {
                     panic!("No range in post-increment")
                 }
             }
-            ExprRet::Multi(inner) => {
-                inner
-                    .iter()
-                    .try_for_each(|expr| self.match_in_de_crement(ctx, pre, increment, loc, expr))
-            },
+            ExprRet::Multi(inner) => inner
+                .iter()
+                .try_for_each(|expr| self.match_in_de_crement(ctx, pre, increment, loc, expr)),
         }
     }
 
@@ -950,18 +963,20 @@ pub trait ContextBuilder:
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(rhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Assign operation had no right hand side".to_string()))
             };
             let rhs_paths = rhs_paths.flatten();
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "Assign operation had no left hand side".to_string()))
                 };
-                analyzer.match_assign_sides(ctx, loc, &lhs_paths.flatten(), &rhs_paths)
+                analyzer.match_assign_sides(ctx, loc, &lhs_paths.flatten(), &rhs_paths)?;
+                ctx.pop_expr(loc, analyzer).into_expr_err(loc)?;
+                Ok(())
             })
-        })       
+        })
     }
 
     fn match_assign_sides(
@@ -973,9 +988,9 @@ pub trait ContextBuilder:
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
             (ExprRet::CtxKilled, _) | (_, ExprRet::CtxKilled) => {
-                ctx.push_expr(ExprRet::CtxKilled, self);
+                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                 Ok(())
-            },
+            }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
@@ -983,20 +998,20 @@ pub trait ContextBuilder:
                     .literal_cast_from(&lhs_cvar, self)
                     .into_expr_err(loc);
                 let _ = self.add_if_err(res);
-                ctx.push_expr(self.assign(loc, lhs_cvar, rhs_cvar, ctx)?, self);
+                ctx.push_expr(self.assign(loc, lhs_cvar, rhs_cvar, ctx)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.assign(loc, lhs_cvar, rhs_cvar, ctx)?, self);
+                ctx.push_expr(self.assign(loc, lhs_cvar, rhs_cvar, ctx)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
-            (l @ ExprRet::Single(_), ExprRet::Multi(rhs_sides)) => {
-                rhs_sides
-                    .iter()
-                    .try_for_each(|expr_ret| self.match_assign_sides(ctx, loc, l, expr_ret))
-            },
+            (l @ ExprRet::Single(_), ExprRet::Multi(rhs_sides)) => rhs_sides
+                .iter()
+                .try_for_each(|expr_ret| self.match_assign_sides(ctx, loc, l, expr_ret)),
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
                 lhs_sides
                     .iter()
@@ -1005,18 +1020,15 @@ pub trait ContextBuilder:
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    lhs_sides
-                        .iter()
-                        .zip(rhs_sides.iter())
-                        .try_for_each(|(lhs_expr_ret, rhs_expr_ret)| {
+                    lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
+                        |(lhs_expr_ret, rhs_expr_ret)| {
                             self.match_assign_sides(ctx, loc, lhs_expr_ret, rhs_expr_ret)
-                        })
+                        },
+                    )
                 } else {
-                    rhs_sides
-                        .iter()
-                        .try_for_each(|rhs_expr_ret| {
-                            self.match_assign_sides(ctx, loc, lhs_paths, rhs_expr_ret)
-                        })
+                    rhs_sides.iter().try_for_each(|rhs_expr_ret| {
+                        self.match_assign_sides(ctx, loc, lhs_paths, rhs_expr_ret)
+                    })
                 }
             }
             (e, f) => todo!("any: {:?} {:?}", e, f),
@@ -1065,8 +1077,9 @@ pub trait ContextBuilder:
                     return Err(ExprErr::BadRange(
                         loc,
                         format!(
-                            "No range during cast? {:?}",
-                            lhs_cvar.underlying(self).unwrap()
+                            "No range during cast? {:?}, {:?}",
+                            lhs_cvar.underlying(self).unwrap(),
+                            rhs_cvar.underlying(self).unwrap(),
                         ),
                     ))
                 }
@@ -1078,8 +1091,9 @@ pub trait ContextBuilder:
                     return Err(ExprErr::BadRange(
                         loc,
                         format!(
-                            "No range during cast? {:?}",
-                            lhs_cvar.underlying(self).unwrap()
+                            "No range during cast? {:?}, {:?}",
+                            lhs_cvar.underlying(self).unwrap(),
+                            rhs_cvar.underlying(self).unwrap(),
                         ),
                     ))
                 }
@@ -1173,22 +1187,52 @@ pub trait ContextBuilder:
             .underlying(self)
             .into_expr_err(loc)?
             .clone();
-        new_cvar.loc = Some(loc);
+        // get the old context
+        let new_cvarnode;
 
-        let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
-        if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
-            if old_ctx != ctx {
-                self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
-                self.add_edge(
-                    new_cvarnode,
-                    cvar_node.0,
-                    Edge::Context(ContextEdge::InheritedVariable),
-                );
+        'a: {
+            if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
+                // get the previous version to remove and prevent spurious nodes
+                if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
+                    let prev_version = prev.underlying(self).into_expr_err(loc)?;
+                    // check if there was no change between the previous version and the latest version
+                    if prev_version.eq_ignore_loc(&new_cvar) {
+                        if old_ctx != ctx {
+                            // there was no change in the old context, we should just delete the node
+                            let _ = self.graph_mut().remove_node(cvar_node.into());
+                            new_cvar.loc = Some(loc);
+                            new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                            self.add_edge(
+                                new_cvarnode,
+                                cvar_node.0,
+                                Edge::Context(ContextEdge::Prev),
+                            );
+                            break 'a;
+                        } else {
+                            // there was no change in the current context, just give them the current variable
+                            new_cvarnode = cvar_node.into();
+                            break 'a;
+                        }
+                    }
+                }
+
+                new_cvar.loc = Some(loc);
+                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                if old_ctx != ctx {
+                    self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
+                    self.add_edge(
+                        new_cvarnode,
+                        cvar_node.0,
+                        Edge::Context(ContextEdge::InheritedVariable),
+                    );
+                } else {
+                    self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
+                }
             } else {
+                new_cvar.loc = Some(loc);
+                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
-        } else {
-            self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         }
 
         Ok(ContextVarNode::from(new_cvarnode))
@@ -1237,12 +1281,47 @@ pub trait ContextBuilder:
             .unwrap()
     }
 
-    fn apply_to_edges(&mut self, ctx: ContextNode, loc: Loc, closure: &impl Fn(&mut Self, ContextNode, Loc) -> Result<(), ExprErr>) -> Result<(), ExprErr> {
+    fn apply_to_edges(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        closure: &impl Fn(&mut Self, ContextNode, Loc) -> Result<(), ExprErr>,
+    ) -> Result<(), ExprErr> {
         let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
+        tracing::trace!(
+            "Applying to live edges of: {}. edges: {:#?}",
+            ctx.path(self),
+            live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
+        );
         if live_edges.is_empty() {
             closure(self, ctx, loc)
         } else {
-            live_edges.iter().try_for_each(|ctx| closure(self, *ctx, loc))
+            live_edges
+                .iter()
+                .try_for_each(|ctx| closure(self, *ctx, loc))
+        }
+    }
+
+    fn take_from_edge<T>(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        closure: &impl Fn(&mut Self, ContextNode, Loc) -> Result<T, ExprErr>,
+    ) -> Result<Vec<T>, ExprErr> {
+        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
+        tracing::trace!(
+            "Taking from live edges of: {}. edges: {:#?}",
+            ctx.path(self),
+            live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
+        );
+
+        if live_edges.is_empty() {
+            Ok(vec![closure(self, ctx, loc)?])
+        } else {
+            live_edges
+                .iter()
+                .map(|ctx| closure(self, *ctx, loc))
+                .collect::<Result<Vec<T>, ExprErr>>()
         }
     }
 }

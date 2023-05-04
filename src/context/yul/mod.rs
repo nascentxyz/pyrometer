@@ -3,9 +3,9 @@ use crate::context::ContextBuilder;
 use crate::context::ExprParser;
 use crate::AnalyzerLike;
 use crate::ExprErr;
-use shared::context::ExprRet;
 use shared::context::ContextVar;
 use shared::context::ContextVarNode;
+use shared::context::ExprRet;
 use shared::nodes::Builtin;
 use shared::nodes::VarType;
 use shared::{
@@ -61,16 +61,19 @@ pub trait YulBuilder:
             .unwrap();
         match stmt {
             Assign(loc, yul_exprs, yul_expr) => {
-                match yul_exprs.iter().try_for_each(|expr| self.parse_ctx_yul_expr(expr, ctx)) {
+                match yul_exprs
+                    .iter()
+                    .try_for_each(|expr| self.parse_ctx_yul_expr(expr, ctx))
+                {
                     Ok(()) => {
                         let ret = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                            let Some(lhs_side) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                            let Some(lhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                 return Err(ExprErr::NoLhs(loc, "No left hand side assignments in yul block".to_string()))
                             };
 
                             analyzer.parse_ctx_yul_expr(yul_expr, ctx);
                             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                let Some(rhs_side) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(rhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
                                 };
 
@@ -84,7 +87,7 @@ pub trait YulBuilder:
                         });
                         let _ = self.add_if_err(ret);
                     }
-                    Err(e) => self.add_expr_err(e)
+                    Err(e) => self.add_expr_err(e),
                 }
             }
             VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
@@ -112,7 +115,7 @@ pub trait YulBuilder:
                 if let Some(yul_expr) = maybe_yul_expr {
                     self.parse_ctx_yul_expr(yul_expr, ctx);
                     let ret = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
                         };
 

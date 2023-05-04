@@ -75,12 +75,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             return self.length(loc, member_expr, ctx);
         }
 
+        println!("handling member access");
         self.parse_ctx_expr(member_expr, ctx)?;
+        println!("parsed member");
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            println!("getting member: {:?}", ctx.underlying(analyzer).unwrap().expr_ret_stack);
+            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
-            analyzer.match_member(ctx, loc, ident, ret)    
+            analyzer.match_member(ctx, loc, ident, ret)
         })
     }
 
@@ -93,18 +96,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(idx) | ExprRet::SingleLiteral(idx) => {
-                ctx.push_expr(self.member_access_inner(loc, idx, ident, ctx)?, self).into_expr_err(loc)?;
+                ctx.push_expr(self.member_access_inner(loc, idx, ident, ctx)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
-            ExprRet::Multi(inner) => {
-                inner
-                    .into_iter()
-                    .try_for_each(|ret| self.match_member(ctx, loc, ident, ret))
-            },
+            ExprRet::Multi(inner) => inner
+                .into_iter()
+                .try_for_each(|ret| self.match_member(ctx, loc, ident, ret)),
             ExprRet::CtxKilled => {
                 ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                 Ok(())
-            },
+            }
         }
     }
 
@@ -794,7 +796,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 Builtin::DynamicBytes => match ident.name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
                         let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
-                        Ok(ExprRet::Single(fn_node.into()))
+                        Ok(ExprRet::Single(fn_node))
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
@@ -805,7 +807,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     if ident.name.starts_with("push") {
                         if is_storage {
                             let fn_node = self.builtin_fn_or_maybe_add("push").unwrap();
-                            Ok(ExprRet::Single(fn_node.into()))
+                            Ok(ExprRet::Single(fn_node))
                         } else {
                             Err(ExprErr::NonStoragePush(
                                 loc,
@@ -1045,12 +1047,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<(), ExprErr> {
         self.variable(ident, ctx, None)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(index_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(index_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "No index in index access".to_string()))
             };
-            analyzer.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)    
+            analyzer.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)
         })
-        
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -1066,7 +1067,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             ExprRet::CtxKilled => {
                 ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                 Ok(())
-            },
+            }
             ExprRet::Single(idx) => {
                 let parent = parent.first_version(self);
                 let parent_name = parent.name(self).into_expr_err(loc)?;
@@ -1100,7 +1101,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
                 self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
                 self.add_edge(*idx, idx_node, Edge::Context(ContextEdge::Index));
-                ctx.push_expr(ExprRet::Single(idx_node), self).into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Single(idx_node), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             e => Err(ExprErr::UnhandledExprRet(
@@ -1118,10 +1120,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(input_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
-            analyzer.match_length(ctx, loc, ret, true)    
+            analyzer.match_length(ctx, loc, ret, true)
         })
     }
 
@@ -1214,10 +1216,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 let arr = ContextVarNode::from(arr).first_version(self);
                 let name = format!("{}.length", arr.name(self).into_expr_err(loc)?);
                 tracing::trace!("Length access: {}", name);
-                if let Some(len_var) = ctx
-                    .var_by_name_or_recurse(self, &name)
-                    .into_expr_err(loc)?
-                {
+                if let Some(len_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
                     let len_var = len_var.latest_version(self);
                     let new_len = self.advance_var_in_ctx(len_var, loc, ctx)?;
                     if update_len_bound
@@ -1249,7 +1248,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             }
                         }
                     }
-                    ctx.push_expr(ExprRet::Single(new_len.into()), self).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::Single(new_len.into()), self)
+                        .into_expr_err(loc)?;
                     Ok(())
                 } else {
                     let len_var = ContextVar {
@@ -1299,7 +1299,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                     self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess));
                     self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
-                    ctx.push_expr(ExprRet::Single(len_node), self).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::Single(len_node), self)
+                        .into_expr_err(loc)?;
                     Ok(())
                 }
             }

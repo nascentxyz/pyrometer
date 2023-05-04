@@ -1,7 +1,5 @@
 use crate::context::exprs::IntoExprErr;
-use crate::{
-    context::{ContextBuilder, ExprErr},
-};
+use crate::context::{ContextBuilder, ExprErr};
 use ethers_core::types::{I256, U256};
 use shared::analyzer::AsDotStr;
 use shared::range::elem::RangeElem;
@@ -33,12 +31,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(rhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
             };
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}")))
                 };
                 analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, assign)
@@ -55,13 +53,15 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<(), ExprErr> {
+        // println!("BIN OP: {:?} {} {:?}", lhs_paths.debug_str(self), op.to_string(), rhs_paths.debug_str(self));
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 lhs_cvar.try_increase_size(self).into_expr_err(loc)?;
                 rhs_cvar.try_increase_size(self).into_expr_err(loc)?;
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
@@ -70,7 +70,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
@@ -79,13 +80,15 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self).into_expr_err(loc)?;
+                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => {
@@ -94,14 +97,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .map(|expr_ret| self.op_match(ctx, loc, lhs, expr_ret, op, assign))
                     .collect::<Result<Vec<()>, ExprErr>>()?;
                 Ok(())
-            },
+            }
             (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => {
                 lhs_sides
                     .iter()
                     .map(|expr_ret| self.op_match(ctx, loc, expr_ret, rhs, op, assign))
                     .collect::<Result<Vec<()>, ExprErr>>()?;
                 Ok(())
-            },
+            }
             (_, ExprRet::CtxKilled) => {
                 ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                 Ok(())
@@ -367,7 +370,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         let tmp_rhs = self
                             .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)?
-                            .expect_single().into_expr_err(loc)?;
+                            .expect_single()
+                            .into_expr_err(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -432,7 +436,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         let tmp_rhs = self
                             .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)?
-                            .expect_single().into_expr_err(loc)?;
+                            .expect_single()
+                            .into_expr_err(loc)?;
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),

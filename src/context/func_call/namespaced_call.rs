@@ -1,12 +1,10 @@
 use crate::context::exprs::IntoExprErr;
-use shared::context::ExprRet;
 use crate::context::ExprErr;
-use crate::{
-    context::{
-        exprs::MemberAccess, func_call::intrinsic_call::IntrinsicFuncCaller, func_call::FuncCaller,
-        ContextBuilder,
-    },
+use crate::context::{
+    exprs::MemberAccess, func_call::intrinsic_call::IntrinsicFuncCaller, func_call::FuncCaller,
+    ContextBuilder,
 };
+use shared::context::ExprRet;
 use shared::NodeIdx;
 
 use shared::context::ContextVarNode;
@@ -60,12 +58,11 @@ pub trait NameSpaceFuncCaller:
 
         self.parse_ctx_expr(member_expr, ctx)?;
         self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no namespace".to_string()))
             };
             analyzer.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
         })
-        
     }
 
     fn match_namespaced_member(
@@ -81,17 +78,13 @@ pub trait NameSpaceFuncCaller:
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 self.call_name_spaced_func_inner(ctx, loc, member_expr, ident, input_exprs, inner)
             }
-            ExprRet::Multi(inner) => {
-                inner
-                    .into_iter()
-                    .try_for_each(|ret| {
-                        self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
-                    })
-            },
+            ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
+                self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
+            }),
             ExprRet::CtxKilled => {
                 ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                 Ok(())
-            },
+            }
         }
     }
 
@@ -123,12 +116,13 @@ pub trait NameSpaceFuncCaller:
             .copied()
             .collect::<Vec<_>>();
 
-        ctx.push_expr(ExprRet::Single(member), self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::Single(member), self)
+            .into_expr_err(loc)?;
         input_exprs
-                .iter()
-                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
+            .iter()
+            .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(inputs) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(inputs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no inputs".to_string()))
             };
             if possible_funcs.is_empty() {
@@ -148,15 +142,15 @@ pub trait NameSpaceFuncCaller:
                 );
                 analyzer.parse_ctx_expr(expr, ctx)?;
                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Fallback function parse failure".to_string()))
                     };
                     let mut modifier_input_exprs = vec![member_expr.clone()];
                     modifier_input_exprs.extend(input_exprs.to_vec());
-                    analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)    
+                    analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
                 })
             } else if possible_funcs.len() == 1 {
-                let mut inputs = inputs.expect_multi();
+                let mut inputs = inputs.as_vec();
                 let func = possible_funcs[0];
                 if func.params(analyzer).len() < inputs.len() {
                     inputs = inputs[1..].to_vec();

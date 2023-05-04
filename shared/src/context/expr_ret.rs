@@ -1,8 +1,6 @@
-use crate::context::GraphError;
 use crate::analyzer::AsDotStr;
-use crate::{ContextNode, VarType, ContextVarNode, GraphLike, Node, NodeIdx};
-
-
+use crate::context::GraphError;
+use crate::{ContextNode, ContextVarNode, GraphLike, Node, NodeIdx, VarType};
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExprRet {
@@ -15,14 +13,10 @@ pub enum ExprRet {
 impl ExprRet {
     pub fn debug_str(&self, analyzer: &impl GraphLike) -> String {
         match self {
-            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
-                match analyzer.node(*inner) {
-                    Node::ContextVar(_) => {
-                        ContextVarNode::from(*inner).display_name(analyzer).unwrap()
-                    }
-                    e => format!("{:?}", e),
-                }
-            }
+            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
+                Node::ContextVar(_) => ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
+                e => format!("{:?}", e),
+            },
             ExprRet::Multi(inner) => {
                 format!(
                     "[{}]",
@@ -42,9 +36,9 @@ impl ExprRet {
             ExprRet::Single(inner) => Ok(*inner),
             ExprRet::SingleLiteral(inner) => Ok(*inner),
             ExprRet::Multi(inner) if inner.len() == 1 => Ok(inner[0].expect_single()?),
-            e => Err(GraphError::ExpectedSingle(
-                format!("Expected a single return got: {e:?}")
-            )),
+            e => Err(GraphError::ExpectedSingle(format!(
+                "Expected a single return got: {e:?}"
+            ))),
         }
     }
 
@@ -123,6 +117,16 @@ impl ExprRet {
             _ => {}
         }
         idxs
+    }
+
+    pub fn as_vec(&self) -> Vec<ExprRet> {
+        match self {
+            s @ ExprRet::Single(_) | s @ ExprRet::SingleLiteral(_) => vec![s.clone()],
+            ExprRet::Multi(inner) => inner.clone(),
+            _ => {
+                vec![]
+            }
+        }
     }
 
     pub fn flatten(self) -> Self {

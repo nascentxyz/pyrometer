@@ -103,7 +103,6 @@ impl<'a> FunctionVarsBoundAnalysis {
                 );
 
                 let mut self_handled = false;
-                // let mut handled_ctx_switches = BTreeSet::default();
                 let mut added_bodies = vec![];
                 let mut labels: Vec<_> = analyses
                     .iter()
@@ -319,7 +318,6 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                                 | report_config.show_tmps
                                 | (report_config.show_consts && var.is_const(self).unwrap())
                                 | (report_config.show_symbolics && var.is_symbolic(self).unwrap())
-                            // | (!var.is_tmp(self).unwrap() && !var.is_const(self).unwrap() && report_config.show_symbolics)
                             {
                                 // println!("var: {}, is_ret: {}, show_tmps: {}, is const: {}, is symbolic: {}, show_symbolics: {}",
                                 //     var.display_name(self).unwrap(),
@@ -330,10 +328,6 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                                 //     report_config.show_symbolics
 
                                 // );
-                                // println!("ret: {}", is_ret);
-                                // println!("consts: {:?} {:?}", report_config.show_consts, !var.is_tmp(self).unwrap());
-                                // println!("show tmps {:?}", report_config.show_tmps);
-                                // println!("tmp: {:?}, const: {:?} symbolic", !var.is_tmp(self).unwrap(), !var.is_const(self).unwrap());
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,
                                     parents.clone(),

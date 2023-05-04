@@ -1,11 +1,11 @@
-use petgraph::dot::Dot;
-use crate::as_dot_str;
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike, Search};
+use crate::as_dot_str;
 use crate::nodes::FunctionNode;
 use crate::AsDotStr;
 use crate::ContractNode;
 use crate::StructNode;
+use petgraph::dot::Dot;
 use std::collections::BTreeSet;
 
 use crate::{Edge, Node, NodeIdx};
@@ -302,7 +302,11 @@ impl ContextNode {
     //     }).collect()
     // }
 
-    pub fn push_rhs_expr(&self, expr_ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+    pub fn push_rhs_expr(
+        &self,
+        expr_ret: ExprRet,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         match &mut underlying_mut.rhs_expr {
             Some(s @ ExprRet::Single(_)) => {
@@ -326,12 +330,19 @@ impl ContextNode {
         Ok(())
     }
 
-    pub fn pop_rhs_expr(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Option<ExprRet>, GraphError> {
+    pub fn pop_rhs_expr(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         Ok(underlying_mut.rhs_expr.take())
     }
 
-    pub fn push_lhs_expr(&self, expr_ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+    pub fn push_lhs_expr(
+        &self,
+        expr_ret: ExprRet,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         match &mut underlying_mut.lhs_expr {
             Some(s @ ExprRet::Single(_)) => {
@@ -351,24 +362,32 @@ impl ContextNode {
             None => {
                 underlying_mut.lhs_expr = Some(expr_ret);
             }
-            
         }
         Ok(())
     }
 
-    pub fn pop_lhs_expr(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Option<ExprRet>, GraphError> {
+    pub fn pop_lhs_expr(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         Ok(underlying_mut.lhs_expr.take())
     }
 
-    pub fn push_expr(&self, expr_ret: ExprRet, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<(), GraphError> {
+    pub fn push_expr(
+        &self,
+        expr_ret: ExprRet,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         match &mut underlying_mut.expr_ret_stack {
             Some(s @ ExprRet::Single(_)) => {
-                underlying_mut.expr_ret_stack = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+                underlying_mut.expr_ret_stack =
+                    Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
             }
             Some(s @ ExprRet::SingleLiteral(_)) => {
-                underlying_mut.expr_ret_stack = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+                underlying_mut.expr_ret_stack =
+                    Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
             }
             Some(ExprRet::Multi(ref mut inner)) => {
                 inner.push(expr_ret);
@@ -381,14 +400,71 @@ impl ContextNode {
             None => {
                 underlying_mut.expr_ret_stack = Some(expr_ret);
             }
-            _ => {}
         }
         Ok(())
     }
 
-    pub fn pop_expr(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Result<Option<ExprRet>, GraphError> {
+    pub fn maybe_move_expr(
+        &self,
+        expr: ExprRet,
+        loc: Loc,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<ExprRet, GraphError> {
+        match expr {
+            ExprRet::SingleLiteral(var) => Ok(ExprRet::SingleLiteral(
+                self.maybe_move_var(var.into(), loc, analyzer)?.into(),
+            )),
+            ExprRet::Single(var) => Ok(ExprRet::Single(
+                self.maybe_move_var(var.into(), loc, analyzer)?.into(),
+            )),
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .iter()
+                    .map(|i| self.maybe_move_expr(i.clone(), loc, analyzer))
+                    .collect::<Result<_, _>>()?,
+            )),
+            e => Ok(e),
+        }
+    }
+
+    pub fn maybe_move_var(
+        &self,
+        var: ContextVarNode,
+        loc: Loc,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<ContextVarNode, GraphError> {
+        if let Some(ctx) = var.maybe_ctx(analyzer) {
+            if ctx != *self {
+                let mut new_cvar = var.latest_version(analyzer).underlying(analyzer)?.clone();
+                new_cvar.loc = Some(loc);
+
+                let new_cvarnode = analyzer.add_node(Node::ContextVar(new_cvar));
+                analyzer.add_edge(new_cvarnode, *self, Edge::Context(ContextEdge::Variable));
+                analyzer.add_edge(
+                    new_cvarnode,
+                    var.0,
+                    Edge::Context(ContextEdge::InheritedVariable),
+                );
+                Ok(new_cvarnode.into())
+            } else {
+                Ok(var)
+            }
+        } else {
+            Ok(var)
+        }
+    }
+
+    pub fn pop_expr(
+        &self,
+        loc: Loc,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        Ok(underlying_mut.expr_ret_stack.take())
+        if let Some(expr) = underlying_mut.expr_ret_stack.take() {
+            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
@@ -957,7 +1033,9 @@ impl ContextNode {
         let context = self.underlying_mut(analyzer)?;
         let child = context.child;
         let parent = context.parent_ctx;
-        context.killed = Some(kill_loc);
+        if context.killed.is_none() {
+            context.killed = Some(kill_loc);
+        }
 
         if let Some(child) = child {
             match child {
@@ -986,7 +1064,9 @@ impl ContextNode {
     ) -> Result<(), GraphError> {
         if self.live_edges(analyzer)?.is_empty() {
             let context = self.underlying_mut(analyzer)?;
-            context.killed = Some(kill_loc);
+            if context.killed.is_none() {
+                context.killed = Some(kill_loc);
+            }
             if let Some(parent_ctx) = context.parent_ctx {
                 parent_ctx.end_if_all_forks_ended(analyzer, kill_loc)?;
             }
@@ -1121,9 +1201,10 @@ impl ContextNode {
         pub enum DepEdge {
             Lhs,
             Rhs,
-        } 
+        }
 
-        let mut gr: petgraph::Graph<NodeIdx, DepEdge, petgraph::Directed, usize> = petgraph::Graph::default();
+        let mut gr: petgraph::Graph<NodeIdx, DepEdge, petgraph::Directed, usize> =
+            petgraph::Graph::default();
         deps.iter().try_for_each(|(_, dep)| {
             let mapping = dep.graph_dependent_on(g)?;
             mapping.into_iter().for_each(|(k, tmp)| {
@@ -1131,7 +1212,7 @@ impl ContextNode {
                 let lhs = gr.add_node(tmp.lhs.into());
                 gr.add_edge(top, lhs, DepEdge::Lhs);
                 if let Some(rhs) = tmp.rhs {
-                    let rhs = gr.add_node(rhs.into());    
+                    let rhs = gr.add_node(rhs.into());
                     gr.add_edge(top, rhs, DepEdge::Rhs);
                 }
             });
@@ -1174,7 +1255,7 @@ impl ContextNode {
                                 range_str
                             )
                         }
-                        _ => as_dot_str(idx, g ),
+                        _ => as_dot_str(idx, g),
                     };
                     format!(
                         "label = \"{}\", color = \"{}\"",

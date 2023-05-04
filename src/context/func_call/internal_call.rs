@@ -1,7 +1,7 @@
-use shared::context::ExprRet;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{func_call::FuncCaller, ContextBuilder};
+use shared::context::ExprRet;
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
@@ -121,13 +121,20 @@ pub trait InternalFuncCaller:
                         .expect("No field in struct in struct construction");
                     self.parse_ctx_expr(&input.expr, ctx)?;
                     self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(assignment) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                        let Some(assignment) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
                         };
                         analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
-                        ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                        let _ = ctx.pop_expr(loc, analyzer).into_expr_err(loc)?;
                         Ok(())
                     })
+                })?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
+                    println!("ADDING STRUCT TO CTX STACK");
+                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                        .into_expr_err(*loc)?;
+                    println!("ADDED TO {}", ctx.path(analyzer));
+                    Ok(())
                 })?;
                 Ok(())
             } else {
@@ -136,20 +143,19 @@ pub trait InternalFuncCaller:
         } else if possible_funcs.len() == 1 {
             let func = possible_funcs[0];
             let params = func.params(self);
-            params
-                .iter()
-                .try_for_each(|param| {
-                    let input = input_args
-                        .iter()
-                        .find(|arg| arg.name.name == param.name(self).unwrap())
-                        .expect(
-                            "No parameter with named provided in named parameter function call",
-                        );
+            params.iter().try_for_each(|param| {
+                let input = input_args
+                    .iter()
+                    .find(|arg| arg.name.name == param.name(self).unwrap())
+                    .expect("No parameter with named provided in named parameter function call");
 
-                    self.parse_ctx_expr(&input.expr, ctx)
-                })?;
+                self.parse_ctx_expr(&input.expr, ctx)
+            })?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let inputs = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                let inputs = ctx
+                    .pop_expr(loc, analyzer)
+                    .into_expr_err(loc)?
+                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
             })
         } else {
@@ -186,15 +192,21 @@ pub trait InternalFuncCaller:
             // this is a builtin, cast, or unknown function?
             self.parse_ctx_expr(func_expr, ctx)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let ret = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                let ret = ctx
+                    .pop_expr(loc, analyzer)
+                    .into_expr_err(loc)?
+                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
             })
         } else if possible_funcs.len() == 1 {
-           input_exprs
+            input_exprs
                 .iter()
                 .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let inputs = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
+                let inputs = ctx
+                    .pop_expr(loc, analyzer)
+                    .into_expr_err(loc)?
+                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 analyzer.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
             })
         } else {
@@ -217,10 +229,16 @@ pub trait InternalFuncCaller:
                 .iter()
                 .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let inputs = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap_or_else(|| ExprRet::Multi(vec![]));
-                if let Some(func) =
-                    analyzer.disambiguate_fn_call(&ident.name, lits.clone(), &inputs, &possible_funcs)
-                {
+                let inputs = ctx
+                    .pop_expr(loc, analyzer)
+                    .into_expr_err(loc)?
+                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                if let Some(func) = analyzer.disambiguate_fn_call(
+                    &ident.name,
+                    lits.clone(),
+                    &inputs,
+                    &possible_funcs,
+                ) {
                     analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
                 } else {
                     Err(ExprErr::FunctionNotFound(

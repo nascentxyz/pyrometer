@@ -1,10 +1,8 @@
-use crate::context::{ExprErr, IntoExprErr};
-use crate::{
-    context::{
-        exprs::{Array, MemberAccess, Require},
-        ContextBuilder,
-    },
+use crate::context::{
+    exprs::{Array, MemberAccess, Require},
+    ContextBuilder,
 };
+use crate::context::{ExprErr, IntoExprErr};
 
 use shared::analyzer::Search;
 use shared::analyzer::{AnalyzerLike, GraphLike};
@@ -67,7 +65,8 @@ pub trait IntrinsicFuncCaller:
                                                     ctx,
                                                     Edge::Context(ContextEdge::Variable),
                                                 );
-                                                ctx.push_expr(ExprRet::Single(node), analyzer).into_expr_err(*loc)?;
+                                                ctx.push_expr(ExprRet::Single(node), analyzer)
+                                                    .into_expr_err(*loc)?;
                                                 Ok(())
                                             }
                                             Node::ContextVar(cvar) => {
@@ -88,17 +87,16 @@ pub trait IntrinsicFuncCaller:
                                                     ctx,
                                                     Edge::Context(ContextEdge::Variable),
                                                 );
-                                                ctx.push_expr(ExprRet::Single(node), analyzer).into_expr_err(*loc)?;
+                                                ctx.push_expr(ExprRet::Single(node), analyzer)
+                                                    .into_expr_err(*loc)?;
                                                 Ok(())
                                             }
                                             e => todo!("Unhandled type in abi.decode: {e:?}"),
                                         }
                                     }
-                                    ExprRet::Multi(inner) => {
-                                        inner
-                                            .iter()
-                                            .try_for_each(|i| match_decode(ctx, loc, i.clone(), analyzer))
-                                    },
+                                    ExprRet::Multi(inner) => inner.iter().try_for_each(|i| {
+                                        match_decode(ctx, loc, i.clone(), analyzer)
+                                    }),
                                     ExprRet::CtxKilled => {
                                         ctx.push_expr(ExprRet::CtxKilled, analyzer);
                                         Ok(())
@@ -108,7 +106,7 @@ pub trait IntrinsicFuncCaller:
                             }
                             self.parse_ctx_expr(&input_exprs[1], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
                                 };
                                 match_decode(ctx, &loc, ret, analyzer)
@@ -135,9 +133,10 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                            ctx.push_expr(ExprRet::Single(node), self)
+                                .into_expr_err(*loc)?;
                             Ok(())
-                        },
+                        }
                         "code" => {
                             // TODO: try to be smarter based on the address input
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
@@ -145,7 +144,8 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                            ctx.push_expr(ExprRet::Single(node), self)
+                                .into_expr_err(*loc)?;
                             Ok(())
                         }
                         "balance" => {
@@ -155,26 +155,25 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.push_expr(ExprRet::Single(node), self).into_expr_err(*loc)?;
+                            ctx.push_expr(ExprRet::Single(node), self)
+                                .into_expr_err(*loc)?;
                             Ok(())
                         }
                         "require" | "assert" => {
                             self.handle_require(input_exprs, ctx)?;
                             Ok(())
                         }
-                        "type" => {
-                            self.parse_ctx_expr(&input_exprs[0], ctx)
-                        },
+                        "type" => self.parse_ctx_expr(&input_exprs[0], ctx),
                         "push" => {
                             assert!(input_exprs.len() == 2);
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(array) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(array) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
                                 };
                                 analyzer.parse_ctx_expr(&input_exprs[1], ctx)?;
                                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                    let Some(new_elem) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                    let Some(new_elem) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                         return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
                                     };
 
@@ -191,7 +190,7 @@ pub trait IntrinsicFuncCaller:
                                         ExprRet::Single(arr.latest_version(analyzer).into()),
                                         ExprRet::Single(len_as_idx.latest_version(analyzer).into()),
                                     )?;
-                                    let index = ctx.pop_expr(analyzer).into_expr_err(loc)?.unwrap();
+                                    let index = ctx.pop_expr(loc, analyzer).into_expr_err(loc)?.unwrap();
                                     // assign index to new_elem
                                     analyzer.match_assign_sides(ctx, loc, &index, &new_elem)
                                 })
@@ -201,7 +200,7 @@ pub trait IntrinsicFuncCaller:
                         "keccak256" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(_input) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(_input) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
                                 };
                                 let var = ContextVar::new_from_builtin(
@@ -218,7 +217,7 @@ pub trait IntrinsicFuncCaller:
                         "sha256" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(_input) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(_input) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
                                 };
                                 let var = ContextVar::new_from_builtin(
@@ -235,7 +234,7 @@ pub trait IntrinsicFuncCaller:
                         "ripemd160" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(_input) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(_input) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
                                 };
                                 let var = ContextVar::new_from_builtin(
@@ -252,8 +251,8 @@ pub trait IntrinsicFuncCaller:
                         "blockhash" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(_input) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
+                                let Some(_input) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                                    return Err(ExprErr::NoRhs(loc, "blockhash function was not provided a block number".to_string()))
                                 };
                                 let var = ContextVar::new_from_builtin(
                                     loc,
@@ -267,26 +266,21 @@ pub trait IntrinsicFuncCaller:
                             })
                         }
                         "gasleft" => {
-                            self.parse_ctx_expr(&input_exprs[0], ctx)?;
-                            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(_input) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
-                                };
-                                let var = ContextVar::new_from_builtin(
-                                    loc,
-                                    analyzer.builtin_or_add(Builtin::Uint(64)).into(),
-                                    analyzer,
-                                )
-                                .into_expr_err(loc)?;
-                                let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
-                                Ok(())
-                            })
+                            let var = ContextVar::new_from_builtin(
+                                *loc,
+                                self.builtin_or_add(Builtin::Uint(64)).into(),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            ctx.push_expr(ExprRet::Single(cvar), self)
+                                .into_expr_err(*loc)?;
+                            Ok(())
                         }
                         "ecrecover" => {
-                            input_exprs.iter().try_for_each(|expr| {
-                                self.parse_ctx_expr(expr, ctx)
-                            })?;
+                            input_exprs
+                                .iter()
+                                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
 
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                                 let call_ctx = analyzer.add_node(Node::Context(
@@ -313,7 +307,7 @@ pub trait IntrinsicFuncCaller:
                                     Edge::Context(ContextEdge::Subcontext),
                                 );
 
-                                let Some(input) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                                let Some(input) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoRhs(loc, "ecrecover did not receive inputs".to_string()))
                                 };
                                 let mut inner_vals = vec![];
@@ -379,9 +373,9 @@ pub trait IntrinsicFuncCaller:
                         }
                         "addmod" => {
                             // TODO: actually calcuate this if possible
-                            input_exprs.iter().try_for_each(|expr| {
-                                self.parse_ctx_expr(expr, ctx)
-                            })?;
+                            input_exprs
+                                .iter()
+                                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
 
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                                 let var = ContextVar::new_from_builtin(
@@ -391,15 +385,16 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                                ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
                         "mulmod" => {
                             // TODO: actually calcuate this if possible
-                            input_exprs.iter().try_for_each(|expr| {
-                                self.parse_ctx_expr(expr, ctx)
-                            })?;
+                            input_exprs
+                                .iter()
+                                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                                 let var = ContextVar::new_from_builtin(
                                     loc,
@@ -408,7 +403,8 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                                ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
@@ -425,7 +421,7 @@ pub trait IntrinsicFuncCaller:
                 // create a new list
                 self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(len_var) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(len_var) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
                     };
                     let len_cvar = len_var.expect_single().into_expr_err(loc)?;
@@ -485,7 +481,8 @@ pub trait IntrinsicFuncCaller:
                         }
                     }
 
-                    ctx.push_expr(ExprRet::Single(arr.into()), analyzer).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::Single(arr.into()), analyzer)
+                        .into_expr_err(loc)?;
                     Ok(())
                 })
             }
@@ -502,7 +499,8 @@ pub trait IntrinsicFuncCaller:
                 ) -> Result<(), ExprErr> {
                     match ret {
                         ExprRet::CtxKilled => {
-                            ctx.push_expr(ExprRet::CtxKilled, analyzer).into_expr_err(loc)?;
+                            ctx.push_expr(ExprRet::CtxKilled, analyzer)
+                                .into_expr_err(loc)?;
                             Ok(())
                         }
                         ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
@@ -541,20 +539,19 @@ pub trait IntrinsicFuncCaller:
                                     .into_expr_err(loc)?;
                             }
 
-                            ctx.push_expr(ExprRet::Single(new_var.into()), analyzer).into_expr_err(loc)?;
+                            ctx.push_expr(ExprRet::Single(new_var.into()), analyzer)
+                                .into_expr_err(loc)?;
                             Ok(())
                         }
-                        ExprRet::Multi(inner) => {
-                            inner
-                                .into_iter()
-                                .try_for_each(|i| cast_match(ctx, loc, analyzer, ty.clone(), i, func_idx))
-                        },
+                        ExprRet::Multi(inner) => inner.into_iter().try_for_each(|i| {
+                            cast_match(ctx, loc, analyzer, ty.clone(), i, func_idx)
+                        }),
                     }
                 }
 
                 self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
                     };
                     cast_match(ctx, loc, analyzer, ty.clone(), ret, func_idx)
@@ -570,7 +567,8 @@ pub trait IntrinsicFuncCaller:
                 // self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 // })
 
-                ctx.push_expr(ExprRet::Single(func_idx), self).into_expr_err(*loc)?;
+                ctx.push_expr(ExprRet::Single(func_idx), self)
+                    .into_expr_err(*loc)?;
                 Ok(())
             }
             Node::Contract(_) => {
@@ -580,7 +578,8 @@ pub trait IntrinsicFuncCaller:
                 //     .map(|expr| self.parse_ctx_expr(expr, ctx))
                 //     .collect();
 
-                ctx.push_expr(ExprRet::Single(func_idx), self).into_expr_err(*loc)?;
+                ctx.push_expr(ExprRet::Single(func_idx), self)
+                    .into_expr_err(*loc)?;
                 Ok(())
             }
             Node::Unresolved(_) => {
@@ -589,7 +588,7 @@ pub trait IntrinsicFuncCaller:
                     .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
 
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(inputs) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                    let Some(inputs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Function call failed".to_string()))
                     };
                     if let Node::Unresolved(ident) = analyzer.node(func_idx) {
@@ -626,12 +625,13 @@ pub trait IntrinsicFuncCaller:
             .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
 
         self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-            let Some(inputs) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(inputs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()))
             };
-            let inputs = inputs.expect_multi();
+            let inputs = inputs.as_vec();
             if inputs.is_empty() {
-                ctx.push_expr(ExprRet::Multi(vec![]), analyzer).into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Multi(vec![]), analyzer)
+                    .into_expr_err(loc)?;
                 Ok(())
             } else {
                 let start = &inputs[0];
@@ -656,14 +656,13 @@ pub trait IntrinsicFuncCaller:
             match curr.flatten() {
                 ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
                     self.concat_inner(loc, accum_node, ContextVarNode::from(var))?;
-                    ctx.push_expr(ExprRet::Single(accum_node.into()), self).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::Single(accum_node.into()), self)
+                        .into_expr_err(loc)?;
                     Ok(())
                 }
-                ExprRet::Multi(inner) => {
-                    inner
-                        .into_iter()
-                        .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, Some(accum_node)))
-                }
+                ExprRet::Multi(inner) => inner
+                    .into_iter()
+                    .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, Some(accum_node))),
                 ExprRet::CtxKilled => {
                     ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
                     Ok(())
@@ -679,18 +678,17 @@ pub trait IntrinsicFuncCaller:
                         .iter()
                         .map(|i| self.match_concat(ctx, loc, i.clone(), inputs, Some(acc)))
                         .collect::<Result<Vec<_>, ExprErr>>()?;
-                    ctx.push_expr(ExprRet::Single(acc.into()), self).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::Single(acc.into()), self)
+                        .into_expr_err(loc)?;
                     Ok(())
                 }
-                ExprRet::Multi(inner) => {
-                    inner
-                        .into_iter()
-                        .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, None))
-                },
+                ExprRet::Multi(inner) => inner
+                    .into_iter()
+                    .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, None)),
                 ExprRet::CtxKilled => {
                     ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc);
                     Ok(())
-                },
+                }
             }
         }
     }

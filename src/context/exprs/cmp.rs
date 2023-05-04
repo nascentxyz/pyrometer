@@ -1,6 +1,6 @@
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
-use crate::{ContextBuilder};
+use crate::ContextBuilder;
 use shared::analyzer::GraphError;
 use shared::range::elem_ty::Dynamic;
 use shared::{
@@ -20,18 +20,13 @@ use std::cmp::Ordering;
 
 impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
-    fn not(
-        &mut self,
-        loc: Loc,
-        lhs_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
+    fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         self.parse_ctx_expr(lhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(lhs) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(lhs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Not operation had no element".to_string()))
             };
-            analyzer.not_inner(ctx, loc, lhs.flatten())    
+            analyzer.not_inner(ctx, loc, lhs.flatten())
         })
     }
 
@@ -41,7 +36,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             ExprRet::CtxKilled => {
                 ctx.push_expr(lhs_expr, self).into_expr_err(loc)?;
                 Ok(())
-            },
+            }
             ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
                 tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
@@ -65,7 +60,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ),
                 };
 
-                ctx.push_expr(ExprRet::Single(self.add_node(Node::ContextVar(out_var))), self).into_expr_err(loc)?;
+                ctx.push_expr(
+                    ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(())
             }
             ExprRet::Multi(f) => Err(ExprErr::MultiNot(
@@ -85,13 +84,13 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(rhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+            let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Cmp operation had no right hand side".to_string()))
             };
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             let rhs_paths = rhs_paths.flatten();
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr(analyzer).into_expr_err(loc)? else {
+                let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "Cmp operation had no left hand side".to_string()))
                 };
                 analyzer.cmp_inner(ctx, loc, &lhs_paths.flatten(), op, &rhs_paths)
@@ -179,7 +178,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ),
                 };
 
-                ctx.push_expr(ExprRet::Single(self.add_node(Node::ContextVar(out_var))), self).into_expr_err(loc)?;
+                ctx.push_expr(
+                    ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(())
             }
             (l @ ExprRet::Single(_lhs), ExprRet::Multi(rhs_sides)) => {
@@ -193,21 +196,20 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .iter()
                     .try_for_each(|expr_ret| self.cmp_inner(ctx, loc, expr_ret, op, r))?;
                 Ok(())
-            },
+            }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    lhs_sides
-                        .iter()
-                        .zip(rhs_sides.iter())
-                        .try_for_each(|(lhs_expr_ret, rhs_expr_ret)| {
+                    lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
+                        |(lhs_expr_ret, rhs_expr_ret)| {
                             self.cmp_inner(ctx, loc, lhs_expr_ret, op, rhs_expr_ret)
-                        })?;
+                        },
+                    )?;
                     Ok(())
                 } else {
-                    rhs_sides
-                        .iter()
-                        .try_for_each(|rhs_expr_ret| self.cmp_inner(ctx, loc, lhs_paths, op, rhs_expr_ret))?;
+                    rhs_sides.iter().try_for_each(|rhs_expr_ret| {
+                        self.cmp_inner(ctx, loc, lhs_paths, op, rhs_expr_ret)
+                    })?;
                     Ok(())
                 }
             }

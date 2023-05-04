@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::context::GraphError;
 use crate::range::elem::RangeElem;
@@ -8,6 +7,7 @@ use crate::range::elem_ty::RangeConcrete;
 use crate::range::range_string::ToRangeString;
 use crate::range::Range;
 use crate::range::SolcRange;
+use std::collections::BTreeMap;
 
 use crate::AsDotStr;
 use crate::BuiltInNode;
@@ -648,21 +648,26 @@ impl ContextVarNode {
         let mut tree = BTreeMap::default();
         if let Some(tmp) = underlying.tmp_of() {
             tree.insert(*self, tmp);
-            tmp.lhs.graph_dependent_on(analyzer)?.into_iter().for_each(|(key, v)| {
-                if let Some(_v) = tree.get_mut(&key) {
-                    panic!("here")
-                } else {
-                    tree.insert(key, v);
-                }
-            });
-            if let Some(rhs) = tmp.rhs {
-                rhs.graph_dependent_on(analyzer)?.into_iter().for_each(|(key, v)| {
+            tmp.lhs
+                .graph_dependent_on(analyzer)?
+                .into_iter()
+                .for_each(|(key, v)| {
                     if let Some(_v) = tree.get_mut(&key) {
                         panic!("here")
                     } else {
                         tree.insert(key, v);
                     }
                 });
+            if let Some(rhs) = tmp.rhs {
+                rhs.graph_dependent_on(analyzer)?
+                    .into_iter()
+                    .for_each(|(key, v)| {
+                        if let Some(_v) = tree.get_mut(&key) {
+                            panic!("here")
+                        } else {
+                            tree.insert(key, v);
+                        }
+                    });
             }
         }
 
@@ -831,6 +836,17 @@ impl TmpConstruction {
 }
 
 impl ContextVar {
+    pub fn eq_ignore_loc(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.display_name == other.display_name
+            && self.storage == other.storage
+            && self.is_tmp == other.is_tmp
+            && self.tmp_of == other.tmp_of
+            && self.is_symbolic == other.is_symbolic
+            && self.is_return == other.is_return
+            && self.ty == other.ty
+    }
+
     pub fn is_tmp(&self) -> bool {
         self.is_tmp || self.tmp_of.is_some()
     }
