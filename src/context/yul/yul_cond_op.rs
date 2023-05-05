@@ -27,62 +27,62 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         true_stmt: &YulBlock,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let true_subctx = ContextNode::from(
-            self.add_node(Node::Context(
-                Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
-                    .into_expr_err(loc)?,
-            )),
-        );
-        let false_subctx = ContextNode::from(
-            self.add_node(Node::Context(
-                Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
-                    .into_expr_err(loc)?,
-            )),
-        );
-        ctx.set_child_fork(true_subctx, false_subctx, self)
-            .into_expr_err(loc)?;
-        let ctx_fork = self.add_node(Node::ContextFork);
-        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
-        self.add_edge(
-            NodeIdx::from(true_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-        self.add_edge(
-            NodeIdx::from(false_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let true_subctx = ContextNode::from(
+                analyzer.add_node(Node::Context(
+                    Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+                        .into_expr_err(loc)?,
+                )),
+            );
+            let false_subctx = ContextNode::from(
+                analyzer.add_node(Node::Context(
+                    Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+                        .into_expr_err(loc)?,
+                )),
+            );
+            ctx.set_child_fork(true_subctx, false_subctx, analyzer)
+                .into_expr_err(loc)?;
+            let ctx_fork = analyzer.add_node(Node::ContextFork);
+            analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+            analyzer.add_edge(
+                NodeIdx::from(true_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(false_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
 
-        self.parse_ctx_yul_expr(if_expr, true_subctx)?;
-        self.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
-            };
+            analyzer.parse_ctx_yul_expr(if_expr, true_subctx)?;
+            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
+                let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
+                };
 
-            analyzer.match_yul_true(ctx, &ret, if_expr)
-        })?;
+                analyzer.match_yul_true(ctx, &ret, if_expr)
+            })?;
 
-        self.parse_ctx_yul_statement(&YulStatement::Block(true_stmt.clone()), true_subctx);
+            analyzer.parse_ctx_yul_statement(&YulStatement::Block(true_stmt.clone()), true_subctx);
 
-        let false_expr = YulExpression::FunctionCall(Box::new(YulFunctionCall {
-            loc,
-            id: Identifier {
+            let false_expr = YulExpression::FunctionCall(Box::new(YulFunctionCall {
                 loc,
-                name: "iszero".to_string(),
-            },
-            arguments: vec![if_expr.clone()],
-        }));
-        self.parse_ctx_yul_expr(&false_expr, false_subctx)?;
-        self.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
-            };
+                id: Identifier {
+                    loc,
+                    name: "iszero".to_string(),
+                },
+                arguments: vec![if_expr.clone()],
+            }));
+            analyzer.parse_ctx_yul_expr(&false_expr, false_subctx)?;
+            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
+                let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
+                };
 
-            analyzer.match_yul_false(ctx, &ret, if_expr)
-        })?;
-
-        Ok(())
+                analyzer.match_yul_false(ctx, &ret, if_expr)
+            })
+        })
     }
 
     fn match_yul_true(

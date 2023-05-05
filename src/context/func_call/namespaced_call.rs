@@ -118,9 +118,7 @@ pub trait NameSpaceFuncCaller:
 
         ctx.push_expr(ExprRet::Single(member), self)
             .into_expr_err(loc)?;
-        input_exprs
-            .iter()
-            .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
+        self.parse_inputs(ctx, loc, input_exprs)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(inputs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no inputs".to_string()))

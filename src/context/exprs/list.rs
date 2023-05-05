@@ -26,9 +26,15 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
                     };
-                    analyzer.match_ty(ctx, &loc, &ret, input)
+                    ctx.push_lhs_expr(analyzer.match_ty(ctx, &loc, &ret, input)?, analyzer).into_expr_err(loc)
                 })
-            })
+            })?;
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let Some(ret) = ctx.pop_lhs_expr(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
+            };
+            ctx.push_expr(ret, analyzer).into_expr_err(loc)
+        })
     }
 
     fn match_ty(
@@ -37,7 +43,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         loc: &Loc,
         ty_ret: &ExprRet,
         input: &Parameter,
-    ) -> Result<(), ExprErr> {
+    ) -> Result<ExprRet, ExprErr> {
         match ty_ret {
             ExprRet::Single(ty) | ExprRet::SingleLiteral(ty) => {
                 if let Some(input_name) = &input.name {
@@ -55,16 +61,12 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     };
                     let input_node = self.add_node(Node::ContextVar(var));
                     self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
-                    ctx.push_expr(ExprRet::Single(input_node), self)
-                        .into_expr_err(*loc)?;
-                    Ok(())
+                    Ok(ExprRet::Single(input_node))
                 } else {
                     match self.node(*ty) {
                         Node::ContextVar(_var) => {
                             // reference the variable directly, don't create a temporary variable
-                            ctx.push_expr(ExprRet::Single(*ty), self)
-                                .into_expr_err(*loc)?;
-                            Ok(())
+                            Ok(ExprRet::Single(*ty))
                         }
                         _ => {
                             // create a tmp
@@ -83,21 +85,18 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             };
                             let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
                             self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.push_expr(ExprRet::Single(input_node), self)
-                                .into_expr_err(*loc)?;
-                            Ok(())
+                            Ok(ExprRet::Single(input_node))
                         }
                     }
                 }
             }
-            ExprRet::Multi(inner) => inner
-                .iter()
-                .try_for_each(|i| self.match_ty(ctx, loc, i, input)),
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self)
-                    .into_expr_err(*loc)?;
-                Ok(())
-            }
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .iter()
+                    .map(|i| self.match_ty(ctx, loc, i, input))
+                    .collect::<Result<_, _>>()?,
+            )),
+            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
         }
     }
 }

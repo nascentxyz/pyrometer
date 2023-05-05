@@ -499,6 +499,16 @@ contract AssignMath {
         return (y, x);
     }
 
+    function predecrement(uint256 x) public returns (uint256, uint256) {
+        uint256 y = --x;
+        return (y, x);
+    }
+
+    function postdecrement(uint256 x) public returns (uint256, uint256) {
+        uint256 y = x--;
+        return (y, x);
+    }
+
     function pre_conc() public {
         (uint256 y, uint256 x) = preincrement(100);
         require(y == 101);
@@ -509,6 +519,18 @@ contract AssignMath {
         (uint256 y, uint256 x) = postincrement(100);
         require(y == 100);
         require(x == 101);
+    }
+
+    function pre_deconc() public {
+        (uint256 y, uint256 x) = predecrement(100);
+        require(y == 99);
+        require(x == 99);
+    }
+
+    function post_deconc() public {
+        (uint256 y, uint256 x) = postdecrement(100);
+        require(y == 100);
+        require(x == 99);
     }
 }
 

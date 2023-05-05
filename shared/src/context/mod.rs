@@ -134,8 +134,6 @@ pub struct Context {
     pub loc: Loc,
     /// The return node and the return location
     pub ret: Vec<(Loc, ContextVarNode)>,
-    /// Range adjustments to occur after the statement finishes. Useful for post in/decrement
-    pub post_statement_range_adjs: Vec<(ContextVarNode, Loc, bool)>,
     /// Depth tracker
     pub depth: usize,
     pub lhs_expr: Option<ExprRet>,
@@ -160,7 +158,6 @@ impl Context {
             ret: vec![],
             loc,
             modifier_state: None,
-            post_statement_range_adjs: vec![],
             depth: 0,
             expr_ret_stack: None,
             lhs_expr: None,
@@ -228,7 +225,6 @@ impl Context {
             ret: vec![],
             loc,
             modifier_state,
-            post_statement_range_adjs: vec![],
             depth,
             expr_ret_stack: if fork_expr.is_some() {
                 parent_ctx.underlying(analyzer)?.expr_ret_stack.clone()
@@ -332,10 +328,15 @@ impl ContextNode {
 
     pub fn pop_rhs_expr(
         &self,
+        loc: Loc,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        Ok(underlying_mut.rhs_expr.take())
+        if let Some(expr) = underlying_mut.rhs_expr.take() {
+            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn push_lhs_expr(
@@ -368,10 +369,15 @@ impl ContextNode {
 
     pub fn pop_lhs_expr(
         &self,
+        loc: Loc,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        Ok(underlying_mut.lhs_expr.take())
+        if let Some(expr) = underlying_mut.lhs_expr.take() {
+            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn push_expr(
@@ -379,6 +385,16 @@ impl ContextNode {
         expr_ret: ExprRet,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
+        println!(
+            "pushing: {}, existing: {}, path: {}",
+            expr_ret.debug_str(analyzer),
+            if let Some(stack) = &self.underlying(analyzer)?.expr_ret_stack {
+                stack.debug_str(analyzer)
+            } else {
+                "None".to_string()
+            },
+            self.path(analyzer)
+        );
         let underlying_mut = self.underlying_mut(analyzer)?;
         match &mut underlying_mut.expr_ret_stack {
             Some(s @ ExprRet::Single(_)) => {
@@ -760,7 +776,7 @@ impl ContextNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Context, GraphError> {
         match analyzer.node(*self) {
             Node::Context(c) => Ok(c),
-            e => Err(GraphError::NodeConfusion(format!(
+            e => Err(GraphError::NodeConfusion(panic!(
                 "Node type confusion: expected node to be Context but it was: {e:?}"
             ))),
         }
@@ -964,6 +980,8 @@ impl ContextNode {
         w2: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
+        assert!(matches!(analyzer.node(w1), Node::Context(_)));
+        assert!(matches!(analyzer.node(w2), Node::Context(_)));
         let context = self.underlying_mut(analyzer)?;
         if !context.set_child_fork(w1, w2) {
             let child_str = match context.child {
@@ -973,15 +991,15 @@ impl ContextNode {
                 Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
                 None => unreachable!(),
             };
-            Err(GraphError::ChildRedefinition(format!(
-            // panic!(
-                "Tried to redefine a child context, parent: {}, current child: {}, new child: Fork({}, {})",
+            // Err(GraphError::ChildRedefinition(format!(
+            panic!(
+                "Tried to redefine a child context, parent:\n{}, current child:\n{},\nnew child: Fork({}, {})",
                 self.path(analyzer),
                 child_str,
                 w1.path(analyzer),
                 w2.path(analyzer),
             )
-            ))
+            // ))
         } else {
             Ok(())
         }
@@ -993,6 +1011,7 @@ impl ContextNode {
         call: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
+        assert!(matches!(analyzer.node(call), Node::Context(_)));
         let context = self.underlying_mut(analyzer)?;
         if !context.set_child_call(call) {
             let child_str = match context.child {

@@ -34,10 +34,11 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
             };
+            let rhs_ctx = ctx;
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}")))
+                    return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}, rhs ctx: {}, curr ctx: {}", rhs_ctx.path(analyzer), ctx.path(analyzer))))
                 };
                 analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, assign)
             })
@@ -53,7 +54,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<(), ExprErr> {
-        // println!("BIN OP: {:?} {} {:?}", lhs_paths.debug_str(self), op.to_string(), rhs_paths.debug_str(self));
+        println!(
+            "BIN OP: {:?} {} {:?}, assign: {assign}",
+            lhs_paths.debug_str(self),
+            op.to_string(),
+            rhs_paths.debug_str(self)
+        );
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);

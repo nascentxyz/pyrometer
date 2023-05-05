@@ -170,6 +170,36 @@ pub trait FuncCaller:
         }
     }
 
+    fn parse_inputs(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        inputs: &[Expression],
+    ) -> Result<(), ExprErr> {
+        inputs
+            .iter()
+            .try_for_each(|input| {
+                println!("input: {input:#?}");
+                self.parse_ctx_expr(input, ctx)?;
+                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
+                    };
+                    ctx.push_lhs_expr(ret, analyzer).into_expr_err(loc)
+                })
+            })?;
+        if !inputs.is_empty() {
+            self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                let Some(ret) = ctx.pop_lhs_expr(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
+                };
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)
+            })
+        } else {
+            Ok(())
+        }
+    }
+
     /// Setups up storage variables for a function call and calls it
     fn setup_fn_call(
         &mut self,
@@ -556,6 +586,8 @@ pub trait FuncCaller:
                         )),
                     );
                     self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
+
+                    // TODO: keep the stack here!!!
                     let res = callee_ctx
                         .set_child_call(ret_subctx, self)
                         .into_expr_err(loc);
@@ -575,6 +607,7 @@ pub trait FuncCaller:
                             tmp_ret.underlying_mut(self).unwrap().is_return = true;
                             tmp_ret.underlying_mut(self).unwrap().display_name =
                                 format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
+                            // println!("")
                             self.add_edge(
                                 tmp_ret,
                                 ret_subctx,

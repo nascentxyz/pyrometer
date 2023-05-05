@@ -94,7 +94,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &rhs_paths,
                             RangeOp::Lt,
                             RangeOp::Gt,
-                            (RangeOp::Gte, RangeOp::Lte),
+                            (RangeOp::Gt, RangeOp::Lt),
                         )
                     })
                 })
@@ -118,7 +118,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &rhs_paths,
                             RangeOp::Gt,
                             RangeOp::Lt,
-                            (RangeOp::Lte, RangeOp::Gte),
+                            (RangeOp::Lt, RangeOp::Gt),
                         )
                     })
                 })
@@ -890,7 +890,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     )
                     .unwrap();
                 new_rhs
-                    .set_range_max(self, (lhs_elem - one.into()).min(lhs_range.range_max()))
+                    .set_range_max(self, (lhs_elem - one.into()).min(rhs_range.range_max()))
                     .unwrap();
                 false
             }

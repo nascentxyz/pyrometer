@@ -29,11 +29,13 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         };
 
         if let Some(cvar) = ctx.latest_var_by_name(self, &ident.name) {
-            let var = self.advance_var_in_ctx(cvar, ident.loc, target_ctx)?;
-            target_ctx
-                .push_expr(ExprRet::Single(var.into()), self)
-                .into_expr_err(ident.loc)?;
-            Ok(())
+            self.apply_to_edges(target_ctx, ident.loc, &|analyzer, edge_ctx, loc| {
+                println!("HERE, {:?}", edge_ctx.underlying(analyzer).unwrap().child);
+                let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
+                edge_ctx
+                    .push_expr(ExprRet::Single(var.into()), analyzer)
+                    .into_expr_err(ident.loc)
+            })
         } else if ident.name == "_" {
             self.env_variable(ident, target_ctx)?;
             Ok(())
@@ -42,7 +44,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             if let Some(recursion_target) = recursion_target {
                 self.variable(ident, parent_ctx, Some(recursion_target))
             } else {
-                self.variable(ident, parent_ctx, Some(ctx))
+                self.variable(ident, parent_ctx, Some(target_ctx))
             }
         } else if (self.env_variable(ident, target_ctx)?).is_some() {
             Ok(())
@@ -76,7 +78,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .push_expr(ExprRet::Single(func_node), self)
                 .into_expr_err(ident.loc)?;
             Ok(())
-        } else if let Some(_func) = ctx
+        } else if let Some(_func) = target_ctx
             .visible_funcs(self)
             .into_expr_err(ident.loc)?
             .iter()
@@ -95,38 +97,4 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             Ok(())
         }
     }
-
-    // fn match_variable(
-    //     &mut self,
-    //     ctx: ContextNode,
-    //     ident: &Identifier,
-    //     ret: ExprRet,
-    // ) -> Result<(), ExprErr> {
-    //     match ret {
-    //         ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
-    //             match self.node(cvar) {
-    //                 Node::ContextVar(_) => {
-    //                     let cvar = ContextVarNode::from(cvar).latest_version(self);
-    //                     let mut ctx_cvar = self.advance_var_in_ctx(cvar, ident.loc, ctx)?;
-    //                     ctx_cvar.update_deps(ctx, self).into_expr_err(ident.loc)?;
-    //                     ctx.push_expr(ExprRet::Single(ctx_cvar.0.into()), self);
-    //                     Ok(())
-    //                 }
-    //                 _ => {
-    //                     ctx.push_expr(ExprRet::Single(cvar), self);
-    //                     Ok(())
-    //                 }
-    //             }
-    //         }
-    //         ExprRet::Multi(inner) => {
-    //             inner
-    //                 .into_iter()
-    //                 .try_for_each(|ret| self.match_variable(ctx, ident, ret))
-    //         },
-    //         ExprRet::CtxKilled => {
-    //             ctx.push_expr(ExprRet::CtxKilled, self);
-    //             Ok(())
-    //         }
-    //     }
-    // }
 }

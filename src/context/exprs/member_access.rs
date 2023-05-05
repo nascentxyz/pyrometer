@@ -75,11 +75,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             return self.length(loc, member_expr, ctx);
         }
 
-        println!("handling member access");
         self.parse_ctx_expr(member_expr, ctx)?;
-        println!("parsed member");
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            println!("getting member: {:?}", ctx.underlying(analyzer).unwrap().expr_ret_stack);
             let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
@@ -147,6 +144,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             );
                             self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                             return Ok(ExprRet::Single(fc_node));
+                        } else {
+                            panic!("Couldn't create field variable");
                         }
                     } else if let Some(ret) =
                         self.library_func_search(ctx, struct_node.0.into(), ident)
@@ -767,13 +766,21 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         _ if ident.name.starts_with("transfer") => Ok(ExprRet::Multi(vec![])),
                         _ => Err(ExprErr::MemberAccessNotFound(
                             loc,
-                            format!("Unknown member access on address: {:?}", ident.name),
+                            format!(
+                                "Unknown member access on address: {:?}, ctx: {}",
+                                ident.name,
+                                ctx.path(self)
+                            ),
                         )),
                     }
                 }
                 Builtin::Bool => Err(ExprErr::MemberAccessNotFound(
                     loc,
-                    format!("Unknown member access on bool: {:?}", ident.name),
+                    format!(
+                        "Unknown member access on bool: {:?}, ctx: {}",
+                        ident.name,
+                        ctx.path(self)
+                    ),
                 )),
                 Builtin::String => match ident.name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
@@ -782,7 +789,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
-                        format!("Unknown member access on string: {:?}", ident.name),
+                        format!(
+                            "Unknown member access on string: {:?}, ctx: {}",
+                            ident.name,
+                            ctx.path(self)
+                        ),
                     )),
                 },
                 Builtin::Bytes(size) => Err(ExprErr::MemberAccessNotFound(
@@ -791,7 +802,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 )),
                 Builtin::Rational => Err(ExprErr::MemberAccessNotFound(
                     loc,
-                    format!("Unknown member access on rational: {:?}", ident.name),
+                    format!(
+                        "Unknown member access on rational: {:?}, ctx: {}",
+                        ident.name,
+                        ctx.path(self)
+                    ),
                 )),
                 Builtin::DynamicBytes => match ident.name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
@@ -800,7 +815,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
-                        format!("Unknown member access on bytes: {:?}", ident.name),
+                        format!(
+                            "Unknown member access on bytes: {:?}, ctx: {}",
+                            ident.name,
+                            ctx.path(self)
+                        ),
                     )),
                 },
                 Builtin::Array(_) => {
@@ -818,17 +837,29 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     } else {
                         Err(ExprErr::MemberAccessNotFound(
                             loc,
-                            format!("Unknown member access on array[]: {:?}", ident.name),
+                            format!(
+                                "Unknown member access on array[]: {:?}, ctx: {}",
+                                ident.name,
+                                ctx.path(self)
+                            ),
                         ))
                     }
                 }
                 Builtin::Mapping(_, _) => Err(ExprErr::MemberAccessNotFound(
                     loc,
-                    format!("Unknown member access on mapping: {:?}", ident.name),
+                    format!(
+                        "Unknown member access on mapping: {:?}, ctx: {}",
+                        ident.name,
+                        ctx.path(self)
+                    ),
                 )),
                 Builtin::Func(_, _) => Err(ExprErr::MemberAccessNotFound(
                     loc,
-                    format!("Unknown member access on func: {:?}", ident.name),
+                    format!(
+                        "Unknown member access on func: {:?}, ctx: {}",
+                        ident.name,
+                        ctx.path(self)
+                    ),
                 )),
                 Builtin::Int(size) => {
                     let max = if size == 256 {
@@ -866,7 +897,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         }
                         e => Err(ExprErr::MemberAccessNotFound(
                             loc,
-                            format!("Unknown type attribute on int{size}: {e:?}"),
+                            format!(
+                                "Unknown type attribute on int{size}: {e:?}, ctx: {}",
+                                ctx.path(self)
+                            ),
                         )),
                     }
                 }
@@ -906,7 +940,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     }
                     e => Err(ExprErr::MemberAccessNotFound(
                         loc,
-                        format!("Unknown type attribute on uint{size}: {e:?}"),
+                        format!(
+                            "Unknown type attribute on uint{size}: {e:?}, ctx: {}",
+                            ctx.path(self)
+                        ),
                     )),
                 },
             }

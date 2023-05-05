@@ -82,18 +82,20 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(rhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(loc, "Cmp operation had no right hand side".to_string()))
-            };
-            analyzer.parse_ctx_expr(lhs_expr, ctx)?;
-            let rhs_paths = rhs_paths.flatten();
+            analyzer.parse_ctx_expr(rhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, "Cmp operation had no left hand side".to_string()))
+                let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoRhs(loc, "Cmp operation had no right hand side".to_string()))
                 };
-                analyzer.cmp_inner(ctx, loc, &lhs_paths.flatten(), op, &rhs_paths)
+                let rhs_paths = rhs_paths.flatten();
+                analyzer.parse_ctx_expr(lhs_expr, ctx)?;
+                analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Cmp operation had no left hand side".to_string()))
+                    };
+                    analyzer.cmp_inner(ctx, loc, &lhs_paths.flatten(), op, &rhs_paths)
+                })
             })
         })
     }

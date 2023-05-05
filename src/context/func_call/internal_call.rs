@@ -143,14 +143,19 @@ pub trait InternalFuncCaller:
         } else if possible_funcs.len() == 1 {
             let func = possible_funcs[0];
             let params = func.params(self);
-            params.iter().try_for_each(|param| {
-                let input = input_args
-                    .iter()
-                    .find(|arg| arg.name.name == param.name(self).unwrap())
-                    .expect("No parameter with named provided in named parameter function call");
-
-                self.parse_ctx_expr(&input.expr, ctx)
-            })?;
+            let inputs: Vec<_> = params
+                .iter()
+                .map(|param| {
+                    let input = input_args
+                        .iter()
+                        .find(|arg| arg.name.name == param.name(self).unwrap())
+                        .expect(
+                            "No parameter with named provided in named parameter function call",
+                        );
+                    input.expr.clone()
+                })
+                .collect();
+            self.parse_inputs(ctx, *loc, &inputs[..])?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
                     .pop_expr(loc, analyzer)
@@ -199,9 +204,7 @@ pub trait InternalFuncCaller:
                 analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
             })
         } else if possible_funcs.len() == 1 {
-            input_exprs
-                .iter()
-                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
+            self.parse_inputs(ctx, *loc, input_exprs)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
                     .pop_expr(loc, analyzer)
@@ -225,9 +228,7 @@ pub trait InternalFuncCaller:
                 })
                 .collect();
 
-            input_exprs
-                .iter()
-                .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
+            self.parse_inputs(ctx, *loc, input_exprs)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
                     .pop_expr(loc, analyzer)

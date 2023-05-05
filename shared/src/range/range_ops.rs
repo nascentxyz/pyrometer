@@ -361,10 +361,15 @@ impl RangeDiv<Concrete> for RangeConcrete<Concrete> {
                     if r == &I256::from(0) {
                         None
                     } else {
-                        Some(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*lhs_size, *l / *r),
-                            loc: self.loc,
-                        }))
+                        let (val, overflow) = l.overflowing_div(*r);
+                        if overflow {
+                            None
+                        } else {
+                            Some(Elem::Concrete(RangeConcrete {
+                                val: Concrete::Int(*lhs_size, val),
+                                loc: self.loc,
+                            }))
+                        }
                     }
                 }
                 _ => None,

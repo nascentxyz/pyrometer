@@ -1076,12 +1076,46 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             RangeOp::Div => {
-                let candidates = vec![
+                let mut candidates = vec![
                     lhs_min.range_div(&rhs_min),
                     lhs_min.range_div(&rhs_max),
                     lhs_max.range_div(&rhs_min),
                     lhs_max.range_div(&rhs_max),
                 ];
+
+                let one = Elem::from(Concrete::from(U256::from(1)));
+                let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&one),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&one),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_div(&one));
+                    candidates.push(lhs_max.range_div(&one));
+                }
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_div(&negative_one));
+                    candidates.push(lhs_max.range_div(&negative_one));
+                }
+
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                 candidates.sort_by(|a, b| match a.range_ord(b) {
                     Some(r) => r,

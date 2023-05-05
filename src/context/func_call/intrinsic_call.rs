@@ -160,8 +160,9 @@ pub trait IntrinsicFuncCaller:
                             Ok(())
                         }
                         "require" | "assert" => {
-                            self.handle_require(input_exprs, ctx)?;
-                            Ok(())
+                            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
+                                analyzer.handle_require(input_exprs, ctx)
+                            })
                         }
                         "type" => self.parse_ctx_expr(&input_exprs[0], ctx),
                         "push" => {
