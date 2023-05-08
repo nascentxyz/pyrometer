@@ -290,7 +290,7 @@ pub trait FuncCaller:
                 } else {
                     Err(ExprErr::InvalidFunctionInput(
                         loc,
-                        format!("Length mismatch: {inputs:?} {params:?}"),
+                        format!("Length mismatch: {inputs:?} {params:?}, inputs as vars: {}, ctx: {}", ExprRet::Multi(inputs.to_vec()).debug_str(self), ctx.path(self)),
                     ))
                 }
             }
@@ -515,8 +515,7 @@ pub trait FuncCaller:
             self.ctx_rets(loc, caller_ctx, callee_ctx)
         } else {
             self.inherit_input_changes(loc, caller_ctx, callee_ctx, renamed_inputs)?;
-            self.inherit_storage_changes(caller_ctx, callee_ctx)
-                .into_expr_err(loc)?;
+            self.inherit_storage_changes(loc, caller_ctx, callee_ctx)?;
             self.apply_to_edges(callee_ctx, loc, &|analyzer, ctx, loc| {
                 func_node.returns(analyzer).iter().try_for_each(|ret| {
                     let underlying = ret.underlying(analyzer).unwrap();
@@ -819,30 +818,32 @@ pub trait FuncCaller:
         renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
     ) -> Result<(), ExprErr> {
         if to_ctx != from_ctx {
-            renamed_inputs
-                .iter()
-                .try_for_each(|(input_var, updated_var)| {
-                    let new_input =
-                        self.advance_var_in_ctx(input_var.latest_version(self), loc, to_ctx)?;
-                    let latest_updated = updated_var.latest_version(self);
-                    if let Some(updated_var_range) =
-                        latest_updated.range(self).into_expr_err(loc)?
-                    {
-                        let res = new_input
-                            .set_range_min(self, updated_var_range.range_min())
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        let res = new_input
-                            .set_range_max(self, updated_var_range.range_max())
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        let res = new_input
-                            .set_range_exclusions(self, updated_var_range.range_exclusions())
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                    }
-                    Ok(())
-                })?;
+            self.apply_to_edges(to_ctx, loc, &|analyzer, to_ctx, loc| {
+                renamed_inputs
+                    .iter()
+                    .try_for_each(|(input_var, updated_var)| {
+                        let new_input =
+                            analyzer.advance_var_in_ctx(input_var.latest_version(analyzer), loc, to_ctx)?;
+                        let latest_updated = updated_var.latest_version(analyzer);
+                        if let Some(updated_var_range) =
+                            latest_updated.range(analyzer).into_expr_err(loc)?
+                        {
+                            let res = new_input
+                                .set_range_min(analyzer, updated_var_range.range_min())
+                                .into_expr_err(loc);
+                            let _ = analyzer.add_if_err(res);
+                            let res = new_input
+                                .set_range_max(analyzer, updated_var_range.range_max())
+                                .into_expr_err(loc);
+                            let _ = analyzer.add_if_err(res);
+                            let res = new_input
+                                .set_range_exclusions(analyzer, updated_var_range.range_exclusions())
+                                .into_expr_err(loc);
+                            let _ = analyzer.add_if_err(res);
+                        }
+                        Ok(())
+                    })
+            })?;
         }
         Ok(())
     }
@@ -856,52 +857,55 @@ pub trait FuncCaller:
     /// Inherit the storage changes from a function call
     fn inherit_storage_changes(
         &mut self,
+        loc: Loc,
         inheritor_ctx: ContextNode,
         grantor_ctx: ContextNode,
-    ) -> Result<(), GraphError> {
+    ) -> Result<(), ExprErr> {
         if inheritor_ctx != grantor_ctx {
-            let vars = grantor_ctx.local_vars(self);
-            vars.iter().try_for_each(|old_var| {
-                let var = old_var.latest_version(self);
-                let underlying = var.underlying(self)?;
-                if var.is_storage(self)? {
-                    // println!(
-                    //     "{} -- {} --> {}",
-                    //     grantor_ctx.path(self),
-                    //     underlying.name,
-                    //     inheritor_ctx.path(self)
-                    // );
-                    if let Some(inheritor_var) = inheritor_ctx.var_by_name(self, &underlying.name) {
-                        let inheritor_var = inheritor_var.latest_version(self);
-                        if let Some(r) = underlying.ty.range(self)? {
-                            let new_inheritor_var = self
-                                .advance_var_in_ctx(
-                                    inheritor_var,
-                                    underlying.loc.expect("No loc for val change"),
-                                    inheritor_ctx,
-                                )
-                                .unwrap();
-                            let _ = new_inheritor_var.set_range_min(self, r.range_min());
-                            let _ = new_inheritor_var.set_range_max(self, r.range_max());
-                            let _ =
-                                new_inheritor_var.set_range_exclusions(self, r.range_exclusions());
+            return self.apply_to_edges(inheritor_ctx, loc, &|analyzer, inheritor_ctx, loc| {
+                let vars = grantor_ctx.local_vars(analyzer);
+                vars.iter().try_for_each(|old_var| {
+                    let var = old_var.latest_version(analyzer);
+                    let underlying = var.underlying(analyzer).into_expr_err(loc)?;
+                    if var.is_storage(analyzer).into_expr_err(loc)? {
+                        // println!(
+                        //     "{} -- {} --> {}",
+                        //     grantor_ctx.path(self),
+                        //     underlying.name,
+                        //     inheritor_ctx.path(self)
+                        // );
+                        if let Some(inheritor_var) = inheritor_ctx.var_by_name(analyzer, &underlying.name) {
+                            let inheritor_var = inheritor_var.latest_version(analyzer);
+                            if let Some(r) = underlying.ty.range(analyzer).into_expr_err(loc)? {
+                                let new_inheritor_var = analyzer
+                                    .advance_var_in_ctx(
+                                        inheritor_var,
+                                        underlying.loc.expect("No loc for val change"),
+                                        inheritor_ctx,
+                                    )
+                                    .unwrap();
+                                let _ = new_inheritor_var.set_range_min(analyzer, r.range_min());
+                                let _ = new_inheritor_var.set_range_max(analyzer, r.range_max());
+                                let _ =
+                                    new_inheritor_var.set_range_exclusions(analyzer, r.range_exclusions());
+                            }
+                        } else {
+                            let new_in_inheritor = analyzer.add_node(Node::ContextVar(underlying.clone()));
+                            analyzer.add_edge(
+                                new_in_inheritor,
+                                inheritor_ctx,
+                                Edge::Context(ContextEdge::Variable),
+                            );
+                            analyzer.add_edge(
+                                new_in_inheritor,
+                                var,
+                                Edge::Context(ContextEdge::InheritedVariable),
+                            );
                         }
-                    } else {
-                        let new_in_inheritor = self.add_node(Node::ContextVar(underlying.clone()));
-                        self.add_edge(
-                            new_in_inheritor,
-                            inheritor_ctx,
-                            Edge::Context(ContextEdge::Variable),
-                        );
-                        self.add_edge(
-                            new_in_inheritor,
-                            var,
-                            Edge::Context(ContextEdge::InheritedVariable),
-                        );
                     }
-                }
-                Ok(())
-            })?;
+                    Ok(())
+                })
+            })
         }
         Ok(())
     }
@@ -963,14 +967,6 @@ pub trait FuncCaller:
                         let _ = write!(mod_name, "()");
                     }
                     let _ = write!(mod_name, "");
-
-                    // println!(
-                    //     "func modifiers: {},\n{:?},\n{:#?},\n{}",
-                    //     func.name(self).unwrap(),
-                    //     mod_name,
-                    //     ctx.visible_modifiers(self),
-                    //     ctx.visible_modifiers(self).unwrap()[0].name(self).unwrap()
-                    // );
                     let found: Option<FunctionNode> = ctx
                         .visible_modifiers(self)
                         .unwrap()

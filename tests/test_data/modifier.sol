@@ -18,15 +18,14 @@ contract Modifier {
     modifier Input(uint256 c) {
         require(c == 100);
         a += 1;
-        noop();
         _;
         a = 1;
         a += 1;
     }
 
-    function noop() public Noop {
-        a = 100;
-    }
+    // function noop() public Noop {
+    //     a = 100;
+    // }
 
     // function requireBefore() public RequireBefore {
     //     a += 1;
@@ -41,10 +40,10 @@ contract Modifier {
     //     require(a == 1);
     // }
 
-    // function input(uint256 b, uint256 c) public Input(b) Input(c) {
-    //     uint256 k = b;
-    //     require(a == 2);
-    // }
+    function input(uint256 b, uint256 c) public Input(b) Input(c) {
+        uint256 k = b;
+        require(a == 2);
+    }
 
     // function internalMod(uint256 b) internal Input(b) {
     //     uint256 k = b;
@@ -55,13 +54,13 @@ contract Modifier {
     //     internalMod(b);
     // }
 
-    function addOne(uint256 x) internal returns (uint256) {
-        return x + 1;
-    }
+    // function addOne(uint256 x) internal returns (uint256) {
+    //     return x + 1;
+    // }
 
-    function inputFunc(uint256 x) internal Input(addOne(x)) returns (uint256) {
-        return x;
-    }
+    // function inputFunc(uint256 x) internal Input(addOne(x)) returns (uint256) {
+    //     return x;
+    // }
 
     // function inputFuncConst(uint256 x) internal Input(addOne(99)) returns (uint256) {
     //     require(a == 1);

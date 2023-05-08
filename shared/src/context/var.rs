@@ -403,18 +403,14 @@ impl ContextVarNode {
         mut new_min: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
-            "setting range minimum: {}, current: {}, new: {}",
+            "setting range minimum: {}, current: {}, new_min:\n{:#?}",
             self.display_name(analyzer)?,
             self.range_min(analyzer)?
                 .unwrap()
                 .to_range_string(false, analyzer)
                 .s,
-            new_min.to_range_string(false, analyzer).s
+            new_min
         );
-
-        // if let Some(prev) = self.previous_version(analyzer) {
-        //     new_min.filter_recursion((*self).into(), prev.into());
-        // }
 
         if new_min.contains_node((*self).into()) {
             if let Some(prev) = self.previous_version(analyzer) {
@@ -447,9 +443,7 @@ impl ContextVarNode {
             self,
             self.display_name(analyzer)?,
             self.range(analyzer)?.unwrap().range_max(), // .unwrap()
-            // .to_range_string(true, analyzer)
-            new_max // .to_range_string(true, analyzer)
-                    // .s
+            new_max
         );
 
         if new_max.contains_node((*self).into()) {
@@ -486,8 +480,14 @@ impl ContextVarNode {
     pub fn try_set_range_min(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
-        new_min: Elem<Concrete>,
+        mut new_min: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
+        if new_min.contains_node((*self).into()) {
+            if let Some(prev) = self.previous_version(analyzer) {
+                new_min.filter_recursion((*self).into(), prev.into());
+            }
+        }
+
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
             new_ty.concrete_to_builtin(analyzer)?;
@@ -504,8 +504,14 @@ impl ContextVarNode {
     pub fn try_set_range_max(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
-        new_max: Elem<Concrete>,
+        mut new_max: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
+        if new_max.contains_node((*self).into()) {
+            if let Some(prev) = self.previous_version(analyzer) {
+                new_max.filter_recursion((*self).into(), prev.into());
+            }
+        }
+
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
             new_ty.concrete_to_builtin(analyzer)?;
@@ -1021,6 +1027,7 @@ impl ContextVar {
 
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
+        tracing::trace!("Setting range min in underlying: {:?}", self.ty);
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
             | VarType::User(TypeNode::Enum(_), ref mut maybe_range)

@@ -1,11 +1,6 @@
 contract InternalFuncCalls {
     address _owner;
 
-    // modifier onlyOwner {
-    // 	require(msg.sender == _owner);
-    // 	_;
-    // }
-
     function transferOwnership(address newOwner) public virtual {
         innerRequire(newOwner);
         _transferOwnership(newOwner);

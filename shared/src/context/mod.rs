@@ -556,9 +556,16 @@ impl ContextNode {
     }
 
     pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
-        analyzer
-            .search_for_ancestor(self.0.into(), &Edge::Part)
-            .expect("No associated source?")
+        let context = self.underlying(analyzer).unwrap();
+        if let Some(parent_ctx) = context.parent_ctx {
+            parent_ctx.associated_source(analyzer)
+        } else {
+            match analyzer
+                .search_for_ancestor(self.0.into(), &Edge::Part) {
+                Some(src) => src,
+                None => panic!("No associated source for context? {:#?}", analyzer.node(*self))
+            }
+        }
     }
 
     pub fn associated_source_unit_part(
@@ -785,28 +792,19 @@ impl ContextNode {
     /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
         analyzer
-            .find_child_exclude_via(
-                self.0.into(),
-                &Edge::Context(ContextEdge::Variable),
-                &[
-                    Edge::Context(ContextEdge::Prev),
-                    Edge::Context(ContextEdge::Call),
-                ],
-                &|cvar_node, analyzer| {
-                    if matches!(analyzer.node(cvar_node), Node::ContextVar(..)) {
-                        let cvar_node = ContextVarNode::from(cvar_node);
-                        let cvar = cvar_node.underlying(analyzer).unwrap();
-                        if cvar.name == name {
-                            Some(cvar_node.into())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                },
-            )
-            .map(|idx| idx.into())
+            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
+            .into_iter()
+            .filter_map(|cvar_node| {
+                let cvar_node = ContextVarNode::from(cvar_node);
+                let cvar = cvar_node.underlying(analyzer).unwrap();
+                if cvar.name == name {
+                    Some(cvar_node)
+                } else {
+                    None
+                }
+            })
+            .take(1)
+            .next()
     }
 
     pub fn var_by_name_or_recurse(
@@ -982,6 +980,7 @@ impl ContextNode {
     ) -> Result<(), GraphError> {
         assert!(matches!(analyzer.node(w1), Node::Context(_)));
         assert!(matches!(analyzer.node(w2), Node::Context(_)));
+        assert!(*self != w1 && *self != w2, "Tried to set child to self");
         let context = self.underlying_mut(analyzer)?;
         if !context.set_child_fork(w1, w2) {
             let child_str = match context.child {
@@ -1012,6 +1011,7 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         assert!(matches!(analyzer.node(call), Node::Context(_)));
+        assert!(*self != call, "Tried to set child to self");
         let context = self.underlying_mut(analyzer)?;
         if !context.set_child_call(call) {
             let child_str = match context.child {

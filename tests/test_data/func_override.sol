@@ -12,7 +12,5 @@ contract A is B {
 
 	function b() public {
 		a(5);
-		// uint256 x = 100;
-		// require(x == 100);
 	}
 }

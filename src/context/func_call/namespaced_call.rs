@@ -104,7 +104,7 @@ pub trait NameSpaceFuncCaller:
             ident.name
         );
 
-        let funcs = self.visible_member_funcs(ctx, member);
+        let funcs = self.visible_member_funcs(ctx, loc, member)?;
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()

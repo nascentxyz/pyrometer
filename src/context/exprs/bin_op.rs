@@ -58,7 +58,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             "BIN OP: {:?} {} {:?}, assign: {assign}",
             lhs_paths.debug_str(self),
             op.to_string(),
-            rhs_paths.debug_str(self)
+            rhs_paths.debug_str(self),
         );
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {

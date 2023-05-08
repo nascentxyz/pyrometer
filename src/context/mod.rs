@@ -335,8 +335,16 @@ pub trait ContextBuilder:
                     let _ = self.add_if_err(res);
                 }
             }
-            DoWhile(_loc, _while_stmt, _while_expr) => {
-                todo!("do while not supported");
+            DoWhile(loc, while_stmt, while_expr) => {
+                tracing::trace!("parsing `do while`, {while_expr:?}");
+                if let Some(parent) = parent_ctx {
+                    let res = self.apply_to_edges(
+                        ContextNode::from(parent.into()),
+                        *loc,
+                        &|analyzer, ctx, loc| analyzer.while_loop(loc, ctx, while_expr, while_stmt),
+                    );
+                    let _ = self.add_if_err(res);
+                }
             }
             Continue(_loc) => {
                 tracing::trace!("parsing continue");
@@ -1197,16 +1205,17 @@ pub trait ContextBuilder:
 
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
+                // let old_depth = old_ctx.underlying(self).into_expr_err(loc)?.depth;
+                // let target_depth = ctx.underlying(self).into_expr_err(loc)?.depth;
+                // assert!(old_depth < target_depth || old_ctx == ctx, "Inherit from child or sibling");
                 // get the previous version to remove and prevent spurious nodes
                 if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
                     let prev_version = prev.underlying(self).into_expr_err(loc)?;
                     // check if there was no change between the previous version and the latest version
-                    if prev_version.eq_ignore_loc(&new_cvar) {
-                        if old_ctx == ctx {
-                            // there was no change in the current context, just give them the current variable
-                            new_cvarnode = cvar_node.into();
-                            break 'a;
-                        }
+                    if prev_version.eq_ignore_loc(&new_cvar) && old_ctx == ctx {
+                        // there was no change in the current context, just give them the current variable
+                        new_cvarnode = cvar_node.into();
+                        break 'a;
                     }
                 }
 

@@ -1,60 +1,53 @@
-
-
 contract Assembly {
-	// uint256 a;
-	
-	// function multiDisplay(uint256 x, uint256 y) public returns (uint256, uint256) {
-	// 	require(x > 1);
-	// 	return a(x, y);
-	// }
-	// function a(uint256 x, uint256 y) public returns (uint256, uint256) {
-	// 	require(x > 5);
-	// 	(uint256 f, uint256 g) = c(x + 1, y + 1);
-	// 	(f, g) = b(x, y);
-	// 	return c(x, y);
-	// }
-	function b(uint256 x, uint256 y) public returns (uint256, uint256) {
-		// require(x > 100);
-		require(y < 100);
-		(uint256 f, uint256 g) = c(x + 1, y + 1);
-		return (x, y);
+	function switchStatement(uint256 x) public returns (uint256) {
+		uint256 y = x;
+        assembly {
+            switch mod(x, 10)
+            	case 1 {
+            		x := add(x, 1)
+            	}
+            	case 2 {
+            		x := add(x, 2)
+            	}
+            	case 3 {
+            		x := add(x, 3)
+            	}
+            	case 4 {
+            		x := add(x, 4)
+            	}
+            	default {
+                	x := add(x, 10)
+                }   
+        }
+
+        return x;
+    }
+
+	function hasInline(uint256 a, uint256 b) public returns (uint256, uint256){
+		assembly {
+			a := add(100, a)
+			a := sub(a, 10)
+			a := div(a, 2)
+			a := mul(a, 2)
+			if lt(b, 200) {
+				b := 100
+			}
+
+			// let c := 0x200
+			// let d := true
+		}
+
+		if (b < 200) {
+			require(b == 100);
+		}
+		return (a, b);
 	}
-	function c(uint256 q, uint256 z) public returns (uint256, uint256) {
-		require(q > 100);
-		require(q > z);
-		return (q + 1, z + 1);
+
+	function varDecl(uint256 a) public {
+		assembly {
+			let b := 200
+			let c := 0x200
+			let d := true
+		}
 	}
-	// uint256[] b;
-	// function hasInline(uint256 a, uint256 b) public returns (uint256, uint256){
-	// 	assembly {
-	// 		a := add(100, a)
-	// 		a := sub(a, 10)
-	// 		a := div(a, 2)
-	// 		a := mul(a, 2)
-	// 		if lt(b, 200) {
-	// 			b := 100
-	// 		}
-
-	// 		// let c := 0x200
-	// 		// let d := true
-	// 	}
-
-	// 	if (b < 200) {
-	// 		require(b == 100);
-	// 	}
-	// 	return (a, b);
-	// }
-
-	// function varDecl(uint256 a) public {
-	// 	assembly {
-	// 		function multiReturn() -> first, second {
-	// 			return 100, 200
-	// 		}
-
-	// 		let b := 200
-	// 		let c := 0x200
-	// 		let d := true
-	// 		let e, f := multiReturn()
-	// 	}
-	// }
 }

@@ -20,8 +20,8 @@ use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
-    fn visible_member_funcs(&mut self, ctx: ContextNode, member_idx: NodeIdx) -> Vec<FunctionNode> {
-        match self.node(member_idx) {
+    fn visible_member_funcs(&mut self, ctx: ContextNode, loc: Loc, member_idx: NodeIdx) -> Result<Vec<FunctionNode>, ExprErr> {
+        let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
                 VarType::BuiltIn(bn, _) => self
@@ -57,8 +57,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 .possible_library_funcs(ctx, member_idx)
                 .into_iter()
                 .collect::<Vec<_>>(),
-            _ => todo!(),
-        }
+            e => {
+                return Err(ExprErr::MemberAccessNotFound(loc, format!("This type cannot have member functions: {:?}", e)))
+            },
+        };
+        Ok(res)
     }
 
     /// Gets the array type

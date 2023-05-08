@@ -1,3 +1,5 @@
+use solang_parser::pt::YulBlock;
+use solang_parser::pt::YulSwitchOptions;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ContextBuilder;
 use crate::context::ExprParser;
@@ -56,129 +58,130 @@ pub trait YulBuilder:
         Self: Sized,
     {
         use YulStatement::*;
-        let forks = self
-            .add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc()))
-            .unwrap();
-        match stmt {
-            Assign(loc, yul_exprs, yul_expr) => {
-                match yul_exprs
-                    .iter()
-                    .try_for_each(|expr| self.parse_ctx_yul_expr(expr, ctx))
-                {
-                    Ok(()) => {
-                        let ret = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                            let Some(lhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                                return Err(ExprErr::NoLhs(loc, "No left hand side assignments in yul block".to_string()))
-                            };
-
-                            analyzer.parse_ctx_yul_expr(yul_expr, ctx);
-                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                let Some(rhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
+        println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
+        let ret = self.apply_to_edges(ctx, stmt.loc(), &|analyzer, ctx, _loc| {
+            match stmt {
+                Assign(loc, yul_exprs, yul_expr) => {
+                    match yul_exprs
+                        .iter()
+                        .try_for_each(|expr| analyzer.parse_ctx_yul_expr(expr, ctx))
+                    {
+                        Ok(()) => {
+                            analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                                let Some(lhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                                    return Err(ExprErr::NoLhs(loc, "No left hand side assignments in yul block".to_string()))
                                 };
 
-                                analyzer.match_assign_sides(
-                                    ctx,
-                                    loc,
-                                    &lhs_side,
-                                    &rhs_side,
-                                )
+                                analyzer.parse_ctx_yul_expr(yul_expr, ctx)?;
+                                analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                                    let Some(rhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                                        return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
+                                    };
+
+                                    analyzer.match_assign_sides(
+                                        ctx,
+                                        loc,
+                                        &lhs_side,
+                                        &rhs_side,
+                                    )
+                                })
                             })
-                        });
-                        let _ = self.add_if_err(ret);
+                        }
+                        Err(e) => Err(e),
                     }
-                    Err(e) => self.add_expr_err(e),
                 }
-            }
-            VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
-                let nodes = yul_idents
-                    .iter()
-                    .map(|ident| {
-                        let b_ty = self.builtin_or_add(Builtin::Uint(256));
-                        let var = ContextVar {
-                            loc: Some(ident.loc),
-                            name: ident.id.name.clone(),
-                            display_name: ident.id.name.clone(),
-                            storage: None,
-                            is_tmp: false,
-                            tmp_of: None,
-                            is_symbolic: true,
-                            is_return: false,
-                            ty: VarType::try_from_idx(self, b_ty).unwrap(),
-                        };
-                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
-                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                        self.advance_var_in_ctx(cvar, *loc, ctx).unwrap()
+                VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
+                    let nodes = yul_idents
+                        .iter()
+                        .map(|ident| {
+                            let b_ty = analyzer.builtin_or_add(Builtin::Uint(256));
+                            let var = ContextVar {
+                                loc: Some(ident.loc),
+                                name: ident.id.name.clone(),
+                                display_name: ident.id.name.clone(),
+                                storage: None,
+                                is_tmp: false,
+                                tmp_of: None,
+                                is_symbolic: true,
+                                is_return: false,
+                                ty: VarType::try_from_idx(analyzer, b_ty).unwrap(),
+                            };
+                            let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                            analyzer.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                            analyzer.advance_var_in_ctx(cvar, *loc, ctx).unwrap()
+                        })
+                        .collect::<Vec<_>>();
+
+                    if let Some(yul_expr) = maybe_yul_expr {
+                        analyzer.parse_ctx_yul_expr(yul_expr, ctx)?;
+                        analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                                return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
+                            };
+
+                            analyzer.match_assign_yul(ctx, loc, &nodes, ret)
+
+                        })
+                    } else {
+                        Ok(())
+                    }
+                }
+                If(loc, yul_expr, yul_block) => {
+                    analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        let ret = analyzer.yul_cond_op_stmt(loc, yul_expr, yul_block, ctx);
+                        let _ = analyzer.add_if_err(ret);
+                        Ok(())
                     })
-                    .collect::<Vec<_>>();
-
-                if let Some(yul_expr) = maybe_yul_expr {
-                    self.parse_ctx_yul_expr(yul_expr, ctx);
-                    let ret = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
-                        };
-
-                        analyzer.match_assign_yul(ctx, loc, &nodes, ret)
-
-                    });
-                    let _ = self.add_if_err(ret);
+                }
+                For(YulFor {
+                    loc: _,
+                    init_block: _,
+                    condition: _,
+                    post_block: _,
+                    execution_block: _,
+                }) => {
+                    todo!()
+                }
+                Switch(YulSwitch {
+                    loc,
+                    condition,
+                    cases,
+                    default,
+                }) => {
+                    // todo!()
+                    analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        analyzer.yul_switch_stmt(loc, condition.clone(), cases.to_vec(), default.clone(), ctx)
+                    })
+                    
+                }
+                Leave(_loc) => {
+                    todo!()
+                }
+                Break(_loc) => {
+                    todo!()
+                }
+                Continue(_loc) => {
+                    todo!()
+                }
+                Block(yul_block) => {
+                    yul_block
+                        .statements
+                        .iter()
+                        .for_each(|stmt| analyzer.parse_ctx_yul_stmt_inner(stmt, ctx));
+                    Ok(())
+                }
+                FunctionDefinition(_yul_func_def) => {
+                    todo!()
+                }
+                FunctionCall(yul_func_call) => {
+                    analyzer.yul_func_call(yul_func_call, ctx)
+                }
+                Error(_loc) => {
+                    todo!()
                 }
             }
-            If(loc, yul_expr, yul_block) => {
-                if forks.is_empty() {
-                    let ret = self.yul_cond_op_stmt(*loc, yul_expr, yul_block, ctx);
-                    let _ = self.add_if_err(ret);
-                } else {
-                    forks.into_iter().for_each(|ctx| {
-                        let ret = self.yul_cond_op_stmt(*loc, yul_expr, yul_block, ctx);
-                        let _ = self.add_if_err(ret);
-                    });
-                }
-            }
-            For(YulFor {
-                loc: _,
-                init_block: _,
-                condition: _,
-                post_block: _,
-                execution_block: _,
-            }) => {
-                todo!()
-            }
-            Switch(YulSwitch {
-                loc: _,
-                condition: _,
-                cases: _,
-                default: _,
-            }) => {
-                todo!()
-            }
-            Leave(_loc) => {
-                todo!()
-            }
-            Break(_loc) => {
-                todo!()
-            }
-            Continue(_loc) => {
-                todo!()
-            }
-            Block(yul_block) => {
-                yul_block
-                    .statements
-                    .iter()
-                    .for_each(|stmt| self.parse_ctx_yul_stmt_inner(stmt, ctx));
-            }
-            FunctionDefinition(_yul_func_def) => {
-                todo!()
-            }
-            FunctionCall(yul_func_call) => {
-                let ret = self.yul_func_call(yul_func_call, ctx);
-                let _ = self.add_if_err(ret);
-            }
-            Error(_loc) => {
-                todo!()
-            }
-        }
+        });
+        let _ = self.add_if_err(ret);
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
