@@ -7,7 +7,7 @@ use crate::context::ContextBuilder;
 use crate::context::ExprErr;
 use itertools::Itertools;
 use shared::analyzer::AsDotStr;
-use shared::analyzer::GraphError;
+
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
 use shared::context::*;
@@ -290,7 +290,11 @@ pub trait FuncCaller:
                 } else {
                     Err(ExprErr::InvalidFunctionInput(
                         loc,
-                        format!("Length mismatch: {inputs:?} {params:?}, inputs as vars: {}, ctx: {}", ExprRet::Multi(inputs.to_vec()).debug_str(self), ctx.path(self)),
+                        format!(
+                            "Length mismatch: {inputs:?} {params:?}, inputs as vars: {}, ctx: {}",
+                            ExprRet::Multi(inputs.to_vec()).debug_str(self),
+                            ctx.path(self)
+                        ),
                     ))
                 }
             }
@@ -822,8 +826,11 @@ pub trait FuncCaller:
                 renamed_inputs
                     .iter()
                     .try_for_each(|(input_var, updated_var)| {
-                        let new_input =
-                            analyzer.advance_var_in_ctx(input_var.latest_version(analyzer), loc, to_ctx)?;
+                        let new_input = analyzer.advance_var_in_ctx(
+                            input_var.latest_version(analyzer),
+                            loc,
+                            to_ctx,
+                        )?;
                         let latest_updated = updated_var.latest_version(analyzer);
                         if let Some(updated_var_range) =
                             latest_updated.range(analyzer).into_expr_err(loc)?
@@ -837,7 +844,10 @@ pub trait FuncCaller:
                                 .into_expr_err(loc);
                             let _ = analyzer.add_if_err(res);
                             let res = new_input
-                                .set_range_exclusions(analyzer, updated_var_range.range_exclusions())
+                                .set_range_exclusions(
+                                    analyzer,
+                                    updated_var_range.range_exclusions(),
+                                )
                                 .into_expr_err(loc);
                             let _ = analyzer.add_if_err(res);
                         }
@@ -874,7 +884,9 @@ pub trait FuncCaller:
                         //     underlying.name,
                         //     inheritor_ctx.path(self)
                         // );
-                        if let Some(inheritor_var) = inheritor_ctx.var_by_name(analyzer, &underlying.name) {
+                        if let Some(inheritor_var) =
+                            inheritor_ctx.var_by_name(analyzer, &underlying.name)
+                        {
                             let inheritor_var = inheritor_var.latest_version(analyzer);
                             if let Some(r) = underlying.ty.range(analyzer).into_expr_err(loc)? {
                                 let new_inheritor_var = analyzer
@@ -886,11 +898,12 @@ pub trait FuncCaller:
                                     .unwrap();
                                 let _ = new_inheritor_var.set_range_min(analyzer, r.range_min());
                                 let _ = new_inheritor_var.set_range_max(analyzer, r.range_max());
-                                let _ =
-                                    new_inheritor_var.set_range_exclusions(analyzer, r.range_exclusions());
+                                let _ = new_inheritor_var
+                                    .set_range_exclusions(analyzer, r.range_exclusions());
                             }
                         } else {
-                            let new_in_inheritor = analyzer.add_node(Node::ContextVar(underlying.clone()));
+                            let new_in_inheritor =
+                                analyzer.add_node(Node::ContextVar(underlying.clone()));
                             analyzer.add_edge(
                                 new_in_inheritor,
                                 inheritor_ctx,
@@ -905,7 +918,7 @@ pub trait FuncCaller:
                     }
                     Ok(())
                 })
-            })
+            });
         }
         Ok(())
     }

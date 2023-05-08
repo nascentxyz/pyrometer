@@ -1,5 +1,3 @@
-use solang_parser::pt::YulBlock;
-use solang_parser::pt::YulSwitchOptions;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ContextBuilder;
 use crate::context::ExprParser;
@@ -152,7 +150,6 @@ pub trait YulBuilder:
                     analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                         analyzer.yul_switch_stmt(loc, condition.clone(), cases.to_vec(), default.clone(), ctx)
                     })
-                    
                 }
                 Leave(_loc) => {
                     todo!()

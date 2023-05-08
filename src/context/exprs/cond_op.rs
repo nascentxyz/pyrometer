@@ -46,7 +46,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
             );
 
             analyzer.parse_ctx_statement(true_stmt, false, Some(true_subctx));
-            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
+            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, _loc| {
                 analyzer.true_fork_if_cvar(if_expr.clone(), ctx)
             })?;
 
@@ -54,7 +54,7 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
                 analyzer.parse_ctx_statement(false_stmt, false, Some(false_subctx));
             }
 
-            analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
+            analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, _loc| {
                 analyzer.false_fork_if_cvar(if_expr.clone(), ctx)
             })
         })
@@ -101,12 +101,12 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
             );
 
             analyzer.parse_ctx_expr(true_expr, true_subctx)?;
-            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
+            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, _loc| {
                 analyzer.true_fork_if_cvar(if_expr.clone(), ctx)
             })?;
 
             analyzer.parse_ctx_expr(false_expr, false_subctx)?;
-            analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
+            analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, _loc| {
                 analyzer.false_fork_if_cvar(if_expr.clone(), ctx)
             })
         })

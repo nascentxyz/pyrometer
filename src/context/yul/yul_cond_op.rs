@@ -1,4 +1,3 @@
-use solang_parser::pt::YulSwitchOptions;
 use crate::context::exprs::IntoExprErr;
 use crate::context::yul::YulBuilder;
 use crate::context::ContextBuilder;
@@ -12,6 +11,7 @@ use shared::{context::*, Edge, Node, NodeIdx};
 use solang_parser::pt::Identifier;
 use solang_parser::pt::YulBlock;
 use solang_parser::pt::YulFunctionCall;
+use solang_parser::pt::YulSwitchOptions;
 
 use solang_parser::pt::CodeLocation;
 use solang_parser::pt::{Expression, Loc};
@@ -82,7 +82,6 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
 
                 analyzer.match_yul_false(ctx, if_expr.loc(), &ret)
             })
-            
         })
     }
 
@@ -313,7 +312,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         //     // empty switch statement
         // } else {
         //     parts.iter().try_for_each(|(if_expr, true_stmt, false_expr, false_stmt)| {
-                
+
         //     })
         // }
         // Ok(())
@@ -330,7 +329,7 @@ pub struct IfElseChain {
 #[derive(Clone, Debug)]
 pub enum ElseOrDefault {
     Else(Box<IfElseChain>),
-    Default(YulStatement)
+    Default(YulStatement),
 }
 
 impl From<IfElseChain> for ElseOrDefault {
@@ -343,9 +342,8 @@ impl IfElseChain {
     pub fn from_child(ed: ElseOrDefault) -> Option<Self> {
         match ed {
             ElseOrDefault::Else(iec) => Some(*iec),
-            _ => None
+            _ => None,
         }
-        
     }
 }
 
@@ -360,8 +358,11 @@ impl From<YulSwitchOptions> for ElseOrDefault {
     }
 }
 
-
-pub type SwitchInfo = (YulExpression, Vec<YulSwitchOptions>, Option<YulSwitchOptions>);
+pub type SwitchInfo = (
+    YulExpression,
+    Vec<YulSwitchOptions>,
+    Option<YulSwitchOptions>,
+);
 
 impl IfElseChain {
     pub fn from(loc: Loc, (condition, cases, default): SwitchInfo) -> Result<Self, ExprErr> {
@@ -370,7 +371,7 @@ impl IfElseChain {
         cases.into_iter().rev().for_each(|case| {
             let mut chain_part: IfElseChain = From::from((condition.clone(), case));
             if let Some(c) = child.take() {
-                chain_part.next = c.into();    
+                chain_part.next = c.into();
             }
             child = Some(chain_part.into());
         });
@@ -400,7 +401,7 @@ impl From<(YulExpression, YulSwitchOptions)> for IfElseChain {
                 IfElseChain {
                     if_expr,
                     true_stmt: YulStatement::Block(stmt),
-                    next: None
+                    next: None,
                 }
             }
             YulSwitchOptions::Default(_loc, _block) => {

@@ -560,10 +560,12 @@ impl ContextNode {
         if let Some(parent_ctx) = context.parent_ctx {
             parent_ctx.associated_source(analyzer)
         } else {
-            match analyzer
-                .search_for_ancestor(self.0.into(), &Edge::Part) {
+            match analyzer.search_for_ancestor(self.0.into(), &Edge::Part) {
                 Some(src) => src,
-                None => panic!("No associated source for context? {:#?}", analyzer.node(*self))
+                None => panic!(
+                    "No associated source for context? {:#?}",
+                    analyzer.node(*self)
+                ),
             }
         }
     }
