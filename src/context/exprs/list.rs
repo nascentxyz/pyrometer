@@ -11,6 +11,7 @@ use solang_parser::pt::Loc;
 impl<T> List for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
 
 pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn list(&mut self, ctx: ContextNode, loc: Loc, params: &ParameterList) -> Result<(), ExprErr> {
         params
             .iter()
@@ -26,6 +27,10 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
                     };
+                    if matches!(ret, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     ctx.push_lhs_expr(analyzer.match_ty(ctx, &loc, &ret, input)?, analyzer).into_expr_err(loc)
                 })
             })?;
@@ -96,7 +101,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .map(|i| self.match_ty(ctx, loc, i, input))
                     .collect::<Result<_, _>>()?,
             )),
-            ExprRet::CtxKilled => Ok(ExprRet::CtxKilled),
+            ExprRet::CtxKilled(kind) => Ok(ExprRet::CtxKilled(*kind)),
         }
     }
 }

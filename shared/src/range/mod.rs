@@ -205,7 +205,7 @@ impl SolcRange {
                 } else {
                     let max: I256 =
                         I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1);
-                    let min = max * I256::from(-1i32);
+                    let min = max * I256::from(-1i32) - I256::from(1i32);
                     Some(SolcRange::new(
                         Elem::Concrete(RangeConcrete {
                             val: Concrete::Int(*size, min),
@@ -327,10 +327,13 @@ impl SolcRange {
 
     pub fn dyn_fn_from_op(op: RangeOp) -> &'static dyn Fn(SolcRange, ContextVarNode) -> SolcRange {
         match op {
-            RangeOp::Add => &Self::add_dyn,
-            RangeOp::Sub => &Self::sub_dyn,
-            RangeOp::Mul => &Self::mul_dyn,
-            RangeOp::Div => &Self::div_dyn,
+            RangeOp::Add(false) => &Self::add_dyn,
+            RangeOp::Add(true) => &Self::wrapping_add_dyn,
+            RangeOp::Sub(false) => &Self::sub_dyn,
+            RangeOp::Sub(true) => &Self::wrapping_sub_dyn,
+            RangeOp::Mul(false) => &Self::mul_dyn,
+            RangeOp::Mul(true) => &Self::wrapping_mul_dyn,
+            RangeOp::Div(..) => &Self::div_dyn,
             RangeOp::Shr => &Self::shr_dyn,
             RangeOp::Shl => &Self::shl_dyn,
             RangeOp::Mod => &Self::mod_dyn,
@@ -366,6 +369,16 @@ impl SolcRange {
         )
     }
 
+    pub fn wrapping_add_dyn(self, other: ContextVarNode) -> Self {
+        Self::new(
+            self.min
+                .wrapping_add(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.max
+                .wrapping_add(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.exclusions,
+        )
+    }
+
     pub fn sub_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min - Elem::Dynamic(Dynamic::new(other.into())),
@@ -374,10 +387,30 @@ impl SolcRange {
         )
     }
 
+    pub fn wrapping_sub_dyn(self, other: ContextVarNode) -> Self {
+        Self::new(
+            self.min
+                .wrapping_sub(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.max
+                .wrapping_sub(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.exclusions,
+        )
+    }
+
     pub fn mul_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min * Elem::Dynamic(Dynamic::new(other.into())),
             self.max * Elem::Dynamic(Dynamic::new(other.into())),
+            self.exclusions,
+        )
+    }
+
+    pub fn wrapping_mul_dyn(self, other: ContextVarNode) -> Self {
+        Self::new(
+            self.min
+                .wrapping_mul(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.max
+                .wrapping_mul(Elem::Dynamic(Dynamic::new(other.into()))),
             self.exclusions,
         )
     }
@@ -531,6 +564,12 @@ impl Range<Concrete> for SolcRange {
         self.max_cached = None;
         self.max = new;
     }
+
+    fn add_range_exclusion(&mut self, new: Self::ElemTy) {
+        if !self.exclusions.contains(&new) {
+            self.exclusions.push(new);
+        }
+    }
     fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) {
         self.exclusions = new;
     }
@@ -557,6 +596,9 @@ pub trait Range<T> {
     fn set_range_min(&mut self, new: Self::ElemTy);
     fn set_range_max(&mut self, new: Self::ElemTy);
     fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>)
+    where
+        Self: std::marker::Sized;
+    fn add_range_exclusion(&mut self, new: Self::ElemTy)
     where
         Self: std::marker::Sized;
     fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);

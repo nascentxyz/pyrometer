@@ -69,10 +69,10 @@ impl ReportDisplay for VarBoundAnalysis {
 
         report.add_labels(self.labels(analyzer));
 
-        if let Some(killed_span) = &self.ctx_killed {
+        if let Some((killed_span, kind)) = &self.ctx_killed {
             report = report.with_label(
                 Label::new(killed_span.clone())
-                    .with_message("Execution guaranteed to revert here!".fg(Color::Red))
+                    .with_message(kind.analysis_str().fg(Color::Red))
                     .with_color(Color::Red),
             );
         }

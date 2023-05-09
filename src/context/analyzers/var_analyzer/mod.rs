@@ -21,7 +21,7 @@ pub struct CtxSwitch {
     pub ctx: ContextNode,
     pub func_span: LocStrSpan,
     pub func_body_span: Option<LocStrSpan>,
-    pub killed_loc: Option<LocStrSpan>,
+    pub killed_loc: Option<(LocStrSpan, KilledKind)>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,7 +45,7 @@ pub struct VarBoundAnalysis {
     /// Spanned (context nodes, function name span, return spans)
     pub spanned_ctx_info: BTreeSet<CtxSwitch>,
     /// Location where context was killed
-    pub ctx_killed: Option<LocStrSpan>,
+    pub ctx_killed: Option<(LocStrSpan, KilledKind)>,
 }
 
 impl Default for VarBoundAnalysis {
@@ -193,7 +193,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
                 killed_loc: ctx
                     .killed_loc(self)
                     .unwrap()
-                    .map(|loc| LocStrSpan::new(file_mapping, loc)),
+                    .map(|(loc, kind)| (LocStrSpan::new(file_mapping, loc), kind)),
             };
 
             new_ba.spanned_ctx_info.insert(ctx_switch);
@@ -219,7 +219,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
                 ctx_killed: ctx
                     .killed_loc(self)
                     .unwrap()
-                    .map(|loc| LocStrSpan::new(file_mapping, loc)),
+                    .map(|(loc, kind)| (LocStrSpan::new(file_mapping, loc), kind)),
                 ..Default::default()
             }
         };

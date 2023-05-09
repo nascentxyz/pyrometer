@@ -57,6 +57,14 @@ pub trait YulBuilder:
     {
         use YulStatement::*;
         println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
+
+        let res = ctx.pop_expr(stmt.loc(), self).into_expr_err(stmt.loc());
+        let _ = self.add_if_err(res);
+        println!("popped");
+
+        if ctx.is_killed(self).unwrap() {
+            return;
+        }
         let ret = self.apply_to_edges(ctx, stmt.loc(), &|analyzer, ctx, _loc| {
             match stmt {
                 Assign(loc, yul_exprs, yul_expr) => {
@@ -69,12 +77,21 @@ pub trait YulBuilder:
                                 let Some(lhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoLhs(loc, "No left hand side assignments in yul block".to_string()))
                                 };
+                                if matches!(lhs_side, ExprRet::CtxKilled(_)) {
+                                    ctx.push_expr(lhs_side, analyzer).into_expr_err(loc)?;
+                                    return Ok(());
+                                }
 
                                 analyzer.parse_ctx_yul_expr(yul_expr, ctx)?;
                                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                                     let Some(rhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                         return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
                                     };
+
+                                    if matches!(rhs_side, ExprRet::CtxKilled(_)) {
+                                        ctx.push_expr(rhs_side, analyzer).into_expr_err(loc)?;
+                                        return Ok(());
+                                    }
 
                                     analyzer.match_assign_sides(
                                         ctx,
@@ -116,6 +133,11 @@ pub trait YulBuilder:
                             let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                                 return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
                             };
+
+                            if matches!(ret, ExprRet::CtxKilled(_)) {
+                                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                                return Ok(());
+                            }
 
                             analyzer.match_assign_yul(ctx, loc, &nodes, ret)
 
@@ -244,11 +266,11 @@ pub trait YulBuilder:
                 } else {
                     return Err(ExprErr::Todo(
                         loc,
-                        "Differing number of assignees and assignors in yul expression".to_string(),
+                        format!("Differing number of assignees and assignors in yul expression, assignors: {}, assignees: {}", nodes.len(), inner.len()),
                     ));
                 };
             }
-            ExprRet::CtxKilled => {}
+            ExprRet::CtxKilled(kind) => {}
         }
 
         Ok(())
@@ -278,7 +300,7 @@ pub trait YulBuilder:
                     "Multi in single assignment yul expression is unhandled".to_string(),
                 ))
             }
-            ExprRet::CtxKilled => {}
+            ExprRet::CtxKilled(..) => {}
         }
         Ok(())
     }

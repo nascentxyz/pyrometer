@@ -231,7 +231,7 @@ impl Concrete {
     /// Cast the concrete to another type as denoted by a [`Builtin`].
     pub fn cast(self, builtin: Builtin) -> Option<Self> {
         match self {
-            Concrete::Uint(_, val) => {
+            Concrete::Uint(r_size, val) => {
                 match builtin {
                     Builtin::Address => {
                         let mut bytes = [0u8; 32];
@@ -239,15 +239,20 @@ impl Concrete {
                         Some(Concrete::Address(Address::from_slice(&bytes[12..])))
                     }
                     Builtin::Uint(size) => {
-                        let mask = if size == 256 {
-                            U256::MAX
+                        // no op
+                        if r_size == size {
+                            Some(self)
                         } else {
-                            U256::from(2).pow(size.into()) - 1
-                        };
-                        if val < mask {
-                            Some(Concrete::Uint(size, val))
-                        } else {
-                            Some(Concrete::Uint(size, mask))
+                            let mask = if size == 256 {
+                                U256::MAX
+                            } else {
+                                U256::from(2).pow(size.into()) - 1
+                            };
+                            if val < mask {
+                                Some(Concrete::Uint(size, val))
+                            } else {
+                                Some(Concrete::Uint(size, mask))
+                            }
                         }
                     }
                     Builtin::Int(size) => {
@@ -280,7 +285,7 @@ impl Concrete {
                     _ => None,
                 }
             }
-            Concrete::Int(_, val) => match builtin {
+            Concrete::Int(r_size, val) => match builtin {
                 Builtin::Address => {
                     let mut bytes = [0u8; 32];
                     val.to_big_endian(&mut bytes);
@@ -304,20 +309,25 @@ impl Concrete {
                     }
                 }
                 Builtin::Int(size) => {
-                    let mask = if size == 256 {
-                        U256::MAX / 2
+                    // no op
+                    if r_size == size {
+                        Some(self)
                     } else {
-                        U256::from(2).pow((size - 1).into()) - 1
-                    };
+                        let mask = if size == 256 {
+                            U256::MAX / 2
+                        } else {
+                            U256::from(2).pow((size - 1).into()) - 1
+                        };
 
-                    let (sign, abs) = val.into_sign_and_abs();
-                    if abs < mask {
-                        Some(Concrete::Int(size, val))
-                    } else {
-                        Some(Concrete::Int(
-                            size,
-                            I256::checked_from_sign_and_abs(sign, mask).unwrap(),
-                        ))
+                        let (sign, abs) = val.into_sign_and_abs();
+                        if abs < mask {
+                            Some(Concrete::Int(size, val))
+                        } else {
+                            Some(Concrete::Int(
+                                size,
+                                I256::checked_from_sign_and_abs(sign, mask).unwrap(),
+                            ))
+                        }
                     }
                 }
                 Builtin::Bytes(size) => {

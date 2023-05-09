@@ -11,10 +11,15 @@ use solang_parser::pt::{Expression, Loc};
 impl<T> Array for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
+    #[tracing::instrument(level = "trace", skip_all)]
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         self.parse_ctx_expr(ty_expr, ctx)?;
         self.apply_to_edges(ctx, ty_expr.loc(), &|analyzer, ctx, loc| {
             if let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? {
+                if matches!(ret, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 analyzer.match_ty(ctx, ty_expr, ret)
             } else {
                 Err(ExprErr::NoLhs(
@@ -56,8 +61,8 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .collect::<Result<Vec<_>, ExprErr>>()?;
                 Ok(())
             }
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self)
+            ExprRet::CtxKilled(kind) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self)
                     .into_expr_err(ty_expr.loc())?;
                 Ok(())
             }
@@ -65,6 +70,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     }
 
     /// Indexes into an array
+    #[tracing::instrument(level = "trace", skip_all)]
     fn index_into_array(
         &mut self,
         loc: Loc,
@@ -77,11 +83,19 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let Some(index_tys) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Could not find the index variable".to_string()))
             };
+            if matches!(index_tys, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(index_tys, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             analyzer.parse_ctx_expr(ty_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(inner_tys) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "Could not find the array".to_string()))
                 };
+                if matches!(inner_tys, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(inner_tys, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 analyzer.index_into_array_inner(ctx, loc, inner_tys, index_tys.clone())
             })
         })
@@ -96,12 +110,12 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         index_paths: ExprRet,
     ) -> Result<(), ExprErr> {
         match (inner_paths, index_paths) {
-            (_, ExprRet::CtxKilled) => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            (_, ExprRet::CtxKilled(kind)) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self).into_expr_err(loc)?;
                 Ok(())
             }
-            (ExprRet::CtxKilled, _) => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            (ExprRet::CtxKilled(kind), _) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self).into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(parent), ExprRet::Single(index)) | (ExprRet::Single(parent), ExprRet::SingleLiteral(index)) => {

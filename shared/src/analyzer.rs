@@ -26,6 +26,7 @@ pub enum GraphError {
     VariableUpdateInOldContext(String),
     DetachedVariable(String),
     ExpectedSingle(String),
+    StackLengthMismatch(String),
 }
 
 pub trait AnalyzerLike: GraphLike {

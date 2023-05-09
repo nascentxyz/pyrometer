@@ -771,7 +771,7 @@ impl Add for Elem<Concrete> {
     type Output = Self;
 
     fn add(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(self, RangeOp::Add, other);
+        let expr = RangeExpr::new(self, RangeOp::Add(false), other);
         Self::Expr(expr)
     }
 }
@@ -780,7 +780,7 @@ impl Sub for Elem<Concrete> {
     type Output = Self;
 
     fn sub(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(self, RangeOp::Sub, other);
+        let expr = RangeExpr::new(self, RangeOp::Sub(false), other);
         Self::Expr(expr)
     }
 }
@@ -789,7 +789,7 @@ impl Mul for Elem<Concrete> {
     type Output = Self;
 
     fn mul(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(self, RangeOp::Mul, other);
+        let expr = RangeExpr::new(self, RangeOp::Mul(false), other);
         Self::Expr(expr)
     }
 }
@@ -798,7 +798,7 @@ impl Div for Elem<Concrete> {
     type Output = Self;
 
     fn div(self, other: Elem<Concrete>) -> Self {
-        let expr = RangeExpr::new(self, RangeOp::Div, other);
+        let expr = RangeExpr::new(self, RangeOp::Div(false), other);
         Self::Expr(expr)
     }
 }
@@ -858,6 +858,19 @@ impl BitXor for Elem<Concrete> {
 }
 
 impl Elem<Concrete> {
+    pub fn wrapping_add(self, other: Elem<Concrete>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Add(true), other);
+        Self::Expr(expr)
+    }
+    pub fn wrapping_sub(self, other: Elem<Concrete>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Sub(true), other);
+        Self::Expr(expr)
+    }
+    pub fn wrapping_mul(self, other: Elem<Concrete>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Mul(true), other);
+        Self::Expr(expr)
+    }
+
     /// Creates a logical AND of two range elements
     pub fn and(self, other: Self) -> Self {
         let expr = RangeExpr::new(self, RangeOp::And, other);
@@ -947,8 +960,30 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 
         // println!("op: {}, lhs_min: {} lhs_max: {}, rhs_min: {}, rhs_max: {}", self.op.to_string(), lhs_min.to_range_string(false, analyzer).s, lhs_max.to_range_string(true, analyzer).s, rhs_min.to_range_string(false, analyzer).s, rhs_max.to_range_string(true, analyzer).s);
         let res = match self.op {
-            RangeOp::Add => {
-                if maximize {
+            RangeOp::Add(unchecked) => {
+                if unchecked {
+                    let candidates = vec![
+                        lhs_min.range_wrapping_add(&rhs_min),
+                        lhs_min.range_wrapping_add(&rhs_max),
+                        lhs_max.range_wrapping_add(&rhs_min),
+                        lhs_max.range_wrapping_add(&rhs_max),
+                    ];
+                    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                    candidates.sort_by(|a, b| match a.range_ord(b) {
+                        Some(r) => r,
+                        _ => std::cmp::Ordering::Less,
+                    });
+
+                    if candidates.is_empty() {
+                        return Ok(Elem::Expr(self.clone()));
+                    }
+
+                    if maximize {
+                        candidates[candidates.len() - 1].clone()
+                    } else {
+                        candidates[0].clone()
+                    }
+                } else if maximize {
                     // if we are maximizing, the largest value will always just be the the largest value + the largest value
                     lhs_max
                         .range_add(&rhs_max)
@@ -959,8 +994,30 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         .unwrap_or(Elem::Expr(self.clone()))
                 }
             }
-            RangeOp::Sub => {
-                if maximize {
+            RangeOp::Sub(unchecked) => {
+                if unchecked {
+                    let candidates = vec![
+                        lhs_min.range_wrapping_sub(&rhs_min),
+                        lhs_min.range_wrapping_sub(&rhs_max),
+                        lhs_max.range_wrapping_sub(&rhs_min),
+                        lhs_max.range_wrapping_sub(&rhs_max),
+                    ];
+                    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                    candidates.sort_by(|a, b| match a.range_ord(b) {
+                        Some(r) => r,
+                        _ => std::cmp::Ordering::Less,
+                    });
+
+                    if candidates.is_empty() {
+                        return Ok(Elem::Expr(self.clone()));
+                    }
+
+                    if maximize {
+                        candidates[candidates.len() - 1].clone()
+                    } else {
+                        candidates[0].clone()
+                    }
+                } else if maximize {
                     // if we are maximizing, the largest value will always just be the the largest value - the smallest value
                     lhs_max
                         .range_sub(&rhs_min)
@@ -972,8 +1029,30 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         .unwrap_or(Elem::Expr(self.clone()))
                 }
             }
-            RangeOp::Mul => {
-                if maximize {
+            RangeOp::Mul(unchecked) => {
+                if unchecked {
+                    let candidates = vec![
+                        lhs_min.range_wrapping_mul(&rhs_min),
+                        lhs_min.range_wrapping_mul(&rhs_max),
+                        lhs_max.range_wrapping_mul(&rhs_min),
+                        lhs_max.range_wrapping_mul(&rhs_max),
+                    ];
+                    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                    candidates.sort_by(|a, b| match a.range_ord(b) {
+                        Some(r) => r,
+                        _ => std::cmp::Ordering::Less,
+                    });
+
+                    if candidates.is_empty() {
+                        return Ok(Elem::Expr(self.clone()));
+                    }
+
+                    if maximize {
+                        candidates[candidates.len() - 1].clone()
+                    } else {
+                        candidates[0].clone()
+                    }
+                } else if maximize {
                     // if we are maximizing, and both mins are negative and both maxes are positive,
                     // we dont know which will be larger of the two (i.e. -1*2**255 * -1*2**255 > 100*100)
                     match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
@@ -1075,7 +1154,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     }
                 }
             }
-            RangeOp::Div => {
+            RangeOp::Div(..) => {
                 let mut candidates = vec![
                     lhs_min.range_div(&rhs_min),
                     lhs_min.range_div(&rhs_max),
@@ -1746,36 +1825,72 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             RangeOp::BitAnd => {
+                let candidates = vec![
+                    lhs_min.range_bit_and(&rhs_min),
+                    lhs_min.range_bit_and(&rhs_max),
+                    lhs_max.range_bit_and(&rhs_min),
+                    lhs_max.range_bit_and(&rhs_max),
+                ];
+                let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                candidates.sort_by(|a, b| match a.range_ord(b) {
+                    Some(r) => r,
+                    _ => std::cmp::Ordering::Less,
+                });
+
+                if candidates.is_empty() {
+                    return Ok(Elem::Expr(self.clone()));
+                }
+
                 if maximize {
-                    lhs_max
-                        .range_bit_and(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                    candidates[candidates.len() - 1].clone()
                 } else {
-                    lhs_min
-                        .range_bit_and(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                    candidates[0].clone()
                 }
             }
             RangeOp::BitOr => {
+                let candidates = vec![
+                    lhs_min.range_bit_or(&rhs_min),
+                    lhs_min.range_bit_or(&rhs_max),
+                    lhs_max.range_bit_or(&rhs_min),
+                    lhs_max.range_bit_or(&rhs_max),
+                ];
+                let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                candidates.sort_by(|a, b| match a.range_ord(b) {
+                    Some(r) => r,
+                    _ => std::cmp::Ordering::Less,
+                });
+
+                if candidates.is_empty() {
+                    return Ok(Elem::Expr(self.clone()));
+                }
+
                 if maximize {
-                    lhs_max
-                        .range_bit_or(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                    candidates[candidates.len() - 1].clone()
                 } else {
-                    lhs_min
-                        .range_bit_or(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                    candidates[0].clone()
                 }
             }
             RangeOp::BitXor => {
+                let candidates = vec![
+                    lhs_min.range_bit_xor(&rhs_min),
+                    lhs_min.range_bit_xor(&rhs_max),
+                    lhs_max.range_bit_xor(&rhs_min),
+                    lhs_max.range_bit_xor(&rhs_max),
+                ];
+                let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                candidates.sort_by(|a, b| match a.range_ord(b) {
+                    Some(r) => r,
+                    _ => std::cmp::Ordering::Less,
+                });
+
+                if candidates.is_empty() {
+                    return Ok(Elem::Expr(self.clone()));
+                }
+
                 if maximize {
-                    lhs_max
-                        .range_bit_xor(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                    candidates[candidates.len() - 1].clone()
                 } else {
-                    lhs_min
-                        .range_bit_xor(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                    candidates[0].clone()
                 }
             }
             RangeOp::Concat => {

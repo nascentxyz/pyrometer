@@ -130,6 +130,7 @@ impl ExprErr {
                 msg
             }
             GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(msg), ..) => msg,
+            GraphError(_loc, shared::analyzer::GraphError::StackLengthMismatch(msg), ..) => msg,
         }
     }
 
@@ -160,6 +161,7 @@ impl ExprErr {
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(_), ..) => "Graph IR Error: Detached Variable. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(_), ..) => "Graph IR Error: Expecting single expression return, got multiple. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, shared::analyzer::GraphError::StackLengthMismatch(_), ..) => "Graph IR Error: Expected a particular number of elements on the context stack but found a different amount. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
         }
     }
 }

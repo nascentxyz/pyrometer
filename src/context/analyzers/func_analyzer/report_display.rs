@@ -58,10 +58,10 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         );
 
         report.add_labels(self.labels(analyzer));
-        if let Some(killed_span) = &self.func_var_bound_analysis.ctx_killed {
+        if let Some((killed_span, kind)) = &self.func_var_bound_analysis.ctx_killed {
             report = report.with_label(
                 Label::new(killed_span.clone())
-                    .with_message("Execution guaranteed to revert here!".fg(Color::Red))
+                    .with_message(kind.analysis_str().fg(Color::Red))
                     .with_color(Color::Red),
             );
         }

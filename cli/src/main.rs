@@ -77,6 +77,8 @@ fn main() {
             show_symbolics: false,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         1 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -86,6 +88,8 @@ fn main() {
             show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         2 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -95,6 +99,8 @@ fn main() {
             show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         3 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -104,6 +110,8 @@ fn main() {
             show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         4 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -113,6 +121,30 @@ fn main() {
             show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
+        },
+        5 => ReportConfig {
+            eval_bounds: args.eval.unwrap_or(true),
+            simplify_bounds: false,
+            show_tmps: true,
+            show_consts: true,
+            show_symbolics: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
+            show_all_lines: false,
+            show_reverts: true,
+            show_unreachables: false,
+        },
+        6 => ReportConfig {
+            eval_bounds: args.eval.unwrap_or(true),
+            simplify_bounds: false,
+            show_tmps: true,
+            show_consts: true,
+            show_symbolics: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
+            show_all_lines: false,
+            show_reverts: true,
+            show_unreachables: true,
         },
         _ => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
@@ -122,6 +154,8 @@ fn main() {
             show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: true,
+            show_reverts: false,
+            show_unreachables: false,
         },
     };
 

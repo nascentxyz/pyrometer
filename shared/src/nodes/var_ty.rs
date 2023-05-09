@@ -1,4 +1,5 @@
 use crate::nodes::GraphError;
+use crate::ContextVar;
 use crate::VarType;
 use crate::{
     analyzer::{AnalyzerLike, AsDotStr, GraphLike},
@@ -28,6 +29,35 @@ impl VarNode {
             .clone()
             .expect("Unnamed function")
             .name)
+    }
+
+    pub fn const_value(
+        &self,
+        loc: Loc,
+        analyzer: &impl GraphLike,
+    ) -> Result<Option<ContextVar>, GraphError> {
+        let attrs = &self.underlying(analyzer)?.attrs;
+        if attrs
+            .iter()
+            .any(|attr| matches!(attr, VariableAttribute::Constant(_)))
+        {
+            if let Some(init) = self.underlying(analyzer)?.initializer {
+                if let Some(ty) = VarType::try_from_idx(analyzer, init) {
+                    return Ok(Some(ContextVar {
+                        loc: Some(loc),
+                        name: self.name(analyzer)?,
+                        display_name: self.name(analyzer)?,
+                        storage: None,
+                        is_tmp: false,
+                        tmp_of: None,
+                        is_symbolic: true,
+                        is_return: false,
+                        ty,
+                    }));
+                }
+            }
+        }
+        Ok(None)
     }
 }
 

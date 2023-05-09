@@ -5,6 +5,7 @@ use crate::{
     exprs::{BinOp, Variable},
     AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, Node,
 };
+use shared::range::range_string::ToRangeString;
 
 use shared::{
     context::*,
@@ -25,6 +26,7 @@ use std::cmp::Ordering;
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
 pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     /// Handles a require expression
+    #[tracing::instrument(level = "trace", skip_all)]
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
         match inputs.get(0).expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
@@ -33,12 +35,24 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `==` had no right hand side".to_string()))
                     };
+
                     let rhs_paths = rhs_paths.flatten();
+
+                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `==` had no left hand side".to_string()))
                         };
+
+                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                         analyzer.handle_require_inner(
                             ctx,
                             loc,
@@ -58,11 +72,20 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         return Err(ExprErr::NoRhs(loc, "Require operation `!=` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
+
+                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `!=` had no left hand side".to_string()))
                         };
+                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                         analyzer.handle_require_inner(
                             ctx,
                             loc,
@@ -82,11 +105,21 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         return Err(ExprErr::NoRhs(loc, "Require operation `<` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
+
+                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `<` had no left hand side".to_string()))
                         };
+                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                         analyzer.handle_require_inner(
                             ctx,
                             loc,
@@ -106,11 +139,21 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         return Err(ExprErr::NoRhs(loc, "Require operation `>` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
+
+                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `>` had no left hand side".to_string()))
                         };
+                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                         analyzer.handle_require_inner(
                             ctx,
                             loc,
@@ -130,11 +173,21 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         return Err(ExprErr::NoRhs(loc, "Require operation `>=` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
+
+                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `>=` had no left hand side".to_string()))
                         };
+                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                         analyzer.handle_require_inner(
                             ctx,
                             loc,
@@ -154,11 +207,21 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         return Err(ExprErr::NoRhs(loc, "Require operation `<=` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
+
+                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `<=` had no left hand side".to_string()))
                         };
+                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                         analyzer.handle_require_inner(
                             ctx,
                             loc,
@@ -177,6 +240,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `NOT` had no left hand side".to_string()))
                     };
+                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     let cnode =
                         ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(false))));
                     let tmp_false = Node::ContextVar(
@@ -202,6 +269,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `&&` had no left hand side".to_string()))
                     };
+                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
                     let tmp_true = Node::ContextVar(
                         ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
@@ -228,6 +299,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `||` had no left hand side".to_string()))
                     };
+                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
                     let tmp_true = Node::ContextVar(
                         ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
@@ -253,6 +328,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation had no left hand side".to_string()))
                     };
+                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
                     let tmp_true = Node::ContextVar(
                         ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
@@ -285,7 +364,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         recursion_ops: (RangeOp, RangeOp),
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
-            (_, ExprRet::CtxKilled) | (ExprRet::CtxKilled, _) => Ok(()),
+            (_, ExprRet::CtxKilled(..)) | (ExprRet::CtxKilled(..), _) => Ok(()),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self)
@@ -413,7 +492,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (true, true) => {
                         if self.const_killable(op, lhs_range, rhs_range) {
                             tracing::trace!("const killable");
-                            ctx.kill(self, loc).into_expr_err(loc)?;
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
                     }
@@ -425,13 +504,13 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)
                         {
                             tracing::trace!("half-const killable");
-                            ctx.kill(self, loc).into_expr_err(loc)?;
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
                     }
                     (false, true) => {
                         if self.update_nonconst_from_const(loc, op, new_rhs, new_lhs, lhs_range) {
-                            ctx.kill(self, loc).into_expr_err(loc)?;
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
                     }
@@ -440,7 +519,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             loc, op, new_lhs, new_rhs, lhs_range, rhs_range,
                         ) {
                             tracing::trace!("nonconst killable");
-                            ctx.kill(self, loc).into_expr_err(loc)?;
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
                     }
@@ -567,7 +646,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             any_unsat |= new_var_range.unsat(self);
             if any_unsat {
-                ctx.kill(self, loc).into_expr_err(loc)?;
+                ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                 return Ok(None);
             }
 
@@ -679,11 +758,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // mins are equivalent, add 1 instead of adding an exclusion
-                    let min = nonconst_range
+                    let Some(min) = nonconst_range
                         .evaled_range_min(self)
                         .unwrap()
-                        .maybe_concrete()
-                        .expect("Was not concrete");
+                        .maybe_concrete() else {
+                        panic!("min: {:?}, max: {:?}", nonconst_range.evaled_range_min(self), nonconst_range.evaled_range_max(self));
+                    };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min() + Elem::from(one);
                     nonconst_var.set_range_min(self, min).unwrap();
@@ -703,7 +783,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     nonconst_var.set_range_max(self, max).unwrap();
                 } else {
                     // just add as an exclusion
-                    nonconst_range.exclusions.push(elem);
+                    nonconst_range.add_range_exclusion(elem);
                     nonconst_var
                         .set_range_exclusions(self, nonconst_range.exclusions)
                         .unwrap();
@@ -853,14 +933,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             RangeOp::Neq => {
                 let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
                 // just add as an exclusion
-                lhs_range.exclusions.push(rhs_elem);
+                lhs_range.add_range_exclusion(rhs_elem);
                 new_lhs
                     .set_range_exclusions(self, lhs_range.exclusions)
                     .unwrap();
 
                 let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
                 // just add as an exclusion
-                rhs_range.exclusions.push(lhs_elem);
+                rhs_range.add_range_exclusion(lhs_elem);
                 new_rhs
                     .set_range_exclusions(self, rhs_range.exclusions)
                     .unwrap();
@@ -931,7 +1011,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add/sub one to the element because its strict >
-                let min_conc = min.maybe_concrete().expect("Was not concrete");
+                let Some(min_conc) = min.maybe_concrete() else {
+                    panic!("min: {:?}, max: {:?}", lhs_range.evaled_range_min(self).unwrap().to_range_string(false, self).s, lhs_range.evaled_range_max(self).unwrap().to_range_string(true, self).s);
+                };
+
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
                 new_lhs
@@ -1029,18 +1112,21 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             .expect("impossible to not invert op");
         if !tmp_construction.lhs.is_const(self).into_expr_err(loc)? {
             tracing::trace!("handling lhs range recursion");
-            let adjusted_gt_rhs = ContextVarNode::from(
-                self.op(
+            let adjusted_gt_rhs = ContextVarNode::from({
+                let tmp = self.op(
                     loc,
                     rhs_cvar,
                     tmp_construction.rhs.expect("No rhs in tmp_construction"),
                     ctx,
                     inverse,
                     false,
-                )?
-                .expect_single()
-                .into_expr_err(loc)?,
-            );
+                )?;
+                if matches!(tmp, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(tmp, self).into_expr_err(loc)?;
+                    return Ok(());
+                }
+                tmp.expect_single().into_expr_err(loc)?
+            });
             let new_underlying_lhs =
                 self.advance_var_in_curr_ctx(tmp_construction.lhs.latest_version(self), loc)?;
             if let Some(lhs_range) = new_underlying_lhs
@@ -1069,7 +1155,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                     if new_lhs_range.unsat(self) {
                         *any_unsat = true;
-                        ctx.kill(self, loc).into_expr_err(loc)?;
+                        ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                         return Ok(());
                     }
                     if let Some(tmp) = new_underlying_lhs.tmp_of(self).into_expr_err(loc)? {
@@ -1091,7 +1177,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             if !rhs.is_const(self).into_expr_err(loc)? {
                 tracing::trace!("handling rhs range recursion");
                 let (needs_inverse, adjusted_gt_rhs) = match tmp_construction.op {
-                    RangeOp::Sub => {
+                    RangeOp::Sub(..) => {
                         let concrete = ConcreteNode(
                             self.add_node(Node::Concrete(Concrete::Int(256, I256::from(-1i32))))
                                 .index(),
@@ -1100,24 +1186,47 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             .into_expr_err(loc)?;
                         let tmp_lhs =
                             ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
-                        let tmp_rhs = ContextVarNode::from(
-                            self.op(loc, rhs_cvar, tmp_lhs, ctx, RangeOp::Mul, false)?
-                                .expect_single()
-                                .into_expr_err(loc)?,
-                        );
-                        let new_rhs = ContextVarNode::from(
-                            self.op(loc, tmp_rhs, tmp_construction.lhs, ctx, inverse, false)?
-                                .expect_single()
-                                .into_expr_err(loc)?,
-                        );
+
+                        let tmp_rhs =
+                            self.op(loc, rhs_cvar, tmp_lhs, ctx, RangeOp::Mul(false), false)?;
+                        if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(tmp_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let tmp_rhs =
+                            ContextVarNode::from(tmp_rhs.expect_single().into_expr_err(loc)?);
+
+                        let new_rhs =
+                            self.op(loc, tmp_rhs, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
                         (true, new_rhs)
                     }
-                    RangeOp::Add => {
-                        let new_rhs = ContextVarNode::from(
-                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?
-                                .expect_single()
-                                .into_expr_err(loc)?,
-                        );
+                    RangeOp::Add(..) => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Mul(..) => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        // panic!("HERE: old: {:#?},\nnew: {:#?}", rhs_cvar.underlying(self), new_rhs.underlying(self));
                         (false, new_rhs)
                     }
                     e => panic!("here {e:?}"),
@@ -1156,7 +1265,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                         if new_lhs_range.unsat(self) {
                             *any_unsat = true;
-                            ctx.kill(self, loc).into_expr_err(loc)?;
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(());
                         }
 

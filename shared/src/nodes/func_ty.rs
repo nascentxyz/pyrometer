@@ -702,6 +702,10 @@ impl FunctionReturnNode {
             Ok(None)
         }
     }
+
+    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+        Ok(self.underlying(analyzer)?.loc)
+    }
 }
 
 impl From<FunctionReturnNode> for NodeIdx {

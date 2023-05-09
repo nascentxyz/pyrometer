@@ -11,13 +11,13 @@ use std::collections::BTreeMap;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum RangeOp {
     /// Addition
-    Add,
+    Add(bool),
     /// Multiplication
-    Mul,
+    Mul(bool),
     /// Subtraction
-    Sub,
+    Sub(bool),
     /// Division
-    Div,
+    Div(bool),
     /// Modulos
     Mod,
     /// Minimum
@@ -67,10 +67,10 @@ impl RangeOp {
     pub fn inverse(self) -> Option<Self> {
         use RangeOp::*;
         match self {
-            Add => Some(Sub),
-            Mul => Some(Div),
-            Sub => Some(Add),
-            Div => Some(Mul),
+            Add(i) => Some(Sub(i)),
+            Mul(i) => Some(Div(i)),
+            Sub(i) => Some(Add(i)),
+            Div(i) => Some(Mul(i)),
             Shl => Some(Shr),
             Shr => Some(Shl),
             Eq => Some(Neq),
@@ -84,10 +84,10 @@ impl ToString for RangeOp {
     fn to_string(&self) -> String {
         use RangeOp::*;
         match self {
-            Add => "+".to_string(),
-            Mul => "*".to_string(),
-            Sub => "-".to_string(),
-            Div => "/".to_string(),
+            Add(..) => "+".to_string(),
+            Mul(..) => "*".to_string(),
+            Sub(..) => "-".to_string(),
+            Div(..) => "/".to_string(),
             Shl => "<<".to_string(),
             Shr => ">>".to_string(),
             Mod => "%".to_string(),

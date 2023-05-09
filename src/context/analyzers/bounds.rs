@@ -297,21 +297,22 @@ pub fn range_parts(
 
     let range_excl = range.range_exclusions();
     if !range_excl.is_empty() {
-        parts.push(RangePart::Exclusion(
-            range_excl
+        parts.push(RangePart::Exclusion({
+            let mut excls = range_excl
                 .iter()
                 .map(|range| {
                     let min = range.to_range_string(false, analyzer).s;
                     let max = range.to_range_string(true, analyzer).s;
-
                     if min == max {
                         RangePart::Equal(min)
                     } else {
                         RangePart::Inclusion(min, max)
                     }
                 })
-                .collect::<Vec<_>>(),
-        ));
+                .collect::<Vec<_>>();
+            excls.dedup();
+            excls
+        }));
     }
     let unsat = range.unsat(analyzer);
     (parts, unsat)

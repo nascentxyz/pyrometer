@@ -73,7 +73,10 @@ pub trait FuncCaller:
                     let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Function call to nonexistent function".to_string()))
                     };
-
+                    if matches!(ret, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
                 })
             }
@@ -94,8 +97,8 @@ pub trait FuncCaller:
             ExprRet::Multi(inner) => inner
                 .into_iter()
                 .try_for_each(|ret| self.match_intrinsic_fallback(ctx, loc, input_exprs, ret)),
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self)
+            ExprRet::CtxKilled(kind) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self)
                     .into_expr_err(*loc)?;
                 Ok(())
             }
@@ -170,6 +173,7 @@ pub trait FuncCaller:
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn parse_inputs(
         &mut self,
         ctx: ContextNode,
@@ -185,6 +189,10 @@ pub trait FuncCaller:
                     let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
                     };
+                    if matches!(ret, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     ctx.push_lhs_expr(ret, analyzer).into_expr_err(loc)
                 })
             })?;
@@ -244,7 +252,8 @@ pub trait FuncCaller:
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
         if input_paths.has_killed() {
-            ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            ctx.push_expr(ExprRet::CtxKilled(Default::default()), self)
+                .into_expr_err(loc)?;
             return Ok(());
         }
         match input_paths {
@@ -264,7 +273,8 @@ pub trait FuncCaller:
             }
             ExprRet::Multi(ref inputs) => {
                 if ExprRet::Multi(inputs.to_vec()).flatten().has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), self)
+                        .into_expr_err(loc)?;
                     return Ok(());
                 }
                 // check if the inputs length matchs func params length
@@ -549,9 +559,11 @@ pub trait FuncCaller:
         callee_ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
-            "Handling function call return for: {}, {}",
+            "Handling function call return for: {}, {}, depth: {:?}, {:?}",
             caller_ctx.path(self),
-            callee_ctx.path(self)
+            callee_ctx.path(self),
+            caller_ctx.depth(self),
+            callee_ctx.depth(self),
         );
         match callee_ctx.underlying(self).into_expr_err(loc)?.child {
             Some(CallFork::Fork(w1, w2)) => {
@@ -563,9 +575,13 @@ pub trait FuncCaller:
                     >= caller_ctx.underlying(self).into_expr_err(loc)?.depth =>
             {
                 // follow rabbit hole
-                self.ctx_rets(loc, caller_ctx, c)
+                self.ctx_rets(loc, caller_ctx, c)?;
+                Ok(())
             }
             _ => {
+                if callee_ctx.is_killed(self).into_expr_err(loc)? {
+                    return Ok(());
+                }
                 let callee_depth = callee_ctx.underlying(self).into_expr_err(loc)?.depth;
                 let caller_depth = caller_ctx.underlying(self).into_expr_err(loc)?.depth;
                 if callee_depth != caller_depth {
@@ -596,44 +612,98 @@ pub trait FuncCaller:
                         .into_expr_err(loc);
                     let _ = self.add_if_err(res);
 
-                    callee_ctx
-                        .underlying(self)
-                        .unwrap()
-                        .ret
-                        .clone()
-                        .into_iter()
-                        .enumerate()
-                        .try_for_each(|(i, (_, node))| {
-                            let tmp_ret = node
-                                .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
-                                .unwrap();
-                            tmp_ret.underlying_mut(self).unwrap().is_return = true;
-                            tmp_ret.underlying_mut(self).unwrap().display_name =
-                                format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
-                            // println!("")
-                            self.add_edge(
-                                tmp_ret,
-                                ret_subctx,
-                                Edge::Context(ContextEdge::Variable),
-                            );
-                            ret_subctx
-                                .push_expr(ExprRet::Single(tmp_ret.into()), self)
-                                .into_expr_err(loc)?;
-                            Ok(())
-                        })
+                    let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
+
+                    if rets.is_empty() {
+                        println!(
+                            "ret empty rets: {:?}, {:?}",
+                            callee_ctx.path(self),
+                            callee_ctx.associated_fn_name(self)
+                        );
+                        callee_ctx
+                            .associated_fn(self)
+                            .into_expr_err(loc)?
+                            .returns(self)
+                            .iter()
+                            .try_for_each(|ret| {
+                                println!("ret: {:?}, {:?}", ret, ret.underlying(self));
+                                if let Some(name) = ret.maybe_name(self).into_expr_err(loc)? {
+                                    println!("name: {name:?}");
+                                    if let Some(cvar) = callee_ctx
+                                        .var_by_name_or_recurse(self, &name)
+                                        .into_expr_err(loc)?
+                                    {
+                                        let cvar = cvar.latest_version(self);
+                                        let ret_loc = ret.loc(self).into_expr_err(loc)?;
+                                        callee_ctx
+                                            .add_return_node(ret_loc, cvar, self)
+                                            .into_expr_err(loc)?;
+                                        self.add_edge(
+                                            cvar,
+                                            callee_ctx,
+                                            Edge::Context(ContextEdge::Return),
+                                        );
+                                    }
+                                    Ok(())
+                                } else {
+                                    // add a zero element
+                                    Ok(())
+                                }
+                            })?;
+                        rets = callee_ctx.underlying(self).unwrap().ret.clone();
+                        println!("rets after: {:?}", rets);
+                    }
+                    rets.into_iter().enumerate().try_for_each(|(i, (_, node))| {
+                        let tmp_ret = node
+                            .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                            .unwrap();
+                        tmp_ret.underlying_mut(self).unwrap().is_return = true;
+                        tmp_ret.underlying_mut(self).unwrap().display_name =
+                            format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
+                        // println!("")
+                        self.add_edge(tmp_ret, ret_subctx, Edge::Context(ContextEdge::Variable));
+                        ret_subctx
+                            .push_expr(ExprRet::Single(tmp_ret.into()), self)
+                            .into_expr_err(loc)?;
+                        Ok(())
+                    })
                 } else {
-                    callee_ctx
-                        .underlying(self)
-                        .unwrap()
-                        .ret
-                        .clone()
-                        .into_iter()
-                        .try_for_each(|(_, node)| {
-                            callee_ctx
-                                .push_expr(ExprRet::Single(node.into()), self)
-                                .into_expr_err(loc)?;
-                            Ok(())
-                        })
+                    let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
+
+                    if rets.is_empty() {
+                        println!("exit empty rets: {:?}", callee_ctx.path(self));
+                        callee_ctx
+                            .associated_fn(self)
+                            .into_expr_err(loc)?
+                            .returns(self)
+                            .iter()
+                            .try_for_each(|ret| {
+                                if let Some(name) = ret.maybe_name(self).into_expr_err(loc)? {
+                                    if let Some(cvar) = callee_ctx.latest_var_by_name(self, &name) {
+                                        let ret_loc = ret.loc(self).into_expr_err(loc)?;
+                                        callee_ctx
+                                            .add_return_node(ret_loc, cvar, self)
+                                            .into_expr_err(loc)?;
+                                        self.add_edge(
+                                            cvar,
+                                            callee_ctx,
+                                            Edge::Context(ContextEdge::Return),
+                                        );
+                                    }
+                                    Ok(())
+                                } else {
+                                    // add a zero element
+                                    Ok(())
+                                }
+                            })?;
+                        rets = callee_ctx.underlying(self).unwrap().ret.clone();
+                    }
+                    rets.into_iter().try_for_each(|(_, node)| {
+                        callee_ctx
+                            .push_expr(ExprRet::Single(node.into()), self)
+                            .into_expr_err(loc)?;
+                        Ok(())
+                    })
                 }
             }
         }
@@ -669,6 +739,11 @@ pub trait FuncCaller:
                 let Some(input_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoRhs(loc, format!("No inputs to modifier, expected: {}", input_exprs.len())))
                 };
+
+                if matches!(input_paths, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(input_paths, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 input_paths
             };
 

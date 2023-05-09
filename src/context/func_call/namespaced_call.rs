@@ -61,6 +61,11 @@ pub trait NameSpaceFuncCaller:
             let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no namespace".to_string()))
             };
+
+            if matches!(ret, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             analyzer.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
         })
     }
@@ -81,13 +86,15 @@ pub trait NameSpaceFuncCaller:
             ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
                 self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
             }),
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            ExprRet::CtxKilled(kind) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_name_spaced_func_inner(
         &mut self,
         ctx: ContextNode,
@@ -123,9 +130,14 @@ pub trait NameSpaceFuncCaller:
             let Some(inputs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no inputs".to_string()))
             };
+
+            if matches!(inputs, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             if possible_funcs.is_empty() {
                 if inputs.has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled, analyzer).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), analyzer).into_expr_err(loc)?;
                     return Ok(())
                 }
                 let as_input_str = inputs.try_as_func_input_str(analyzer);
@@ -143,6 +155,10 @@ pub trait NameSpaceFuncCaller:
                     let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Fallback function parse failure".to_string()))
                     };
+                    if matches!(ret, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     let mut modifier_input_exprs = vec![member_expr.clone()];
                     modifier_input_exprs.extend(input_exprs.to_vec());
                     analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
@@ -155,7 +171,7 @@ pub trait NameSpaceFuncCaller:
                 }
                 let inputs = ExprRet::Multi(inputs);
                 if inputs.has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled, analyzer).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), analyzer).into_expr_err(loc)?;
                     return Ok(())
                 }
 
@@ -180,7 +196,7 @@ pub trait NameSpaceFuncCaller:
                 );
 
                 if inputs.has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled, analyzer).into_expr_err(loc)?;
+                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), analyzer).into_expr_err(loc)?;
                     return Ok(())
                 }
                 if let Some(func) =

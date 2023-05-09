@@ -396,21 +396,21 @@ impl ContextVarNode {
         underlying.fallback_range(analyzer)
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
+    // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         mut new_min: Elem<Concrete>,
     ) -> Result<(), GraphError> {
-        tracing::trace!(
-            "setting range minimum: {}, current: {}, new_min:\n{:#?}",
-            self.display_name(analyzer)?,
-            self.range_min(analyzer)?
-                .unwrap()
-                .to_range_string(false, analyzer)
-                .s,
-            new_min
-        );
+        // tracing::trace!(
+        //     "setting range minimum: {}, current: {}, new_min:\n{:#?}",
+        //     self.display_name(analyzer)?,
+        //     self.range_min(analyzer)?
+        //         .unwrap()
+        //         .to_range_string(false, analyzer)
+        //         .s,
+        //     new_min
+        // );
 
         if new_min.contains_node((*self).into()) {
             if let Some(prev) = self.previous_version(analyzer) {
@@ -432,19 +432,19 @@ impl ContextVarNode {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
+    // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_max(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         mut new_max: Elem<Concrete>,
     ) -> Result<(), GraphError> {
-        tracing::trace!(
-            "setting range maximum: {:?}, {}, current:\n{:#?}, new:\n{:#?}",
-            self,
-            self.display_name(analyzer)?,
-            self.range(analyzer)?.unwrap().range_max(), // .unwrap()
-            new_max
-        );
+        // tracing::trace!(
+        //     "setting range maximum: {:?}, {}, current:\n{:#?}, new:\n{:#?}",
+        //     self,
+        //     self.display_name(analyzer)?,
+        //     self.range(analyzer)?.unwrap().range_max(), // .unwrap()
+        //     new_max
+        // );
 
         if new_max.contains_node((*self).into()) {
             if let Some(prev) = self.previous_version(analyzer) {
@@ -902,6 +902,7 @@ impl ContextVar {
             cast_ty.as_string(analyzer)?,
             self.name
         );
+        new_tmp.display_name = format!("tmp_{}", self.name);
         Ok(new_tmp)
     }
 
@@ -1025,9 +1026,9 @@ impl ContextVar {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
+    // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) {
-        tracing::trace!("Setting range min in underlying: {:?}", self.ty);
+        // tracing::trace!("Setting range min in underlying: {:?}", self.ty);
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
             | VarType::User(TypeNode::Enum(_), ref mut maybe_range)

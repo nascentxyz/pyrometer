@@ -1,3 +1,4 @@
+use crate::context::exprs::require::Require;
 use crate::context::exprs::IntoExprErr;
 use crate::context::{ContextBuilder, ExprErr};
 use ethers_core::types::{I256, U256};
@@ -20,6 +21,7 @@ use solang_parser::pt::{Expression, Loc};
 impl<T> BinOp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Evaluate and execute a binary operation expression
+    #[tracing::instrument(level = "trace", skip_all)]
     fn op_expr(
         &mut self,
         loc: Loc,
@@ -34,12 +36,20 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
             };
+            if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             let rhs_ctx = ctx;
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}, rhs ctx: {}, curr ctx: {}", rhs_ctx.path(analyzer), ctx.path(analyzer))))
                 };
+                if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, assign)
             })
         })
@@ -55,10 +65,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         assign: bool,
     ) -> Result<(), ExprErr> {
         println!(
-            "BIN OP: {:?} {} {:?}, assign: {assign}",
+            "BIN OP: {:?} {} {:?}, assign: {assign}, unchecked: {}",
             lhs_paths.debug_str(self),
             op.to_string(),
             rhs_paths.debug_str(self),
+            match op {
+                RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) => u,
+                _ => false,
+            }
         );
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
@@ -111,12 +125,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .collect::<Result<Vec<()>, ExprErr>>()?;
                 Ok(())
             }
-            (_, ExprRet::CtxKilled) => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            (_, ExprRet::CtxKilled(kind)) => {
+                ctx.push_expr(ExprRet::CtxKilled(*kind), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
-            (ExprRet::CtxKilled, _) => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            (ExprRet::CtxKilled(kind), _) => {
+                ctx.push_expr(ExprRet::CtxKilled(*kind), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => Err(ExprErr::UnhandledCombo(
@@ -148,6 +164,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             rhs_cvar.display_name(self).into_expr_err(loc)?,
             assign
         );
+
+        let unchecked = match op {
+            RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) => u,
+            _ => false,
+        };
+
         let new_lhs = if assign {
             self.advance_var_in_ctx(lhs_cvar, loc, ctx)?
         } else {
@@ -195,9 +217,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         // ignoring the case where
 
         // if lhs_cvar.is_symbolic(self) && new_rhs.is_symbolic(self) {
-        if !assign {
+        if !unchecked {
             match op {
-                RangeOp::Div | RangeOp::Mod => {
+                RangeOp::Div(..) | RangeOp::Mod => {
                     if new_rhs.is_const(self).into_expr_err(loc)? {
                         if new_rhs
                             .evaled_range_min(self)
@@ -205,10 +227,10 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             .expect("No range?")
                             .range_eq(&Elem::from(Concrete::from(U256::zero())))
                         {
-                            let res = ctx.kill(self, loc).into_expr_err(loc);
+                            let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
                             let _ = self.add_if_err(res);
 
-                            return Ok(ExprRet::CtxKilled);
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
                         let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
@@ -220,6 +242,21 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                             self,
                         );
                         let zero_node = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
+
+                        if self
+                            .require(
+                                tmp_rhs,
+                                zero_node.into(),
+                                ctx,
+                                loc,
+                                RangeOp::Neq,
+                                RangeOp::Eq,
+                                (RangeOp::Eq, RangeOp::Neq),
+                            )?
+                            .is_none()
+                        {
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
+                        }
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -254,7 +291,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         if range.min_is_negative(self).into_expr_err(loc)? {
                             let mut range_excls = range.range_exclusions();
                             let excl = Elem::from(Concrete::from(I256::zero()));
-                            range_excls.push(excl);
+                            if !range_excls.contains(&excl) {
+                                range_excls.push(excl);
+                            }
                             tmp_rhs
                                 .set_range_exclusions(self, range_excls)
                                 .into_expr_err(loc)?;
@@ -280,7 +319,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         }
                     }
                 }
-                RangeOp::Sub => {
+                RangeOp::Sub(..) => {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_const(self).into_expr_err(loc)? {
                         if !lhs_cvar.is_int(self).into_expr_err(loc)? {
@@ -293,14 +332,28 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                     Some(std::cmp::Ordering::Less)
                                         | Some(std::cmp::Ordering::Equal)
                                 ) {
-                                    ctx.kill(self, loc).into_expr_err(loc)?;
+                                    ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
 
-                                    return Ok(ExprRet::CtxKilled);
+                                    return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                                 }
                             }
                         }
                     } else if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
                         let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
+                        if self
+                            .require(
+                                tmp_lhs,
+                                new_rhs,
+                                ctx,
+                                loc,
+                                RangeOp::Gte,
+                                RangeOp::Lte,
+                                (RangeOp::Lte, RangeOp::Gte),
+                            )?
+                            .is_none()
+                        {
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
+                        }
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
                             tmp_lhs
@@ -348,7 +401,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
-                RangeOp::Add => {
+                RangeOp::Add(..) => {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
                         let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
@@ -374,10 +427,35 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
-                        let tmp_rhs = self
-                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Sub, false)?
-                            .expect_single()
-                            .into_expr_err(loc)?;
+                        let tmp_rhs = self.op(
+                            loc,
+                            max_node.into(),
+                            new_rhs,
+                            ctx,
+                            RangeOp::Sub(false),
+                            false,
+                        )?;
+
+                        if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
+                            return Ok(tmp_rhs);
+                        }
+
+                        let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
+
+                        if self
+                            .require(
+                                tmp_lhs,
+                                tmp_rhs.into(),
+                                ctx,
+                                loc,
+                                RangeOp::Lte,
+                                RangeOp::Gte,
+                                (RangeOp::Gte, RangeOp::Lte),
+                            )?
+                            .is_none()
+                        {
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
+                        }
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -411,7 +489,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
-                RangeOp::Mul => {
+                RangeOp::Mul(..) => {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
                         let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
@@ -440,10 +518,35 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
-                        let tmp_rhs = self
-                            .op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div, true)?
-                            .expect_single()
-                            .into_expr_err(loc)?;
+                        let tmp_rhs = self.op(
+                            loc,
+                            max_node.into(),
+                            new_rhs,
+                            ctx,
+                            RangeOp::Div(false),
+                            true,
+                        )?;
+
+                        if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
+                            return Ok(tmp_rhs);
+                        }
+
+                        let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
+
+                        if self
+                            .require(
+                                tmp_lhs,
+                                tmp_rhs.into(),
+                                ctx,
+                                loc,
+                                RangeOp::Lte,
+                                RangeOp::Gte,
+                                (RangeOp::Gte, RangeOp::Lte),
+                            )?
+                            .is_none()
+                        {
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
+                        }
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),
@@ -487,8 +590,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 .range_ord(&Elem::from(Concrete::from(U256::zero()))),
                             Some(std::cmp::Ordering::Less)
                         ) {
-                            ctx.kill(self, loc).into_expr_err(loc)?;
-                            return Ok(ExprRet::CtxKilled);
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
                         let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
@@ -512,6 +615,21 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let zero_node =
                             self.add_node(Node::ContextVar(tmp_zero.into_expr_err(loc)?));
+
+                        if self
+                            .require(
+                                tmp_rhs,
+                                zero_node.into(),
+                                ctx,
+                                loc,
+                                RangeOp::Gte,
+                                RangeOp::Lte,
+                                (RangeOp::Lte, RangeOp::Gte),
+                            )?
+                            .is_none()
+                        {
+                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
+                        }
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),

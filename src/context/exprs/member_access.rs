@@ -91,6 +91,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
+            if matches!(ret, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             analyzer.match_member(ctx, loc, ident, ret)
         })
     }
@@ -111,8 +115,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             ExprRet::Multi(inner) => inner
                 .into_iter()
                 .try_for_each(|ret| self.match_member(ctx, loc, ident, ret)),
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            ExprRet::CtxKilled(kind) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
         }
@@ -893,7 +898,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             Ok(ExprRet::Single(cvar))
                         }
                         "min" => {
-                            let min = max * I256::from(-1i32);
+                            let min = max * I256::from(-1i32) - I256::from(1i32);
                             let c = Concrete::from(min);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
@@ -1085,6 +1090,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         funcs
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn index_access(
         &mut self,
         loc: Loc,
@@ -1098,6 +1104,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             let Some(index_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "No index in index access".to_string()))
             };
+
+            if matches!(index_paths, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(index_paths, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             analyzer.match_index_access(&index_paths, loc, parent.into(), dyn_builtin, ctx)
         })
     }
@@ -1112,8 +1123,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match index_paths {
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            ExprRet::CtxKilled(kind) => {
+                ctx.push_expr(ExprRet::CtxKilled(*kind), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             ExprRet::Single(idx) => {
@@ -1160,6 +1172,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn length(
         &mut self,
         loc: Loc,
@@ -1171,6 +1184,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
+            if matches!(ret, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
             analyzer.match_length(ctx, loc, ret, true)
         })
     }
@@ -1251,8 +1268,9 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         update_len_bound: bool,
     ) -> Result<(), ExprErr> {
         match elem_path {
-            ExprRet::CtxKilled => {
-                ctx.push_expr(ExprRet::CtxKilled, self).into_expr_err(loc)?;
+            ExprRet::CtxKilled(kind) => {
+                ctx.push_expr(ExprRet::CtxKilled(kind), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             ExprRet::Single(arr) => {

@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 pub trait RangeAdd<T, Rhs = Self> {
     /// Perform addition between two range elements
     fn range_add(&self, other: &Rhs) -> Option<Elem<T>>;
+    fn range_wrapping_add(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
 impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
@@ -53,7 +54,7 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
                             I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1))
                                 - I256::from(1)
                         };
-                        let min = max * I256::from(-1i32);
+                        let min = max * I256::from(-1i32) - I256::from(1i32);
                         Some(Elem::Concrete(RangeConcrete {
                             val: Concrete::Int(*lhs_size, l.saturating_add(*r).max(min)),
                             loc: self.loc,
@@ -62,6 +63,35 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
                     _ => None,
                 }
             }
+        }
+    }
+    fn range_wrapping_add(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self.val.into_u256(), other.val.into_u256()) {
+            (Some(lhs_val), Some(rhs_val)) => Some(Elem::Concrete(RangeConcrete {
+                val: self
+                    .val
+                    .u256_as_original(lhs_val.overflowing_add(rhs_val).0),
+                loc: self.loc,
+            })),
+            _ => match (&self.val, &other.val) {
+                (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v))
+                | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(
+                            *lhs_size,
+                            I256::from_raw(neg_v.into_raw().overflowing_add(*val).0),
+                        ),
+                        loc: self.loc,
+                    }))
+                }
+                (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(*lhs_size, l.overflowing_add(*r).0),
+                        loc: self.loc,
+                    }))
+                }
+                _ => None,
+            },
         }
     }
 }
@@ -77,11 +107,22 @@ impl RangeAdd<Concrete> for Elem<Concrete> {
             _ => None,
         }
     }
+    fn range_wrapping_add(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_add(b),
+            (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => {
+                Some(other.clone())
+            }
+            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            _ => None,
+        }
+    }
 }
 
 pub trait RangeSub<T, Rhs = Self> {
     /// Perform subtraction between two range elements
     fn range_sub(&self, other: &Rhs) -> Option<Elem<T>>;
+    fn range_wrapping_sub(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
 impl RangeSub<Concrete> for RangeConcrete<Concrete> {
@@ -132,7 +173,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                         I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - I256::from(1)
                     };
 
-                    let min = max * I256::from(-1i32);
+                    let min = max * I256::from(-1i32) - I256::from(1i32);
 
                     Some(Elem::Concrete(RangeConcrete {
                         val: Concrete::Int(
@@ -152,6 +193,63 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
             },
         }
     }
+
+    fn range_wrapping_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self.val.into_u256(), other.val.into_u256()) {
+            (Some(lhs_val), Some(rhs_val)) => {
+                if lhs_val > rhs_val {
+                    let val = lhs_val.overflowing_sub(rhs_val).0;
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: self.val.u256_as_original(val),
+                        loc: self.loc,
+                    }))
+                } else {
+                    match self.val {
+                        Concrete::Int(size, val) => Some(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(
+                                size,
+                                val.overflowing_sub(I256::from_raw(rhs_val)).0,
+                            ),
+                            loc: self.loc,
+                        })),
+                        _ => {
+                            let val = lhs_val.overflowing_sub(rhs_val).0;
+                            Some(Elem::Concrete(RangeConcrete {
+                                val: self.val.u256_as_original(val),
+                                loc: self.loc,
+                            }))
+                        }
+                    }
+                }
+            }
+            _ => match (&self.val, &other.val) {
+                (Concrete::Uint(_lhs_size, val), Concrete::Int(_, neg_v)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: self
+                            .val
+                            .u256_as_original(val.overflowing_add(neg_v.into_raw()).0),
+                        loc: self.loc,
+                    }))
+                }
+                (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(
+                            *lhs_size,
+                            I256::from_raw(neg_v.into_raw().overflowing_sub(*val).0),
+                        ),
+                        loc: self.loc,
+                    }))
+                }
+                (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(*lhs_size, l.overflowing_sub(*r).0),
+                        loc: self.loc,
+                    }))
+                }
+                _ => None,
+            },
+        }
+    }
 }
 
 impl RangeSub<Concrete> for Elem<Concrete> {
@@ -162,11 +260,20 @@ impl RangeSub<Concrete> for Elem<Concrete> {
             _ => None,
         }
     }
+
+    fn range_wrapping_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_sub(b),
+            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            _ => None,
+        }
+    }
 }
 
 pub trait RangeMul<T, Rhs = Self> {
     /// Perform multiplication between two range elements
     fn range_mul(&self, other: &Rhs) -> Option<Elem<T>>;
+    fn range_wrapping_mul(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
 impl RangeMul<Concrete> for RangeConcrete<Concrete> {
@@ -190,7 +297,7 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
                     } else {
                         I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - I256::from(1)
                     };
-                    let min = max * I256::from(-1i32);
+                    let min = max * I256::from(-1i32) - I256::from(1i32);
                     Some(Elem::Concrete(RangeConcrete {
                         val: Concrete::Int(
                             *lhs_size,
@@ -214,12 +321,55 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
             },
         }
     }
+
+    fn range_wrapping_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self.val.into_u256(), other.val.into_u256()) {
+            (Some(lhs_val), Some(rhs_val)) => {
+                let max = Concrete::max(&self.val).unwrap();
+                let res = lhs_val.overflowing_mul(rhs_val).0;
+                Some(Elem::Concrete(RangeConcrete {
+                    val: self.val.u256_as_original(res),
+                    loc: self.loc,
+                }))
+            }
+            _ => match (&self.val, &other.val) {
+                (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v))
+                | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(
+                            *lhs_size,
+                            neg_v.overflowing_mul(I256::from_raw(*val)).0,
+                        ),
+                        loc: self.loc,
+                    }))
+                }
+                (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
+                    Some(Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(*lhs_size, l.overflowing_mul(*r).0),
+                        loc: self.loc,
+                    }))
+                }
+                _ => None,
+            },
+        }
+    }
 }
 
 impl RangeMul<Concrete> for Elem<Concrete> {
     fn range_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_mul(b),
+            (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => {
+                Some(other.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn range_wrapping_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
+        match (self, other) {
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_mul(b),
             (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => {
                 Some(other.clone())
@@ -790,7 +940,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - I256::from(1)
                     };
 
-                    let min = max * I256::from(-1i32);
+                    let min = max * I256::from(-1i32) - I256::from(1i32);
                     let (abs, is_min) = neg_v.overflowing_abs();
                     if is_min {
                         if val > &U256::zero() {
@@ -857,7 +1007,7 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                             I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1))
                                 - I256::from(1)
                         };
-                        let min = max * I256::from(-1i32);
+                        let min = max * I256::from(-1i32) - I256::from(1i32);
 
                         let (abs, is_min) = neg_v.overflowing_abs();
                         let bits = if is_min {
@@ -1360,6 +1510,20 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let size = if s > s2 { s } else { s2 };
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Int(*size, *a & *b),
+                    loc: self.loc,
+                }))
+            }
+            (Concrete::Uint(s, a), Concrete::Int(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Uint(*size, *a & b.into_raw()),
+                    loc: self.loc,
+                }))
+            }
+            (Concrete::Int(s, a), Concrete::Uint(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Uint(*size, a.into_raw() & *b),
                     loc: self.loc,
                 }))
             }

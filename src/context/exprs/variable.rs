@@ -1,6 +1,7 @@
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::context::{exprs::env::Env, ContextBuilder};
+use shared::nodes::VarNode;
 use shared::{analyzer::AnalyzerLike, context::*, Edge, Node};
 use solang_parser::pt::Expression;
 
@@ -50,16 +51,28 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         } else if (self.env_variable(ident, target_ctx)?).is_some() {
             Ok(())
         } else if let Some(idx) = self.user_types().get(&ident.name) {
-            let var = match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
-                Some(v) => v,
-                None => {
-                    return Err(ExprErr::VarBadType(
-                        ident.loc,
-                        format!(
-                            "Could not create context variable from user type: {:?}",
-                            self.node(*idx)
-                        ),
-                    ))
+            let const_var = if let Node::Var(_v) = self.node(*idx) {
+                VarNode::from(*idx)
+                    .const_value(ident.loc, self)
+                    .into_expr_err(ident.loc)?
+            } else {
+                None
+            };
+
+            let var = if let Some(con) = const_var {
+                con
+            } else {
+                match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
+                    Some(v) => v,
+                    None => {
+                        return Err(ExprErr::VarBadType(
+                            ident.loc,
+                            format!(
+                                "Could not create context variable from user type: {:?}",
+                                self.node(*idx)
+                            ),
+                        ))
+                    }
                 }
             };
 

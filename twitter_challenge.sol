@@ -1,20 +1,15 @@
-contract A {
-    function f(uint x, uint y) public pure returns (uint) {
+contract constant_fold {
+    uint constant N = 2_000_000;
+    // uint immutable N = 2_000_000;
 
-        if (x < 2) {
-            // fork true
+    function f(uint x) public returns (uint) {
+        if (x == N / 2) {
             return 1;
-        } 
-        // fork false
-        if (y >= 42) {
-            // fork false, fork true
-            return 2;
-        } 
-        // fork false, fork false
-        return 3;
+        }
+        return 2;
     }
 }
-// contract test_zero_case {
+
     // function good0(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
     //     address signer = ecrecover(hash, v, r, s);
     //     require(signer != address(0), "ECDSA: invalid signature");

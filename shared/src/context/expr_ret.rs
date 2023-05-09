@@ -2,9 +2,30 @@ use crate::analyzer::AsDotStr;
 use crate::context::GraphError;
 use crate::{ContextVarNode, GraphLike, Node, NodeIdx, VarType};
 
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub enum KilledKind {
+    Ended,
+    Unreachable,
+    Revert,
+    #[default]
+    Error,
+}
+
+impl KilledKind {
+    pub fn analysis_str(&self) -> &str {
+        use KilledKind::*;
+        match self {
+            Ended => "Execution ended here successfully",
+            Unreachable => "Unsatisifiable bounds, therefore dead code",
+            Revert => "Execution guaranteed to revert here!",
+            Error => "Some error occurred while parsing",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExprRet {
-    CtxKilled,
+    CtxKilled(KilledKind),
     Single(NodeIdx),
     SingleLiteral(NodeIdx),
     Multi(Vec<ExprRet>),
@@ -27,7 +48,7 @@ impl ExprRet {
                         .join(", ")
                 )
             }
-            ExprRet::CtxKilled => "CtxKilled".to_string(),
+            ExprRet::CtxKilled(kind) => format!("CtxKilled({:?}", kind),
         }
     }
 
@@ -42,6 +63,33 @@ impl ExprRet {
         }
     }
 
+    pub fn expect_length(&self, len: usize) -> Result<(), GraphError> {
+        match self {
+            ExprRet::Single(_) | ExprRet::SingleLiteral(_) => {
+                if len == 1 {
+                    Ok(())
+                } else {
+                    Err(GraphError::StackLengthMismatch(format!(
+                        "Expected an element with {len} elements return got: 1 element"
+                    )))
+                }
+            }
+            ExprRet::Multi(inner) => {
+                if inner.len() == len {
+                    Ok(())
+                } else {
+                    Err(GraphError::StackLengthMismatch(format!(
+                        "Expected an element with {len} elements return got: {} elements",
+                        inner.len()
+                    )))
+                }
+            }
+            ExprRet::CtxKilled(..) => Err(GraphError::StackLengthMismatch(format!(
+                "Expected an element with {len} elements, but context was killed"
+            ))),
+        }
+    }
+
     pub fn is_single(&self) -> bool {
         match self {
             ExprRet::Single(_inner) => true,
@@ -52,7 +100,7 @@ impl ExprRet {
     }
 
     pub fn is_killed(&self) -> bool {
-        matches!(self, ExprRet::CtxKilled)
+        matches!(self, ExprRet::CtxKilled(_))
     }
 
     pub fn has_fork(&self) -> bool {
@@ -61,7 +109,7 @@ impl ExprRet {
 
     pub fn has_killed(&self) -> bool {
         match self {
-            ExprRet::CtxKilled => true,
+            ExprRet::CtxKilled(_) => true,
             ExprRet::Multi(multis) => multis.iter().any(|expr_ret| expr_ret.has_killed()),
             _ => false,
         }

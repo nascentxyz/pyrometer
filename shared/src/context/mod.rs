@@ -118,7 +118,7 @@ pub struct Context {
     /// A string that represents the path taken from the root context (i.e. `fn_entry.fork.1`)
     pub path: String,
     /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement
-    pub killed: Option<Loc>,
+    pub killed: Option<(Loc, KilledKind)>,
     /// Denotes whether this context is a fork of another context
     pub is_fork: bool,
     /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
@@ -139,6 +139,7 @@ pub struct Context {
     pub lhs_expr: Option<ExprRet>,
     pub rhs_expr: Option<ExprRet>,
     pub expr_ret_stack: Option<ExprRet>,
+    pub unchecked: bool,
 }
 
 impl Context {
@@ -162,6 +163,7 @@ impl Context {
             expr_ret_stack: None,
             lhs_expr: None,
             rhs_expr: None,
+            unchecked: false,
         }
     }
 
@@ -176,7 +178,8 @@ impl Context {
         analyzer: &impl AnalyzerLike,
         modifier_state: Option<ModifierState>,
     ) -> Result<Self, GraphError> {
-        let mut depth = parent_ctx.underlying(analyzer)?.depth + 1;
+        let mut depth =
+            parent_ctx.underlying(analyzer)?.depth + if fork_expr.is_some() { 0 } else { 1 };
 
         if analyzer.max_depth() < depth {
             return Err(GraphError::MaxStackDepthReached(format!(
@@ -210,9 +213,11 @@ impl Context {
             }
         );
 
+        let parent_fn = parent_ctx.associated_fn(analyzer)?;
+
         tracing::trace!("new subcontext path: {path}, depth: {depth}");
         Ok(Context {
-            parent_fn: parent_ctx.underlying(analyzer)?.parent_fn,
+            parent_fn,
             parent_ctx: Some(parent_ctx),
             path,
             is_fork: fork_expr.is_some(),
@@ -228,11 +233,18 @@ impl Context {
             depth,
             expr_ret_stack: if fork_expr.is_some() {
                 parent_ctx.underlying(analyzer)?.expr_ret_stack.clone()
+            } else if let Some(ret_ctx) = returning_ctx {
+                ret_ctx.underlying(analyzer)?.expr_ret_stack.clone()
             } else {
                 None
             },
             lhs_expr: None,
             rhs_expr: None,
+            unchecked: if fork_expr.is_some() {
+                parent_ctx.underlying(analyzer)?.unchecked
+            } else {
+                false
+            },
         })
     }
 
@@ -298,6 +310,26 @@ impl ContextNode {
     //     }).collect()
     // }
 
+    pub fn unchecked(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.unchecked)
+    }
+
+    pub fn set_unchecked(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        self.underlying_mut(analyzer)?.unchecked = true;
+        Ok(())
+    }
+
+    pub fn unset_unchecked(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        self.underlying_mut(analyzer)?.unchecked = false;
+        Ok(())
+    }
+
     pub fn push_rhs_expr(
         &self,
         expr_ret: ExprRet,
@@ -314,10 +346,11 @@ impl ContextNode {
             Some(ExprRet::Multi(ref mut inner)) => {
                 inner.push(expr_ret);
             }
-            Some(ExprRet::CtxKilled) => {
-                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled);
-                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled);
-                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled);
+            Some(ExprRet::CtxKilled(kind)) => {
+                let kind = *kind;
+                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled(kind));
+                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled(kind));
+                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled(kind));
             }
             None => {
                 underlying_mut.rhs_expr = Some(expr_ret);
@@ -355,10 +388,11 @@ impl ContextNode {
             Some(ExprRet::Multi(ref mut inner)) => {
                 inner.push(expr_ret);
             }
-            Some(ExprRet::CtxKilled) => {
-                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled);
-                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled);
-                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled);
+            Some(ExprRet::CtxKilled(kind)) => {
+                let kind = *kind;
+                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled(kind));
+                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled(kind));
+                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled(kind));
             }
             None => {
                 underlying_mut.lhs_expr = Some(expr_ret);
@@ -380,12 +414,13 @@ impl ContextNode {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn push_expr(
         &self,
         expr_ret: ExprRet,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        println!(
+        tracing::trace!(
             "pushing: {}, existing: {}, path: {}",
             expr_ret.debug_str(analyzer),
             if let Some(stack) = &self.underlying(analyzer)?.expr_ret_stack {
@@ -408,10 +443,10 @@ impl ContextNode {
             Some(ExprRet::Multi(ref mut inner)) => {
                 inner.push(expr_ret);
             }
-            Some(ExprRet::CtxKilled) => {
-                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled);
-                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled);
-                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled);
+            Some(ExprRet::CtxKilled(kind)) => {
+                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled(*kind));
+                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled(*kind));
+                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled(*kind));
             }
             None => {
                 underlying_mut.expr_ret_stack = Some(expr_ret);
@@ -470,11 +505,13 @@ impl ContextNode {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn pop_expr(
         &self,
         loc: Loc,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ExprRet>, GraphError> {
+        tracing::trace!("popping var from: {}", self.path(analyzer));
         let underlying_mut = self.underlying_mut(analyzer)?;
         if let Some(expr) = underlying_mut.expr_ret_stack.take() {
             Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
@@ -830,8 +867,29 @@ impl ContextNode {
             .next()
         {
             Ok(Some(var))
-        } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+        } else if let Some(parent) = self.ancestor_in_fn(
+            analyzer,
+            &self.path(analyzer),
+            self.associated_fn(analyzer)?,
+        )? {
             parent.var_by_name_or_recurse(analyzer, name)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn ancestor_in_fn(
+        &self,
+        analyzer: &impl GraphLike,
+        start_path: &str,
+        associated_fn: FunctionNode,
+    ) -> Result<Option<ContextNode>, GraphError> {
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+            if parent.associated_fn(analyzer)? == associated_fn {
+                Ok(Some(parent))
+            } else {
+                parent.ancestor_in_fn(analyzer, start_path, associated_fn)
+            }
         } else {
             Ok(None)
         }
@@ -1050,28 +1108,29 @@ impl ContextNode {
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         kill_loc: Loc,
+        kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
         let context = self.underlying_mut(analyzer)?;
         let child = context.child;
         let parent = context.parent_ctx;
         if context.killed.is_none() {
-            context.killed = Some(kill_loc);
+            context.killed = Some((kill_loc, kill_kind));
         }
 
         if let Some(child) = child {
             match child {
                 CallFork::Call(call) => {
-                    call.kill(analyzer, kill_loc)?;
+                    call.kill(analyzer, kill_loc, kill_kind)?;
                 }
                 CallFork::Fork(w1, w2) => {
-                    w1.kill(analyzer, kill_loc)?;
-                    w2.kill(analyzer, kill_loc)?;
+                    w1.kill(analyzer, kill_loc, kill_kind)?;
+                    w2.kill(analyzer, kill_loc, kill_kind)?;
                 }
             }
         }
 
         if let Some(parent_ctx) = parent {
-            parent_ctx.end_if_all_forks_ended(analyzer, kill_loc)?;
+            parent_ctx.end_if_all_forks_ended(analyzer, kill_loc, kill_kind)?;
         }
 
         Ok(())
@@ -1082,14 +1141,15 @@ impl ContextNode {
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
         kill_loc: Loc,
+        kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
         if self.live_edges(analyzer)?.is_empty() {
             let context = self.underlying_mut(analyzer)?;
             if context.killed.is_none() {
-                context.killed = Some(kill_loc);
+                context.killed = Some((kill_loc, kill_kind));
             }
             if let Some(parent_ctx) = context.parent_ctx {
-                parent_ctx.end_if_all_forks_ended(analyzer, kill_loc)?;
+                parent_ctx.end_if_all_forks_ended(analyzer, kill_loc, kill_kind)?;
             }
         }
         Ok(())
@@ -1168,7 +1228,10 @@ impl ContextNode {
     }
 
     /// Returns an option to where the context was killed
-    pub fn killed_loc(&self, analyzer: &impl GraphLike) -> Result<Option<Loc>, GraphError> {
+    pub fn killed_loc(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Option<(Loc, KilledKind)>, GraphError> {
         Ok(self.underlying(analyzer)?.killed)
     }
 

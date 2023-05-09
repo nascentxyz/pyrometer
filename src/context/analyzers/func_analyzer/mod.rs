@@ -26,7 +26,7 @@ pub struct FunctionVarsBoundAnalysis {
     /// Entry context
     pub ctx: ContextNode,
     /// If the context was killed (i.e. a `return` or `revert` of some kind), the location string span
-    pub ctx_killed: Option<LocStrSpan>,
+    pub ctx_killed: Option<(LocStrSpan, KilledKind)>,
     /// The report configuration
     pub report_config: ReportConfig,
     /// Mapping of context node (i.e. for the lineage of the entry context) to a vector of bound analyses
@@ -85,7 +85,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                     self.ctx_loc.start(),
                 )
                 .with_message(format!(
-                    "Bounds for subcontext: {}{}{}",
+                    "Bounds for subcontext: {}{}{}, killed: {:?}",
                     ctx.path(analyzer).fg(Color::Cyan),
                     if bounds_string.is_empty() {
                         ""
@@ -93,6 +93,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                         " where:\n"
                     },
                     bounds_string.fg(Color::Yellow),
+                    ctx.underlying(analyzer).unwrap().killed
                 ))
                 .with_config(
                     Config::default()
@@ -206,22 +207,27 @@ impl<'a> FunctionVarsBoundAnalysis {
                                         })
                                         .collect::<Vec<_>>(),
                                 );
-                                // if ctx_switch.ctx == *ctx {
-                                //     if let Some(killed_loc) = &ctx_switch.killed_loc {
-                                //         labels.push(Label::new(killed_loc.clone()).with_message("Execution guaranteed to revert here!").with_color(Color::Red).with_priority(10));
-                                //     }
-                                //     self_handled = true;
-                                // }
+                                if ctx_switch.ctx == *ctx {
+                                    if let Some((killed_loc, kind)) = &ctx_switch.killed_loc {
+                                        labels.push(
+                                            Label::new(killed_loc.clone())
+                                                .with_message(kind.analysis_str())
+                                                .with_color(Color::Red)
+                                                .with_priority(10),
+                                        );
+                                    }
+                                    self_handled = true;
+                                }
                             }
                         });
                         labels
                     })
                     .collect();
 
-                if let Some(killed_span) = &self.ctx_killed {
+                if let Some((killed_span, kind)) = &self.ctx_killed {
                     labels.push(
                         Label::new(killed_span.clone())
-                            .with_message("Execution guaranteed to revert here!".fg(Color::Red))
+                            .with_message(kind.analysis_str().fg(Color::Red))
                             .with_color(Color::Red),
                     );
                 }
@@ -296,7 +302,23 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
         }
         let lineage_analyses = edges
             .iter()
-            .map(|fork| {
+            .filter_map(|fork| {
+                if !report_config.show_unreachables
+                    && matches!(
+                        fork.underlying(self).unwrap().killed,
+                        Some((_, KilledKind::Unreachable))
+                    )
+                {
+                    return None;
+                }
+                if !report_config.show_reverts
+                    && matches!(
+                        fork.underlying(self).unwrap().killed,
+                        Some((_, KilledKind::Revert))
+                    )
+                {
+                    return None;
+                }
                 let mut parents = fork.parent_list(self).unwrap();
                 parents.reverse();
                 parents.push(*fork);
@@ -309,7 +331,7 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                 );
                 vars.sort_by_key(|a| a.name(self));
                 vars.dedup_by(|a, b| a.name(self) == b.name(self));
-                (
+                Some((
                     *fork,
                     vars.iter()
                         .filter_map(|var| {
@@ -339,7 +361,7 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                             }
                         })
                         .collect::<Vec<VarBoundAnalysis>>(),
-                )
+                ))
             })
             .collect::<BTreeMap<ContextNode, Vec<VarBoundAnalysis>>>();
 
@@ -349,7 +371,7 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
             ctx_killed: ctx
                 .killed_loc(self)
                 .unwrap()
-                .map(|loc| LocStrSpan::new(file_mapping, loc)),
+                .map(|(loc, kind)| (LocStrSpan::new(file_mapping, loc), kind)),
             vars_by_ctx: lineage_analyses,
             report_config,
         }

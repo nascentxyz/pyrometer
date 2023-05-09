@@ -20,6 +20,7 @@ impl<T> InternalFuncCaller for T where
 pub trait InternalFuncCaller:
     AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
 {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_internal_named_func(
         &mut self,
         ctx: ContextNode,
@@ -124,6 +125,12 @@ pub trait InternalFuncCaller:
                         let Some(assignment) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
                         };
+
+                        if matches!(assignment, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(assignment, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+
                         analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
                         let _ = ctx.pop_expr(loc, analyzer).into_expr_err(loc)?;
                         Ok(())
@@ -168,6 +175,7 @@ pub trait InternalFuncCaller:
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn call_internal_func(
         &mut self,
         ctx: ContextNode,
@@ -201,6 +209,11 @@ pub trait InternalFuncCaller:
                     .pop_expr(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                let ret = ret.flatten();
+                if matches!(ret, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
             })
         } else if possible_funcs.len() == 1 {
@@ -210,6 +223,11 @@ pub trait InternalFuncCaller:
                     .pop_expr(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                let inputs = inputs.flatten();
+                if matches!(inputs, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 analyzer.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
             })
         } else {
@@ -234,6 +252,11 @@ pub trait InternalFuncCaller:
                     .pop_expr(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                let inputs = inputs.flatten();
+                if matches!(inputs, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
                 if let Some(func) = analyzer.disambiguate_fn_call(
                     &ident.name,
                     lits.clone(),

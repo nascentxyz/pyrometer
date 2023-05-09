@@ -62,6 +62,11 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
                 };
 
+                if matches!(ret, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
+
                 analyzer.match_yul_true(ctx, if_expr.loc(), &ret)
             })?;
 
@@ -79,6 +84,11 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                 let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
                 };
+
+                if matches!(ret, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
 
                 analyzer.match_yul_false(ctx, if_expr.loc(), &ret)
             })
@@ -129,6 +139,11 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     let Some(true_vars) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Yul switch statement was missing a case discriminator".to_string()))
                     };
+
+                    if matches!(true_vars, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(true_vars, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
                     analyzer.match_yul_true(ctx, loc, &true_vars)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
                         println!("\n\nyul true stmt: {:?}\n\n", if_else_chain.true_stmt);
@@ -167,7 +182,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         true_cvars: &ExprRet,
     ) -> Result<(), ExprErr> {
         match true_cvars {
-            ExprRet::CtxKilled => {}
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, *kind).into_expr_err(loc)?,
             ExprRet::Single(_true_cvar) | ExprRet::SingleLiteral(_true_cvar) => {
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
                 let tmp_true = Node::ContextVar(
@@ -206,7 +221,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         false_cvars: &ExprRet,
     ) -> Result<(), ExprErr> {
         match false_cvars {
-            ExprRet::CtxKilled => {}
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, *kind).into_expr_err(loc)?,
             ExprRet::Single(_false_cvar) | ExprRet::SingleLiteral(_false_cvar) => {
                 // we wrap the conditional in an `iszero` to invert
                 let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
