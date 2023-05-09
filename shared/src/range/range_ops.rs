@@ -325,7 +325,7 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
     fn range_wrapping_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let max = Concrete::max(&self.val).unwrap();
+                let _max = Concrete::max(&self.val).unwrap();
                 let res = lhs_val.overflowing_mul(rhs_val).0;
                 Some(Elem::Concrete(RangeConcrete {
                     val: self.val.u256_as_original(res),

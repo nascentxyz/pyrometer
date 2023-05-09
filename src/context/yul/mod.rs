@@ -270,7 +270,7 @@ pub trait YulBuilder:
                     ));
                 };
             }
-            ExprRet::CtxKilled(kind) => {}
+            ExprRet::CtxKilled(_kind) => {}
         }
 
         Ok(())
