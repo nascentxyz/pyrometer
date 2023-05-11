@@ -165,6 +165,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let idx_node = self.add_node(Node::ContextVar(index_var));
                     self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
                     self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.add_var(idx_node.into(), self).into_expr_err(loc)?;
                     self.add_edge(index, idx_node, Edge::Context(ContextEdge::Index));
 
                     ctx.push_expr(ExprRet::Single(idx_node), self).into_expr_err(loc)?;

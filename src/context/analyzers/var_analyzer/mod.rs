@@ -76,7 +76,7 @@ impl VarBoundAnalysis {
         deps.iter()
             .enumerate()
             .filter_map(|(_i, (_name, cvar))| {
-                let range = cvar.range(analyzer).unwrap()?;
+                let range = cvar.ref_range(analyzer).unwrap()?;
                 let parts = range_parts(analyzer, &self.report_config, &range).0;
                 Some((cvar.display_name(analyzer).unwrap(), parts))
             })
@@ -125,9 +125,9 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
             .filter_map(|ctx| Some((ctx, ctx.var_by_name(self, &var_name)?)))
             .for_each(|(_ctx, cvar)| {
                 let analysis = self.bounds_for_var_node(
-                    inherited.clone(),
+                    &inherited,
                     file_mapping,
-                    var_name.clone(),
+                    &var_name,
                     cvar,
                     report_config,
                     inherited.is_some(),
@@ -140,9 +140,9 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
     /// Analyzes the bounds for a variable up to the provided node
     fn bounds_for_var_node(
         &self,
-        inherited: Option<VarBoundAnalysis>,
+        inherited: &Option<VarBoundAnalysis>,
         file_mapping: &'_ BTreeMap<usize, String>,
-        var_name: String,
+        var_name: &str,
         cvar: ContextVarNode,
         report_config: ReportConfig,
         is_subctx: bool,
@@ -184,8 +184,8 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
                 )
             };
 
-        let mut ba = if let Some(inherited) = inherited {
-            let mut new_ba = inherited;
+        let mut ba: VarBoundAnalysis = if let Some(inherited) = inherited {
+            let mut new_ba = inherited.clone();
             let ctx_switch = CtxSwitch {
                 ctx,
                 func_span,
@@ -202,7 +202,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
         } else {
             VarBoundAnalysis {
                 ctx,
-                var_name,
+                var_name: var_name.to_string(),
                 var_display_name: cvar.display_name(self).unwrap(),
                 func_span,
                 var_def: (
@@ -224,28 +224,28 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
             }
         };
 
-        if let Some(curr_range) = curr.range(self).unwrap() {
+        if let Some(curr_range) = curr.ref_range(self).unwrap() {
             let mut cr_min = curr_range.evaled_range_min(self).unwrap();
             let mut cr_max = curr_range.evaled_range_max(self).unwrap();
             let mut cr_excl = curr_range.range_exclusions();
             while let Some(next) = curr.next_version(self) {
-                if let Some(next_range) = next.range(self).unwrap() {
+                if let Some(next_range) = next.ref_range(self).unwrap() {
                     let nr_min = next_range.evaled_range_min(self).unwrap();
                     let nr_max = next_range.evaled_range_max(self).unwrap();
-                    let nr_excl = next_range.exclusions.clone();
+                    let nr_excl = &next_range.exclusions;
 
                     // check if there was a bound change
                     if report_config.show_all_lines
                         || nr_min != cr_min
                         || nr_max != cr_max
-                        || nr_excl != cr_excl
+                        || nr_excl != &cr_excl
                     {
                         cr_min = nr_min;
                         cr_max = nr_max;
-                        cr_excl = nr_excl;
+                        cr_excl = nr_excl.to_vec();
                         let new = (
                             LocStrSpan::new(file_mapping, next.loc(self).unwrap()),
-                            next_range.clone(),
+                            next_range.into_owned(),
                         );
                         if !ba.bound_changes.contains(&new) {
                             ba.bound_changes.push(new);

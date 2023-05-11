@@ -1,14 +1,44 @@
-contract constant_fold {
-    uint constant N = 2_000_000;
-    // uint immutable N = 2_000_000;
+contract Apron {
+    uint256 k;
+    uint256 i;
+    function entry() public returns (uint256, uint256) {
+        k = 0;
+        i = 0;
+        bb1();
+        return (i, k);
+    }
 
-    function f(uint x) public returns (uint) {
-        if (x == N / 2) {
-            return 1;
+    function bb1() public {
+        bb1_t();
+        bb1_f();
+    }
+
+    function bb1_t() public {
+        if (i <= 99) {
+            bb2();
         }
-        return 2;
+    }
+
+    function bb2() public {
+        i += 1;
+        k += 1;
+        if (i <= 99) {
+            bb1();
+        }
+    }
+
+    function bb1_f() public {
+        require(-1 * int256(i) <= -100);
     }
 }
+
+// contract constant_fold {
+//     function getSqrtRatioAtTick(uint256 y) internal pure returns (uint256[] memory) {
+//         uint256[] memory x = new uint256[](1);
+//         x[1] = y + 1;
+//         return x;
+//     }
+// }
 
     // function good0(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
     //     address signer = ecrecover(hash, v, r, s);

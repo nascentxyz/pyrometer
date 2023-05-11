@@ -36,12 +36,9 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
     }
 
     fn reset_vars(&mut self, loc: Loc, ctx: ContextNode, body: &Statement) -> Result<(), ExprErr> {
-        let subctx = ContextNode::from(
-            self.add_node(Node::Context(
-                Context::new_subctx(ctx, None, loc, None, None, false, self, None)
-                    .into_expr_err(loc)?,
-            )),
-        );
+        let sctx = Context::new_subctx(ctx, None, loc, None, None, false, self, None)
+            .into_expr_err(loc)?;
+        let subctx = ContextNode::from(self.add_node(Node::Context(sctx)));
         // let res = ctx.set_child_call(subctx, self).into_expr_err(loc);
         // let _ = self.add_if_err(res);
         // let ctx_fork = self.add_node(Node::FunctionCall);
@@ -53,11 +50,10 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
         // );
         self.parse_ctx_statement(body, false, Some(subctx));
         self.apply_to_edges(subctx, loc, &|analyzer, subctx, loc| {
-            let vars = subctx.local_vars(analyzer);
-            vars.iter().for_each(|var| {
+            let vars = subctx.local_vars(analyzer).clone();
+            vars.iter().for_each(|(name, var)| {
                 // widen to max range
-                if let Some(inheritor_var) = ctx.var_by_name(analyzer, &var.name(analyzer).unwrap())
-                {
+                if let Some(inheritor_var) = ctx.var_by_name(analyzer, &name) {
                     let inheritor_var = inheritor_var.latest_version(analyzer);
                     if let Some(r) = var
                         .underlying(analyzer)

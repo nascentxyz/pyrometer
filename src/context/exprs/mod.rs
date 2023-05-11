@@ -45,7 +45,7 @@ impl<T> IntoExprErr<T> for Result<T, GraphError> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub enum ExprErr {
     NoLhs(Loc, String),
     NoRhs(Loc, String),
@@ -124,6 +124,7 @@ impl ExprErr {
             TakeFromFork(_, msg, ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(msg), ..) => msg,
+            GraphError(_loc, shared::analyzer::GraphError::MaxStackWidthReached(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => {
@@ -157,6 +158,7 @@ impl ExprErr {
             TakeFromFork(..) => "IR Error: Tried to take from an child context that ended up forking",
             GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(_), ..) => "Graph IR Error: Node type confusion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
+            GraphError(_loc, shared::analyzer::GraphError::MaxStackWidthReached(_), ..) => "TODO: Max fork width reached - Need to widen variables and remove contexts",
             GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(_), ..) => "Graph IR Error: Child redefintion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(_), ..) => "Graph IR Error: Detached Variable. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",

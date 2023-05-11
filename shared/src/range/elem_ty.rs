@@ -72,7 +72,7 @@ impl RangeElem<Concrete> for Dynamic {
     }
 
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(MinMaxed::Minimized(cached)) = self.maximized.clone() {
+        if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
             return Ok(*cached);
         }
 
@@ -461,14 +461,14 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
     fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
         if self.maximized.is_none() {
-            self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+            self.cache_exec_op(true, g)?;
         }
         Ok(())
     }
 
     fn cache_minimize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
         if self.minimized.is_none() {
-            self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+            self.cache_exec_op(false, g)?;
         }
         Ok(())
     }
@@ -923,6 +923,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         maximize: bool,
         analyzer: &impl GraphLike,
     ) -> Result<(), GraphError> {
+        self.lhs.cache_minimize(analyzer)?;
+        self.lhs.cache_maximize(analyzer)?;
+        self.rhs.cache_minimize(analyzer)?;
+        self.rhs.cache_maximize(analyzer)?;
         let res = self.exec_op(maximize, analyzer)?;
         if maximize {
             self.maximized = Some(MinMaxed::Maximized(Box::new(res)));
@@ -941,6 +945,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let lhs_max = self.lhs.maximize(analyzer)?;
         let rhs_min = self.rhs.minimize(analyzer)?;
         let rhs_max = self.rhs.maximize(analyzer)?;
+
+        // println!("\n\n\n{lhs_min:?}\n\n{lhs_max:?}\n\n{rhs_min:?}\n\n{rhs_max:?}\n\n\n");
 
         tracing::trace!(
             "executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}",

@@ -100,7 +100,7 @@ pub trait ContextBuilder:
             if let Node::Context(_) = self.node(ctx) {
                 let c = ContextNode::from(ctx.into());
                 c.pop_expr(stmt.loc(), self);
-                println!("popped");
+                // println!("popped");
                 if unchecked {
                     c.set_unchecked(self);
                 } else {
@@ -178,6 +178,9 @@ pub trait ContextBuilder:
                         if let Some(cvar) = ContextVar::maybe_new_from_func_param(self, func_param)
                         {
                             let cvar_node = self.add_node(Node::ContextVar(cvar));
+                            ContextNode::from(ctx_node)
+                                .add_var(cvar_node.into(), self)
+                                .unwrap();
                             self.add_edge(
                                 cvar_node,
                                 ctx_node,
@@ -202,6 +205,9 @@ pub trait ContextBuilder:
                         let func_ret = self.add_if_err(res).unwrap();
                         if let Some(cvar) = ContextVar::maybe_new_from_func_ret(self, func_ret) {
                             let cvar_node = self.add_node(Node::ContextVar(cvar));
+                            ContextNode::from(ctx_node)
+                                .add_var(cvar_node.into(), self)
+                                .unwrap();
                             self.add_edge(
                                 cvar_node,
                                 ctx_node,
@@ -228,7 +234,9 @@ pub trait ContextBuilder:
                         None,
                         None,
                     );
-                    let _ = self.add_if_err(res);
+                    if self.widen_if_limit_hit(ctx_node.into(), res) {
+                        return;
+                    }
                     let res = self.apply_to_edges(ctx_node.into(), *loc, &|analyzer, ctx, loc| {
                         if ctx.is_killed(analyzer).into_expr_err(loc)? {
                             tracing::trace!("killing due to bad funciton call");
@@ -239,7 +247,10 @@ pub trait ContextBuilder:
                         }
                         Ok(())
                     });
-                    let _ = self.add_if_err(res);
+
+                    if self.widen_if_limit_hit(ctx_node.into(), res) {
+                        return;
+                    }
 
                     return;
                 }
@@ -250,7 +261,9 @@ pub trait ContextBuilder:
                         .for_each(|stmt| analyzer.parse_ctx_statement(stmt, *unchecked, Some(ctx)));
                     Ok(())
                 });
-                let _ = self.add_if_err(res);
+                if self.widen_if_limit_hit(ctx_node.into(), res) {
+                    return;
+                }
             }
             VariableDefinition(loc, var_decl, maybe_expr) => {
                 let ctx = ContextNode::from(
@@ -294,13 +307,17 @@ pub trait ContextBuilder:
                                     Ok(())
                                 }
                             });
-                            let _ = self.add_if_err(res);
+                            let _ = self.widen_if_limit_hit(ctx, res);
                         }
-                        Err(e) => self.add_expr_err(e),
+                        ret => {
+                            let _ = self.widen_if_limit_hit(ctx, ret);
+                        }
                     }
                 } else {
                     let res = self.parse_ctx_expr(&var_decl.ty, ctx);
-                    let _ = self.add_if_err(res);
+                    if self.widen_if_limit_hit(ctx, res) {
+                        return;
+                    }
                     let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                         let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Variable definition had no left hand side".to_string()))
@@ -312,7 +329,7 @@ pub trait ContextBuilder:
                         analyzer.match_var_def(ctx, var_decl, loc, &lhs_paths, None)?;
                         Ok(())
                     });
-                    let _ = self.add_if_err(res);
+                    let _ = self.widen_if_limit_hit(ctx, res);
                 }
             }
             Args(_loc, _args) => {
@@ -324,7 +341,7 @@ pub trait ContextBuilder:
                 let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     analyzer.cond_op_stmt(loc, if_expr, true_expr, maybe_false_expr, ctx)
                 });
-                let _ = self.add_if_err(res);
+                let _ = self.widen_if_limit_hit(ctx, res);
             }
             While(loc, cond, body) => {
                 tracing::trace!("parsing while, {cond:?}");
@@ -334,7 +351,7 @@ pub trait ContextBuilder:
                         *loc,
                         &|analyzer, ctx, loc| analyzer.while_loop(loc, ctx, cond, body),
                     );
-                    let _ = self.add_if_err(res);
+                    let _ = self.widen_if_limit_hit(parent.into().into(), res);
                 }
             }
             Expression(loc, expr) => {
@@ -352,9 +369,11 @@ pub trait ContextBuilder:
                                 }
                                 Ok(())
                             });
-                            let _ = self.add_if_err(res);
+                            let _ = self.widen_if_limit_hit(ctx, res);
                         }
-                        Err(e) => self.add_expr_err(e),
+                        e => {
+                            let _ = self.widen_if_limit_hit(ctx, e);
+                        }
                     }
                 }
             }
@@ -372,7 +391,7 @@ pub trait ContextBuilder:
                                 maybe_for_body,
                             )
                         });
-                    let _ = self.add_if_err(res);
+                    let _ = self.widen_if_limit_hit(parent.into().into(), res);
                 }
             }
             DoWhile(loc, while_stmt, while_expr) => {
@@ -383,7 +402,7 @@ pub trait ContextBuilder:
                         *loc,
                         &|analyzer, ctx, loc| analyzer.while_loop(loc, ctx, while_expr, while_stmt),
                     );
-                    let _ = self.add_if_err(res);
+                    let _ = self.widen_if_limit_hit(parent.into().into(), res);
                 }
             }
             Continue(_loc) => {
@@ -406,17 +425,20 @@ pub trait ContextBuilder:
                         .expect("No context for variable definition?")
                         .into(),
                 );
-                let _ = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
+                let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
                     analyzer.parse_ctx_yul_statement(&YulStatement::Block(yul_block.clone()), ctx);
                     Ok(())
                 });
+                let _ = self.widen_if_limit_hit(ctx, res);
             }
             Return(loc, maybe_ret_expr) => {
                 tracing::trace!("parsing return");
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
                         let res = self.parse_ctx_expr(ret_expr, parent.into().into());
-                        let _ = self.add_if_err(res);
+                        if self.widen_if_limit_hit(parent.into().into(), res) {
+                            return;
+                        }
                         let res = self.apply_to_edges(parent.into().into(), *loc, &|analyzer, ctx, loc| {
                             let Ok(Some(ret)) = ctx.pop_expr(loc, analyzer) else {
                                 return Err(ExprErr::NoLhs(loc, "Return did not have a associated expression".to_string()));
@@ -439,7 +461,7 @@ pub trait ContextBuilder:
                             analyzer.return_match(ctx, &loc, &paths);
                             Ok(())
                         });
-                        let _ = self.add_if_err(res);
+                        let _ = self.widen_if_limit_hit(parent.into().into(), res);
                     }
                 }
             }
@@ -464,42 +486,23 @@ pub trait ContextBuilder:
             Emit(_loc, _emit_expr) => {}
             Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
             Error(_loc) => {}
-        };
+        }
+    }
 
-        // if let Some(parent) = parent_ctx {
-        //     if let Node::Context(c) = self.node(parent.into()) {
-        //         let adjusts = c.post_statement_range_adjs.clone();
-        //         adjusts.into_iter().for_each(|(var, loc, increment)| {
-        //             let one_node = self.add_node(Node::Concrete(Concrete::from(U256::from(1))));
-        //             let c = ContextVar::new_from_concrete(
-        //                 Loc::Implicit,
-        //                 parent.into().into(),
-        //                 one_node.into(),
-        //                 self,
-        //             );
-        //             let new_var = self.add_if_err(c.into_expr_err(stmt.loc())).unwrap();
-        //             let one_node = self.add_node(Node::ContextVar(new_var));
-        //             let _ = self
-        //                 .op(
-        //                     loc,
-        //                     var.latest_version(self),
-        //                     one_node.into(),
-        //                     parent.into().into(),
-        //                     if increment {
-        //                         RangeOp::Add
-        //                     } else {
-        //                         RangeOp::Sub
-        //                     },
-        //                     true,
-        //                 )
-        //                 .map_err(|e| self.add_expr_err(e));
-        //         });
-        //         ContextNode::from(parent.into())
-        //             .underlying_mut(self)
-        //             .unwrap()
-        //             .post_statement_range_adjs = vec![];
-        //     }
-        // }
+    fn widen_if_limit_hit(&mut self, _ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
+        match maybe_err {
+            Err(e @ ExprErr::GraphError(_, GraphError::MaxStackWidthReached(..), ..)) => {
+                // TODO: we should ideally peak at each if statement body and only widen variables referenced in there
+                // but for now we just delete the forks, and reset all local variables
+                self.add_expr_err(e);
+                true
+            }
+            Err(e) => {
+                self.add_expr_err(e);
+                false
+            }
+            _ => false,
+        }
     }
 
     fn return_match(&mut self, ctx: ContextNode, loc: &Loc, paths: &ExprRet) {
@@ -574,12 +577,18 @@ pub trait ContextBuilder:
                     ty,
                 };
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 let rhs = ContextVarNode::from(*rhs);
 
-                fn match_assign_ret(analyzer: &mut impl GraphLike, ctx: ContextNode, ret: ExprRet) {
+                fn match_assign_ret(
+                    analyzer: &mut (impl GraphLike + AnalyzerLike),
+                    ctx: ContextNode,
+                    ret: ExprRet,
+                ) {
                     match ret {
                         ExprRet::Single(new_lhs) | ExprRet::SingleLiteral(new_lhs) => {
+                            ctx.add_var(new_lhs.into(), analyzer).unwrap();
                             analyzer.add_edge(new_lhs, ctx, Edge::Context(ContextEdge::Variable));
                         }
                         ExprRet::Multi(inner) => inner
@@ -612,6 +621,7 @@ pub trait ContextBuilder:
                     ty,
                 };
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 Ok(false)
             }
@@ -664,13 +674,17 @@ pub trait ContextBuilder:
     }
 
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
-        let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
-        if edges.is_empty() {
-            self.parse_ctx_expr_inner(expr, ctx)
+        if !ctx.is_killed(self).unwrap() {
+            let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
+            if edges.is_empty() {
+                self.parse_ctx_expr_inner(expr, ctx)
+            } else {
+                edges
+                    .iter()
+                    .try_for_each(|fork_ctx| self.parse_ctx_expr(expr, *fork_ctx))?;
+                Ok(())
+            }
         } else {
-            edges
-                .iter()
-                .try_for_each(|fork_ctx| self.parse_ctx_expr(expr, *fork_ctx))?;
             Ok(())
         }
     }
@@ -728,12 +742,12 @@ pub trait ContextBuilder:
                             analyzer,
                         ).into_expr_err(loc)?;
                         let zero = analyzer.add_node(Node::ContextVar(zero));
-                        let mut new_underlying = ContextVarNode::from(var)
+                        let new_underlying = ContextVarNode::from(var)
                             .underlying(analyzer).into_expr_err(loc)?
                             .clone()
                             .as_cast_tmp(loc, ctx, Builtin::Int(256), analyzer).into_expr_err(loc)?;
-                        new_underlying.is_tmp = false;
                         let node = analyzer.add_node(Node::ContextVar(new_underlying));
+                        ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
 
                         ContextVarNode::from(node).cast_from(
@@ -903,6 +917,7 @@ pub trait ContextBuilder:
                 )
                 .into_expr_err(*loc)?;
                 let cvar = self.add_node(Node::ContextVar(var));
+                ctx.add_var(cvar.into(), self).into_expr_err(*loc)?;
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                 ctx.push_expr(ExprRet::Single(cvar), self)
                     .into_expr_err(*loc)?;
@@ -1223,7 +1238,7 @@ pub trait ContextBuilder:
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-        println!(
+        tracing::trace!(
             "assigning: {} to {}",
             lhs_cvar.display_name(self).unwrap(),
             rhs_cvar.display_name(self).unwrap()
@@ -1291,9 +1306,9 @@ pub trait ContextBuilder:
             let _ = new_lhs.try_set_range_min(self, new_lower_bound);
             let _ = new_lhs.try_set_range_max(self, new_upper_bound);
         }
-        if let Some(rhs_range) = rhs_cvar.range(self).into_expr_err(loc)? {
+        if let Some(rhs_range) = rhs_cvar.ref_range(self).into_expr_err(loc)? {
             let res = new_lhs
-                .try_set_range_exclusions(self, rhs_range.exclusions)
+                .try_set_range_exclusions(self, rhs_range.exclusions.clone())
                 .into_expr_err(loc);
             let _ = self.add_if_err(res);
         }
@@ -1308,7 +1323,7 @@ pub trait ContextBuilder:
                     .is_dyn_builtin(self)
                     .into_expr_err(loc)?
                 {
-                    if let Some(r) = next_arr.range(self).into_expr_err(loc)? {
+                    if let Some(r) = next_arr.ref_range(self).into_expr_err(loc)? {
                         let min = r.evaled_range_min(self).into_expr_err(loc)?;
                         let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
@@ -1380,9 +1395,6 @@ pub trait ContextBuilder:
 
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
-                // let old_depth = old_ctx.underlying(self).into_expr_err(loc)?.depth;
-                // let target_depth = ctx.underlying(self).into_expr_err(loc)?.depth;
-                // assert!(old_depth <= target_depth || old_ctx == ctx, "Inherit from child or sibling");
                 // get the previous version to remove and prevent spurious nodes
                 if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
                     let prev_version = prev.underlying(self).into_expr_err(loc)?;
@@ -1397,6 +1409,7 @@ pub trait ContextBuilder:
                 new_cvar.loc = Some(loc);
                 new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
                 if old_ctx != ctx {
+                    ctx.add_var(new_cvarnode.into(), self).into_expr_err(loc)?;
                     self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
                     self.add_edge(
                         new_cvarnode,

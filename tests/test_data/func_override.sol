@@ -1,4 +1,6 @@
-contract B {
+contract C {}
+
+contract B is C {
 	function a(uint256 x) internal virtual returns (uint256) {
 		return 200;
 	}

@@ -22,6 +22,7 @@ use std::collections::HashMap;
 pub enum GraphError {
     NodeConfusion(String),
     MaxStackDepthReached(String),
+    MaxStackWidthReached(String),
     ChildRedefinition(String),
     VariableUpdateInOldContext(String),
     DetachedVariable(String),
@@ -36,6 +37,7 @@ pub trait AnalyzerLike: GraphLike {
     fn builtin_fn_nodes_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
     fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx>;
     fn max_depth(&self) -> usize;
+    fn max_width(&self) -> usize;
     fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
     fn builtins(&self) -> &HashMap<Builtin, NodeIdx>;
     fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx>;
@@ -402,7 +404,7 @@ pub trait GraphLike {
                 &|_graph, (idx, node_ref)| {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
-                            let range_str = if let Some(r) = cvar.ty.range(self).unwrap() {
+                            let range_str = if let Some(r) = cvar.ty.ref_range(self).unwrap() {
                                 r.as_dot_str(self)
                                 // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
                             } else {
@@ -485,7 +487,7 @@ pub trait GraphLike {
                 &|_graph, (idx, node_ref)| {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
-                            let range_str = if let Some(r) = cvar.ty.range(self).unwrap() {
+                            let range_str = if let Some(r) = cvar.ty.ref_range(self).unwrap() {
                                 format!(
                                     "[{}, {}]",
                                     r.evaled_range_min(self)
@@ -634,6 +636,37 @@ pub trait Search: GraphLike {
             edges
                 .flat_map(|edge| {
                     self.search_children_exclude_via(edge.source(), edge_ty, exclude_edges)
+                })
+                .collect::<BTreeSet<NodeIdx>>(),
+        );
+        this_children
+    }
+
+    fn search_children_include_via(
+        &self,
+        start: NodeIdx,
+        edge_ty: &Edge,
+        include_edges: &[Edge],
+    ) -> BTreeSet<NodeIdx> {
+        let edges = self
+            .graph()
+            .edges_directed(start, Direction::Incoming)
+            .filter(|edge| include_edges.contains(edge.weight()));
+        let mut this_children: BTreeSet<NodeIdx> = edges
+            .clone()
+            .filter_map(|edge| {
+                if edge.weight() == edge_ty {
+                    Some(edge.source())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        this_children.extend(
+            edges
+                .flat_map(|edge| {
+                    self.search_children_include_via(edge.source(), edge_ty, include_edges)
                 })
                 .collect::<BTreeSet<NodeIdx>>(),
         );

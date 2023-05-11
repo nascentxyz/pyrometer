@@ -154,7 +154,7 @@ impl<T> StorageRangeQuery for T where T: VarBoundAnalyzer + Search + AnalyzerLik
 pub trait StorageRangeQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
     fn func_query(
-        &self,
+        &mut self,
         entry: NodeIdx,
         file_mapping: &'_ BTreeMap<usize, String>,
         report_config: ReportConfig,

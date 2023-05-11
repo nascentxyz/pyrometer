@@ -53,6 +53,8 @@ pub struct Analyzer {
     pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
     pub expr_errs: Vec<ExprErr>,
     pub max_depth: usize,
+    /// The maximum number of forks throughout the lifetime of the analysis.
+    pub max_width: usize,
 }
 
 impl Default for Analyzer {
@@ -73,7 +75,8 @@ impl Default for Analyzer {
             builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
             expr_errs: Default::default(),
-            max_depth: 100,
+            max_depth: 1024,
+            max_width: 2_i32.pow(14) as usize,
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -115,8 +118,14 @@ impl AnalyzerLike for Analyzer {
         self.max_depth
     }
 
+    fn max_width(&self) -> usize {
+        self.max_width
+    }
+
     fn add_expr_err(&mut self, err: ExprErr) {
-        self.expr_errs.push(err);
+        if !self.expr_errs.contains(&err) {
+            self.expr_errs.push(err);
+        }
     }
 
     fn expr_errs(&self) -> Vec<ExprErr> {

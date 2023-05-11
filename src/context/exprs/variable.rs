@@ -29,10 +29,9 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             ctx
         };
 
-        if let Ok(Some(cvar)) = ctx.var_by_name_or_recurse(self, &ident.name) {
+        if let Some(cvar) = ctx.var_by_name(self, &ident.name) {
             let cvar = cvar.latest_version(self);
             self.apply_to_edges(target_ctx, ident.loc, &|analyzer, edge_ctx, _loc| {
-                // println!("HERE, \ncvar ctx: {},\nctx: {},\nedge ctx: {},\ntarget ctx: {}", cvar.maybe_ctx(analyzer).unwrap().path(analyzer), ctx.path(analyzer), edge_ctx.path(analyzer), target_ctx.path(analyzer));
                 let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
                 edge_ctx
                     .push_expr(ExprRet::Single(var.into()), analyzer)
@@ -78,6 +77,8 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
             let new_cvarnode = self.add_node(Node::ContextVar(var));
 
+            ctx.add_var(new_cvarnode.into(), self)
+                .into_expr_err(ident.loc)?;
             self.add_edge(
                 new_cvarnode,
                 target_ctx,

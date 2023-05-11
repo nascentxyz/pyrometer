@@ -64,16 +64,16 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<(), ExprErr> {
-        println!(
-            "BIN OP: {:?} {} {:?}, assign: {assign}, unchecked: {}",
-            lhs_paths.debug_str(self),
-            op.to_string(),
-            rhs_paths.debug_str(self),
-            match op {
-                RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) => u,
-                _ => false,
-            }
-        );
+        // println!(
+        //     "BIN OP: {:?} {} {:?}, assign: {assign}, unchecked: {}",
+        //     lhs_paths.debug_str(self),
+        //     op.to_string(),
+        //     rhs_paths.debug_str(self),
+        //     match op {
+        //         RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) => u,
+        //         _ => false,
+        //     }
+        // );
         match (lhs_paths, rhs_paths) {
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
@@ -204,6 +204,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .into_expr_err(loc)?;
 
             let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
+            ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
             self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
             ContextVarNode::from(new_var)
         };
@@ -287,7 +288,10 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
                         ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
 
-                        let range = tmp_rhs.range(self).into_expr_err(loc)?.expect("No range?");
+                        let range = tmp_rhs
+                            .ref_range(self)
+                            .into_expr_err(loc)?
+                            .expect("No range?");
                         if range.min_is_negative(self).into_expr_err(loc)? {
                             let mut range_excls = range.range_exclusions();
                             let excl = Elem::from(Concrete::from(I256::zero()));
@@ -678,10 +682,10 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         let func = SolcRange::dyn_fn_from_op(op);
         let new_range = func(lhs_range, new_rhs);
         new_lhs
-            .set_range_min(self, new_range.range_min())
+            .set_range_min(self, new_range.range_min().into_owned())
             .into_expr_err(loc)?;
         new_lhs
-            .set_range_max(self, new_range.range_max())
+            .set_range_max(self, new_range.range_max().into_owned())
             .into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
@@ -690,9 +694,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             if let (Some(old_lhs_range), Some(rhs_range)) = (
                 lhs_cvar
                     .latest_version(self)
-                    .range(self)
+                    .ref_range(self)
                     .into_expr_err(loc)?,
-                new_rhs.range(self).into_expr_err(loc)?,
+                new_rhs.ref_range(self).into_expr_err(loc)?,
             ) {
                 let zero = Elem::from(Concrete::from(U256::zero()));
                 let zero_range = SolcRange::new(zero.clone(), zero.clone(), vec![]);

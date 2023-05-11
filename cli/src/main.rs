@@ -154,8 +154,8 @@ fn main() {
             show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: true,
-            show_reverts: false,
-            show_unreachables: false,
+            show_reverts: true,
+            show_unreachables: true,
         },
     };
 
@@ -214,7 +214,7 @@ fn main() {
                         .unwrap()
                         .starts_with(analyze_for)
                 }) {
-                    if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+                    if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
                         // println!("{:#?}", analyzer.call_trace(ctx));
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
@@ -222,7 +222,7 @@ fn main() {
                         analysis.print_reports(&mut source_map, &analyzer);
                     }
                 }
-            } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+            } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
                 // ctx.deps_dag(&analyzer);
                 // analyzer
                 //     .call_trace(ctx)
@@ -239,20 +239,25 @@ fn main() {
         // println!("specified contracts: {:?}", all_contracts);
         all_contracts
             .iter()
-            .filter(|contract| args.contracts.contains(&contract.name(&analyzer).unwrap()))
+            .filter(|contract| {
+                let name: String = contract.name(&analyzer).unwrap();
+                args.contracts.contains(&name)
+            })
+            .collect::<Vec<_>>()
+            .iter()
             .for_each(|contract| {
                 let funcs = contract.funcs(&analyzer);
                 for func in funcs.into_iter() {
                     if !args.funcs.is_empty() {
                         if args.funcs.contains(&func.name(&analyzer).unwrap()) {
-                            let ctx = func.body_ctx(&analyzer);
+                            let ctx = func.body_ctx(&mut analyzer);
                             let analysis = analyzer
                                 .bounds_for_all(&file_mapping, ctx, config)
                                 .as_cli_compat(&file_mapping);
                             analysis.print_reports(&mut source_map, &analyzer);
                         }
                     } else {
-                        let ctx = func.body_ctx(&analyzer);
+                        let ctx = func.body_ctx(&mut analyzer);
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);

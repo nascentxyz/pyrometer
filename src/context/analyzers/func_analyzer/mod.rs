@@ -66,7 +66,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                     .iter()
                     .enumerate()
                     .filter_map(|(i, (name, cvar))| {
-                        let range = cvar.range(analyzer).unwrap()?;
+                        let range = cvar.ref_range(analyzer).unwrap()?;
                         let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
                         let ret = parts.into_iter().fold(
                             format!("{}. {name}", i + 1),
@@ -184,7 +184,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                                         .into_iter()
                                         .filter_map(|(loc, var)| {
                                             // println!("return loc: {loc:?}");
-                                            let range = var.range(analyzer).unwrap()?;
+                                            let range = var.ref_range(analyzer).unwrap()?;
                                             let (parts, _unsat) =
                                                 range_parts(analyzer, &self.report_config, &range);
                                             Some(
@@ -239,7 +239,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                             .into_iter()
                             .filter_map(|(loc, var)| {
                                 // println!("return loc: {loc:?}");
-                                let range = var.range(analyzer).unwrap()?;
+                                let range = var.ref_range(analyzer).unwrap()?;
                                 let (parts, _unsat) =
                                     range_parts(analyzer, &self.report_config, &range);
                                 Some(
@@ -303,6 +303,7 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
         let lineage_analyses = edges
             .iter()
             .filter_map(|fork| {
+                // println!("{}, {}", fork.path(self), fork.underlying(self).unwrap().width);
                 if !report_config.show_unreachables
                     && matches!(
                         fork.underlying(self).unwrap().killed,
@@ -322,11 +323,11 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                 let mut parents = fork.parent_list(self).unwrap();
                 parents.reverse();
                 parents.push(*fork);
-                let mut vars = ctx.vars(self);
+                let mut vars = ctx.vars(self).values().collect::<Vec<_>>();
                 vars.extend(
                     parents
                         .iter()
-                        .flat_map(|parent| parent.vars(self))
+                        .flat_map(|parent| parent.vars(self).values().collect::<Vec<_>>())
                         .collect::<Vec<_>>(),
                 );
                 vars.sort_by_key(|a| a.name(self));

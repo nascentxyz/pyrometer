@@ -5,7 +5,7 @@ use crate::AsDotStr;
 use crate::Edge;
 use crate::FunctionNode;
 use crate::Node;
-use crate::NodeIdx;
+use crate::{context::ContextEdge, NodeIdx};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
 
 /// An index in the graph that references a [`Contract`] node
@@ -39,7 +39,11 @@ impl ContractNode {
     }
 
     pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
-        let all_contracts = analyzer.search_children(analyzer.entry(), &Edge::Contract);
+        let all_contracts = analyzer.search_children_include_via(
+            analyzer.entry(),
+            &Edge::Contract,
+            &[Edge::InheritedContract],
+        );
         // we unwrap the name call because we dont really wanna bubble up thru an iteration
         inherits.iter().for_each(|inherited_name| {
             let found = all_contracts
@@ -159,7 +163,7 @@ impl Contract {
             let inherited_name = &base.name.identifiers[0].name;
             let mut found = false;
             for contract in analyzer
-                .search_children(source, &Edge::Contract)
+                .search_children_exclude_via(source, &Edge::Contract, &[Edge::Func])
                 .into_iter()
             {
                 let name = ContractNode::from(contract).name(analyzer).unwrap();
@@ -172,7 +176,10 @@ impl Contract {
 
             if !found {
                 for entry in imports.iter().filter_map(|import| import.0) {
-                    for contract in analyzer.search_children(entry, &Edge::Contract).into_iter() {
+                    for contract in analyzer
+                        .search_children_exclude_via(entry, &Edge::Contract, &[Edge::Func])
+                        .into_iter()
+                    {
                         let name = ContractNode::from(contract).name(analyzer).unwrap();
                         if &name == inherited_name {
                             inherits.push(ContractNode::from(contract));

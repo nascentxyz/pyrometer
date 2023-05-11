@@ -104,6 +104,15 @@ impl ModifierState {
     }
 }
 
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+pub struct ContextCache {
+    pub vars: BTreeMap<String, ContextVarNode>,
+    pub visible_funcs: Option<Vec<FunctionNode>>,
+    pub first_ancestor: Option<ContextNode>,
+    pub associated_source: Option<NodeIdx>,
+    pub associated_contract: Option<ContractNode>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The function associated with this context
@@ -112,6 +121,7 @@ pub struct Context {
     pub modifier_state: Option<ModifierState>,
     /// An optional parent context (i.e. this context is a fork or subcontext of another previous context)
     pub parent_ctx: Option<ContextNode>,
+    pub returning_ctx: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
     pub ctx_deps: BTreeMap<String, ContextVarNode>,
@@ -136,10 +146,16 @@ pub struct Context {
     pub ret: Vec<(Loc, ContextVarNode)>,
     /// Depth tracker
     pub depth: usize,
+    /// Width tracker
+    pub width: usize,
     pub lhs_expr: Option<ExprRet>,
     pub rhs_expr: Option<ExprRet>,
     pub expr_ret_stack: Option<ExprRet>,
     pub unchecked: bool,
+    pub number_of_live_edges: usize,
+
+    // caching related things
+    pub cache: ContextCache,
 }
 
 impl Context {
@@ -148,6 +164,7 @@ impl Context {
         Context {
             parent_fn,
             parent_ctx: None,
+            returning_ctx: None,
             path: fn_name,
             tmp_var_ctr: 0,
             killed: None,
@@ -160,10 +177,13 @@ impl Context {
             loc,
             modifier_state: None,
             depth: 0,
+            width: 0,
             expr_ret_stack: None,
             lhs_expr: None,
             rhs_expr: None,
             unchecked: false,
+            number_of_live_edges: 0,
+            cache: Default::default(),
         }
     }
 
@@ -175,11 +195,14 @@ impl Context {
         fork_expr: Option<&str>,
         fn_call: Option<FunctionNode>,
         fn_ext: bool,
-        analyzer: &impl AnalyzerLike,
+        analyzer: &mut impl AnalyzerLike,
         modifier_state: Option<ModifierState>,
     ) -> Result<Self, GraphError> {
         let mut depth =
             parent_ctx.underlying(analyzer)?.depth + if fork_expr.is_some() { 0 } else { 1 };
+
+        let mut width =
+            parent_ctx.underlying(analyzer)?.width + if fork_expr.is_some() { 1 } else { 0 };
 
         if analyzer.max_depth() < depth {
             return Err(GraphError::MaxStackDepthReached(format!(
@@ -187,6 +210,16 @@ impl Context {
                 depth - 1
             )));
         }
+
+        let tw = parent_ctx.total_width(analyzer)?;
+        println!("total width: {tw}");
+        if analyzer.max_width() < tw {
+            return Err(GraphError::MaxStackWidthReached(format!(
+                "Stack width limit reached: {}",
+                width - 1
+            )));
+        }
+
         let (fn_name, ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
             if fn_ext {
                 (fn_call.name(analyzer)?, Some(fn_call), None)
@@ -215,10 +248,13 @@ impl Context {
 
         let parent_fn = parent_ctx.associated_fn(analyzer)?;
 
+        parent_ctx.underlying_mut(analyzer)?.number_of_live_edges += 1;
+
         tracing::trace!("new subcontext path: {path}, depth: {depth}");
         Ok(Context {
             parent_fn,
             parent_ctx: Some(parent_ctx),
+            returning_ctx,
             path,
             is_fork: fork_expr.is_some(),
             fn_call,
@@ -231,6 +267,7 @@ impl Context {
             loc,
             modifier_state,
             depth,
+            width,
             expr_ret_stack: if fork_expr.is_some() {
                 parent_ctx.underlying(analyzer)?.expr_ret_stack.clone()
             } else if let Some(ret_ctx) = returning_ctx {
@@ -244,6 +281,22 @@ impl Context {
                 parent_ctx.underlying(analyzer)?.unchecked
             } else {
                 false
+            },
+            number_of_live_edges: 0,
+            cache: ContextCache {
+                vars: Default::default(),
+                visible_funcs: if fork_expr.is_some() {
+                    parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
+                } else {
+                    None
+                },
+                first_ancestor: if fork_expr.is_some() {
+                    parent_ctx.underlying(analyzer)?.cache.first_ancestor
+                } else {
+                    None
+                },
+                associated_source: None,
+                associated_contract: None,
             },
         })
     }
@@ -309,6 +362,40 @@ impl ContextNode {
     //         }
     //     }).collect()
     // }
+
+    pub fn add_var(
+        &self,
+        var: ContextVarNode,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        let name = var.name(analyzer)?;
+        let vars = &mut self.underlying_mut(analyzer)?.cache.vars;
+        vars.insert(name, var);
+        Ok(())
+    }
+
+    pub fn first_ancestor(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<ContextNode, GraphError> {
+        if let Some(first_ancestor) = self.underlying(analyzer)?.cache.first_ancestor {
+            Ok(first_ancestor)
+        } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+            let first = parent.first_ancestor(analyzer)?;
+            self.underlying_mut(analyzer)?.cache.first_ancestor = Some(first);
+            Ok(first)
+        } else {
+            Ok(*self)
+        }
+    }
+
+    pub fn total_width(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<usize, GraphError> {
+        self.first_ancestor(analyzer)?
+            .number_of_live_edges(analyzer)
+    }
 
     pub fn unchecked(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.unchecked)
@@ -523,7 +610,7 @@ impl ContextNode {
     pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)
             .iter()
-            .flat_map(|var| var.return_assignments(analyzer))
+            .flat_map(|(_name, var)| var.return_assignments(analyzer))
             .collect()
     }
 
@@ -531,7 +618,7 @@ impl ContextNode {
         // println!("vars_assigned_from_ext_fn_ret: {}", self.path(analyzer));
         self.local_vars(analyzer)
             .iter()
-            .flat_map(|var| var.ext_return_assignments(analyzer))
+            .flat_map(|(_name, var)| var.ext_return_assignments(analyzer))
             .collect()
     }
 
@@ -574,7 +661,7 @@ impl ContextNode {
     /// Gets the associated contract for the function for the context
     pub fn associated_contract(
         &self,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<ContractNode, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -585,20 +672,33 @@ impl ContextNode {
     /// Tries to get the associated function for the context
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ContractNode>, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
             .maybe_associated_contract(analyzer))
     }
 
-    pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
+    pub fn associated_source(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> NodeIdx {
         let context = self.underlying(analyzer).unwrap();
-        if let Some(parent_ctx) = context.parent_ctx {
-            parent_ctx.associated_source(analyzer)
+        if let Some(src) = context.cache.associated_source {
+            src
+        } else if let Some(parent_ctx) = context.parent_ctx {
+            let src = parent_ctx.associated_source(analyzer);
+            self.underlying_mut(analyzer)
+                .unwrap()
+                .cache
+                .associated_source = Some(src);
+            src
         } else {
             match analyzer.search_for_ancestor(self.0.into(), &Edge::Part) {
-                Some(src) => src,
+                Some(src) => {
+                    self.underlying_mut(analyzer)
+                        .unwrap()
+                        .cache
+                        .associated_source = Some(src);
+                    src
+                }
                 None => panic!(
                     "No associated source for context? {:#?}",
                     analyzer.node(*self)
@@ -609,7 +709,7 @@ impl ContextNode {
 
     pub fn associated_source_unit_part(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<NodeIdx, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -619,7 +719,7 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_modifiers(
         &self,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
@@ -635,8 +735,11 @@ impl ContextNode {
             );
 
             // extend with inherited functions
-            let inherited_contracts =
-                analyzer.search_children(contract.0.into(), &Edge::InheritedContract);
+            let inherited_contracts = analyzer.search_children_exclude_via(
+                contract.0.into(),
+                &Edge::InheritedContract,
+                &[Edge::Func],
+            );
             // println!("inherited: [{:#?}]", inherited_contracts.iter().map(|i| ContractNode::from(*i).name(analyzer)).collect::<Vec<_>>());
             modifiers.extend(
                 inherited_contracts
@@ -681,9 +784,12 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_funcs(
         &self,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
+        if let Some(vis) = &self.underlying(analyzer)?.cache.visible_funcs {
+            return Ok(vis.clone());
+        }
         if let Some(contract) = self.maybe_associated_contract(analyzer)? {
             let mut funcs = contract.funcs(analyzer);
             // extend with free floating functions
@@ -715,7 +821,7 @@ impl ContextNode {
                 let entry = mapping.entry(func.name(analyzer)?).or_default();
                 entry.insert(*func);
             }
-            mapping
+            let funcs: Vec<_> = mapping
                 .into_values()
                 .map(|funcs_set| {
                     let as_vec = funcs_set.iter().collect::<Vec<_>>();
@@ -729,30 +835,48 @@ impl ContextNode {
                         Ok(*as_vec[0])
                     }
                 })
-                .collect()
+                .collect::<Result<Vec<_>, _>>()?;
+            self.underlying_mut(analyzer)?.cache.visible_funcs = Some(funcs.clone());
+            Ok(funcs)
         } else {
             // we are in a free floating function, only look at free floating functions
-            Ok(analyzer
+            let funcs = analyzer
                 .search_children_depth(analyzer.entry(), &Edge::Func, 2, 0)
                 .into_iter()
                 .map(FunctionNode::from)
-                .collect::<Vec<_>>())
+                .collect::<Vec<_>>();
+
+            self.underlying_mut(analyzer)?.cache.visible_funcs = Some(funcs.clone());
+            Ok(funcs)
         }
     }
 
     /// Gets all visible functions
-    pub fn source_funcs(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
+    pub fn source_funcs(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Vec<FunctionNode> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         analyzer
-            .search_children(source, &Edge::Func)
+            .search_children_exclude_via(
+                source,
+                &Edge::Func,
+                &[
+                    Edge::Context(ContextEdge::Context),
+                    Edge::Context(ContextEdge::Variable),
+                ],
+            )
             .into_iter()
             .map(FunctionNode::from)
             .collect::<Vec<_>>()
     }
 
     /// Gets all visible structs
-    pub fn visible_structs(&self, analyzer: &impl GraphLike) -> Vec<StructNode> {
+    pub fn visible_structs(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Vec<StructNode> {
         // TODO: filter privates
         let source = self.associated_source(analyzer);
         analyzer
@@ -778,7 +902,7 @@ impl ContextNode {
     pub fn is_fn_ext(
         &self,
         fn_node: FunctionNode,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<bool, GraphError> {
         match fn_node.maybe_associated_contract(analyzer) {
             None => Ok(false),
@@ -830,20 +954,12 @@ impl ContextNode {
 
     /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
-        analyzer
-            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
-            .into_iter()
-            .filter_map(|cvar_node| {
-                let cvar_node = ContextVarNode::from(cvar_node);
-                let cvar = cvar_node.underlying(analyzer).unwrap();
-                if cvar.name == name {
-                    Some(cvar_node)
-                } else {
-                    None
-                }
-            })
-            .take(1)
-            .next()
+        self.underlying(analyzer)
+            .unwrap()
+            .cache
+            .vars
+            .get(name)
+            .copied()
     }
 
     pub fn var_by_name_or_recurse(
@@ -851,27 +967,9 @@ impl ContextNode {
         analyzer: &impl GraphLike,
         name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
-        if let Some(var) = analyzer
-            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
-            .into_iter()
-            .filter_map(|cvar_node| {
-                let cvar_node = ContextVarNode::from(cvar_node);
-                let cvar = cvar_node.underlying(analyzer).unwrap();
-                if cvar.name == name {
-                    Some(cvar_node)
-                } else {
-                    None
-                }
-            })
-            .take(1)
-            .next()
-        {
+        if let Some(var) = self.var_by_name(analyzer, name) {
             Ok(Some(var))
-        } else if let Some(parent) = self.ancestor_in_fn(
-            analyzer,
-            &self.path(analyzer),
-            self.associated_fn(analyzer)?,
-        )? {
+        } else if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
             parent.var_by_name_or_recurse(analyzer, name)
         } else {
             Ok(None)
@@ -881,14 +979,19 @@ impl ContextNode {
     pub fn ancestor_in_fn(
         &self,
         analyzer: &impl GraphLike,
-        start_path: &str,
         associated_fn: FunctionNode,
     ) -> Result<Option<ContextNode>, GraphError> {
+        if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
+            if ret.associated_fn(analyzer)? == associated_fn {
+                return Ok(Some(ret));
+            }
+        }
+
         if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
             if parent.associated_fn(analyzer)? == associated_fn {
                 Ok(Some(parent))
             } else {
-                parent.ancestor_in_fn(analyzer, start_path, associated_fn)
+                parent.ancestor_in_fn(analyzer, associated_fn)
             }
         } else {
             Ok(None)
@@ -896,28 +999,15 @@ impl ContextNode {
     }
 
     /// Gets all variables associated with a context
-    pub fn vars(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
-        analyzer
-            .search_children_depth(self.0.into(), &Edge::Context(ContextEdge::Variable), 1, 0)
-            .into_iter()
-            .map(ContextVarNode::from)
-            .collect()
+    pub fn vars<'a>(&self, analyzer: &'a impl GraphLike) -> &'a BTreeMap<String, ContextVarNode> {
+        &self.underlying(analyzer).unwrap().cache.vars
     }
 
     /// Gets all variables associated with a context
-    pub fn local_vars(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
-        // analyzer
-        //     .graph()
-        //     .edges_directed(self.0.into(), Direction::Incoming)
-        //     .filter_map(|edge| {
-        //         if edge.weight() == &Edge::Context(ContextEdge::Variable) {
-        //             Some(edge.source())
-        //         } else {
-        //             None
-        //         }
-        //     })
-        //     .map(ContextVarNode::from)
-        //     .collect()
+    pub fn local_vars<'a>(
+        &self,
+        analyzer: &'a impl GraphLike,
+    ) -> &'a BTreeMap<String, ContextVarNode> {
         self.vars(analyzer)
     }
 
@@ -972,12 +1062,72 @@ impl ContextNode {
 
     /// Returns tail contexts associated with the context
     pub fn live_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
-        let edges = self.all_edges(analyzer)?;
-        // println!("\nall edges: [\n{}]\n", edges.iter().map(|i| format!("   {},\n", i.path(analyzer))).collect::<Vec<_>>().join(""));
-        Ok(edges
-            .into_iter()
-            .filter(|edge| !edge.killed_or_ret(analyzer).unwrap())
-            .collect())
+        if let Some(child) = self.underlying(analyzer)?.child {
+            let mut lineage = vec![];
+            match child {
+                CallFork::Call(call) => {
+                    let call_edges = call.live_edges(analyzer)?;
+                    if call_edges.is_empty() && !call.is_ended(analyzer)? {
+                        lineage.push(call)
+                    } else {
+                        lineage.extend(call_edges);
+                    }
+                }
+                CallFork::Fork(w1, w2) => {
+                    let fork_edges = w1.live_edges(analyzer)?;
+                    if fork_edges.is_empty() && !w1.is_ended(analyzer)? {
+                        lineage.push(w1)
+                    } else {
+                        lineage.extend(fork_edges);
+                    }
+
+                    let fork_edges = w2.live_edges(analyzer)?;
+                    if fork_edges.is_empty() && !w2.is_ended(analyzer)? {
+                        lineage.push(w2)
+                    } else {
+                        lineage.extend(fork_edges);
+                    }
+                }
+            }
+            Ok(lineage)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    pub fn number_of_live_edges(&self, analyzer: &impl GraphLike) -> Result<usize, GraphError> {
+        Ok(self.underlying(analyzer)?.number_of_live_edges)
+        // if let Some(child) = self.underlying(analyzer)?.child {
+        //     let mut edges = 0;
+        //     match child {
+        //         CallFork::Call(call) => {
+        //             let call_edges = call.number_of_live_edges(analyzer)?;
+        //             if call_edges == 0 && !call.is_ended(analyzer)? {
+        //                 edges += 1;
+        //             } else {
+        //                 edges += call_edges;
+        //             }
+        //         }
+        //         CallFork::Fork(w1, w2) => {
+        //             let fork_edges = w1.number_of_live_edges(analyzer)?;
+        //             if fork_edges == 0 && !w1.is_ended(analyzer)? {
+        //                 edges += 1;
+        //             } else {
+        //                 edges += fork_edges;
+        //             }
+
+        //             let fork_edges = w2.number_of_live_edges(analyzer)?;
+        //             if fork_edges == 0 && !w2.is_ended(analyzer)? {
+        //                 edges += 1;
+        //             } else {
+        //                 edges += fork_edges;
+        //             }
+        //         }
+        //     }
+        //     Ok(edges)
+        // } else {
+        //     Ok(0)
+        // }
     }
 
     /// Returns tail contexts associated with the context
@@ -1097,6 +1247,17 @@ impl ContextNode {
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
+        if let Some(child) = self.underlying(analyzer)?.child {
+            match child {
+                CallFork::Fork(w1, w2) => {
+                    w1.propogate_end(analyzer)?;
+                    w2.propogate_end(analyzer)?;
+                }
+                CallFork::Call(c) => {
+                    c.propogate_end(analyzer)?;
+                }
+            }
+        }
         let context = self.underlying_mut(analyzer)?;
         context.delete_child();
         Ok(())
@@ -1132,6 +1293,8 @@ impl ContextNode {
         if let Some(parent_ctx) = parent {
             parent_ctx.end_if_all_forks_ended(analyzer, kill_loc, kill_kind)?;
         }
+
+        self.propogate_end(analyzer)?;
 
         Ok(())
     }
@@ -1265,6 +1428,22 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.ret.push((ret_stmt_loc, ret));
+        self.propogate_end(analyzer)?;
+        Ok(())
+    }
+
+    pub fn propogate_end(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        let underlying = &mut self.underlying_mut(analyzer)?;
+        let curr_live = underlying.number_of_live_edges;
+        underlying.number_of_live_edges = 0;
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+            let live_edges = &mut parent.underlying_mut(analyzer)?.number_of_live_edges;
+            *live_edges = live_edges.saturating_sub(1 + curr_live);
+            parent.propogate_end(analyzer)?;
+        }
         Ok(())
     }
 
@@ -1325,7 +1504,7 @@ impl ContextNode {
                 &|_graph, (idx, node_ref)| {
                     let inner = match g.node(*node_ref) {
                         Node::ContextVar(cvar) => {
-                            let range_str = if let Some(r) = cvar.ty.range(g).unwrap() {
+                            let range_str = if let Some(r) = cvar.ty.ref_range(g).unwrap() {
                                 r.as_dot_str(g)
                                 // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
                             } else {

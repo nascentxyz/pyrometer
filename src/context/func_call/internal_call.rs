@@ -99,6 +99,7 @@ pub trait InternalFuncCaller:
                 let var =
                     ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
                 let cvar = self.add_node(Node::ContextVar(var));
+                ctx.add_var(cvar.into(), self).into_expr_err(*loc)?;
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
                 strukt.fields(self).iter().try_for_each(|field| {
@@ -115,6 +116,7 @@ pub trait InternalFuncCaller:
                     let fc_node = self.add_node(Node::ContextVar(field_cvar));
                     self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
                     self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.add_var(fc_node.into(), self).into_expr_err(*loc)?;
                     let field_as_ret = ExprRet::Single(fc_node);
                     let input = input_args
                         .iter()
@@ -137,10 +139,8 @@ pub trait InternalFuncCaller:
                     })
                 })?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
-                    println!("ADDING STRUCT TO CTX STACK");
                     ctx.push_expr(ExprRet::Single(cvar), analyzer)
                         .into_expr_err(*loc)?;
-                    println!("ADDED TO {}", ctx.path(analyzer));
                     Ok(())
                 })?;
                 Ok(())

@@ -78,18 +78,18 @@ Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop i
         - [x] Call modifier at start of function analysis
         - [x] Call modifiers when calling another function from within a function
         - [x] Handle virtual/overriding
-    - [ ] Consider `unchecked` math
-        - [ ] Keep uncheckedness for the entire block
-        - [ ] Pass uncheckedness into `bin_op`
-    - [ ] Support `assembly`
+    - [x] Consider `unchecked` math
+        - [x] Keep uncheckedness for the entire block
+        - [x] Pass uncheckedness into `bin_op`
+    - [x] Support `assembly`
     - [ ] Improve Support for `for/while` loops
         - [ ] Be smarter about the variables by looking at max num of iters and determine if we should just unroll & execute it
         - [ ] Take a guess at the gas usage inside the body of the for-loop and try to set upper bounds
     - [x] Support `++i/i++/--i/i++`
     - [x] Support low-level call
 - [ ] Analyzers
-    - [ ] Bound Analyzer
-        - [ ] Cleanup CLI output
+    - [x] Bound Analyzer
+        - [x] Cleanup CLI output
         - [x] Fix multiple calls to single function that don't show
     - [ ] Taint Analyzer
     - [ ] Gas Optimization Analyzer

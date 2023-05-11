@@ -25,3 +25,7 @@ ariadne = {git = "https://github.com/brockelmore/ariadne"}
 
 [profile.release]
 debug = true
+
+[profile.dev]
+opt-level = 1  # Enable some optimizations like tail call
+inline = true

@@ -279,6 +279,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             .into_expr_err(loc)?,
                     );
                     let node = analyzer.add_node(tmp_true);
+                    ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
                     analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                     let rhs_paths = ExprRet::Single(node);
 
@@ -309,6 +310,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             .into_expr_err(loc)?,
                     );
                     let node = analyzer.add_node(tmp_true);
+                    ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
                     analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                     let rhs_paths = ExprRet::Single(node);
                     analyzer.handle_require_inner(
@@ -485,11 +487,13 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
                 // rhs_range.update_deps(new_rhs, ctx, self);
-                // println!("{lhs_range:#?} {:#?} {:#?}, {rhs_range:?} {:#?} {:#?}", lhs_range.evaled_range_min(self), lhs_range.evaled_range_max(self), rhs_range.evaled_range_min(self), rhs_range.evaled_range_max(self));
+                // println!("{lhs_range:#?} {:#?} {:#?}, {rhs_range:?} {:#?} {:#?}", lhs_range.evaled_range_min(self), lhs_range.evaled_range_max(self));
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
+                // println!("CONST: {} CONST: {}, {} {}", lhs_is_const, rhs_is_const, new_lhs.display_name(self).into_expr_err(loc)?, new_rhs.display_name(self).into_expr_err(loc)?);
                 match (lhs_is_const, rhs_is_const) {
                     (true, true) => {
+                        // println!("CONST CONST: {} {}", new_lhs.display_name(self).into_expr_err(loc)?, new_rhs.display_name(self).into_expr_err(loc)?);
                         if self.const_killable(op, lhs_range, rhs_range) {
                             tracing::trace!("const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -535,9 +539,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
 
             if let Some(backing_arr) = new_lhs.len_var_to_array(self).into_expr_err(loc)? {
-                if let Some(r) = backing_arr.range(self).into_expr_err(loc)? {
-                    let min = r.range_min();
-                    let max = r.range_max();
+                if let Some(r) = backing_arr.ref_range(self).into_expr_err(loc)? {
+                    let min = r.range_min().into_owned();
+                    let max = r.range_max().into_owned();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
@@ -563,7 +567,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         .is_dyn_builtin(self)
                         .into_expr_err(loc)?
                     {
-                        if let Some(r) = next_arr.range(self).into_expr_err(loc)? {
+                        if let Some(r) = next_arr.ref_range(self).into_expr_err(loc)? {
                             let min = r.evaled_range_min(self).into_expr_err(loc)?;
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
@@ -592,9 +596,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
 
             if let Some(backing_arr) = new_rhs.len_var_to_array(self).into_expr_err(loc)? {
-                if let Some(r) = backing_arr.range(self).into_expr_err(loc)? {
-                    let min = r.range_min();
-                    let max = r.range_max();
+                if let Some(r) = backing_arr.ref_range(self).into_expr_err(loc)? {
+                    let min = r.range_min().into_owned();
+                    let max = r.range_max().into_owned();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
@@ -640,6 +644,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             };
 
             let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+            ctx.add_var(cvar, self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
             tmp_cvar = Some(cvar);
@@ -664,7 +669,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
                 self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)?;
             } else {
-                self.uninvertable_range_recursion(tmp, new_lhs, new_rhs, loc, ctx);
+                match tmp.op {
+                    RangeOp::Not => {}
+                    _ => {
+                        self.uninvertable_range_recursion(tmp, new_lhs, new_rhs, loc, ctx);
+                    }
+                }
             }
         }
 
@@ -742,6 +752,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 if !nonconst_range.contains_elem(&elem, self) {
                     return true;
                 }
+                // println!("contained: {:?} {:?}", const_var.display_name(self), nonconst_var.display_name(self));
                 // if its contained, we can set the min & max to it
                 nonconst_var.set_range_min(self, elem.clone()).unwrap();
                 nonconst_var.set_range_max(self, elem).unwrap();
@@ -765,7 +776,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         panic!("min: {:?}, max: {:?}", nonconst_range.evaled_range_min(self), nonconst_range.evaled_range_max(self));
                     };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
-                    let min = nonconst_range.range_min() + Elem::from(one);
+                    let min = nonconst_range.range_min().into_owned() + Elem::from(one);
                     nonconst_var.set_range_min(self, min).unwrap();
                 } else if let Some(std::cmp::Ordering::Equal) = nonconst_range
                     .evaled_range_max(self)
@@ -779,7 +790,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         .maybe_concrete()
                         .expect("Was not concrete");
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
-                    let max = nonconst_range.range_max() - Elem::from(one);
+                    let max = nonconst_range.range_max().into_owned() - Elem::from(one);
                     nonconst_var.set_range_max(self, max).unwrap();
                 } else {
                     // just add as an exclusion
@@ -807,7 +818,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let max_conc = max.maybe_concrete().expect("Was not concrete");
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
                 nonconst_var
-                    .set_range_min(self, (elem + one.into()).max(nonconst_range.range_min()))
+                    .set_range_min(
+                        self,
+                        (elem + one.into()).max(nonconst_range.range_min().into_owned()),
+                    )
                     .unwrap();
                 false
             }
@@ -826,7 +840,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 nonconst_var
-                    .set_range_min(self, elem.max(nonconst_range.range_min()))
+                    .set_range_min(self, elem.max(nonconst_range.range_min().into_owned()))
                     .unwrap();
                 false
             }
@@ -847,7 +861,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
                 nonconst_var
-                    .set_range_max(self, (elem - one.into()).min(nonconst_range.range_max()))
+                    .set_range_max(
+                        self,
+                        (elem - one.into()).min(nonconst_range.range_max().into_owned()),
+                    )
                     .unwrap();
                 false
             }
@@ -864,7 +881,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 nonconst_var
-                    .set_range_max(self, elem.min(nonconst_range.range_max()))
+                    .set_range_max(self, elem.min(nonconst_range.range_max().into_owned()))
                     .unwrap();
                 false
             }
@@ -898,11 +915,15 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 {
                     Some(Ordering::Greater) => {
                         // take lhs range min as its tigher
-                        new_rhs.set_range_min(self, lhs_range.range_min()).unwrap();
+                        new_rhs
+                            .set_range_min(self, lhs_range.range_min().into_owned())
+                            .unwrap();
                     }
                     Some(Ordering::Less) => {
                         // take rhs range min as its tigher
-                        new_lhs.set_range_min(self, rhs_range.range_min()).unwrap();
+                        new_lhs
+                            .set_range_min(self, rhs_range.range_min().into_owned())
+                            .unwrap();
                     }
                     _ => {
                         // equal or not comparable - both keep their minimums
@@ -917,11 +938,15 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 {
                     Some(Ordering::Less) => {
                         // take lhs range min as its tigher
-                        new_rhs.set_range_max(self, lhs_range.range_max()).unwrap();
+                        new_rhs
+                            .set_range_max(self, lhs_range.range_max().into_owned())
+                            .unwrap();
                     }
                     Some(Ordering::Greater) => {
                         // take rhs range min as its tigher
-                        new_lhs.set_range_max(self, rhs_range.range_max()).unwrap();
+                        new_lhs
+                            .set_range_max(self, rhs_range.range_max().into_owned())
+                            .unwrap();
                     }
                     _ => {
                         // equal or not comparable - both keep their maximums
@@ -966,11 +991,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 new_lhs
                     .set_range_min(
                         self,
-                        (rhs_elem + one.clone().into()).max(lhs_range.range_min()),
+                        (rhs_elem + one.clone().into()).max(lhs_range.range_min().into_owned()),
                     )
                     .unwrap();
                 new_rhs
-                    .set_range_max(self, (lhs_elem - one.into()).min(rhs_range.range_max()))
+                    .set_range_max(
+                        self,
+                        (lhs_elem - one.into()).min(rhs_range.range_max().into_owned()),
+                    )
                     .unwrap();
                 false
             }
@@ -990,10 +1018,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 new_lhs
-                    .set_range_min(self, rhs_elem.max(lhs_range.range_min()))
+                    .set_range_min(self, rhs_elem.max(lhs_range.range_min().into_owned()))
                     .unwrap();
                 new_rhs
-                    .set_range_max(self, lhs_elem.min(rhs_range.range_max()))
+                    .set_range_max(self, lhs_elem.min(rhs_range.range_max().into_owned()))
                     .unwrap();
                 false
             }
@@ -1020,11 +1048,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 new_lhs
                     .set_range_max(
                         self,
-                        (rhs_elem - one.clone().into()).min(lhs_range.range_max()),
+                        (rhs_elem - one.clone().into()).min(lhs_range.range_max().into_owned()),
                     )
                     .unwrap();
                 new_rhs
-                    .set_range_min(self, (lhs_elem + one.into()).max(rhs_range.range_min()))
+                    .set_range_min(
+                        self,
+                        (lhs_elem + one.into()).max(rhs_range.range_min().into_owned()),
+                    )
                     .unwrap();
                 false
             }
@@ -1042,10 +1073,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 new_lhs
-                    .set_range_max(self, rhs_elem.min(lhs_range.range_max()))
+                    .set_range_max(self, rhs_elem.min(lhs_range.range_max().into_owned()))
                     .unwrap();
                 new_rhs
-                    .set_range_min(self, lhs_elem.max(rhs_range.range_min()))
+                    .set_range_min(self, lhs_elem.max(rhs_range.range_min().into_owned()))
                     .unwrap();
                 false
             }
@@ -1066,7 +1097,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             let new_underlying_lhs = self
                 .advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx)
                 .unwrap();
-            if let Some(lhs_range) = tmp_construction.lhs.range(self).unwrap() {
+            if let Some(lhs_range) = tmp_construction.lhs.ref_range(self).unwrap() {
                 match lhs_range.evaled_range_min(self).unwrap() {
                     Elem::Concrete(c) => {
                         new_underlying_lhs
@@ -1110,6 +1141,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             .op
             .inverse()
             .expect("impossible to not invert op");
+
         if !tmp_construction.lhs.is_const(self).into_expr_err(loc)? {
             tracing::trace!("handling lhs range recursion");
             let adjusted_gt_rhs = ContextVarNode::from({
@@ -1140,17 +1172,17 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .underlying(self)
                     .into_expr_err(loc)?
                     .ty
-                    .range(self)
+                    .ref_range(self)
                     .into_expr_err(loc)?
                 {
                     let lhs_range_fn = SolcRange::dyn_fn_from_op(no_flip_op);
                     let new_lhs_range = lhs_range_fn(lhs_range, adjusted_gt_rhs);
 
                     new_underlying_lhs
-                        .set_range_min(self, new_lhs_range.range_min())
+                        .set_range_min(self, new_lhs_range.range_min().into_owned())
                         .into_expr_err(loc)?;
                     new_underlying_lhs
-                        .set_range_max(self, new_lhs_range.range_max())
+                        .set_range_max(self, new_lhs_range.range_max().into_owned())
                         .into_expr_err(loc)?;
 
                     if new_lhs_range.unsat(self) {
@@ -1187,6 +1219,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         let tmp_lhs =
                             ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
 
+                        // tmp_rhs = rhs_cvar * -1
                         let tmp_rhs =
                             self.op(loc, rhs_cvar, tmp_lhs, ctx, RangeOp::Mul(false), false)?;
                         if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
@@ -1196,6 +1229,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         let tmp_rhs =
                             ContextVarNode::from(tmp_rhs.expect_single().into_expr_err(loc)?);
 
+                        // new_rhs = (rhs_cvar * -1) + tmp_construction.lhs
                         let new_rhs =
                             self.op(loc, tmp_rhs, tmp_construction.lhs, ctx, inverse, false)?;
                         if matches!(new_rhs, ExprRet::CtxKilled(_)) {
@@ -1229,6 +1263,18 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         // panic!("HERE: old: {:#?},\nnew: {:#?}", rhs_cvar.underlying(self), new_rhs.underlying(self));
                         (false, new_rhs)
                     }
+                    RangeOp::Div(..) => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        // panic!("HERE: old: {:#?},\nnew: {:#?}", rhs_cvar.underlying(self), new_rhs.underlying(self));
+                        (false, new_rhs)
+                    }
                     e => panic!("here {e:?}"),
                 };
 
@@ -1245,7 +1291,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         .underlying(self)
                         .into_expr_err(loc)?
                         .ty
-                        .range(self)
+                        .ref_range(self)
                         .into_expr_err(loc)?
                     {
                         let new_lhs_range = if needs_inverse {
@@ -1257,10 +1303,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         };
 
                         new_underlying_rhs
-                            .set_range_min(self, new_lhs_range.range_min())
+                            .set_range_min(self, new_lhs_range.range_min().into_owned())
                             .into_expr_err(loc)?;
                         new_underlying_rhs
-                            .set_range_max(self, new_lhs_range.range_max())
+                            .set_range_max(self, new_lhs_range.range_max().into_owned())
                             .into_expr_err(loc)?;
 
                         if new_lhs_range.unsat(self) {

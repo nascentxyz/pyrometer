@@ -272,8 +272,8 @@ pub trait YulFuncCaller:
             "mstore" | "mstore8" => {
                 // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about memory variables anymore.
                 // We should check if the location is a reference to an existing var and update based on that
-                let vars = ctx.local_vars(self);
-                vars.iter().try_for_each(|var| {
+                let vars = ctx.local_vars(self).clone();
+                vars.into_iter().try_for_each(|(_name, var)| {
                     // widen to any  max range
                     let latest_var = var.latest_version(self);
                     if matches!(
@@ -298,8 +298,8 @@ pub trait YulFuncCaller:
             "sstore" => {
                 // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about storage variables anymore.
                 // We should check if the location is a reference to an existing var and update based on that
-                let vars = ctx.local_vars(self);
-                vars.iter().try_for_each(|var| {
+                let vars = ctx.local_vars(self).clone();
+                vars.iter().try_for_each(|(name, var)| {
                     // widen to any  max range
                     let latest_var = var.latest_version(self);
                     if matches!(

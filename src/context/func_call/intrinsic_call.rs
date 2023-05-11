@@ -60,6 +60,8 @@ pub trait IntrinsicFuncCaller:
                                                 )
                                                 .into_expr_err(*loc)?;
                                                 let node = analyzer.add_node(Node::ContextVar(var));
+                                                ctx.add_var(node.into(), analyzer)
+                                                    .into_expr_err(*loc)?;
                                                 analyzer.add_edge(
                                                     node,
                                                     ctx,
@@ -82,6 +84,8 @@ pub trait IntrinsicFuncCaller:
                                                 )
                                                 .into_expr_err(*loc)?;
                                                 let node = analyzer.add_node(Node::ContextVar(var));
+                                                ctx.add_var(node.into(), analyzer)
+                                                    .into_expr_err(*loc)?;
                                                 analyzer.add_edge(
                                                     node,
                                                     ctx,
@@ -126,8 +130,10 @@ pub trait IntrinsicFuncCaller:
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.push_expr(ExprRet::Single(node), self);
+                            ctx.push_expr(ExprRet::Single(node), self)
+                                .into_expr_err(*loc)?;
                             Ok(())
                         }
                         "delegatecall" | "staticcall" | "call" => {
@@ -136,6 +142,7 @@ pub trait IntrinsicFuncCaller:
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             ctx.push_expr(ExprRet::Single(node), self)
                                 .into_expr_err(*loc)?;
@@ -147,6 +154,7 @@ pub trait IntrinsicFuncCaller:
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             ctx.push_expr(ExprRet::Single(node), self)
                                 .into_expr_err(*loc)?;
@@ -158,6 +166,7 @@ pub trait IntrinsicFuncCaller:
                             let cvar = ContextVar::new_from_builtin(*loc, bn.into(), self)
                                 .into_expr_err(*loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             ctx.push_expr(ExprRet::Single(node), self)
                                 .into_expr_err(*loc)?;
@@ -313,8 +322,7 @@ pub trait IntrinsicFuncCaller:
                                 .try_for_each(|expr| self.parse_ctx_expr(expr, ctx))?;
 
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let call_ctx = analyzer.add_node(Node::Context(
-                                    Context::new_subctx(
+                                let cctx = Context::new_subctx(
                                         ctx,
                                         None,
                                         loc,
@@ -324,7 +332,9 @@ pub trait IntrinsicFuncCaller:
                                         analyzer,
                                         None,
                                     )
-                                    .into_expr_err(loc)?,
+                                    .into_expr_err(loc)?;
+                                let call_ctx = analyzer.add_node(Node::Context(
+                                    cctx
                                 ));
                                 ctx.set_child_call(call_ctx.into(), analyzer)
                                     .into_expr_err(loc)?;
@@ -367,14 +377,14 @@ pub trait IntrinsicFuncCaller:
                                 var.is_symbolic = true;
                                 var.is_return = true;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), analyzer).into_expr_err(loc)?;
                                 analyzer.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Variable));
                                 analyzer.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Return));
                                 ContextNode::from(call_ctx)
                                     .add_return_node(loc, cvar.into(), analyzer)
                                     .into_expr_err(loc)?;
 
-                                let ret_ctx = analyzer.add_node(Node::Context(
-                                    Context::new_subctx(
+                                let rctx = Context::new_subctx(
                                         call_ctx.into(),
                                         Some(ctx),
                                         loc,
@@ -384,7 +394,9 @@ pub trait IntrinsicFuncCaller:
                                         analyzer,
                                         None,
                                     )
-                                    .into_expr_err(loc)?,
+                                    .into_expr_err(loc)?;
+                                let ret_ctx = analyzer.add_node(Node::Context(
+                                    rctx
                                 ));
                                 ContextNode::from(call_ctx)
                                     .set_child_call(ret_ctx.into(), analyzer)
@@ -401,6 +413,7 @@ pub trait IntrinsicFuncCaller:
                                 tmp_ret.underlying_mut(analyzer).unwrap().is_return = true;
                                 tmp_ret.underlying_mut(analyzer).unwrap().display_name =
                                     format!("ecrecover({}).return", inner_name);
+                                ctx.add_var(tmp_ret, analyzer).into_expr_err(loc)?;
                                 analyzer.add_edge(tmp_ret, ret_ctx, Edge::Context(ContextEdge::Variable));
 
                                 ContextNode::from(ret_ctx).push_expr(ExprRet::Single(tmp_ret.into()), analyzer).into_expr_err(loc)?;
@@ -503,11 +516,13 @@ pub trait IntrinsicFuncCaller:
 
                     let len_cvar = analyzer.add_node(Node::ContextVar(len_var));
                     analyzer.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.add_var(arr, analyzer).into_expr_err(loc)?;
                     analyzer.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.add_var(len_cvar.into(), analyzer).into_expr_err(loc)?;
                     analyzer.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess));
 
                     // update the length
-                    if let Some(r) = arr.range(analyzer).into_expr_err(loc)? {
+                    if let Some(r) = arr.ref_range(analyzer).into_expr_err(loc)? {
                         let min = r.evaled_range_min(analyzer).into_expr_err(loc)?;
                         let max = r.evaled_range_max(analyzer).into_expr_err(loc)?;
 
@@ -536,7 +551,7 @@ pub trait IntrinsicFuncCaller:
                     ctx: ContextNode,
                     loc: Loc,
                     analyzer: &mut (impl GraphLike + AnalyzerLike),
-                    ty: Builtin,
+                    ty: &Builtin,
                     ret: ExprRet,
                     func_idx: NodeIdx,
                 ) -> Result<(), ExprErr> {
@@ -559,23 +574,22 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(loc)?
                             {
                                 let curr_range =
-                                    SolcRange::try_from_builtin(&ty).expect("No default range");
-                                new_var
-                                    .set_range_min(
-                                        analyzer,
-                                        r.range_min().cast(curr_range.range_min()),
-                                    )
-                                    .into_expr_err(loc)?;
-                                new_var
-                                    .set_range_max(
-                                        analyzer,
-                                        r.range_max().cast(curr_range.range_max()),
-                                    )
-                                    .into_expr_err(loc)?;
+                                    SolcRange::try_from_builtin(ty).expect("No default range");
+                                let min = r
+                                    .range_min()
+                                    .into_owned()
+                                    .cast(curr_range.range_min().into_owned());
+                                let max = r
+                                    .range_max()
+                                    .into_owned()
+                                    .cast(curr_range.range_max().into_owned());
+                                new_var.set_range_min(analyzer, min).into_expr_err(loc)?;
+                                new_var.set_range_max(analyzer, max).into_expr_err(loc)?;
                                 // cast the range exclusions - TODO: verify this is correct
                                 let mut exclusions = r.range_exclusions();
                                 exclusions.iter_mut().for_each(|range| {
-                                    *range = range.clone().cast(curr_range.range_min());
+                                    *range =
+                                        range.clone().cast(curr_range.range_min().into_owned());
                                 });
                                 new_var
                                     .set_range_exclusions(analyzer, exclusions)
@@ -586,9 +600,9 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(loc)?;
                             Ok(())
                         }
-                        ExprRet::Multi(inner) => inner.into_iter().try_for_each(|i| {
-                            cast_match(ctx, loc, analyzer, ty.clone(), i, func_idx)
-                        }),
+                        ExprRet::Multi(inner) => inner
+                            .into_iter()
+                            .try_for_each(|i| cast_match(ctx, loc, analyzer, ty, i, func_idx)),
                     }
                 }
 
@@ -603,7 +617,7 @@ pub trait IntrinsicFuncCaller:
                         return Ok(());
                     }
 
-                    cast_match(ctx, loc, analyzer, ty.clone(), ret, func_idx)
+                    cast_match(ctx, loc, analyzer, &ty, ret, func_idx)
                 })
             }
             Node::ContextVar(_c) => {
@@ -645,6 +659,10 @@ pub trait IntrinsicFuncCaller:
                         ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
+                    let visible_funcs = ctx.visible_funcs(analyzer).into_expr_err(loc)?
+                                    .iter()
+                                    .map(|func| func.name(analyzer).unwrap())
+                                    .collect::<Vec<_>>();
 
                     if let Node::Unresolved(ident) = analyzer.node(func_idx) {
                         Err(ExprErr::FunctionNotFound(
@@ -654,10 +672,7 @@ pub trait IntrinsicFuncCaller:
                                 ident.name,
                                 inputs.try_as_func_input_str(analyzer),
                                 ctx.path(analyzer),
-                                ctx.visible_funcs(analyzer).into_expr_err(loc)?
-                                    .iter()
-                                    .map(|func| func.name(analyzer).unwrap())
-                                    .collect::<Vec<_>>()
+                                visible_funcs
                             )
                         ))
                     } else {

@@ -29,18 +29,14 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let true_subctx = ContextNode::from(
-                analyzer.add_node(Node::Context(
-                    Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
-                        .into_expr_err(loc)?,
-                )),
-            );
-            let false_subctx = ContextNode::from(
-                analyzer.add_node(Node::Context(
-                    Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
-                        .into_expr_err(loc)?,
-                )),
-            );
+            let tctx =
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+            let fctx =
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);
@@ -103,16 +99,18 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let tctx = Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+                        .into_expr_err(loc)?;
             let true_subctx = ContextNode::from(
                 analyzer.add_node(Node::Context(
-                    Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
-                        .into_expr_err(loc)?,
+                    tctx
                 )),
             );
+            let fctx = Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+                        .into_expr_err(loc)?;
             let false_subctx = ContextNode::from(
                 analyzer.add_node(Node::Context(
-                    Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
-                        .into_expr_err(loc)?,
+                    fctx
                 )),
             );
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
@@ -131,7 +129,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             );
 
 
-            println!("yul if else: {:?}", if_else_chain.if_expr);
+            // println!("yul if else: {:?}", if_else_chain.if_expr);
             let if_expr_loc = if_else_chain.if_expr.loc();
             analyzer.apply_to_edges(true_subctx, if_expr_loc, &|analyzer, ctx, loc| {
                 analyzer.parse_ctx_yul_expr(&if_else_chain.if_expr, true_subctx)?;
@@ -146,7 +144,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     }
                     analyzer.match_yul_true(ctx, loc, &true_vars)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                        println!("\n\nyul true stmt: {:?}\n\n", if_else_chain.true_stmt);
+                        // println!("\n\nyul true stmt: {:?}\n\n", if_else_chain.true_stmt);
                         analyzer.parse_ctx_yul_statement(&if_else_chain.true_stmt, ctx);
                         Ok(())
                     })
@@ -157,7 +155,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             if let Some(next) = &if_else_chain.next {
                 match next {
                     ElseOrDefault::Default(default) => {
-                        println!("handling default: {default:?}");
+                        // println!("handling default: {default:?}");
                         analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, _loc| {
                             analyzer.parse_ctx_yul_statement(default, ctx);
                             Ok(())

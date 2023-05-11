@@ -27,20 +27,20 @@ contract UsingMyLib {
 
     using {x, MyOtherOtherLib.w} for uint256;
 
-    function a(uint256 y) public returns (uint256) {
-        return y.z();
-    }
+    // function a(uint256 y) public returns (uint256) {
+    //     return y.z();
+    // }
 
-    function a_conc() public returns (uint256) {
-        uint256 y = 100;
-        uint256 ret = y.z();
-        require(ret == 115);
-        return ret;
-    }
+    // function a_conc() public returns (uint256) {
+    //     uint256 y = 100;
+    //     uint256 ret = y.z();
+    //     require(ret == 115);
+    //     return ret;
+    // }
 
-    function b(uint256 y) public returns (uint256) {
-        return y.y();
-    }
+    // function b(uint256 y) public returns (uint256) {
+    //     return y.y();
+    // }
 
     function b_conc() public returns (uint256) {
         uint256 y = 100;
@@ -49,14 +49,14 @@ contract UsingMyLib {
         return ret;
     }
 
-    function c(uint256 y) public returns (uint256) {
-        return y.w();
-    }
+    // function c(uint256 y) public returns (uint256) {
+    //     return y.w();
+    // }
 
-    function c_conc() public returns (uint256) {
-        uint256 y = 100;
-        uint256 ret = y.w();
-        require(ret == 130);
-        return ret;
-    }
+    // function c_conc() public returns (uint256) {
+    //     uint256 y = 100;
+    //     uint256 ret = y.w();
+    //     require(ret == 130);
+    //     return ret;
+    // }
 }

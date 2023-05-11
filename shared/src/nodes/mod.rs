@@ -323,6 +323,31 @@ impl VarType {
         }
     }
 
+    pub fn ref_range(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<Option<std::borrow::Cow<'_, SolcRange>>, GraphError> {
+        match self {
+            Self::User(_, Some(range)) => Ok(Some(std::borrow::Cow::Borrowed(range))),
+            Self::BuiltIn(_, Some(range)) => Ok(Some(std::borrow::Cow::Borrowed(range))),
+            Self::BuiltIn(bn, None) => {
+                if let Some(r) = SolcRange::try_from_builtin(bn.underlying(analyzer)?) {
+                    Ok(Some(std::borrow::Cow::Owned(r)))
+                } else {
+                    Ok(None)
+                }
+            }
+            Self::Concrete(cnode) => {
+                if let Some(r) = SolcRange::from(cnode.underlying(analyzer)?.clone()) {
+                    Ok(Some(std::borrow::Cow::Owned(r)))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
     pub fn delete_range_result(
         &self,
         analyzer: &impl GraphLike,
@@ -374,7 +399,7 @@ impl VarType {
             Self::Concrete(_) => Ok(true),
             Self::User(TypeNode::Func(_), _) => Ok(false),
             _ => {
-                if let Some(range) = self.range(analyzer)? {
+                if let Some(range) = self.ref_range(analyzer)? {
                     let min = range.evaled_range_min(analyzer)?;
                     let max = range.evaled_range_max(analyzer)?;
                     Ok(min.range_eq(&max))
@@ -396,7 +421,7 @@ impl VarType {
         &self,
         analyzer: &impl GraphLike,
     ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
-        Ok(self.range(analyzer)?.map(|range| {
+        Ok(self.ref_range(analyzer)?.map(|range| {
             (
                 range.evaled_range_min(analyzer).unwrap(),
                 range.evaled_range_max(analyzer).unwrap(),

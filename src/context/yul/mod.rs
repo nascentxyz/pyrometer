@@ -56,11 +56,10 @@ pub trait YulBuilder:
         Self: Sized,
     {
         use YulStatement::*;
-        println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
+        // println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
 
         let res = ctx.pop_expr(stmt.loc(), self).into_expr_err(stmt.loc());
         let _ = self.add_if_err(res);
-        println!("popped");
 
         if ctx.is_killed(self).unwrap() {
             return;
@@ -122,6 +121,7 @@ pub trait YulBuilder:
                                 ty: VarType::try_from_idx(analyzer, b_ty).unwrap(),
                             };
                             let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                            ctx.add_var(cvar, analyzer).unwrap();
                             analyzer.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                             analyzer.advance_var_in_ctx(cvar, *loc, ctx).unwrap()
                         })

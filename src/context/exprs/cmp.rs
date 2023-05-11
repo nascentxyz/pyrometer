@@ -154,7 +154,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     });
 
                     let exclusions = lhs_cvar
-                        .range(self)
+                        .ref_range(self)
                         .into_expr_err(loc)?
                         .expect("No lhs rnage")
                         .range_exclusions();
@@ -278,8 +278,8 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         rhs_cvar: ContextVarNode,
         op: RangeOp,
     ) -> Result<SolcRange, GraphError> {
-        if let Some(lhs_range) = lhs_cvar.range(self)? {
-            if let Some(rhs_range) = rhs_cvar.range(self)? {
+        if let Some(lhs_range) = lhs_cvar.ref_range(self)? {
+            if let Some(rhs_range) = rhs_cvar.ref_range(self)? {
                 match op {
                     RangeOp::Lt => {
                         // if lhs_max < rhs_min, we know this cmp will evaluate to

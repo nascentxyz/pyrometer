@@ -48,21 +48,24 @@ impl FunctionNode {
     }
 
     /// Gets an ordered list of modifiers for a given function
-    pub fn modifiers(&self, analyzer: &impl GraphLike) -> Vec<FunctionNode> {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter_map(|edge| {
-                if let Edge::FuncModifier(order) = *edge.weight() {
-                    Some((order, FunctionNode::from(edge.source())))
-                } else {
-                    None
-                }
-            })
-            .collect::<BTreeMap<_, _>>()
-            .values()
-            .copied()
-            .collect()
+    pub fn modifiers(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Vec<FunctionNode> {
+        if let Some(mods) = &self.underlying(analyzer).unwrap().cache.modifiers {
+            mods.values().copied().collect()
+        } else {
+            let mods = analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Incoming)
+                .filter_map(|edge| {
+                    if let Edge::FuncModifier(order) = *edge.weight() {
+                        Some((order, FunctionNode::from(edge.source())))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeMap<_, _>>();
+            self.underlying_mut(analyzer).unwrap().cache.modifiers = Some(mods.clone());
+            mods.values().copied().collect()
+        }
     }
 
     pub fn modifiers_set(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -121,7 +124,7 @@ impl FunctionNode {
 
     pub fn loc_specified_name(
         &self,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<String, GraphError> {
         if let Some(con) = self.maybe_associated_contract(analyzer) {
             Ok(format!("{}.{}", con.name(analyzer)?, self.name(analyzer)?))
@@ -130,83 +133,149 @@ impl FunctionNode {
         }
     }
 
-    pub fn body_ctx(&self, analyzer: &impl GraphLike) -> ContextNode {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::Context(ContextEdge::Context) == *edge.weight())
-            .map(|edge| ContextNode::from(edge.source()))
-            .take(1)
-            .next()
-            .expect("No context for function")
+    pub fn body_ctx(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> ContextNode {
+        if let Some(body_ctx) = self.underlying(analyzer).unwrap().cache.body_ctx {
+            body_ctx
+        } else {
+            let body_ctx = analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Incoming)
+                .filter(|edge| Edge::Context(ContextEdge::Context) == *edge.weight())
+                .map(|edge| ContextNode::from(edge.source()))
+                .take(1)
+                .next()
+                .expect("No context for function");
+
+            self.underlying_mut(analyzer).unwrap().cache.body_ctx = Some(body_ctx);
+            body_ctx
+        }
     }
 
-    pub fn maybe_body_ctx(&self, analyzer: &impl GraphLike) -> Option<ContextNode> {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::Context(ContextEdge::Context) == *edge.weight())
-            .map(|edge| ContextNode::from(edge.source()))
-            .take(1)
-            .next()
+    pub fn maybe_body_ctx(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<ContextNode> {
+        if let Some(body_ctx) = self.underlying(analyzer).unwrap().cache.body_ctx {
+            Some(body_ctx)
+        } else {
+            let body_ctx = analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Incoming)
+                .filter(|edge| Edge::Context(ContextEdge::Context) == *edge.weight())
+                .map(|edge| ContextNode::from(edge.source()))
+                .take(1)
+                .next();
+            if let Some(b) = body_ctx {
+                self.underlying_mut(analyzer).unwrap().cache.body_ctx = Some(b);
+            }
+
+            body_ctx
+        }
     }
 
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &(impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Option<ContractNode> {
-        let parent = analyzer
-            .search_for_ancestor_multi(
-                self.0.into(),
-                &[
-                    Edge::Func,
-                    Edge::Constructor,
-                    Edge::Modifier,
-                    Edge::ReceiveFunc,
-                    Edge::FallbackFunc,
-                ],
-            )
-            .unwrap_or_else(|| {
-                analyzer.open_dot();
-                panic!("detached function: {:?}", self.name(analyzer))
-            });
-        match analyzer.node(parent) {
-            Node::Contract(_) => Some(parent.into()),
-            _ => None,
-        }
-    }
-
-    pub fn associated_source_unit_part(&self, analyzer: &impl GraphLike) -> NodeIdx {
-        let parent = analyzer
-            .search_for_ancestor(self.0.into(), &Edge::Func)
-            .expect("detached function");
-        match analyzer.node(parent) {
-            Node::Contract(_) => ContractNode::from(parent).associated_source_unit_part(analyzer),
-            Node::SourceUnitPart(..) => parent,
-            _ => panic!("detached function"),
-        }
-    }
-
-    pub fn associated_source(&self, analyzer: &impl GraphLike) -> NodeIdx {
-        analyzer
-            .search_for_ancestor(self.associated_source_unit_part(analyzer), &Edge::Part)
-            .expect("deatched function")
-    }
-
-    pub fn params(&self, analyzer: &'_ impl GraphLike) -> Vec<FunctionParamNode> {
-        let mut params = analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::FunctionParam == *edge.weight())
-            .map(|edge| FunctionParamNode::from(edge.source()))
-            .collect::<Vec<_>>();
-        params.sort_by(|a, b| {
-            a.underlying(analyzer)
+        if let Some(maybe_contract) = self
+            .underlying(analyzer)
+            .unwrap()
+            .cache
+            .maybe_associated_contract
+        {
+            maybe_contract
+        } else {
+            let parent = analyzer
+                .search_for_ancestor_multi(
+                    self.0.into(),
+                    &[
+                        Edge::Func,
+                        Edge::Constructor,
+                        Edge::Modifier,
+                        Edge::ReceiveFunc,
+                        Edge::FallbackFunc,
+                    ],
+                )
+                .unwrap_or_else(|| {
+                    analyzer.open_dot();
+                    panic!("detached function: {:?}", self.name(analyzer))
+                });
+            let contract = match analyzer.node(parent) {
+                Node::Contract(_) => Some(parent.into()),
+                _ => None,
+            };
+            self.underlying_mut(analyzer)
                 .unwrap()
-                .order
-                .cmp(&b.underlying(analyzer).unwrap().order)
-        });
-        params
+                .cache
+                .maybe_associated_contract = Some(contract.clone());
+            contract
+        }
+    }
+
+    pub fn associated_source_unit_part(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> NodeIdx {
+        if let Some(sup) = self
+            .underlying(analyzer)
+            .unwrap()
+            .cache
+            .associated_source_unit_part
+        {
+            sup
+        } else {
+            let parent = analyzer
+                .search_for_ancestor(self.0.into(), &Edge::Func)
+                .expect("detached function");
+            let sup = match analyzer.node(parent) {
+                Node::Contract(_) => {
+                    ContractNode::from(parent).associated_source_unit_part(analyzer)
+                }
+                Node::SourceUnitPart(..) => parent,
+                _ => panic!("detached function"),
+            };
+            self.underlying_mut(analyzer)
+                .unwrap()
+                .cache
+                .associated_source_unit_part = Some(sup.clone());
+            sup
+        }
+    }
+
+    pub fn associated_source(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> NodeIdx {
+        if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
+            src
+        } else {
+            let sup = self.associated_source_unit_part(analyzer);
+            let src = analyzer
+                .search_for_ancestor(sup, &Edge::Part)
+                .expect("detached function");
+            self.underlying_mut(analyzer)
+                .unwrap()
+                .cache
+                .associated_source = Some(src.clone());
+            src
+        }
+    }
+
+    pub fn params(&self, analyzer: &impl GraphLike) -> Vec<FunctionParamNode> {
+        if let Some(params) = &self.underlying(analyzer).unwrap().cache.params {
+            params.to_vec()
+        } else {
+            let mut params = analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Incoming)
+                .filter(|edge| Edge::FunctionParam == *edge.weight())
+                .map(|edge| FunctionParamNode::from(edge.source()))
+                .collect::<Vec<_>>();
+            params.sort_by(|a, b| {
+                a.underlying(analyzer)
+                    .unwrap()
+                    .order
+                    .cmp(&b.underlying(analyzer).unwrap().order)
+            });
+            params
+        }
     }
 
     pub fn set_params_and_ret(
@@ -219,11 +288,11 @@ impl FunctionNode {
     ) -> Result<(), GraphError> {
         let underlying = self.underlying(analyzer)?.clone();
         let mut params_strs = vec![];
-        underlying
+        let params = underlying
             .params
             .into_iter()
             .enumerate()
-            .for_each(|(i, (_loc, input))| {
+            .filter_map(|(i, (_loc, input))| {
                 if let Some(input) = input {
                     let param = FunctionParam::new(analyzer, input, i);
                     let input_node = analyzer.add_node(param);
@@ -233,30 +302,45 @@ impl FunctionNode {
                             .unwrap(),
                     );
                     analyzer.add_edge(input_node, *self, Edge::FunctionParam);
+                    Some(input_node.into())
+                } else {
+                    None
                 }
-            });
-        underlying.returns.into_iter().for_each(|(_loc, output)| {
-            if let Some(output) = output {
-                let ret = FunctionReturn::new(analyzer, output);
-                let output_node = analyzer.add_node(ret);
-                analyzer.add_edge(output_node, *self, Edge::FunctionReturn);
-            }
-        });
+            })
+            .collect();
+        let rets = underlying
+            .returns
+            .into_iter()
+            .filter_map(|(_loc, output)| {
+                if let Some(output) = output {
+                    let ret = FunctionReturn::new(analyzer, output);
+                    let output_node = analyzer.add_node(ret);
+                    analyzer.add_edge(output_node, *self, Edge::FunctionReturn);
+                    Some(output_node.into())
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let underlying_mut = self.underlying_mut(analyzer)?;
         if let Some(ref mut name) = underlying_mut.name {
             name.name = format!("{}({})", name.name, params_strs.join(", "));
         }
+        underlying_mut.cache.params = Some(params);
+        underlying_mut.cache.returns = Some(rets);
         Ok(())
     }
 
-    pub fn returns(&self, analyzer: &impl GraphLike) -> Vec<FunctionReturnNode> {
+    pub fn returns<'a>(
+        &self,
+        analyzer: &'a impl GraphLike,
+    ) -> impl Iterator<Item = FunctionReturnNode> + 'a {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| Edge::FunctionReturn == *edge.weight())
             .map(|edge| FunctionReturnNode::from(edge.source()))
-            .collect()
     }
 
     pub fn is_public_or_ext(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -363,6 +447,18 @@ pub struct Function {
     pub params: ParameterList,
     pub returns: ParameterList,
     pub modifiers_set: bool,
+    pub cache: FunctionCache,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct FunctionCache {
+    pub returns: Option<Vec<FunctionReturnNode>>,
+    pub params: Option<Vec<FunctionParamNode>>,
+    pub body_ctx: Option<ContextNode>,
+    pub modifiers: Option<BTreeMap<usize, FunctionNode>>,
+    pub maybe_associated_contract: Option<Option<ContractNode>>,
+    pub associated_source: Option<NodeIdx>,
+    pub associated_source_unit_part: Option<NodeIdx>,
 }
 
 impl Default for Function {
@@ -377,6 +473,7 @@ impl Default for Function {
             params: vec![],
             returns: vec![],
             modifiers_set: false,
+            cache: Default::default(),
         }
     }
 }
@@ -411,6 +508,7 @@ impl From<FunctionDefinition> for Function {
             params: func.params,
             returns: func.returns,
             modifiers_set: false,
+            cache: Default::default(),
         }
     }
 }
@@ -532,6 +630,7 @@ impl From<VariableDefinition> for Function {
             params: var_def_to_params(var.ty),
             returns: vec![ret],
             modifiers_set: true,
+            cache: Default::default(),
         }
     }
 }

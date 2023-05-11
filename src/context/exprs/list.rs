@@ -65,6 +65,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ty,
                     };
                     let input_node = self.add_node(Node::ContextVar(var));
+                    ctx.add_var(input_node.into(), self).into_expr_err(*loc)?;
                     self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
                     Ok(ExprRet::Single(input_node))
                 } else {
@@ -89,6 +90,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 ty,
                             };
                             let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
+                            ctx.add_var(input_node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(input_node))
                         }

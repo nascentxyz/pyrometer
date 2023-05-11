@@ -158,6 +158,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 ContextVarNode::from(member_idx).first_version(self),
                                 Edge::Context(ContextEdge::AttrAccess),
                             );
+                            ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
                             self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                             return Ok(ExprRet::Single(fc_node));
                         } else {
@@ -194,6 +195,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         )
                         .into_expr_err(loc)?;
                         let cvar = self.add_node(Node::ContextVar(var));
+                        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         return Ok(ExprRet::Single(cvar));
                     } else if let Some(ret) =
@@ -236,6 +238,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                     ContextVar::new_from_concrete(loc, ctx, cnode.into(), self)
                                         .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
+                                ctx.add_var(node.into(), self).into_expr_err(loc)?;
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(node));
                             }
@@ -244,6 +247,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                     .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
+                                ctx.add_var(node.into(), self).into_expr_err(loc)?;
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(node));
                             }
@@ -253,6 +257,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                     .into_expr_err(loc)?;
                                 let node = self.add_node(Node::ContextVar(cvar));
+                                ctx.add_var(node.into(), self).into_expr_err(loc)?;
                                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(node));
                             }
@@ -334,6 +339,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -355,6 +361,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -375,6 +382,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -395,6 +403,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -416,6 +425,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -438,6 +448,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -455,6 +466,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -474,6 +486,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     var.is_tmp = false;
                     var.is_symbolic = true;
                     let cvar = self.add_node(Node::ContextVar(var));
+                    ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                     self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                     return Ok(ExprRet::Single(cvar));
                 }
@@ -504,6 +517,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -526,6 +540,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -548,6 +563,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -570,6 +586,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -592,6 +609,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -614,6 +632,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -636,6 +655,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -658,6 +678,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -680,6 +701,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 var.is_tmp = false;
                                 var.is_symbolic = true;
                                 let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 return Ok(ExprRet::Single(cvar));
                             }
@@ -698,6 +720,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     var.is_tmp = false;
                     var.is_symbolic = true;
                     let cvar = self.add_node(Node::ContextVar(var));
+                    ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                     self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                     return Ok(ExprRet::Single(cvar));
                 }
@@ -750,6 +773,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
                         }
@@ -759,6 +783,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
                         }
@@ -768,6 +793,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
                         }
@@ -776,6 +802,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
                             let node = self.add_node(Node::ContextVar(cvar));
+                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
                         }
@@ -894,6 +921,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             var.is_tmp = true;
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
+                            ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(cvar))
                         }
@@ -908,6 +936,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             var.is_tmp = true;
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
+                            ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(cvar))
                         }
@@ -937,6 +966,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         var.is_tmp = true;
                         var.is_symbolic = false;
                         let cvar = self.add_node(Node::ContextVar(var));
+                        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         Ok(ExprRet::Single(cvar))
                     }
@@ -951,6 +981,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         var.is_tmp = true;
                         var.is_symbolic = false;
                         let cvar = self.add_node(Node::ContextVar(var));
+                        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         Ok(ExprRet::Single(cvar))
                     }
@@ -1160,6 +1191,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 let idx_node = self.add_node(Node::ContextVar(indexed_var));
                 self.add_edge(idx_node, parent, Edge::Context(ContextEdge::IndexAccess));
                 self.add_edge(idx_node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.add_var(idx_node.into(), self).into_expr_err(loc)?;
                 self.add_edge(*idx, idx_node, Edge::Context(ContextEdge::Index));
                 ctx.push_expr(ExprRet::Single(idx_node), self)
                     .into_expr_err(loc)?;
@@ -1231,7 +1263,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 .is_dyn_builtin(self)
                 .unwrap()
             {
-                if let Some(r) = next_arr.range(self).unwrap() {
+                if let Some(r) = next_arr.ref_range(self).unwrap() {
                     let min = r.evaled_range_min(self).unwrap();
                     let max = r.evaled_range_max(self).unwrap();
 
@@ -1255,6 +1287,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
             self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess));
             self.add_edge(len_node, array_ctx, Edge::Context(ContextEdge::Variable));
+            array_ctx.add_var(len_node.into(), self).unwrap();
             len_node.into()
         }
     }
@@ -1293,7 +1326,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             .is_dyn_builtin(self)
                             .into_expr_err(loc)?
                     {
-                        if let Some(r) = next_arr.range(self).into_expr_err(loc)? {
+                        if let Some(r) = next_arr.ref_range(self).into_expr_err(loc)? {
                             let min = r.evaled_range_min(self).into_expr_err(loc)?;
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
@@ -1341,7 +1374,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         .is_dyn_builtin(self)
                         .into_expr_err(loc)?
                     {
-                        if let Some(r) = next_arr.range(self).into_expr_err(loc)? {
+                        if let Some(r) = next_arr.ref_range(self).into_expr_err(loc)? {
                             let min = r.evaled_range_min(self).into_expr_err(loc)?;
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
@@ -1365,6 +1398,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
 
                     self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess));
                     self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.add_var(len_node.into(), self).into_expr_err(loc)?;
                     ctx.push_expr(ExprRet::Single(len_node), self)
                         .into_expr_err(loc)?;
                     Ok(())

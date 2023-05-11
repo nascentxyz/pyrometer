@@ -508,24 +508,28 @@ impl SolcRange {
 
 impl Range<Concrete> for SolcRange {
     type ElemTy = Elem<Concrete>;
-    fn range_min(&self) -> Self::ElemTy {
-        self.min.clone()
+    fn range_min(&self) -> std::borrow::Cow<'_, Self::ElemTy> {
+        std::borrow::Cow::Borrowed(&self.min)
     }
-    fn range_max(&self) -> Self::ElemTy {
-        self.max.clone()
+    fn range_max(&self) -> std::borrow::Cow<'_, Self::ElemTy> {
+        std::borrow::Cow::Borrowed(&self.max)
+    }
+    fn range_min_mut(&mut self) -> &mut Self::ElemTy {
+        &mut self.min
+    }
+    fn range_max_mut(&mut self) -> &mut Self::ElemTy {
+        &mut self.max
     }
 
     fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError> {
         if self.min_cached.is_none() {
-            let mut min = self.range_min();
+            let min = self.range_min_mut();
             min.cache_minimize(analyzer)?;
-            self.min = min;
             self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }
         if self.max_cached.is_none() {
-            let mut max = self.range_max();
+            let max = self.range_max_mut();
             max.cache_maximize(analyzer)?;
-            self.max = max;
             self.max_cached = Some(self.range_max().maximize(analyzer)?);
         }
         Ok(())
@@ -588,8 +592,10 @@ pub trait Range<T> {
     fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
     fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
     fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
-    fn range_min(&self) -> Self::ElemTy;
-    fn range_max(&self) -> Self::ElemTy;
+    fn range_min(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
+    fn range_max(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
+    fn range_min_mut(&mut self) -> &mut Self::ElemTy;
+    fn range_max_mut(&mut self) -> &mut Self::ElemTy;
     fn range_exclusions(&self) -> Vec<Self::ElemTy>
     where
         Self: std::marker::Sized;
@@ -628,8 +634,8 @@ pub trait Range<T> {
             })
             .collect();
 
-        let mut min = self.range_min();
-        let mut max = self.range_max();
+        let mut min = self.range_min().into_owned();
+        let mut max = self.range_max().into_owned();
         min.update_deps(&mapping);
         max.update_deps(&mapping);
         self.set_range_min(min);
