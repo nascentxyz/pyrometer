@@ -99,6 +99,6 @@ Operations can be performed between most element types, assuming they are a stac
 | `RangeOp::Concat` | Concatenation | `concat` | [`RangeDynamic`] |
 
 
-### Mapping the Relation Domain to the Interval Domain
+### Mapping the Relational Domain to the Interval Domain
 
 Throughout the program we generate *relational* elements - i.e. Dynamic range elements (i.e. `x = y`). While this dynamic relationship is often informative, most often the actual interval domain (i.e. `"x" ∈ [ 0, 255 ]`) is more relevant. 
