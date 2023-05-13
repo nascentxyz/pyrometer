@@ -11,7 +11,7 @@ use ethers_core::types::U256;
 use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
-use shared::range::elem_ty::Dynamic;
+
 use shared::range::{elem_ty::Elem, SolcRange};
 use shared::{context::ContextEdge, nodes::Builtin, Edge};
 use shared::{context::*, range::elem::RangeOp};
@@ -328,7 +328,7 @@ pub trait YulFuncCaller:
                 // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about storage variables anymore.
                 // We should check if the location is a reference to an existing var and update based on that
                 let vars = ctx.local_vars(self).clone();
-                vars.iter().try_for_each(|(name, var)| {
+                vars.iter().try_for_each(|(_name, var)| {
                     // widen to any  max range
                     let latest_var = var.latest_version(self);
                     if matches!(

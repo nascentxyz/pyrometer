@@ -2,7 +2,7 @@ use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike, Search};
 use crate::as_dot_str;
 use crate::nodes::FunctionNode;
-use crate::range::Range;
+
 use crate::AsDotStr;
 use crate::ContractNode;
 use crate::FunctionParamNode;
@@ -201,7 +201,7 @@ impl Context {
         let mut depth =
             parent_ctx.underlying(analyzer)?.depth + if fork_expr.is_some() { 0 } else { 1 };
 
-        let mut width =
+        let width =
             parent_ctx.underlying(analyzer)?.width + if fork_expr.is_some() { 1 } else { 0 };
 
         if analyzer.max_depth() < depth {
@@ -373,9 +373,9 @@ impl ContextNode {
 
     pub fn join(
         &self,
-        func: FunctionNode,
-        mapping: &BTreeMap<ContextVarNode, FunctionParamNode>,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        _func: FunctionNode,
+        _mapping: &BTreeMap<ContextVarNode, FunctionParamNode>,
+        _analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) {
         // println!("joining");
         // if let Some(body_ctx) = func.maybe_body_ctx(analyzer) {

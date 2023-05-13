@@ -9,8 +9,6 @@ use shared::context::*;
 use solang_parser::helpers::CodeLocation;
 use solang_parser::pt::YulStatement;
 
-use shared::range::elem_ty::Dynamic;
-
 use shared::range::elem_ty::Elem;
 use shared::range::Range;
 use solang_parser::pt::VariableDeclaration;
@@ -265,9 +263,7 @@ pub trait ContextBuilder:
                         .for_each(|stmt| analyzer.parse_ctx_statement(stmt, *unchecked, Some(ctx)));
                     Ok(())
                 });
-                if self.widen_if_limit_hit(ctx_node.into(), res) {
-                    return;
-                }
+                if self.widen_if_limit_hit(ctx_node.into(), res) {}
             }
             VariableDefinition(loc, var_decl, maybe_expr) => {
                 let ctx = ContextNode::from(

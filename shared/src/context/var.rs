@@ -1,7 +1,7 @@
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::context::GraphError;
 use crate::range::elem::RangeElem;
-use crate::range::elem_ty::Dynamic;
+
 use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeConcrete;
 use crate::range::range_string::ToRangeString;
@@ -180,9 +180,9 @@ impl ContextVarNode {
         self.underlying(analyzer)?.ty.ref_range(analyzer)
     }
 
-    pub fn range_min<'a>(
+    pub fn range_min(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &impl GraphLike,
     ) -> Result<Option<Elem<Concrete>>, GraphError> {
         if let Some(r) = self.ref_range(analyzer)? {
             Ok(Some(r.range_min().into_owned()))

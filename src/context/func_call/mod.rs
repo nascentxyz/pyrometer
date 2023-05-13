@@ -6,7 +6,7 @@ use crate::context::func_call::{
 use crate::context::ContextBuilder;
 use crate::context::ExprErr;
 use itertools::Itertools;
-use shared::analyzer::AsDotStr;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 

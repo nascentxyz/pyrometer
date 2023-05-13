@@ -2,7 +2,7 @@ use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::ContextBuilder;
 use shared::analyzer::GraphError;
-use shared::range::elem_ty::Dynamic;
+
 use shared::{
     analyzer::AnalyzerLike,
     context::*,

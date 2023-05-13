@@ -14,7 +14,7 @@ use solang_parser::helpers::CodeLocation;
 use solang_parser::pt::Identifier;
 use solang_parser::pt::Import;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
+
 use std::ffi::OsString;
 use std::path::Path;
 

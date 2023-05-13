@@ -5,8 +5,8 @@ use crate::AsDotStr;
 use crate::Edge;
 use crate::FunctionNode;
 use crate::Node;
+use crate::NodeIdx;
 use crate::StructNode;
-use crate::{context::ContextEdge, NodeIdx};
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
 

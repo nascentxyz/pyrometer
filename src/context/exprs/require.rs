@@ -12,7 +12,7 @@ use shared::{
     nodes::{BuiltInNode, Builtin, VarType},
     range::{
         elem::{RangeElem, RangeOp},
-        elem_ty::{Dynamic, Elem, RangeConcrete},
+        elem_ty::{Elem, RangeConcrete},
         Range, RangeEval, SolcRange,
     },
     Edge,

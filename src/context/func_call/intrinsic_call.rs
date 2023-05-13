@@ -12,10 +12,7 @@ use shared::nodes::Concrete;
 use shared::{
     context::*,
     nodes::{Builtin, VarType},
-    range::{
-        elem_ty::{Dynamic, Elem},
-        Range, SolcRange,
-    },
+    range::{elem_ty::Elem, Range, SolcRange},
     Edge, Node, NodeIdx,
 };
 

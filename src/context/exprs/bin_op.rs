@@ -2,7 +2,7 @@ use crate::context::exprs::require::Require;
 use crate::context::exprs::IntoExprErr;
 use crate::context::{ContextBuilder, ExprErr};
 use ethers_core::types::{I256, U256};
-use shared::analyzer::AsDotStr;
+
 use shared::range::elem::RangeElem;
 use shared::range::elem_ty::RangeExpr;
 use shared::{

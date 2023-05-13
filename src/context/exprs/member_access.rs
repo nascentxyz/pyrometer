@@ -2,7 +2,7 @@ use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{context::exprs::variable::Variable, ContextBuilder, NodeIdx};
 use shared::analyzer::Search;
-use shared::range::elem_ty::Dynamic;
+
 use shared::range::elem_ty::Elem;
 use shared::range::Range;
 use shared::{

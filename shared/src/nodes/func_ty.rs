@@ -207,7 +207,7 @@ impl FunctionNode {
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
-                .maybe_associated_contract = Some(contract.clone());
+                .maybe_associated_contract = Some(contract);
             contract
         }
     }
@@ -237,7 +237,7 @@ impl FunctionNode {
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
-                .associated_source_unit_part = Some(sup.clone());
+                .associated_source_unit_part = Some(sup);
             sup
         }
     }
@@ -253,7 +253,7 @@ impl FunctionNode {
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
-                .associated_source = Some(src.clone());
+                .associated_source = Some(src);
             src
         }
     }
