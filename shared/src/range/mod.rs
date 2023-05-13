@@ -282,26 +282,18 @@ impl SolcRange {
     }
 
     pub fn lte_dyn(self, other: ContextVarNode) -> Self {
-        Self::new(
-            self.min,
-            self.max.min(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.exclusions,
-        )
+        Self::new(self.min, self.max.min(Elem::from(other)), self.exclusions)
     }
 
     pub fn gte_dyn(self, other: ContextVarNode) -> Self {
-        Self::new(
-            self.min.max(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max,
-            self.exclusions,
-        )
+        Self::new(self.min.max(Elem::from(other)), self.max, self.exclusions)
     }
 
     pub fn lt_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min,
             self.max.min(
-                Elem::Dynamic(Dynamic::new(other.into()))
+                Elem::from(other)
                     - Elem::Concrete(RangeConcrete {
                         val: U256::from(1).into(),
                         loc: Loc::Implicit,
@@ -314,7 +306,7 @@ impl SolcRange {
     pub fn gt_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min.max(
-                Elem::Dynamic(Dynamic::new(other.into()))
+                Elem::from(other)
                     + Elem::Concrete(RangeConcrete {
                         val: U256::from(1).into(),
                         loc: Loc::Implicit,
@@ -363,113 +355,107 @@ impl SolcRange {
 
     pub fn add_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min + Elem::Dynamic(Dynamic::new(other.into())),
-            self.max + Elem::Dynamic(Dynamic::new(other.into())),
+            self.min + Elem::from(other),
+            self.max + Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn wrapping_add_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min
-                .wrapping_add(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max
-                .wrapping_add(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.min.wrapping_add(Elem::from(other)),
+            self.max.wrapping_add(Elem::from(other)),
             self.exclusions,
         )
     }
 
     pub fn sub_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min - Elem::Dynamic(Dynamic::new(other.into())),
-            self.max - Elem::Dynamic(Dynamic::new(other.into())),
+            self.min - Elem::from(other),
+            self.max - Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn wrapping_sub_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min
-                .wrapping_sub(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max
-                .wrapping_sub(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.min.wrapping_sub(Elem::from(other)),
+            self.max.wrapping_sub(Elem::from(other)),
             self.exclusions,
         )
     }
 
     pub fn mul_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min * Elem::Dynamic(Dynamic::new(other.into())),
-            self.max * Elem::Dynamic(Dynamic::new(other.into())),
+            self.min * Elem::from(other),
+            self.max * Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn wrapping_mul_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min
-                .wrapping_mul(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max
-                .wrapping_mul(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.min.wrapping_mul(Elem::from(other)),
+            self.max.wrapping_mul(Elem::from(other)),
             self.exclusions,
         )
     }
 
     pub fn exp_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.pow(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max.pow(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.min.pow(Elem::from(other)),
+            self.max.pow(Elem::from(other)),
             self.exclusions,
         )
     }
 
     pub fn bit_and_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min & Elem::Dynamic(Dynamic::new(other.into())),
-            self.max & Elem::Dynamic(Dynamic::new(other.into())),
+            self.min & Elem::from(other),
+            self.max & Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn bit_or_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min | Elem::Dynamic(Dynamic::new(other.into())),
-            self.max | Elem::Dynamic(Dynamic::new(other.into())),
+            self.min | Elem::from(other),
+            self.max | Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn bit_xor_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min ^ Elem::Dynamic(Dynamic::new(other.into())),
-            self.max ^ Elem::Dynamic(Dynamic::new(other.into())),
+            self.min ^ Elem::from(other),
+            self.max ^ Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn div_dyn(self, other: ContextVarNode) -> Self {
-        let elem = Elem::Dynamic(Dynamic::new(other.into()));
+        let elem = Elem::from(other);
         Self::new(self.min / elem.clone(), self.max / elem, self.exclusions)
     }
 
     pub fn shl_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min << Elem::Dynamic(Dynamic::new(other.into())),
-            self.max << Elem::Dynamic(Dynamic::new(other.into())),
+            self.min << Elem::from(other),
+            self.max << Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn shr_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min >> Elem::Dynamic(Dynamic::new(other.into())),
-            self.max >> Elem::Dynamic(Dynamic::new(other.into())),
+            self.min >> Elem::from(other),
+            self.max >> Elem::from(other),
             self.exclusions,
         )
     }
 
     pub fn mod_dyn(self, other: ContextVarNode) -> Self {
-        let elem = Elem::Dynamic(Dynamic::new(other.into()));
+        let elem = Elem::from(other);
         Self::new(
             Elem::from(Concrete::from(U256::zero())),
             elem.clone() - Elem::from(Concrete::from(U256::from(1))).cast(elem),
@@ -479,29 +465,29 @@ impl SolcRange {
 
     pub fn min_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.min(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max.min(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.min.min(Elem::from(other)),
+            self.max.min(Elem::from(other)),
             self.exclusions,
         )
     }
 
     pub fn max_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
-            self.min.max(Elem::Dynamic(Dynamic::new(other.into()))),
-            self.max.max(Elem::Dynamic(Dynamic::new(other.into()))),
+            self.min.max(Elem::from(other)),
+            self.max.max(Elem::from(other)),
             self.exclusions,
         )
     }
 
     pub fn eq_dyn(self, other: ContextVarNode) -> Self {
-        let min = self.min.eq(Elem::Dynamic(Dynamic::new(other.into())));
-        let max = self.max.eq(Elem::Dynamic(Dynamic::new(other.into())));
+        let min = self.min.eq(Elem::from(other));
+        let max = self.max.eq(Elem::from(other));
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 
     pub fn neq_dyn(self, other: ContextVarNode) -> Self {
-        let min = self.min.neq(Elem::Dynamic(Dynamic::new(other.into())));
-        let max = self.max.neq(Elem::Dynamic(Dynamic::new(other.into())));
+        let min = self.min.neq(Elem::from(other));
+        let max = self.max.neq(Elem::from(other));
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 }
@@ -594,6 +580,12 @@ pub trait Range<T> {
     fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
     fn range_min(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
     fn range_max(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
+    fn uncache_range_min(&mut self) {
+        self.range_min_mut().uncache();
+    }
+    fn uncache_range_max(&mut self) {
+        self.range_max_mut().uncache();
+    }
     fn range_min_mut(&mut self) -> &mut Self::ElemTy;
     fn range_max_mut(&mut self) -> &mut Self::ElemTy;
     fn range_exclusions(&self) -> Vec<Self::ElemTy>

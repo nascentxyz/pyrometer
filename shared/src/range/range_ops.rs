@@ -1494,6 +1494,8 @@ pub trait RangeBitwise<T, Rhs = Self> {
     fn range_bit_or(&self, other: &Rhs) -> Option<Elem<T>>;
     /// Perform a bitwise XOR
     fn range_bit_xor(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Perform a bitwise NOT
+    fn range_bit_not(&self) -> Option<Elem<T>>;
 }
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
@@ -1570,6 +1572,44 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
             _ => None,
         }
     }
+
+    fn range_bit_not(&self) -> Option<Elem<Concrete>> {
+        match &self.val {
+            Concrete::Uint(size, a) => {
+                println!("size: {:?}", size);
+                println!("pre: {:b} {:b} {:b} {:b}", a.0[0], a.0[1], a.0[2], a.0[3]);
+                let max = Concrete::max(&self.val).unwrap().uint_val().unwrap();
+                println!(
+                    "max: {:b} {:b} {:b} {:b}",
+                    max.0[0], max.0[1], max.0[2], max.0[3]
+                );
+                let val = U256(
+                    a.0.into_iter()
+                        .map(|i| !i)
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap(),
+                );
+                println!(
+                    "post: {:b} {:b} {:b} {:b}",
+                    val.0[0], val.0[1], val.0[2], val.0[3]
+                );
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Uint(*size, val & max),
+                    loc: self.loc,
+                }))
+            }
+            Concrete::Int(size, a) => {
+                let (val, _) = a.overflowing_neg();
+                let (val, _) = val.overflowing_sub(1.into());
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Int(*size, val),
+                    loc: self.loc,
+                }))
+            }
+            _ => None,
+        }
+    }
 }
 
 impl RangeBitwise<Concrete> for Elem<Concrete> {
@@ -1588,6 +1628,13 @@ impl RangeBitwise<Concrete> for Elem<Concrete> {
     fn range_bit_xor(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_bit_xor(b),
+            _ => None,
+        }
+    }
+
+    fn range_bit_not(&self) -> Option<Elem<Concrete>> {
+        match self {
+            Elem::Concrete(a) => a.range_bit_not(),
             _ => None,
         }
     }

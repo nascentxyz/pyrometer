@@ -17,7 +17,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
         recursion_target: Option<ContextNode>,
     ) -> Result<(), ExprErr> {
-        tracing::trace!(
+        println!(
             "Getting variable: {}, loc: {:?}, ctx: {}",
             &ident.name,
             ident.loc,
@@ -29,6 +29,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             ctx
         };
 
+        // solang doesnt have `super` as a keyword
         if let Some(cvar) = ctx.var_by_name(self, &ident.name) {
             let cvar = cvar.latest_version(self);
             self.apply_to_edges(target_ctx, ident.loc, &|analyzer, edge_ctx, _loc| {
@@ -40,13 +41,23 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         } else if ident.name == "_" {
             self.env_variable(ident, target_ctx)?;
             Ok(())
-        } else if let Some(parent_ctx) = ctx.underlying(self).into_expr_err(ident.loc)?.parent_ctx {
+        } else if let Some(cvar) = ctx
+            .var_by_name_or_recurse(self, &ident.name)
+            .into_expr_err(ident.loc)?
+        {
             // check if we can inherit it
-            if let Some(recursion_target) = recursion_target {
-                self.variable(ident, parent_ctx, Some(recursion_target))
-            } else {
-                self.variable(ident, parent_ctx, Some(target_ctx))
-            }
+            let cvar = cvar.latest_version(self);
+            self.apply_to_edges(target_ctx, ident.loc, &|analyzer, edge_ctx, _loc| {
+                let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
+                edge_ctx
+                    .push_expr(ExprRet::Single(var.into()), analyzer)
+                    .into_expr_err(ident.loc)
+            })
+            // if let Some(recursion_target) = recursion_target {
+            //     self.variable(ident, parent_ctx, Some(recursion_target))
+            // } else {
+            //     self.variable(ident, parent_ctx, Some(target_ctx))
+            // }
         } else if (self.env_variable(ident, target_ctx)?).is_some() {
             Ok(())
         } else if let Some(idx) = self.user_types().get(&ident.name) {

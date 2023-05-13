@@ -54,7 +54,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
 
             analyzer.parse_ctx_yul_expr(if_expr, true_subctx)?;
             analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
-                let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
                 };
 
@@ -77,7 +77,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             }));
             analyzer.parse_ctx_yul_expr(&false_expr, false_subctx)?;
             analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
-                let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
                 };
 
@@ -134,7 +134,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             analyzer.apply_to_edges(true_subctx, if_expr_loc, &|analyzer, ctx, loc| {
                 analyzer.parse_ctx_yul_expr(&if_else_chain.if_expr, true_subctx)?;
                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                    let Some(true_vars) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(true_vars) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Yul switch statement was missing a case discriminator".to_string()))
                     };
 
@@ -208,6 +208,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     .take(1)
                     .try_for_each(|expr_ret| self.match_yul_true(ctx, loc, expr_ret))?;
             }
+            ExprRet::Null => {}
         }
         Ok(())
     }
@@ -248,6 +249,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     .take(1)
                     .try_for_each(|expr_ret| self.match_yul_false(ctx, loc, expr_ret))?;
             }
+            ExprRet::Null => {}
         }
 
         Ok(())

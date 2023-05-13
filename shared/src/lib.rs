@@ -111,6 +111,7 @@ lazy_static! {
 pub enum Edge {
     Source,
     Part,
+    Import,
     Context(ContextEdge),
     Contract,
     InheritedContract,

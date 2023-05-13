@@ -1,11 +1,17 @@
 use crate::analyzers::LocStrSpan;
+use crate::context::exprs::IntoExprErr;
 use crate::exprs::ExprErr;
 use ariadne::Source;
 use ethers_core::types::U256;
 use shared::analyzer::*;
+use shared::context::ContextNode;
+use shared::context::ExprRet;
+use shared::context::{Context, ContextEdge};
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
 use solang_parser::diagnostics::Diagnostic;
+use solang_parser::helpers::CodeLocation;
+use solang_parser::pt::Identifier;
 use solang_parser::pt::Import;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -35,7 +41,7 @@ pub use shared;
 pub struct Analyzer {
     pub root: PathBuf,
     pub remappings: Vec<(String, String)>,
-    pub imported_srcs: BTreeSet<OsString>,
+    pub imported_srcs: BTreeMap<OsString, Option<NodeIdx>>,
     pub final_pass_items: Vec<(
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
@@ -55,6 +61,7 @@ pub struct Analyzer {
     pub max_depth: usize,
     /// The maximum number of forks throughout the lifetime of the analysis.
     pub max_width: usize,
+    pub parse_fn: FunctionNode,
 }
 
 impl Default for Analyzer {
@@ -77,17 +84,27 @@ impl Default for Analyzer {
             expr_errs: Default::default(),
             max_depth: 1024,
             max_width: 2_i32.pow(14) as usize,
+            parse_fn: NodeIdx::from(0).into(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
         let msg = Msg::default();
-        // msg.sender = Some(Address::random());
         let block = Block::default();
         let msg = a.graph.add_node(Node::Msg(msg)).into();
         let block = a.graph.add_node(Node::Block(block)).into();
         a.msg = msg;
         a.block = block;
         a.entry = a.add_node(Node::Entry);
+        let pf = Function {
+            name: Some(Identifier {
+                loc: solang_parser::pt::Loc::Implicit,
+                name: "__parser_fn__".into(),
+            }),
+            ..Default::default()
+        };
+        let parser_fn = FunctionNode::from(a.add_node(pf));
+        a.add_edge(parser_fn, a.entry, Edge::Func);
+        a.parse_fn = parser_fn;
         a
     }
 }
@@ -167,7 +184,8 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        // println!("top level expr: {:?}", expr);
+        println!("top level expr: {:?}", expr);
+
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
@@ -178,6 +196,9 @@ impl AnalyzerLike for Analyzer {
                         self.builtins.insert(builtin, idx);
                         idx
                     }
+                } else if let Some(idx) = self.complicated_parse(expr) {
+                    self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
+                        .unwrap_or(0.into())
                 } else {
                     0.into()
                 }
@@ -234,12 +255,35 @@ impl AnalyzerLike for Analyzer {
                 };
                 self.add_node(Node::Concrete(Concrete::Uint(256, val)))
             }
-            _ => 0.into(),
+            _ => {
+                if let Some(idx) = self.complicated_parse(expr) {
+                    self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
+                        .unwrap_or(0.into())
+                } else {
+                    0.into()
+                }
+            }
         }
     }
 }
 
 impl Analyzer {
+    pub fn complicated_parse(&mut self, expr: &Expression) -> Option<ExprRet> {
+        let dummy_ctx = Context::new(
+            self.parse_fn,
+            "__parser_fn__".to_string(),
+            solang_parser::pt::Loc::Implicit,
+        );
+        let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
+        self.add_edge(ctx, self.entry(), Edge::Context(ContextEdge::Context));
+        let res = self.parse_ctx_expr(expr, ctx);
+        self.add_if_err(res);
+        let res = ctx
+            .pop_expr_latest(expr.loc(), self)
+            .into_expr_err(expr.loc());
+        let res = self.add_if_err(res);
+        res?
+    }
     pub fn set_remappings_and_root(&mut self, remappings_path: String) {
         self.root = PathBuf::from(&remappings_path)
             .parent()
@@ -449,7 +493,9 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(import) => imported.extend(self.parse_import(import, current_path)),
+            ImportDirective(import) => {
+                imported.extend(self.parse_import(import, current_path, parent))
+            }
         }
         (sup_node, func_nodes, usings, inherits)
     }
@@ -459,6 +505,7 @@ impl Analyzer {
         &mut self,
         import: &Import,
         current_path: &Path,
+        parent: NodeIdx,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(import_path, _) => {
@@ -491,22 +538,32 @@ impl Analyzer {
                         )
                     );
                 let canonical_str_path = canonical.as_os_str();
-                if self.imported_srcs.contains(canonical_str_path) {
+                if let Some(other_entry) = self.imported_srcs.get(canonical_str_path) {
+                    if let Some(o_e) = other_entry {
+                        self.add_edge(*o_e, parent, Edge::Import);
+                    }
                     return vec![];
                 }
-                self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
                     panic!(
                         "Could not find file for dependency: {canonical:?}{}",
                         if self.remappings.is_empty() {
-                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input (where `remappings.txt` is the output of `forge remappings > remappings.txt`)"
                         } else { "" }
                     )
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
+                // breaks recursion issues
+                self.imported_srcs.insert(canonical_str_path.into(), None);
                 let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
+                self.imported_srcs
+                    .insert(canonical_str_path.into(), maybe_entry);
+                if let Some(other_entry) = maybe_entry {
+                    self.add_edge(other_entry, parent, Edge::Import);
+                }
+
                 inner_sources.push((
                     maybe_entry,
                     remapped.to_str().unwrap().to_owned(),
@@ -544,10 +601,12 @@ impl Analyzer {
                     )
                 );
                 let canonical_str_path = canonical.as_os_str();
-                if self.imported_srcs.contains(canonical_str_path) {
+                if let Some(other_entry) = self.imported_srcs.get(canonical_str_path) {
+                    if let Some(o_e) = other_entry {
+                        self.add_edge(*o_e, parent, Edge::Import);
+                    }
                     return vec![];
                 }
-                self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
                     panic!(
@@ -559,7 +618,16 @@ impl Analyzer {
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
+
+                // breaks recursion issues
+                self.imported_srcs.insert(canonical_str_path.into(), None);
                 let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
+                self.imported_srcs
+                    .insert(canonical_str_path.into(), maybe_entry);
+                if let Some(other_entry) = maybe_entry {
+                    self.add_edge(other_entry, parent, Edge::Import);
+                }
+
                 inner_sources.push((
                     maybe_entry,
                     remapped.to_str().unwrap().to_owned(),

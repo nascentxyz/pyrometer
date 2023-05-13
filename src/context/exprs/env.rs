@@ -34,6 +34,7 @@ pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .modifier_state
                     .clone()
                 {
+                    println!("RESUMING FORM MODIFIER");
                     self.resume_from_modifier(ctx, mod_state.clone())?;
                     // TODO: inherit the input changes as well
                     // println!("inheriting back from parent into modifier");

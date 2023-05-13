@@ -253,6 +253,17 @@ impl ToRangeString for RangeExpr<Concrete> {
                     lhs_str.loc,
                 ),
             }
+        } else if matches!(self.op, RangeOp::BitNot) {
+            let lhs = if maximize {
+                self.lhs.maximize(analyzer).unwrap()
+            } else {
+                self.lhs.minimize(analyzer).unwrap()
+            };
+
+            match lhs {
+                Elem::Concrete(_c) => RangeElemString::new(format!("~{}", lhs_str.s), lhs_str.loc),
+                _ => RangeElemString::new(format!("~{}", lhs_str.s), lhs_str.loc),
+            }
         } else {
             RangeElemString::new(
                 format!("{} {} {}", lhs_str.s, self.op.to_string(), rhs_str.s),

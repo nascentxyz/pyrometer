@@ -54,6 +54,8 @@ struct Args {
     pub query: Vec<String>,
     #[clap(long, short)]
     pub write_query: Vec<String>,
+    #[clap(long)]
+    pub debug: bool,
 }
 
 pub fn subscriber() {
@@ -193,7 +195,9 @@ fn main() {
     );
 
     analyzer.print_errors(&file_mapping, &mut source_map);
-
+    if args.debug {
+        return;
+    }
     if args.dot {
         println!("{}", analyzer.dot_str_no_tmps());
     }

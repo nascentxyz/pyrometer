@@ -113,6 +113,11 @@ impl RangeElem<Concrete> for Dynamic {
         }
         Ok(())
     }
+
+    fn uncache(&mut self) {
+        self.minimized = None;
+        self.maximized = None;
+    }
 }
 
 /// A concrete value for a range element
@@ -260,6 +265,11 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         }
         Ok(())
     }
+
+    fn uncache(&mut self) {
+        self.minimized = None;
+        self.maximized = None;
+    }
 }
 
 /// A concrete value for a range element
@@ -377,6 +387,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn cache_minimize(&mut self, _g: &impl GraphLike) -> Result<(), GraphError> {
         Ok(())
     }
+    fn uncache(&mut self) {}
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -472,6 +483,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
         Ok(())
     }
+
+    fn uncache(&mut self) {
+        self.uncache_exec();
+    }
 }
 
 /// A core range element.
@@ -495,6 +510,18 @@ impl From<Concrete> for Elem<Concrete> {
             val: c,
             loc: Loc::Implicit,
         })
+    }
+}
+
+impl From<ContextVarNode> for Elem<Concrete> {
+    fn from(c: ContextVarNode) -> Self {
+        Elem::Dynamic(Dynamic::new(c.into()))
+    }
+}
+
+impl From<NodeIdx> for Elem<Concrete> {
+    fn from(idx: NodeIdx) -> Self {
+        Elem::Dynamic(Dynamic::new(idx))
     }
 }
 
@@ -683,9 +710,11 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     }
 
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
+        // println!("filter {} for {}, {:?}", node_idx.index(), new_idx.index(), self);
         match self {
             Self::Dynamic(ref mut d) => {
                 if d.idx == node_idx {
+                    // println!("match");
                     d.idx = new_idx
                 }
             }
@@ -763,6 +792,16 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             ConcreteDyn(inner) => inner.cache_minimize(analyzer),
             Expr(expr) => expr.cache_minimize(analyzer),
             Null => Ok(()),
+        }
+    }
+    fn uncache(&mut self) {
+        use Elem::*;
+        match self {
+            Dynamic(dy) => dy.uncache(),
+            Concrete(inner) => inner.uncache(),
+            ConcreteDyn(inner) => inner.uncache(),
+            Expr(expr) => expr.uncache(),
+            Null => {}
         }
     }
 }
@@ -909,6 +948,9 @@ pub trait ExecOp<T> {
         maximize: bool,
         analyzer: &impl GraphLike,
     ) -> Result<(), GraphError>;
+
+    fn uncache_exec(&mut self);
+
     /// Attempts to simplify an expression (i.e. just apply constant folding)
     fn simplify_exec_op(
         &self,
@@ -934,6 +976,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             self.minimized = Some(MinMaxed::Minimized(Box::new(res)));
         }
         Ok(())
+    }
+
+    fn uncache_exec(&mut self) {
+        self.lhs.uncache();
+        self.rhs.uncache();
     }
 
     fn exec_op(
@@ -1531,137 +1578,96 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             RangeOp::Neq => {
+                let loc = if let Some(c) = lhs_min.maybe_concrete() {
+                    c.loc
+                } else if let Some(c) = lhs_max.maybe_concrete() {
+                    c.loc
+                } else if let Some(c) = rhs_min.maybe_concrete() {
+                    c.loc
+                } else if let Some(c) = rhs_max.maybe_concrete() {
+                    c.loc
+                } else {
+                    Loc::Implicit
+                };
                 if maximize {
                     // check if either lhs element is *not* contained by rhs
                     match (
+                        // check if lhs is constant
+                        lhs_min.range_ord(&lhs_max),
+                        // check if rhs is constant
+                        rhs_min.range_ord(&rhs_max),
+                        // check if lhs is equal to rhs
                         lhs_min.range_ord(&rhs_min),
-                        lhs_min.range_ord(&rhs_max),
-                        lhs_min.maybe_concrete(),
                     ) {
-                        (_, _, None) => {}
-                        (Some(std::cmp::Ordering::Less), _, Some(c))
-                        | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
-                        }
-                        _ => {}
+                        (
+                            Some(std::cmp::Ordering::Equal),
+                            Some(std::cmp::Ordering::Equal),
+                            Some(std::cmp::Ordering::Equal),
+                        ) => Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(false),
+                            loc,
+                        }),
+                        // if any of those are not equal, we can construct
+                        // an element that is true
+                        _ => Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(true),
+                            loc,
+                        }),
                     }
-
-                    match (
-                        lhs_max.range_ord(&rhs_min),
-                        lhs_max.range_ord(&rhs_max),
-                        lhs_max.maybe_concrete(),
-                    ) {
-                        (_, _, None) => {}
-                        (Some(std::cmp::Ordering::Less), _, Some(c))
-                        | (_, Some(std::cmp::Ordering::Greater), Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
-                        }
-                        (_, _, Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(false),
-                                loc: c.loc,
-                            }))
-                        }
-                    }
-
-                    Elem::Expr(self.clone())
                 } else {
-                    // check if either lhs element is contained by rhs
+                    // if they are constants and equal, we can stop here
+                    //   (rhs min == rhs max) == (lhs min == lhs max )
+                    if let (
+                        Some(std::cmp::Ordering::Equal),
+                        Some(std::cmp::Ordering::Equal),
+                        Some(std::cmp::Ordering::Equal),
+                    ) = (
+                        // check if lhs is constant
+                        lhs_min.range_ord(&lhs_max),
+                        // check if rhs is constant
+                        rhs_min.range_ord(&rhs_max),
+                        // check if lhs is equal to rhs
+                        lhs_min.range_ord(&rhs_min),
+                    ) {
+                        return Ok(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(false),
+                            loc,
+                        }));
+                    }
+
+                    // they aren't constants, check if there is any overlap
                     match (
+                        // check if lhs minimum is contained within the right hand side
+                        // this means the values could be equal
+                        // effectively:
+                        //   rhs min <= lhs min <= rhs max
                         lhs_min.range_ord(&rhs_min),
                         lhs_min.range_ord(&rhs_max),
-                        lhs_min.maybe_concrete(),
                     ) {
-                        (_, _, None) => {}
-                        (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        ) => {
+                        (_, Some(std::cmp::Ordering::Equal))
+                        | (Some(std::cmp::Ordering::Equal), _)
+                        | (Some(std::cmp::Ordering::Greater), Some(std::cmp::Ordering::Less)) => {
                             return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
-                                loc: c.loc,
+                                loc,
                             }))
                         }
                         _ => {}
                     }
 
                     match (
+                        // check if the lhs maximum is contained within the right hand side
+                        // effectively:
+                        //   rhs min <= lhs max <= rhs max
                         lhs_max.range_ord(&rhs_min),
                         lhs_max.range_ord(&rhs_max),
-                        lhs_max.maybe_concrete(),
                     ) {
-                        (_, _, None) => {}
-                        (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        )
-                        | (
-                            Some(std::cmp::Ordering::Equal),
-                            Some(std::cmp::Ordering::Equal),
-                            Some(c),
-                        ) => {
+                        (_, Some(std::cmp::Ordering::Equal))
+                        | (Some(std::cmp::Ordering::Equal), _)
+                        | (Some(std::cmp::Ordering::Greater), Some(std::cmp::Ordering::Less)) => {
                             return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
-                                loc: c.loc,
-                            }))
-                        }
-                        (_, Some(std::cmp::Ordering::Equal), Some(c)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
-                        }
-                        (
-                            Some(std::cmp::Ordering::Greater),
-                            Some(std::cmp::Ordering::Greater),
-                            Some(c),
-                        ) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
-                            }))
-                        }
-                        (
-                            Some(std::cmp::Ordering::Less),
-                            Some(std::cmp::Ordering::Less),
-                            Some(c),
-                        ) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc: c.loc,
+                                loc,
                             }))
                         }
                         _ => {}
@@ -1831,12 +1837,46 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             RangeOp::BitAnd => {
-                let candidates = vec![
+                let mut candidates = vec![
                     lhs_min.range_bit_and(&rhs_min),
                     lhs_min.range_bit_and(&rhs_max),
                     lhs_max.range_bit_and(&rhs_min),
                     lhs_max.range_bit_and(&rhs_max),
                 ];
+
+                let zero = Elem::from(Concrete::from(U256::from(0)));
+                let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&zero),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&zero),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_bit_and(&zero));
+                    candidates.push(lhs_max.range_bit_and(&zero));
+                }
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_bit_and(&negative_one));
+                    candidates.push(lhs_max.range_bit_and(&negative_one));
+                }
+
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                 candidates.sort_by(|a, b| match a.range_ord(b) {
                     Some(r) => r,
@@ -1854,12 +1894,46 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             RangeOp::BitOr => {
-                let candidates = vec![
+                let mut candidates = vec![
                     lhs_min.range_bit_or(&rhs_min),
                     lhs_min.range_bit_or(&rhs_max),
                     lhs_max.range_bit_or(&rhs_min),
                     lhs_max.range_bit_or(&rhs_max),
                 ];
+
+                let zero = Elem::from(Concrete::from(U256::from(0)));
+                let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&zero),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&zero),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_bit_or(&zero));
+                    candidates.push(lhs_max.range_bit_or(&zero));
+                }
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_bit_or(&negative_one));
+                    candidates.push(lhs_max.range_bit_or(&negative_one));
+                }
+
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                 candidates.sort_by(|a, b| match a.range_ord(b) {
                     Some(r) => r,
@@ -1877,12 +1951,95 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
             RangeOp::BitXor => {
-                let candidates = vec![
+                let mut candidates = vec![
                     lhs_min.range_bit_xor(&rhs_min),
                     lhs_min.range_bit_xor(&rhs_max),
                     lhs_max.range_bit_xor(&rhs_min),
                     lhs_max.range_bit_xor(&rhs_max),
                 ];
+
+                let zero = Elem::from(Concrete::from(U256::from(0)));
+                let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&zero),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&zero),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    // if the rhs contains zero, in xor, thats just itself
+                    candidates.push(lhs_max.range_bit_xor(&zero));
+                }
+
+                let min_contains = matches!(
+                    rhs_min.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    rhs_max.range_ord(&negative_one),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    candidates.push(lhs_min.range_bit_xor(&negative_one));
+                    candidates.push(lhs_max.range_bit_xor(&negative_one));
+                }
+
+                let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+                candidates.sort_by(|a, b| match a.range_ord(b) {
+                    Some(r) => r,
+                    _ => std::cmp::Ordering::Less,
+                });
+
+                if candidates.is_empty() {
+                    return Ok(Elem::Expr(self.clone()));
+                }
+
+                if maximize {
+                    candidates[candidates.len() - 1].clone()
+                } else {
+                    candidates[0].clone()
+                }
+            }
+            RangeOp::BitNot => {
+                let mut candidates = vec![lhs_min.range_bit_not(), lhs_max.range_bit_not()];
+
+                let zero = Elem::from(Concrete::from(U256::from(0)));
+
+                let min_contains = matches!(
+                    lhs_min.range_ord(&zero),
+                    Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                );
+
+                let max_contains = matches!(
+                    lhs_max.range_ord(&zero),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                );
+
+                if min_contains && max_contains {
+                    match lhs_min {
+                        Elem::Concrete(
+                            r @ RangeConcrete {
+                                val: Concrete::Uint(..),
+                                ..
+                            },
+                        ) => candidates.push(Some(Elem::from(Concrete::max(&r.val).unwrap()))),
+                        Elem::Concrete(
+                            r @ RangeConcrete {
+                                val: Concrete::Int(..),
+                                ..
+                            },
+                        ) => candidates.push(Some(Elem::from(Concrete::min(&r.val).unwrap()))),
+                        _ => {}
+                    }
+                }
+
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                 candidates.sort_by(|a, b| match a.range_ord(b) {
                     Some(r) => r,

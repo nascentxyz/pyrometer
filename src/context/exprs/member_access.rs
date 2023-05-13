@@ -52,6 +52,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     .possible_library_funcs(ctx, func_node.0.into())
                     .into_iter()
                     .collect::<Vec<_>>(),
+                VarType::User(TypeNode::Unresolved(n), _) => {
+                    match self.node(*n) {
+                        Node::Unresolved(ident) => {
+                            return Err(ExprErr::Unresolved(loc, format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
+                        }
+                        _ => unreachable!()
+                    }
+                }
             },
             Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
             Node::Concrete(_)
@@ -86,11 +94,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             return self.length(loc, member_expr, ctx);
         }
 
+        println!("member expression: {member_expr:#?}");
+
         self.parse_ctx_expr(member_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
+
+            println!("member expression ret: {ret:#?}");
             if matches!(ret, ExprRet::CtxKilled(_)) {
                 ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                 return Ok(());
@@ -115,11 +127,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             ExprRet::Multi(inner) => inner
                 .into_iter()
                 .try_for_each(|ret| self.match_member(ctx, loc, ident, ret)),
-            ExprRet::CtxKilled(kind) => {
-                ctx.push_expr(ExprRet::CtxKilled(kind), self)
-                    .into_expr_err(loc)?;
-                Ok(())
-            }
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
+            ExprRet::Null => Ok(()),
         }
     }
 
@@ -130,6 +139,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         ident: &Identifier,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
+        println!("member access inner: {:#?}", self.node(member_idx));
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Struct(struct_node), _) => {
@@ -228,6 +238,22 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                                 Edge::Context(ContextEdge::FuncAccess),
                             );
                             return Ok(ExprRet::Single(fn_node));
+                        }
+                    } else if let Some(func) = con_node
+                        .structs(self)
+                        .into_iter()
+                        .find(|struct_node| struct_node.name(self).unwrap() == ident.name)
+                    {
+                        if let Some(struct_cvar) =
+                            ContextVar::maybe_from_user_ty(self, loc, func.0.into())
+                        {
+                            let struct_node = self.add_node(Node::ContextVar(struct_cvar));
+                            self.add_edge(
+                                struct_node,
+                                member_idx,
+                                Edge::Context(ContextEdge::FuncAccess),
+                            );
+                            return Ok(ExprRet::Single(struct_node));
                         }
                     } else {
                         match &*ident.name {
@@ -760,7 +786,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     match &*ident.name {
                         "delegatecall(address, bytes)"
                         | "call(address, bytes)"
-                        | "staticcall(address, bytes)" => {
+                        | "staticcall(address, bytes)"
+                        | "delegatecall(bytes)"
+                        | "call(bytes)"
+                        | "staticcall(bytes)"
+                        | "delegatecall(string)"
+                        | "call(string)"
+                        | "staticcall(string)" => {
                             // TODO: check if the address is known to be a certain type and the function signature is known
                             // and call into the function
                             let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
@@ -873,8 +905,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         } else {
                             Err(ExprErr::NonStoragePush(
                                 loc,
-                                "Trying to push to nonstorage variable is not supported"
-                                    .to_string(),
+                                "Trying to push to nonstorage array is not supported".to_string(),
+                            ))
+                        }
+                    } else if ident.name.starts_with("pop") {
+                        if is_storage {
+                            let fn_node = self.builtin_fn_or_maybe_add("pop").unwrap();
+                            Ok(ExprRet::Single(fn_node))
+                        } else {
+                            Err(ExprErr::NonStoragePush(
+                                loc,
+                                "Trying to pop from nonstorage array is not supported".to_string(),
                             ))
                         }
                     } else {
@@ -912,7 +953,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     };
                     match &*ident.name {
                         "max" => {
-                            let c = Concrete::from(max);
+                            let c = Concrete::Int(size, max);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
@@ -927,7 +968,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         }
                         "min" => {
                             let min = max * I256::from(-1i32) - I256::from(1i32);
-                            let c = Concrete::from(min);
+                            let c = Concrete::Int(size, min);
                             let node = self.add_node(Node::Concrete(c)).into();
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
@@ -957,7 +998,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         } else {
                             U256::from(2).pow(U256::from(size)) - 1
                         };
-                        let c = Concrete::from(max);
+                        let c = Concrete::Uint(size, max);
                         let node = self.add_node(Node::Concrete(c)).into();
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                             .into_expr_err(loc)?;
@@ -1132,7 +1173,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<(), ExprErr> {
         self.variable(ident, ctx, None)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(index_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(index_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "No index in index access".to_string()))
             };
 
@@ -1154,11 +1195,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match index_paths {
-            ExprRet::CtxKilled(kind) => {
-                ctx.push_expr(ExprRet::CtxKilled(*kind), self)
-                    .into_expr_err(loc)?;
-                Ok(())
-            }
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, *kind).into_expr_err(loc),
             ExprRet::Single(idx) => {
                 let parent = parent.first_version(self);
                 let parent_name = parent.name(self).into_expr_err(loc)?;
@@ -1213,7 +1250,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(input_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
             if matches!(ret, ExprRet::CtxKilled(_)) {
@@ -1268,7 +1305,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     let max = r.evaled_range_max(self).unwrap();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_node));
+                        rd.len = Elem::from(len_node);
                         let res = next_arr
                             .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc);
@@ -1276,7 +1313,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(len_node));
+                        rd.len = Elem::from(len_node);
                         let res = next_arr
                             .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc);
@@ -1301,11 +1338,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         update_len_bound: bool,
     ) -> Result<(), ExprErr> {
         match elem_path {
-            ExprRet::CtxKilled(kind) => {
-                ctx.push_expr(ExprRet::CtxKilled(kind), self)
-                    .into_expr_err(loc)?;
+            ExprRet::Null => {
+                ctx.push_expr(ExprRet::Null, self).into_expr_err(loc)?;
                 Ok(())
             }
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Single(arr) => {
                 let next_arr = self.advance_var_in_ctx(
                     ContextVarNode::from(arr).latest_version(self),
@@ -1331,7 +1368,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into()));
+                                rd.len = Elem::from(new_len);
                                 let res = next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1339,7 +1376,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(new_len.into()));
+                                rd.len = Elem::from(new_len);
                                 let res = next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1379,7 +1416,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(len_node));
+                                rd.len = Elem::from(len_node);
                                 let res = next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1387,7 +1424,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
-                                rd.len = Elem::Dynamic(Dynamic::new(len_node));
+                                rd.len = Elem::from(len_node);
                                 let res = next_arr
                                     .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc);
@@ -1404,7 +1441,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     Ok(())
                 }
             }
-            _ => todo!("here"),
+            e => todo!("here: {e:?}"),
         }
     }
 }

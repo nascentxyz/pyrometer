@@ -15,7 +15,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         self.parse_ctx_expr(ty_expr, ctx)?;
         self.apply_to_edges(ctx, ty_expr.loc(), &|analyzer, ctx, loc| {
-            if let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? {
+            if let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
                 if matches!(ret, ExprRet::CtxKilled(_)) {
                     ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                     return Ok(());
@@ -62,10 +62,11 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             ExprRet::CtxKilled(kind) => {
-                ctx.push_expr(ExprRet::CtxKilled(kind), self)
+                ctx.kill(self, ty_expr.loc(), kind)
                     .into_expr_err(ty_expr.loc())?;
                 Ok(())
             }
+            ExprRet::Null => Ok(()),
         }
     }
 
@@ -80,7 +81,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(index_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(index_tys) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(index_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Could not find the index variable".to_string()))
             };
             if matches!(index_tys, ExprRet::CtxKilled(_)) {
@@ -89,7 +90,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
             analyzer.parse_ctx_expr(ty_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(inner_tys) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                let Some(inner_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "Could not find the array".to_string()))
                 };
                 if matches!(inner_tys, ExprRet::CtxKilled(_)) {
@@ -110,13 +111,12 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         index_paths: ExprRet,
     ) -> Result<(), ExprErr> {
         match (inner_paths, index_paths) {
+            (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (_, ExprRet::CtxKilled(kind)) => {
-                ctx.push_expr(ExprRet::CtxKilled(kind), self).into_expr_err(loc)?;
-                Ok(())
+                ctx.kill(self, loc, kind).into_expr_err(loc)
             }
             (ExprRet::CtxKilled(kind), _) => {
-                ctx.push_expr(ExprRet::CtxKilled(kind), self).into_expr_err(loc)?;
-                Ok(())
+                ctx.kill(self, loc, kind).into_expr_err(loc)
             }
             (ExprRet::Single(parent), ExprRet::Single(index)) | (ExprRet::Single(parent), ExprRet::SingleLiteral(index)) => {
                 let index = ContextVarNode::from(index).latest_version(self);

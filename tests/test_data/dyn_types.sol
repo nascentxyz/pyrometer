@@ -23,7 +23,11 @@ contract DynTypes {
     }
 
     function array_push(uint256 x) public {
+        require(x > 5);
         storeVar.push(x);
+        // TODO: handle this better
         require(storeVar[0] == x);
+        uint256 y = storeVar.pop();
+        require(y == x);
     }
 }

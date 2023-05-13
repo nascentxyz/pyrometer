@@ -5,7 +5,9 @@ use crate::AsDotStr;
 use crate::Edge;
 use crate::FunctionNode;
 use crate::Node;
+use crate::StructNode;
 use crate::{context::ContextEdge, NodeIdx};
+use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
 
 /// An index in the graph that references a [`Contract`] node
@@ -38,11 +40,31 @@ impl ContractNode {
         }
     }
 
+    pub fn super_contracts(&self, analyzer: &impl GraphLike) -> Vec<ContractNode> {
+        analyzer
+            .graph()
+            .edges_directed((*self).into(), Direction::Incoming)
+            .filter(|edge| edge.weight() == &Edge::InheritedContract)
+            .map(|edge| ContractNode::from(edge.source()))
+            .collect()
+    }
+
     pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+        let src = self.associated_source(analyzer);
+        println!(
+            "contract: {}, associated_source: {:?}",
+            self.name(analyzer).unwrap(),
+            analyzer.node(src)
+        );
         let all_contracts = analyzer.search_children_include_via(
-            analyzer.entry(),
+            src,
             &Edge::Contract,
-            &[Edge::InheritedContract],
+            &[
+                Edge::Import,
+                Edge::Part,
+                Edge::Contract,
+                Edge::InheritedContract,
+            ],
         );
         // we unwrap the name call because we dont really wanna bubble up thru an iteration
         inherits.iter().for_each(|inherited_name| {
@@ -52,6 +74,13 @@ impl ContractNode {
                     &ContractNode::from(**contract).name(analyzer).unwrap() == inherited_name
                 })
                 .unwrap_or_else(|| {
+                    println!(
+                        "all contracts: {:#?}",
+                        all_contracts
+                            .iter()
+                            .map(|i| ContractNode::from(*i).name(analyzer).unwrap())
+                            .collect::<Vec<_>>()
+                    );
                     analyzer.open_dot();
                     panic!(
                         "Could not find inherited contract: {inherited_name} for contract {:?}",
@@ -92,6 +121,14 @@ impl ContractNode {
             .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
             .into_iter()
             .map(FunctionNode::from)
+            .collect()
+    }
+
+    pub fn structs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<StructNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Struct, 1, 0)
+            .into_iter()
+            .map(StructNode::from)
             .collect()
     }
 

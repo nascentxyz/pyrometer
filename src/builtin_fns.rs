@@ -75,6 +75,15 @@ pub fn builtin_fns() -> HashMap<String, Function> {
         builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
+                name: "pop".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
                 name: "ecrecover".to_string(),
             }),
             attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
@@ -396,6 +405,7 @@ pub fn builtin_fns_inputs(
         ),
         ("concat", vec![], vec![]),
         ("push", vec![], vec![]),
+        ("pop", vec![], vec![]),
         (
             "ecrecover",
             vec![

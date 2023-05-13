@@ -74,6 +74,27 @@ impl VarType {
         }
     }
 
+    pub fn unresolved_as_resolved(&self, analyzer: &impl GraphLike) -> Result<Self, GraphError> {
+        match self {
+            VarType::User(TypeNode::Unresolved(n), _) => match analyzer.node(*n) {
+                Node::Unresolved(ident) => Err(GraphError::NodeConfusion(format!(
+                    "Expected the type \"{}\" to be resolved by now",
+                    ident.name
+                ))),
+                _ => {
+                    if let Some(ty) = VarType::try_from_idx(analyzer, *n) {
+                        Ok(ty)
+                    } else {
+                        Err(GraphError::NodeConfusion(
+                            "Tried to type a non-typeable element".to_string(),
+                        ))
+                    }
+                }
+            },
+            _ => Ok(self.clone()),
+        }
+    }
+
     pub fn concrete_to_builtin(
         &mut self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -162,21 +183,21 @@ impl VarType {
                 };
                 Some(VarType::User(TypeNode::Enum(node.into()), range))
             }
+            Node::Unresolved(_n) => Some(VarType::User(TypeNode::Unresolved(node), None)),
             Node::Concrete(_) => Some(VarType::Concrete(node.into())),
             Node::ContextVar(cvar) => Some(cvar.ty.clone()),
             Node::Var(var) => VarType::try_from_idx(analyzer, var.ty),
             Node::Ty(ty) => VarType::try_from_idx(analyzer, ty.ty),
+            Node::FunctionParam(inner) => VarType::try_from_idx(analyzer, inner.ty),
             Node::Error(..)
             | Node::ContextFork
             | Node::FunctionCall
-            | Node::FunctionParam(..)
             | Node::FunctionReturn(..)
             | Node::ErrorParam(..)
             | Node::Field(..)
             | Node::SourceUnitPart(..)
             | Node::SourceUnit(..)
             | Node::Entry
-            | Node::Unresolved(..)
             | Node::Context(..)
             | Node::Msg(_)
             | Node::Block(_) => None,
@@ -519,9 +540,26 @@ impl VarType {
 
     pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match (self, other) {
-            (VarType::User(s, _), VarType::User(o, _)) => Ok(s == o),
+            (VarType::User(s, _), VarType::User(o, _)) => {
+                Ok(s.unresolved_as_resolved(analyzer)? == o.unresolved_as_resolved(analyzer)?)
+            }
             (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
-                Ok(s.underlying(analyzer)? == o.underlying(analyzer)?)
+                println!(
+                    "ty_eq builtin: {:?} {:?}",
+                    s.underlying(analyzer)?,
+                    o.underlying(analyzer)?
+                );
+                match (s.underlying(analyzer)?, o.underlying(analyzer)?) {
+                    (Builtin::Array(l), Builtin::Array(r)) => Ok(l
+                        .unresolved_as_resolved(analyzer)?
+                        == r.unresolved_as_resolved(analyzer)?),
+                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => Ok(lk
+                        .unresolved_as_resolved(analyzer)?
+                        == rk.unresolved_as_resolved(analyzer)?
+                        && lv.unresolved_as_resolved(analyzer)?
+                            == rv.unresolved_as_resolved(analyzer)?),
+                    (l, r) => Ok(l == r),
+                }
             }
             (VarType::Concrete(s), VarType::Concrete(o)) => Ok(s
                 .underlying(analyzer)?
@@ -566,6 +604,7 @@ pub enum TypeNode {
     Struct(StructNode),
     Enum(EnumNode),
     Func(FunctionNode),
+    Unresolved(NodeIdx),
 }
 
 impl TypeNode {
@@ -575,6 +614,26 @@ impl TypeNode {
             TypeNode::Struct(n) => n.name(analyzer),
             TypeNode::Enum(n) => n.name(analyzer),
             TypeNode::Func(n) => Ok(format!("function {}", n.name(analyzer)?)),
+            TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
+        }
+    }
+
+    pub fn unresolved_as_resolved(&self, analyzer: &impl GraphLike) -> Result<Self, GraphError> {
+        match self {
+            TypeNode::Unresolved(n) => match analyzer.node(*n) {
+                Node::Unresolved(ident) => Err(GraphError::NodeConfusion(format!(
+                    "Expected the type \"{}\" to be resolved by now",
+                    ident.name
+                ))),
+                Node::Contract(..) => Ok(TypeNode::Contract((*n).into())),
+                Node::Struct(..) => Ok(TypeNode::Struct((*n).into())),
+                Node::Enum(..) => Ok(TypeNode::Enum((*n).into())),
+                Node::Function(..) => Ok(TypeNode::Func((*n).into())),
+                _ => Err(GraphError::NodeConfusion(
+                    "Tried to type a non-typeable element".to_string(),
+                )),
+            },
+            _ => Ok(*self),
         }
     }
 }
@@ -586,6 +645,7 @@ impl From<TypeNode> for NodeIdx {
             TypeNode::Struct(n) => n.into(),
             TypeNode::Enum(n) => n.into(),
             TypeNode::Func(n) => n.into(),
+            TypeNode::Unresolved(n) => n,
         }
     }
 }
@@ -631,8 +691,8 @@ impl BuiltInNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<VarType, GraphError> {
         match self.underlying(analyzer)? {
-            Builtin::Array(v_ty) => Ok(v_ty.clone()),
-            Builtin::Mapping(_, v_ty) => Ok(v_ty.clone()),
+            Builtin::Array(v_ty) => v_ty.unresolved_as_resolved(analyzer),
+            Builtin::Mapping(_, v_ty) => v_ty.unresolved_as_resolved(analyzer),
             Builtin::DynamicBytes => Ok(VarType::BuiltIn(
                 analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
                 Some(SolcRange::new(
@@ -690,6 +750,32 @@ pub enum Builtin {
 }
 
 impl Builtin {
+    // pub fn resolved_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    //     match (self, other) => {
+    //         (
+    //             Array(inner_l), Array(inner_r)
+    //         ) => {
+    //             Array(inner_l.unresolved_as_resolved(analyzer)).resolved_eq(
+    //                 Array(inner_r.unresolved_as_resolved(analyzer))
+    //             )
+    //         }
+    //     }
+    // }
+
+    pub fn unresolved_as_resolved(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Self, GraphError> {
+        match self {
+            Builtin::Array(n) => Ok(Builtin::Array(n.unresolved_as_resolved(analyzer)?)),
+            Builtin::Mapping(k, v) => Ok(Builtin::Mapping(
+                k.unresolved_as_resolved(analyzer)?,
+                v.unresolved_as_resolved(analyzer)?,
+            )),
+            _ => Ok(self.clone()),
+        }
+    }
+
     pub fn zero_range(&self) -> Option<SolcRange> {
         match self {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
@@ -731,8 +817,11 @@ impl Builtin {
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
             Mapping { key, value, .. } => {
+                println!("HERE");
                 let key_idx = analyzer.parse_expr(&key);
+                println!("HERE2: {:?}", analyzer.node(key_idx));
                 let val_idx = analyzer.parse_expr(&value);
+                println!("HERE3: {:?}", analyzer.node(val_idx));
                 let key_var_ty = VarType::try_from_idx(analyzer, key_idx)?;
                 let val_var_ty = VarType::try_from_idx(analyzer, val_idx)?;
                 Some(Builtin::Mapping(key_var_ty, val_var_ty))
@@ -834,11 +923,16 @@ impl Builtin {
             Bytes(size) => Ok(format!("bytes{size}")),
             Rational => Ok("rational".to_string()),
             DynamicBytes => Ok("bytes".to_string()),
-            Array(v_ty) => Ok(format!("{}[]", v_ty.as_string(analyzer)?)),
+            Array(v_ty) => Ok(format!(
+                "{}[]",
+                v_ty.unresolved_as_resolved(analyzer)?.as_string(analyzer)?
+            )),
             Mapping(key_ty, v_ty) => Ok(format!(
                 "mapping ({} => {})",
-                key_ty.as_string(analyzer)?,
-                v_ty.as_string(analyzer)?
+                key_ty
+                    .unresolved_as_resolved(analyzer)?
+                    .as_string(analyzer)?,
+                v_ty.unresolved_as_resolved(analyzer)?.as_string(analyzer)?
             )),
             Func(inputs, outputs) => Ok(format!(
                 "function({}) returns ({})",

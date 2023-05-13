@@ -59,7 +59,7 @@ pub enum Concrete {
     Address(Address),
     /// A boolean
     Bool(bool),
-    /// A (capacity, vector of bytes)
+    /// A vector of bytes
     DynBytes(Vec<u8>),
     /// A string, (TODO: solidity doesn't enforce utf-8 encoding like rust. Likely this type
     /// should be modeled with a `Vec<u8>` instead.)
@@ -503,19 +503,19 @@ impl Concrete {
     pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
         let mut builtins = vec![];
         match self {
-            Concrete::Uint(size, val) => {
+            Concrete::Uint(_size, val) => {
                 let mut min_bits = (256 - val.leading_zeros()) as u16;
-                let mut s = *size;
+                let mut s = 256;
                 while s > min_bits {
                     builtins.push(Builtin::Uint(s));
                     s -= 8;
                 }
                 // now ints
                 min_bits = min_bits.saturating_sub(1);
-                let mut s = *size;
+                let mut s = 255;
                 while s > min_bits {
-                    builtins.push(Builtin::Int(s));
-                    s -= 8;
+                    builtins.push(Builtin::Int(s + 1));
+                    s = s.saturating_sub(8);
                 }
             }
             Concrete::Int(size, val) => {
@@ -587,7 +587,7 @@ impl Concrete {
                     I256::from_raw(U256::from(1u8) << U256::from(*size - 1)) - I256::from(1)
                 };
 
-                let min = max * I256::from(-1i32);
+                let min = max * I256::from(-1i32) - I256::from(1i32);
                 Some(Concrete::Int(*size, min))
             }
             Concrete::Bytes(size, _) => {

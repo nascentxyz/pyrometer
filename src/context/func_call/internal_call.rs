@@ -124,7 +124,7 @@ pub trait InternalFuncCaller:
                         .expect("No field in struct in struct construction");
                     self.parse_ctx_expr(&input.expr, ctx)?;
                     self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(assignment) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(assignment) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
                         };
 
@@ -134,7 +134,7 @@ pub trait InternalFuncCaller:
                         }
 
                         analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
-                        let _ = ctx.pop_expr(loc, analyzer).into_expr_err(loc)?;
+                        let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                         Ok(())
                     })
                 })?;
@@ -165,7 +165,7 @@ pub trait InternalFuncCaller:
             self.parse_inputs(ctx, *loc, &inputs[..])?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
-                    .pop_expr(loc, analyzer)
+                    .pop_expr_latest(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
@@ -206,7 +206,7 @@ pub trait InternalFuncCaller:
             self.parse_ctx_expr(func_expr, ctx)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let ret = ctx
-                    .pop_expr(loc, analyzer)
+                    .pop_expr_latest(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 let ret = ret.flatten();
@@ -220,7 +220,7 @@ pub trait InternalFuncCaller:
             self.parse_inputs(ctx, *loc, input_exprs)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
-                    .pop_expr(loc, analyzer)
+                    .pop_expr_latest(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 let inputs = inputs.flatten();
@@ -249,7 +249,7 @@ pub trait InternalFuncCaller:
             self.parse_inputs(ctx, *loc, input_exprs)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
-                    .pop_expr(loc, analyzer)
+                    .pop_expr_latest(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
                 let inputs = inputs.flatten();
@@ -267,7 +267,13 @@ pub trait InternalFuncCaller:
                 } else {
                     Err(ExprErr::FunctionNotFound(
                         loc,
-                        "Could not find function".to_string(),
+                        format!(
+                            "Could not disambiguate function, possible functions: {:#?}",
+                            possible_funcs
+                                .iter()
+                                .map(|i| i.name(analyzer).unwrap())
+                                .collect::<Vec<_>>()
+                        ),
                     ))
                 }
             })

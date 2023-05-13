@@ -24,7 +24,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         self.parse_ctx_expr(lhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(lhs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Not operation had no element".to_string()))
             };
 
@@ -47,13 +47,13 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
                 tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
-                let range = self.not_eval(ctx, loc, lhs_cvar);
+                let range = self.not_eval(ctx, loc, lhs_cvar)?;
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(
                         "tmp{}(!{})",
+                        ctx.new_tmp(self).into_expr_err(loc)?,
                         lhs_cvar.name(self).into_expr_err(loc)?,
-                        ctx.new_tmp(self).into_expr_err(loc)?
                     ),
                     display_name: format!("!{}", lhs_cvar.display_name(self).into_expr_err(loc)?,),
                     storage: None,
@@ -78,6 +78,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 loc,
                 format!("Multiple elements in not expression: {f:?}"),
             )),
+            ExprRet::Null => Err(ExprErr::NoRhs(
+                loc,
+                "No right hand side in `not` expression".to_string(),
+            )),
         }
     }
 
@@ -93,7 +97,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             analyzer.parse_ctx_expr(rhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoRhs(loc, "Cmp operation had no right hand side".to_string()))
                 };
                 let rhs_paths = rhs_paths.flatten();
@@ -105,7 +109,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                 analyzer.parse_ctx_expr(lhs_expr, ctx)?;
                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Cmp operation had no left hand side".to_string()))
                     };
 
@@ -129,6 +133,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         rhs_paths: &ExprRet,
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
+            (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 ContextVarNode::from(*lhs)
                     .literal_cast_from(&ContextVarNode::from(*rhs), self)
@@ -148,9 +153,9 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let elem = Elem::Expr(RangeExpr {
                         minimized: None,
                         maximized: None,
-                        lhs: Box::new(Elem::Dynamic(Dynamic::new(lhs_cvar.into()))),
+                        lhs: Box::new(Elem::from(lhs_cvar)),
                         op,
-                        rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into()))),
+                        rhs: Box::new(Elem::from(rhs_cvar)),
                     });
 
                     let exclusions = lhs_cvar
@@ -179,9 +184,9 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ),
                     display_name: format!(
                         "{} {} {}",
-                        lhs_cvar.display_name(self).unwrap(),
+                        lhs_cvar.display_name(self).into_expr_err(loc)?,
                         op.to_string(),
-                        rhs_cvar.display_name(self).unwrap(),
+                        rhs_cvar.display_name(self).into_expr_err(loc)?,
                     ),
                     storage: None,
                     is_tmp: true,
@@ -241,21 +246,26 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
     }
 
-    fn not_eval(&self, _ctx: ContextNode, loc: Loc, lhs_cvar: ContextVarNode) -> SolcRange {
-        if let Some(lhs_range) = lhs_cvar.range(self).unwrap() {
-            let lhs_min = lhs_range.evaled_range_min(self).unwrap();
+    fn not_eval(
+        &self,
+        _ctx: ContextNode,
+        loc: Loc,
+        lhs_cvar: ContextVarNode,
+    ) -> Result<SolcRange, ExprErr> {
+        if let Some(lhs_range) = lhs_cvar.range(self).into_expr_err(loc)? {
+            let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
 
             // invert
-            if lhs_min.range_eq(&lhs_range.evaled_range_max(self).unwrap()) {
+            if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?) {
                 let val = Elem::Expr(RangeExpr {
                     minimized: None,
                     maximized: None,
-                    lhs: Box::new(lhs_min),
+                    lhs: Box::new(lhs_range.range_min().into_owned()),
                     op: RangeOp::Not,
                     rhs: Box::new(Elem::Null),
                 });
 
-                return SolcRange::new(val.clone(), val, lhs_range.exclusions);
+                return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions));
             }
         }
 
@@ -268,7 +278,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             val: Concrete::Bool(true),
             loc,
         };
-        SolcRange::new(Elem::Concrete(min), Elem::Concrete(max), vec![])
+        Ok(SolcRange::new(
+            Elem::Concrete(min),
+            Elem::Concrete(max),
+            vec![],
+        ))
     }
 
     fn range_eval(

@@ -47,6 +47,7 @@ impl<T> IntoExprErr<T> for Result<T, GraphError> {
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub enum ExprErr {
+    ParseError(Loc, String),
     NoLhs(Loc, String),
     NoRhs(Loc, String),
     NoReturn(Loc, String),
@@ -67,6 +68,7 @@ pub enum ExprErr {
     InvalidFunctionInput(Loc, String),
     TakeFromFork(Loc, String),
     GraphError(Loc, GraphError),
+    Unresolved(Loc, String),
 }
 
 impl ExprErr {
@@ -79,6 +81,7 @@ impl ExprErr {
     pub fn loc(&self) -> Loc {
         use ExprErr::*;
         match self {
+            ParseError(loc, ..) => *loc,
             NoLhs(loc, ..) => *loc,
             NoRhs(loc, ..) => *loc,
             NoReturn(loc, ..) => *loc,
@@ -98,12 +101,14 @@ impl ExprErr {
             InvalidFunctionInput(loc, ..) => *loc,
             TakeFromFork(loc, ..) => *loc,
             GraphError(loc, ..) => *loc,
+            Unresolved(loc, ..) => *loc,
         }
     }
 
     pub fn msg(&self) -> &str {
         use ExprErr::*;
         match self {
+            ParseError(_, msg, ..) => msg,
             NoLhs(_, msg, ..) => msg,
             NoRhs(_, msg, ..) => msg,
             NoReturn(_, msg, ..) => msg,
@@ -122,6 +127,7 @@ impl ExprErr {
             IntrinsicNamedArgs(_, msg, ..) => msg,
             InvalidFunctionInput(_, msg, ..) => msg,
             TakeFromFork(_, msg, ..) => msg,
+            Unresolved(_, msg, ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::MaxStackWidthReached(msg), ..) => msg,
@@ -132,12 +138,14 @@ impl ExprErr {
             }
             GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(msg), ..) => msg,
             GraphError(_loc, shared::analyzer::GraphError::StackLengthMismatch(msg), ..) => msg,
+            GraphError(_loc, shared::analyzer::GraphError::UnbreakableRecursion(msg), ..) => msg,
         }
     }
 
     pub fn report_msg(&self) -> &str {
         use ExprErr::*;
         match self {
+            ParseError(..) => "Could not parse this",
             NoLhs(..) => "No left-hand side passed to expression",
             NoRhs(..) => "No right-hand side passed to expression",
             NoReturn(..) => "No returned element from expression",
@@ -148,6 +156,7 @@ impl ExprErr {
             MultiNot(..) => "Expected a single ExprRet in Not statement, got ExprRet::Multi",
             VarBadType(..) => "This type cannot be made into a variable",
             Todo(..) => "TODO",
+            Unresolved(..) => "Unresolved type: This is likely a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             BadRange(..) => "Expected a range for a variable but there was none",
             ContractFunctionNotFound(..) => "Contract function could not be Found",
             MemberAccessNotFound(..) => "Member element could not be found",
@@ -164,6 +173,7 @@ impl ExprErr {
             GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(_), ..) => "Graph IR Error: Expecting single expression return, got multiple. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, shared::analyzer::GraphError::StackLengthMismatch(_), ..) => "Graph IR Error: Expected a particular number of elements on the context stack but found a different amount. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, shared::analyzer::GraphError::UnbreakableRecursion(_), ..) => "Graph IR Error: Unbreakable recursion in variable range. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
         }
     }
 }

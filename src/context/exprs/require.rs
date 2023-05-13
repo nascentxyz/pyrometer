@@ -32,7 +32,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::Equal(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `==` had no right hand side".to_string()))
                     };
 
@@ -45,7 +45,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `==` had no left hand side".to_string()))
                         };
 
@@ -68,7 +68,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::NotEqual(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `!=` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
@@ -79,7 +79,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     }
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `!=` had no left hand side".to_string()))
                         };
                         if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -101,7 +101,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::Less(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `<` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
@@ -113,7 +113,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `<` had no left hand side".to_string()))
                         };
                         if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -135,7 +135,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::More(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `>` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
@@ -147,7 +147,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `>` had no left hand side".to_string()))
                         };
                         if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -169,7 +169,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::MoreEqual(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `>=` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
@@ -181,7 +181,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `>=` had no left hand side".to_string()))
                         };
                         if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -203,7 +203,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::LessEqual(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Require operation `<=` had no right hand side".to_string()))
                     };
                     let rhs_paths = rhs_paths.flatten();
@@ -215,7 +215,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
                     analyzer.parse_ctx_expr(lhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                        let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Require operation `<=` had no left hand side".to_string()))
                         };
                         if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -237,7 +237,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::Not(loc, lhs) => {
                 self.parse_ctx_expr(lhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `NOT` had no left hand side".to_string()))
                     };
                     if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -266,7 +266,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::And(loc, lhs, rhs) => {
                 self.cmp(*loc, lhs, RangeOp::And, rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `&&` had no left hand side".to_string()))
                     };
                     if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -297,7 +297,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::Or(loc, lhs, rhs) => {
                 self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `||` had no left hand side".to_string()))
                     };
                     if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -327,7 +327,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             other => {
                 self.parse_ctx_expr(other, ctx)?;
                 self.apply_to_edges(ctx, other.loc(), &|analyzer, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation had no left hand side".to_string()))
                     };
                     if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
@@ -366,6 +366,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         recursion_ops: (RangeOp, RangeOp),
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
+            (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (_, ExprRet::CtxKilled(..)) | (ExprRet::CtxKilled(..), _) => Ok(()),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 ContextVarNode::from(*lhs)
@@ -544,14 +545,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let max = r.range_max().into_owned();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
+                        rd.len = Elem::from(new_lhs);
                         backing_arr
                             .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
+                        rd.len = Elem::from(new_lhs);
                         backing_arr
                             .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
@@ -572,20 +573,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             let max = r.evaled_range_max(self).into_expr_err(loc)?;
 
                             if let Some(mut rd) = min.maybe_range_dyn() {
-                                rd.val.insert(
-                                    Elem::Dynamic(Dynamic::new(index.into())),
-                                    Elem::Dynamic(Dynamic::new(new_rhs.into())),
-                                );
+                                rd.val.insert(Elem::from(index), Elem::from(new_rhs));
                                 next_arr
                                     .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc)?;
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
-                                rd.val.insert(
-                                    Elem::Dynamic(Dynamic::new(index.into())),
-                                    Elem::Dynamic(Dynamic::new(new_rhs.into())),
-                                );
+                                rd.val.insert(Elem::from(index), Elem::from(new_rhs));
                                 next_arr
                                     .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                                     .into_expr_err(loc)?;
@@ -601,14 +596,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     let max = r.range_max().into_owned();
 
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
+                        rd.len = Elem::from(new_lhs);
                         backing_arr
                             .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::Dynamic(Dynamic::new(new_lhs.into()));
+                        rd.len = Elem::from(new_lhs);
                         backing_arr
                             .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
                             .into_expr_err(loc)?;
@@ -747,7 +742,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
+                let elem = Elem::from(const_var.latest_version(self));
 
                 if !nonconst_range.contains_elem(&elem, self) {
                     return true;
@@ -760,7 +755,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             }
             RangeOp::Neq => {
                 // check if contains
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
+                let elem = Elem::from(const_var.latest_version(self));
 
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range
@@ -803,7 +798,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gt => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
+                let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst max is <= const, we can't make this true
                 let max = nonconst_range.evaled_range_max(self).unwrap();
@@ -826,7 +821,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gte => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
+                let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst max is < const, we can't make this true
                 if matches!(
@@ -845,7 +840,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lt => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
+                let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst min is >= const, we can't make this true
                 let min = nonconst_range.evaled_range_min(self).unwrap();
@@ -869,7 +864,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lte => {
-                let elem = Elem::Dynamic(Dynamic::new(const_var.latest_version(self).into()));
+                let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst min is > const, we can't make this true
                 let min = nonconst_range.evaled_range_min(self).unwrap();
@@ -915,9 +910,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 {
                     Some(Ordering::Greater) => {
                         // take lhs range min as its tigher
-                        new_rhs
-                            .set_range_min(self, lhs_range.range_min().into_owned())
-                            .unwrap();
+                        new_rhs.set_range_min(self, Elem::from(new_rhs)).unwrap();
                     }
                     Some(Ordering::Less) => {
                         // take rhs range min as its tigher
@@ -956,14 +949,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Neq => {
-                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
+                let rhs_elem = Elem::from(new_rhs.latest_version(self));
                 // just add as an exclusion
                 lhs_range.add_range_exclusion(rhs_elem);
                 new_lhs
                     .set_range_exclusions(self, lhs_range.exclusions)
                     .unwrap();
 
-                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
+                let lhs_elem = Elem::from(new_lhs.latest_version(self));
                 // just add as an exclusion
                 rhs_range.add_range_exclusion(lhs_elem);
                 new_rhs
@@ -972,8 +965,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gt => {
-                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
-                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
+                let rhs_elem = Elem::from(new_rhs.latest_version(self));
+                let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if lhs.max is <= rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self).unwrap();
@@ -1003,8 +996,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Gte => {
-                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
-                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
+                let rhs_elem = Elem::from(new_rhs.latest_version(self));
+                let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if lhs.max is < rhs.min, we can't make this true
                 if matches!(
@@ -1026,8 +1019,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lt => {
-                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
-                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
+                let rhs_elem = Elem::from(new_rhs.latest_version(self));
+                let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if lhs min is >= rhs.max, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();
@@ -1060,8 +1053,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 false
             }
             RangeOp::Lte => {
-                let rhs_elem = Elem::Dynamic(Dynamic::new(new_rhs.latest_version(self).into()));
-                let lhs_elem = Elem::Dynamic(Dynamic::new(new_lhs.latest_version(self).into()));
+                let rhs_elem = Elem::from(new_rhs.latest_version(self));
+                let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if nonconst min is > const, we can't make this true
                 let min = lhs_range.evaled_range_min(self).unwrap();

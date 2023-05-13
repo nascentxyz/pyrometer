@@ -53,12 +53,81 @@ pub trait NameSpaceFuncCaller:
                     .builtin_fn_or_maybe_add(&func_name)
                     .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
                 return self.intrinsic_func_call(loc, input_exprs, fn_node, ctx);
+            } else if name == "super" {
+                if let Some(contract) = ctx.maybe_associated_contract(self).into_expr_err(*loc)? {
+                    let supers = contract.super_contracts(self);
+                    let possible_funcs: Vec<_> = supers
+                        .iter()
+                        .filter_map(|con_node| {
+                            con_node.funcs(self).into_iter().find(|func_node| {
+                                func_node.name(self).unwrap().starts_with(&ident.name)
+                            })
+                        })
+                        .collect();
+
+                    if possible_funcs.is_empty() {
+                        return Err(ExprErr::FunctionNotFound(
+                            *loc,
+                            "Could not find function in super".to_string(),
+                        ));
+                    }
+                    self.parse_inputs(ctx, *loc, input_exprs)?;
+                    return self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Namespace function call had no inputs".to_string()))
+                        };
+                        if possible_funcs.len() == 1 {
+                            let mut inputs = inputs.as_vec();
+                            let func = possible_funcs[0];
+                            if func.params(analyzer).len() < inputs.len() {
+                                inputs = inputs[1..].to_vec();
+                            }
+                            let inputs = ExprRet::Multi(inputs);
+                            if inputs.has_killed() {
+                                return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
+                            }
+                            analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
+                        } else {
+                            // this is the annoying case due to function overloading & type inference on number literals
+                            let mut lits = vec![false];
+                            lits.extend(
+                                input_exprs
+                                    .iter()
+                                    .map(|expr| {
+                                        match expr {
+                                            Negate(_, expr) => {
+                                                // negative number potentially
+                                                matches!(**expr, NumberLiteral(..) | HexLiteral(..))
+                                            }
+                                            NumberLiteral(..) | HexLiteral(..) => true,
+                                            _ => false,
+                                        }
+                                    })
+                                    .collect::<Vec<bool>>(),
+                            );
+
+                            if inputs.has_killed() {
+                                return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
+                            }
+                            if let Some(func) =
+                                analyzer.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
+                            {
+                                analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
+                            } else {
+                                Err(ExprErr::FunctionNotFound(
+                                    loc,
+                                    "Could not find function in super".to_string(),
+                                ))
+                            }
+                        }
+                    });
+                }
             }
         }
 
         self.parse_ctx_expr(member_expr, ctx)?;
         self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no namespace".to_string()))
             };
 
@@ -86,11 +155,11 @@ pub trait NameSpaceFuncCaller:
             ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
                 self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
             }),
-            ExprRet::CtxKilled(kind) => {
-                ctx.push_expr(ExprRet::CtxKilled(kind), self)
-                    .into_expr_err(loc)?;
-                Ok(())
-            }
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
+            ExprRet::Null => Err(ExprErr::NoLhs(
+                loc,
+                "No function found due to null".to_string(),
+            )),
         }
     }
 
@@ -127,7 +196,7 @@ pub trait NameSpaceFuncCaller:
             .into_expr_err(loc)?;
         self.parse_inputs(ctx, loc, input_exprs)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(inputs) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Namespace function call had no inputs".to_string()))
             };
 
@@ -137,8 +206,7 @@ pub trait NameSpaceFuncCaller:
             }
             if possible_funcs.is_empty() {
                 if inputs.has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), analyzer).into_expr_err(loc)?;
-                    return Ok(())
+                    return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
                 }
                 let as_input_str = inputs.try_as_func_input_str(analyzer);
 
@@ -152,7 +220,7 @@ pub trait NameSpaceFuncCaller:
                 );
                 analyzer.parse_ctx_expr(expr, ctx)?;
                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Fallback function parse failure".to_string()))
                     };
                     if matches!(ret, ExprRet::CtxKilled(_)) {
@@ -171,8 +239,7 @@ pub trait NameSpaceFuncCaller:
                 }
                 let inputs = ExprRet::Multi(inputs);
                 if inputs.has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), analyzer).into_expr_err(loc)?;
-                    return Ok(())
+                    return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
                 }
 
                 analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
@@ -196,8 +263,7 @@ pub trait NameSpaceFuncCaller:
                 );
 
                 if inputs.has_killed() {
-                    ctx.push_expr(ExprRet::CtxKilled(Default::default()), analyzer).into_expr_err(loc)?;
-                    return Ok(())
+                    return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
                 }
                 if let Some(func) =
                     analyzer.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
@@ -206,7 +272,7 @@ pub trait NameSpaceFuncCaller:
                 } else {
                     Err(ExprErr::FunctionNotFound(
                         loc,
-                        "Could not find function".to_string(),
+                        format!("Could not disambiguate function, possible functions: {:#?}", possible_funcs.iter().map(|i| i.name(analyzer).unwrap()).collect::<Vec<_>>())
                     ))
                 }
             }

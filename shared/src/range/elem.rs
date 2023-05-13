@@ -56,6 +56,8 @@ pub enum RangeOp {
     BitOr,
     /// Bitwise XOR
     BitXor,
+    /// Bitwise Not
+    BitNot,
     /// Exponentiation
     Exp,
     /// Concatenation
@@ -108,6 +110,7 @@ impl ToString for RangeOp {
             BitAnd => "&".to_string(),
             BitOr => "|".to_string(),
             BitXor => "^".to_string(),
+            BitNot => "~".to_string(),
             Concat => "concat".to_string(),
         }
     }
@@ -120,6 +123,7 @@ pub trait RangeElem<T> {
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn uncache(&mut self);
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)

@@ -7,12 +7,14 @@ contract B is C {
 }
 
 
-contract A is B {
+contract A  {
 	function a(uint256 x) internal override returns (uint256) {
-		return 100;
+		return x + 5;
 	}
 
-	function b() public {
-		a(5);
+	function b() public returns (uint256) {
+		uint256 ret = a(5);
+		require(ret == 10);
+		return ret;
 	}
 }

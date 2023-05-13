@@ -15,27 +15,28 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn list(&mut self, ctx: ContextNode, loc: Loc, params: &ParameterList) -> Result<(), ExprErr> {
         params
             .iter()
-            .filter_map(|(_loc, input)| {
+            .try_for_each(|(loc, input)| {
                 if let Some(input) = input {
-                    Some(input)
+                    self.parse_ctx_expr(&input.ty, ctx)?;
+                    self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
+                        };
+                        if matches!(ret, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        ctx.append_tmp_expr(analyzer.match_ty(ctx, &loc, &ret, input)?, analyzer).into_expr_err(loc)
+                    })
                 } else {
-                    None
+                    // create a dummy var
+                    self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        ctx.append_tmp_expr(ExprRet::Null, analyzer).into_expr_err(loc)
+                    })
                 }
-            }).try_for_each(|input| {
-                self.parse_ctx_expr(&input.ty, ctx)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
-                    };
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    ctx.push_lhs_expr(analyzer.match_ty(ctx, &loc, &ret, input)?, analyzer).into_expr_err(loc)
-                })
             })?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_lhs_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
             };
             ctx.push_expr(ret, analyzer).into_expr_err(loc)
@@ -50,6 +51,7 @@ pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         input: &Parameter,
     ) -> Result<ExprRet, ExprErr> {
         match ty_ret {
+            ExprRet::Null => Ok(ExprRet::Null),
             ExprRet::Single(ty) | ExprRet::SingleLiteral(ty) => {
                 if let Some(input_name) = &input.name {
                     let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");

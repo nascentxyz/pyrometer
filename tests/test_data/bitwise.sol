@@ -1,22 +1,123 @@
-contract Bitwise {
+contract BitAnd {
+    function bit_and(uint256 x, uint256 y) public returns (uint256) {
+        return x & y;
+    }
+
+    function bit_and_conc(uint256 d) public {
+        require(type(uint256).max & int(100) == 100);
+        require(0 & uint(100) == 0);
+        require(101 & 105 == 97);
+        require(type(uint24).max & 1225 == 1225);
+        require(bit_and(50, 500) == 48);
+    }
+
+    function int_bit_and(int256 x, int256 y) public returns (int256) {
+        return x & y;
+    }
+
+    function int_bit_and_conc(uint256 d) public {
+        require(type(int256).max & int(100) == 100);
+        require(0 & int(100) == 0);
+        require(101 & 105 == 97);
+        require(type(int24).max & -5 == 8388603);
+        require(int_bit_and(50, 500) == 48);
+    }
+
+    function int_bit_and(int256 x, int256 y) public returns (int256) {
+        return x & y;
+    }
+}
+
+contract BitOr {
+    function bit_or(uint256 x, uint256 y) public returns (uint256) {
+        return x | y;
+    }
+
+    function bit_or_conc(uint256 d) public {
+        require(type(uint256).max | uint(100) == type(uint256).max);
+        require(0 | uint(100) == 100);
+        require(101 | 105 == 109);
+        require(type(uint24).max | 5 == type(uint24).max);
+        require(bit_or(50, 500) == 502);
+    }
+
+    function int_bit_or(int256 x, int256 y) public returns (int256) {
+        return x | y;
+    }
+
+    function int_bit_or_conc(uint256 d) public {
+        require(type(int256).max | int(100) == type(int256).max);
+        require(0 | int(100) == 100);
+        require(101 | 105 == 109);
+        require(type(int24).max | -5 == -1);
+        require(int_bit_or(50, 500) == 502);
+    }
+}
+
+contract BitXor {
+    function bit_xor(uint256 x, uint256 y) public returns (uint256) {
+        return x ^ y;
+    }
+
+    function bit_xor_conc(uint256 d) public {
+        require(type(uint256).max ^ uint(100) == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
+        require(0 ^ uint(100) == 100);
+        require(101 ^ 105 == 12);
+        require(type(uint24).max ^ 5 == 16777210);
+        require(bit_xor(50, 500) == 454);
+    }
+
+    function int_bit_xor(int256 x, int256 y) public returns (int256) {
+        return x ^ y;
+    }
+
+    function int_bit_xor_conc(uint256 d) public {
+        require(type(int256).max ^ int(100) == 57896044618658097711785492504343953926634992332820282019728792003956564819867);
+        require(0 ^ int(100) == 100);
+        require(101 ^ 105 == 12);
+        require(type(int24).max ^ -5 == -8388604);
+        require(type(int24).min ^ -5 == 8388603);
+        require(type(int24).min ^ 5 == -8388603);
+        require(int_bit_xor(50, 500) == 454);
+    }
+}
+
+contract BitNot {
+    function bit_not(uint256 x) public returns (uint256) {
+        return ~x;
+    }
+
+    function bit_not_conc(uint256 d) public {
+        require(~type(uint256).max == 0);
+        require(~100 == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
+        require(~101 == 115792089237316195423570985008687907853269984665640564039457584007913129639834);
+        require(~105 == 115792089237316195423570985008687907853269984665640564039457584007913129639830);
+        require(~type(uint24).max == 0);
+        require(bit_not(50) == 115792089237316195423570985008687907853269984665640564039457584007913129639885);
+    }
+    
+    function int_bit_not(int256 x) public returns (int256) {
+        return ~x;
+    }
+
+    function int_bit_not_conc(uint256 d) public returns (int256) {
+        require(~type(int256).max == type(int256).min);
+        require(~type(int256).min == type(int256).max);
+        require(~int256(100) == -101);
+        require(~int256(105) == -106);
+        require(~type(int24).max == type(int24).min);
+        require(~type(int24).min == type(int24).max);
+        require(int_bit_not(50) == -51);
+    }
+}
+
+contract BitShl {
     function shl(uint256 x, uint256 y) public returns (uint256) {
         return x << y;
     }
 
     function int_shl(int256 x, uint256 y) public returns (int256) {
         return x << y;
-    }
-
-    function shr(uint256 x, uint256 y) public returns (uint256) {
-        return x >> y;
-    }
-
-    function int_shr(int256 x, uint256 y) public returns (int256) {
-        return x >> y;
-    }
-
-    function int_shr(int256 x, uint256 y, uint256 z) public returns (int256) {
-        return x >> y;
     }
 
     function shl_conc() public returns (uint256) {
@@ -86,6 +187,16 @@ contract Bitwise {
         require(a20 == -57896044618658097711785492504343953926634992332820282019728792003956564819968);
         int256 a21 = int_shl(-1, 256);
         require(a21 == 0);
+    }
+}
+
+contract BitShr {
+    function shr(uint256 x, uint256 y) public returns (uint256) {
+        return x >> y;
+    }
+
+    function int_shr(int256 x, uint256 y) public returns (int256) {
+        return x >> y;
     }
 
     function shr_conc() public {

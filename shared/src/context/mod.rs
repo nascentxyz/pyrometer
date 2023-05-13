@@ -2,8 +2,10 @@ use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike, Search};
 use crate::as_dot_str;
 use crate::nodes::FunctionNode;
+use crate::range::Range;
 use crate::AsDotStr;
 use crate::ContractNode;
+use crate::FunctionParamNode;
 use crate::StructNode;
 use petgraph::dot::Dot;
 use std::collections::BTreeSet;
@@ -148,9 +150,8 @@ pub struct Context {
     pub depth: usize,
     /// Width tracker
     pub width: usize,
-    pub lhs_expr: Option<ExprRet>,
-    pub rhs_expr: Option<ExprRet>,
-    pub expr_ret_stack: Option<ExprRet>,
+    pub tmp_expr: Vec<Option<ExprRet>>,
+    pub expr_ret_stack: Vec<ExprRet>,
     pub unchecked: bool,
     pub number_of_live_edges: usize,
 
@@ -178,9 +179,8 @@ impl Context {
             modifier_state: None,
             depth: 0,
             width: 0,
-            expr_ret_stack: None,
-            lhs_expr: None,
-            rhs_expr: None,
+            expr_ret_stack: Vec::with_capacity(5),
+            tmp_expr: vec![],
             unchecked: false,
             number_of_live_edges: 0,
             cache: Default::default(),
@@ -226,6 +226,9 @@ impl Context {
             } else {
                 (fn_call.name(analyzer)?, None, Some(fn_call))
             }
+        } else if let Some(returning_ctx) = returning_ctx {
+            let fn_node = returning_ctx.associated_fn(analyzer)?;
+            (fn_node.name(analyzer)?, None, Some(fn_node))
         } else {
             ("anonymous_fn_call".to_string(), None, None)
         };
@@ -273,10 +276,15 @@ impl Context {
             } else if let Some(ret_ctx) = returning_ctx {
                 ret_ctx.underlying(analyzer)?.expr_ret_stack.clone()
             } else {
-                None
+                vec![]
             },
-            lhs_expr: None,
-            rhs_expr: None,
+            tmp_expr: if fork_expr.is_some() {
+                parent_ctx.underlying(analyzer)?.tmp_expr.clone()
+            } else if let Some(ret_ctx) = returning_ctx {
+                ret_ctx.underlying(analyzer)?.tmp_expr.clone()
+            } else {
+                vec![]
+            },
             unchecked: if fork_expr.is_some() {
                 parent_ctx.underlying(analyzer)?.unchecked
             } else {
@@ -363,6 +371,67 @@ impl ContextNode {
     //     }).collect()
     // }
 
+    pub fn join(
+        &self,
+        func: FunctionNode,
+        mapping: &BTreeMap<ContextVarNode, FunctionParamNode>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) {
+        // println!("joining");
+        // if let Some(body_ctx) = func.maybe_body_ctx(analyzer) {
+        //     let vars: Vec<_> = body_ctx.vars(analyzer).values().map(|var| var.latest_version(analyzer)).collect();
+        //     println!("vars: {vars:#?}");
+        //     let replacements: Vec<(ContextVarNode, ContextVarNode)> = mapping.iter().filter_map(|(input_var, param)| {
+        //         vars.iter().find(|var| var.name(analyzer).unwrap() == param.name(analyzer).unwrap()).map(|var| {
+        //             (*var, *input_var)
+        //         })
+        //     }).collect();
+
+        //     let mut mapping = BTreeMap::default();
+        //     replacements.into_iter().for_each(|(var, replacement)| {
+        //         mapping.insert(var, replacement);
+        //         let mut latest = var;
+        //         while let Some(next) = latest.next_version(analyzer) {
+        //             latest = next;
+        //             mapping.insert(latest, replacement);
+        //         }
+        //     });
+
+        //     println!("mapping: {mapping:#?}");
+
+        //     vars.iter().for_each(|var| {
+        //         let mut latest = *var;
+        //         let mut range = latest.range(analyzer).unwrap().unwrap();
+        //         println!("var: {var:?}, depends on: {:#?}, {range:#?}", var.range_deps(analyzer));
+        //         range.uncache_range_min();
+        //         range.uncache_range_max();
+        //         mapping.iter().for_each(|(to_replace, replacement)| {
+        //             // range.filter_min_recursion((*to_replace).into(), (*replacement).into());
+        //             // range.filter_max_recursion((*to_replace).into(), (*replacement).into());
+        //         });
+        //         latest.set_range(analyzer, range).unwrap();
+        //         while let Some(next) = latest.next_version(analyzer) {
+        //             latest = next;
+        //             let mut range = latest.range(analyzer).unwrap().unwrap();
+        //             range.uncache_range_min();
+        //             range.uncache_range_max();
+        //             mapping.iter().for_each(|(to_replace, replacement)| {
+        //                 // range.filter_min_recursion((*to_replace).into(), (*replacement).into());
+        //                 // range.filter_max_recursion((*to_replace).into(), (*replacement).into());
+        //             });
+        //             latest.set_range(analyzer, range).unwrap();
+        //         }
+        //     });
+
+        // } else {
+        //     // need to process the function
+        // }
+    }
+
+    pub fn is_ext_fn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.ext_fn_call.is_some())
+    }
+
     pub fn add_var(
         &self,
         var: ContextVarNode,
@@ -388,6 +457,18 @@ impl ContextNode {
             Ok(*self)
         }
     }
+
+    // pub fn next_inheritable_parent(
+    //     &self,
+    //     analyzer: &mut (impl GraphLike + AnalyzerLike),
+    // ) -> Result<ContextNode, GraphError> {
+    //     if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
+    //         return Ok(ret);
+    //     }
+
+    //     let associated_fn = self.associated_fn(analyzer)?;
+    //     Ok(self.ancestor_in_fn(associated_fn)?.expect("No ancestors"))
+    // }
 
     pub fn total_width(
         &self,
@@ -417,84 +498,62 @@ impl ContextNode {
         Ok(())
     }
 
-    pub fn push_rhs_expr(
+    pub fn push_tmp_expr(
         &self,
         expr_ret: ExprRet,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        match &mut underlying_mut.rhs_expr {
-            Some(s @ ExprRet::Single(_)) => {
-                underlying_mut.rhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
-            }
-            Some(s @ ExprRet::SingleLiteral(_)) => {
-                underlying_mut.rhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
-            }
-            Some(ExprRet::Multi(ref mut inner)) => {
-                inner.push(expr_ret);
-            }
-            Some(ExprRet::CtxKilled(kind)) => {
-                let kind = *kind;
-                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled(kind));
-                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled(kind));
-                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled(kind));
-            }
-            None => {
-                underlying_mut.rhs_expr = Some(expr_ret);
-            }
-        }
+        underlying_mut.tmp_expr.push(Some(expr_ret));
         Ok(())
     }
 
-    pub fn pop_rhs_expr(
-        &self,
-        loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Result<Option<ExprRet>, GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        if let Some(expr) = underlying_mut.rhs_expr.take() {
-            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn push_lhs_expr(
+    pub fn append_tmp_expr(
         &self,
         expr_ret: ExprRet,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        match &mut underlying_mut.lhs_expr {
-            Some(s @ ExprRet::Single(_)) => {
-                underlying_mut.lhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+        match underlying_mut.tmp_expr.pop() {
+            Some(Some(s @ ExprRet::Single(_))) => {
+                underlying_mut
+                    .tmp_expr
+                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
             }
-            Some(s @ ExprRet::SingleLiteral(_)) => {
-                underlying_mut.lhs_expr = Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
+            Some(Some(s @ ExprRet::SingleLiteral(_))) => {
+                underlying_mut
+                    .tmp_expr
+                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
             }
-            Some(ExprRet::Multi(ref mut inner)) => {
+            Some(Some(ExprRet::Multi(ref mut inner))) => {
                 inner.push(expr_ret);
+                underlying_mut
+                    .tmp_expr
+                    .push(Some(ExprRet::Multi(inner.to_vec())));
             }
-            Some(ExprRet::CtxKilled(kind)) => {
-                let kind = *kind;
-                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled(kind));
-                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled(kind));
-                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled(kind));
+            Some(Some(s @ ExprRet::Null)) => {
+                underlying_mut
+                    .tmp_expr
+                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
             }
-            None => {
-                underlying_mut.lhs_expr = Some(expr_ret);
+            Some(Some(ExprRet::CtxKilled(kind))) => {
+                underlying_mut.tmp_expr = vec![Some(ExprRet::CtxKilled(kind))];
+                underlying_mut.expr_ret_stack = vec![ExprRet::CtxKilled(kind)];
+            }
+            _ => {
+                underlying_mut.tmp_expr.push(Some(expr_ret));
             }
         }
         Ok(())
     }
 
-    pub fn pop_lhs_expr(
+    pub fn pop_tmp_expr(
         &self,
         loc: Loc,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        if let Some(expr) = underlying_mut.lhs_expr.take() {
+        if let Some(Some(expr)) = underlying_mut.tmp_expr.pop() {
             Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
         } else {
             Ok(None)
@@ -507,38 +566,18 @@ impl ContextNode {
         expr_ret: ExprRet,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        tracing::trace!(
-            "pushing: {}, existing: {}, path: {}",
+        println!(
+            "pushing: {}, existing: {:?}, path: {}",
             expr_ret.debug_str(analyzer),
-            if let Some(stack) = &self.underlying(analyzer)?.expr_ret_stack {
-                stack.debug_str(analyzer)
-            } else {
-                "None".to_string()
-            },
+            self.underlying(analyzer)?
+                .expr_ret_stack
+                .iter()
+                .map(|i| i.debug_str(analyzer))
+                .collect::<Vec<_>>(),
             self.path(analyzer)
         );
         let underlying_mut = self.underlying_mut(analyzer)?;
-        match &mut underlying_mut.expr_ret_stack {
-            Some(s @ ExprRet::Single(_)) => {
-                underlying_mut.expr_ret_stack =
-                    Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
-            }
-            Some(s @ ExprRet::SingleLiteral(_)) => {
-                underlying_mut.expr_ret_stack =
-                    Some(ExprRet::Multi(vec![s.clone(), expr_ret]).flatten());
-            }
-            Some(ExprRet::Multi(ref mut inner)) => {
-                inner.push(expr_ret);
-            }
-            Some(ExprRet::CtxKilled(kind)) => {
-                underlying_mut.lhs_expr = Some(ExprRet::CtxKilled(*kind));
-                underlying_mut.rhs_expr = Some(ExprRet::CtxKilled(*kind));
-                underlying_mut.expr_ret_stack = Some(ExprRet::CtxKilled(*kind));
-            }
-            None => {
-                underlying_mut.expr_ret_stack = Some(expr_ret);
-            }
-        }
+        underlying_mut.expr_ret_stack.push(expr_ret);
         Ok(())
     }
 
@@ -595,13 +634,36 @@ impl ContextNode {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn pop_expr(
         &self,
-        loc: Loc,
+        _loc: Loc,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<ExprRet>, GraphError> {
         tracing::trace!("popping var from: {}", self.path(analyzer));
         let underlying_mut = self.underlying_mut(analyzer)?;
-        if let Some(expr) = underlying_mut.expr_ret_stack.take() {
-            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
+
+        let new: Vec<ExprRet> = Vec::with_capacity(5);
+
+        let old = std::mem::replace(&mut underlying_mut.expr_ret_stack, new);
+        if old.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(ExprRet::Multi(old)))
+        }
+    }
+
+    #[tracing::instrument(level = "trace", skip_all)]
+    pub fn pop_expr_latest(
+        &self,
+        loc: Loc,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Option<ExprRet>, GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+        if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
+            tracing::trace!(
+                "popping var {} from: {}",
+                elem.debug_str(analyzer),
+                self.path(analyzer)
+            );
+            Ok(Some(self.maybe_move_expr(elem, loc, analyzer)?))
         } else {
             Ok(None)
         }
@@ -630,23 +692,6 @@ impl ContextNode {
     pub fn path(&self, analyzer: &impl GraphLike) -> String {
         self.underlying(analyzer).unwrap().path.clone()
     }
-
-    // pub fn into_ctx_tree(&self, analyzer: &impl GraphLike) -> CtxTree {
-    //     let forks = self.forks(analyzer).unwrap();
-    //     CtxTree {
-    //         node: *self,
-    //         lhs: if !forks.is_empty() {
-    //             Some(Box::new(forks[0].into_ctx_tree(analyzer)))
-    //         } else {
-    //             None
-    //         },
-    //         rhs: if !forks.is_empty() {
-    //             Some(Box::new(forks[1].into_ctx_tree(analyzer)))
-    //         } else {
-    //             None
-    //         },
-    //     }
-    // }
 
     /// *All* subcontexts (including subcontexts of subcontexts, recursively)
     pub fn subcontexts(&self, analyzer: &impl GraphLike) -> Vec<ContextNode> {
@@ -981,21 +1026,57 @@ impl ContextNode {
         analyzer: &impl GraphLike,
         associated_fn: FunctionNode,
     ) -> Result<Option<ContextNode>, GraphError> {
+        println!("associated_fn: {}", associated_fn.name(analyzer)?);
         if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
+            println!("had returning context");
             if ret.associated_fn(analyzer)? == associated_fn {
+                println!("same fn");
                 return Ok(Some(ret));
             }
         }
 
         if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+            println!("Had parent, checking if same fn");
             if parent.associated_fn(analyzer)? == associated_fn {
+                println!("same fn");
                 Ok(Some(parent))
+            } else if let Some(mod_state) = &parent.underlying(analyzer)?.modifier_state {
+                println!("Had modifier, checking if same fn");
+                if mod_state.parent_fn == associated_fn {
+                    Ok(Some(parent))
+                } else {
+                    println!("had parent & modifier, recursing");
+                    parent.ancestor_in_fn(analyzer, associated_fn)
+                }
             } else {
+                println!("had parent, recursing");
                 parent.ancestor_in_fn(analyzer, associated_fn)
             }
         } else {
+            println!("no ret ctx, no parent, end");
             Ok(None)
         }
+
+        // println!("Parent wasnt in inheritance chain, checking if we have return ctx");
+        // if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
+        //     println!("had returning context");
+        //     if ret.associated_fn(analyzer)? == associated_fn {
+        //         println!("same fn");
+        //         Ok(Some(ret))
+        //     } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+        //         println!("diff function, recursing into parent");
+        //         parent.ancestor_in_fn(analyzer, associated_fn)
+        //     } else {
+        //         println!("diff function, no parent, returning");
+        //         Ok(None)
+        //     }
+        // } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+
+        //     parent.ancestor_in_fn(analyzer, associated_fn)
+        // } else {
+
+        //     Ok(None)
+        // }
     }
 
     /// Gets all variables associated with a context
@@ -1083,6 +1164,40 @@ impl ContextNode {
 
                     let fork_edges = w2.live_edges(analyzer)?;
                     if fork_edges.is_empty() && !w2.is_ended(analyzer)? {
+                        lineage.push(w2)
+                    } else {
+                        lineage.extend(fork_edges);
+                    }
+                }
+            }
+            Ok(lineage)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    pub fn reverted_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+        if let Some(child) = self.underlying(analyzer)?.child {
+            let mut lineage = vec![];
+            match child {
+                CallFork::Call(call) => {
+                    let call_edges = call.reverted_edges(analyzer)?;
+                    if call_edges.is_empty() && call.is_killed(analyzer)? {
+                        lineage.push(call)
+                    } else {
+                        lineage.extend(call_edges);
+                    }
+                }
+                CallFork::Fork(w1, w2) => {
+                    let fork_edges = w1.reverted_edges(analyzer)?;
+                    if fork_edges.is_empty() && w1.is_killed(analyzer)? {
+                        lineage.push(w1)
+                    } else {
+                        lineage.extend(fork_edges);
+                    }
+
+                    let fork_edges = w2.reverted_edges(analyzer)?;
+                    if fork_edges.is_empty() && w2.is_killed(analyzer)? {
                         lineage.push(w2)
                     } else {
                         lineage.extend(fork_edges);
@@ -1231,13 +1346,15 @@ impl ContextNode {
                 Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
                 None => unreachable!(),
             };
-            Err(GraphError::ChildRedefinition(format!(
-                // panic!(
+            tracing::trace!("Error setting child as a call");
+            // Err(GraphError::ChildRedefinition(format!(
+            panic!(
                 "Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
                 self.path(analyzer),
                 child_str,
                 call.path(analyzer)
-            )))
+            )
+            // ))
         } else {
             Ok(())
         }
@@ -1271,23 +1388,34 @@ impl ContextNode {
         kill_loc: Loc,
         kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
-        let context = self.underlying_mut(analyzer)?;
-        let child = context.child;
-        let parent = context.parent_ctx;
-        if context.killed.is_none() {
-            context.killed = Some((kill_loc, kill_kind));
-        }
-
-        if let Some(child) = child {
+        println!("killing: {}", self.path(analyzer));
+        if let Some(child) = self.underlying(analyzer)?.child {
             match child {
                 CallFork::Call(call) => {
+                    if !call.underlying(analyzer)?.ret.is_empty() {
+                        return Ok(());
+                    }
                     call.kill(analyzer, kill_loc, kill_kind)?;
                 }
                 CallFork::Fork(w1, w2) => {
+                    if !w1.underlying(analyzer)?.ret.is_empty() {
+                        return Ok(());
+                    }
+
+                    if !w2.underlying(analyzer)?.ret.is_empty() {
+                        return Ok(());
+                    }
+
                     w1.kill(analyzer, kill_loc, kill_kind)?;
                     w2.kill(analyzer, kill_loc, kill_kind)?;
                 }
             }
+        }
+
+        let context = self.underlying_mut(analyzer)?;
+        let parent = context.parent_ctx;
+        if context.killed.is_none() {
+            context.killed = Some((kill_loc, kill_kind));
         }
 
         if let Some(parent_ctx) = parent {
@@ -1306,13 +1434,18 @@ impl ContextNode {
         kill_loc: Loc,
         kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
-        if self.live_edges(analyzer)?.is_empty() {
+        let all_edges = self.all_edges(analyzer)?;
+        let reverted_edges = self.reverted_edges(analyzer)?;
+        if reverted_edges.len() == all_edges.len() {
+            println!("killing recursively: {}", self.path(analyzer));
             let context = self.underlying_mut(analyzer)?;
-            if context.killed.is_none() {
-                context.killed = Some((kill_loc, kill_kind));
-            }
-            if let Some(parent_ctx) = context.parent_ctx {
-                parent_ctx.end_if_all_forks_ended(analyzer, kill_loc, kill_kind)?;
+            if context.ret.is_empty() {
+                if context.killed.is_none() {
+                    context.killed = Some((kill_loc, kill_kind));
+                }
+                if let Some(parent_ctx) = context.parent_ctx {
+                    parent_ctx.end_if_all_forks_ended(analyzer, kill_loc, kill_kind)?;
+                }
             }
         }
         Ok(())
@@ -1570,3 +1703,17 @@ impl From<NodeIdx> for ContextNode {
         ContextNode(idx.index())
     }
 }
+
+// 2023-05-13T04:28:34.318383Z TRACE parse:parse_ctx_stmt_inner:func_call_inner:execute_call_inner:parse_ctx_stmt_inner:parse_ctx_stmt_inner:parse_ctx_expr_inner{ctx=getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }}:fn_call_expr:call_internal_func:func_call_inner:execute_call_inner:parse_ctx_stmt_inner:parse_ctx_stmt_inner: pyrometer::context: Applying to live edges of: getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }._upperBinaryLookup(Checkpoint[], uint32, uint256, uint256).anonymous_fn_call. edges: [
+//     "getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }._upperBinaryLookup(Checkpoint[], uint32, uint256, uint256).anonymous_fn_call.average(uint256, uint256).resume{ _upperBinaryLookup(Checkpoint[], uint32, uint256, uint256) }.fork{ true }._unsafeAccess(Checkpoint[], uint256).resume{ _upperBinaryLookup(Checkpoint[], uint32, uint256, uint256) }",
+//     "getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }._upperBinaryLookup(Checkpoint[], uint32, uint256, uint256).anonymous_fn_call.average(uint256, uint256).resume{ _upperBinaryLookup(Checkpoint[], uint32, uint256, uint256) }.fork{ false }._unsafeAccess(Checkpoint[], uint256).resume{ _upperBinaryLookup(Checkpoint[], uint32, uint256, uint256) }",
+//     "getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }._upperBinaryLookup(Checkpoint[], uint32, uint256, uint256)"
+// ]
+// 2023-05-13T04:28:34.318505Z TRACE parse:parse_ctx_stmt_inner:func_call_inner:execute_call_inner:parse_ctx_stmt_inner:parse_ctx_stmt_inner:parse_ctx_expr_inner{ctx=getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }}:fn_call_expr:call_internal_func:func_call_inner:execute_call_inner:parse_ctx_stmt_inner:parse_ctx_stmt_inner:advance_var_in_ctx{ctx=getAtProbablyRecentBlock(History, uint256).toUint32(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }.fork{ true }.sqrt(uint256).resume{ getAtProbablyRecentBlock(History, uint256) }._upperBinaryLookup(Checkpoint[], uint32, uint256, uint256)}: pyrometer::context: advancing variable: high
+// thread 'main' panicked at 'Variable update of high in old context:
+// parent:
+// , child: Call(
+//     ContextNode(
+//         140171,
+//     ),
+// )'

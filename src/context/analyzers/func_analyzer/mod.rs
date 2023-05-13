@@ -225,11 +225,13 @@ impl<'a> FunctionVarsBoundAnalysis {
                     .collect();
 
                 if let Some((killed_span, kind)) = &self.ctx_killed {
-                    labels.push(
-                        Label::new(killed_span.clone())
-                            .with_message(kind.analysis_str().fg(Color::Red))
-                            .with_color(Color::Red),
-                    );
+                    if !self_handled {
+                        labels.push(
+                            Label::new(killed_span.clone())
+                                .with_message(kind.analysis_str().fg(Color::Red))
+                                .with_color(Color::Red),
+                        );
+                    }
                 }
 
                 if !self_handled {

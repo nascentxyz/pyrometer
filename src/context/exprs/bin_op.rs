@@ -4,6 +4,7 @@ use crate::context::{ContextBuilder, ExprErr};
 use ethers_core::types::{I256, U256};
 use shared::analyzer::AsDotStr;
 use shared::range::elem::RangeElem;
+use shared::range::elem_ty::RangeExpr;
 use shared::{
     analyzer::AnalyzerLike,
     context::*,
@@ -33,23 +34,25 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(rhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+            let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
             };
             if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
                 ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
+            let rhs_paths = rhs_paths.flatten();
             let rhs_ctx = ctx;
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}, rhs ctx: {}, curr ctx: {}", rhs_ctx.path(analyzer), ctx.path(analyzer))))
                 };
                 if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
                     ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                     return Ok(());
                 }
+                let lhs_paths = lhs_paths.flatten();
                 analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, assign)
             })
         })
@@ -75,6 +78,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         //     }
         // );
         match (lhs_paths, rhs_paths) {
+            (ExprRet::Null, _) => Err(ExprErr::NoLhs(
+                loc,
+                "No left hand side provided for binary operation".to_string(),
+            )),
+            (_, ExprRet::Null) => Err(ExprErr::NoRhs(
+                loc,
+                "No right hand side provided for binary operation".to_string(),
+            )),
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
@@ -125,16 +136,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .collect::<Result<Vec<()>, ExprErr>>()?;
                 Ok(())
             }
-            (_, ExprRet::CtxKilled(kind)) => {
-                ctx.push_expr(ExprRet::CtxKilled(*kind), self)
-                    .into_expr_err(loc)?;
-                Ok(())
-            }
-            (ExprRet::CtxKilled(kind), _) => {
-                ctx.push_expr(ExprRet::CtxKilled(*kind), self)
-                    .into_expr_err(loc)?;
-                Ok(())
-            }
+            (_, ExprRet::CtxKilled(kind)) => ctx.kill(self, loc, *kind).into_expr_err(loc),
+            (ExprRet::CtxKilled(kind), _) => ctx.kill(self, loc, *kind).into_expr_err(loc),
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => Err(ExprErr::UnhandledCombo(
                 loc,
                 format!("Unhandled combination in binop: {lhs_sides:?} {rhs_sides:?}"),
@@ -166,7 +169,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         );
 
         let unchecked = match op {
-            RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) => u,
+            RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) | RangeOp::Div(u) => u,
             _ => false,
         };
 
@@ -210,6 +213,12 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         };
 
         let mut new_rhs = rhs_cvar.latest_version(self);
+
+        let expr = Elem::Expr(RangeExpr::<Concrete>::new(
+            Elem::from(Dynamic::new(lhs_cvar.latest_version(self).into())),
+            op,
+            Elem::from(Dynamic::new(rhs_cvar.latest_version(self).into())),
+        ));
 
         // TODO: change to only hit this path if !uncheck
 
@@ -304,17 +313,17 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         } else {
                             // the new min is max(1, rhs.min)
                             let min = Elem::max(
-                                tmp_rhs
-                                    .range_min(self)
-                                    .into_expr_err(loc)?
-                                    .unwrap_or_else(|| {
-                                        panic!("No range minimum: {:?}", tmp_rhs.underlying(self))
-                                    }),
+                                Elem::from(Dynamic::new(new_rhs.into())),
+                                // tmp_rhs
+                                //     .range_min(self)
+                                //     .into_expr_err(loc)?
+                                //     .unwrap_or_else(|| {
+                                //         panic!("No range minimum: {:?}", tmp_rhs.underlying(self))
+                                //     }),
                                 Elem::from(Concrete::from(U256::from(1))).cast(
-                                    tmp_rhs
-                                        .range_min(self)
-                                        .into_expr_err(loc)?
-                                        .expect("No range minimum?"),
+                                    Elem::from(Dynamic::new(tmp_rhs.into())), // .range_min(self)
+                                                                              // .into_expr_err(loc)?
+                                                                              // .expect("No range minimum?"),
                                 ),
                             );
 
@@ -360,16 +369,16 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         }
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
-                            tmp_lhs
-                                .range_min(self)
-                                .into_expr_err(loc)?
-                                .unwrap_or_else(|| {
-                                    panic!(
-                                        "No range minimum: {:?}",
-                                        tmp_lhs.ty(self).unwrap().as_dot_str(self)
-                                    )
-                                }),
-                            Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
+                            Elem::from(Dynamic::new(lhs_cvar.into())),
+                            // .range_min(self)
+                            // .into_expr_err(loc)?
+                            // .unwrap_or_else(|| {
+                            //     panic!(
+                            //         "No range minimum: {:?}",
+                            //         tmp_lhs.ty(self).unwrap().as_dot_str(self)
+                            //     )
+                            // }),
+                            Elem::from(rhs_cvar),
                         );
                         tmp_lhs.set_range_min(self, min).into_expr_err(loc)?;
 
@@ -412,12 +421,11 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         // the new max is min(lhs.max, (2**256 - rhs.min))
                         let max = Elem::min(
-                            tmp_lhs
-                                .range_max(self)
-                                .into_expr_err(loc)?
-                                .expect("No range max?"),
-                            Elem::from(Concrete::from(U256::MAX))
-                                - Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
+                            Elem::from(Dynamic::new(lhs_cvar.into())),
+                            // .range_max(self)
+                            // .into_expr_err(loc)?
+                            // .expect("No range max?"),
+                            Elem::from(Concrete::from(U256::MAX)) - Elem::from(rhs_cvar),
                         );
 
                         tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
@@ -500,14 +508,14 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
                         let max = Elem::min(
-                            tmp_lhs
-                                .range_max(self)
-                                .into_expr_err(loc)?
-                                .expect("No range max?"),
+                            Elem::from(Dynamic::new(lhs_cvar.into())),
+                            // .range_max(self)
+                            // .into_expr_err(loc)?
+                            // .expect("No range max?"),
                             Elem::from(Concrete::from(U256::MAX))
                                 / Elem::max(
                                     Elem::from(Concrete::from(U256::from(1))),
-                                    Elem::Dynamic(Dynamic::new(rhs_cvar.into())),
+                                    Elem::from(rhs_cvar),
                                 ),
                         );
 
@@ -522,14 +530,8 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
-                        let tmp_rhs = self.op(
-                            loc,
-                            max_node.into(),
-                            new_rhs,
-                            ctx,
-                            RangeOp::Div(false),
-                            true,
-                        )?;
+                        let tmp_rhs =
+                            self.op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div(true), true)?;
 
                         if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
                             return Ok(tmp_rhs);
@@ -601,10 +603,10 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
-                            tmp_rhs
-                                .range_min(self)
-                                .into_expr_err(loc)?
-                                .expect("No range minimum?"),
+                            Elem::from(Dynamic::new(rhs_cvar.into())),
+                            // .range_min(self)
+                            // .into_expr_err(loc)?
+                            // .expect("No range minimum?"),
                             Elem::from(Concrete::from(U256::zero())),
                         );
 
@@ -670,23 +672,21 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
         }
 
-        let lhs_range = if let Some(lhs_range) = new_lhs.range(self).into_expr_err(loc)? {
-            lhs_range
-        } else {
-            new_rhs
-                .range(self)
-                .into_expr_err(loc)?
-                .expect("Neither lhs nor rhs had a usable range")
-        };
+        // let lhs_range = if let Some(lhs_range) = new_lhs.range(self).into_expr_err(loc)? {
+        //     lhs_range
+        // } else {
+        //     new_rhs
+        //         .range(self)
+        //         .into_expr_err(loc)?
+        //         .expect("Neither lhs nor rhs had a usable range")
+        // };
 
-        let func = SolcRange::dyn_fn_from_op(op);
-        let new_range = func(lhs_range, new_rhs);
+        // let func = SolcRange::dyn_fn_from_op(op);
+        // let new_range = func(lhs_range, new_rhs);
         new_lhs
-            .set_range_min(self, new_range.range_min().into_owned())
+            .set_range_min(self, expr.clone())
             .into_expr_err(loc)?;
-        new_lhs
-            .set_range_max(self, new_range.range_max().into_owned())
-            .into_expr_err(loc)?;
+        new_lhs.set_range_max(self, expr).into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
         // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.
@@ -711,5 +711,97 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
         }
         Ok(ExprRet::Single(new_lhs.into()))
+    }
+
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn bit_not(
+        &mut self,
+        loc: Loc,
+        lhs_expr: &Expression,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        self.parse_ctx_expr(lhs_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoRhs(loc, "Not operation had no element".to_string()))
+            };
+
+            if matches!(lhs, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
+            analyzer.bit_not_inner(ctx, loc, lhs.flatten())
+        })
+    }
+
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn bit_not_inner(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        lhs_expr: ExprRet,
+    ) -> Result<(), ExprErr> {
+        match lhs_expr {
+            ExprRet::CtxKilled(kind) => {
+                ctx.kill(self, loc, kind).into_expr_err(loc)?;
+                ctx.push_expr(lhs_expr, self).into_expr_err(loc)?;
+                Ok(())
+            }
+            ExprRet::SingleLiteral(lhs) => {
+                // TODO: try to pop from the stack and if there is a single element there
+                // use it as a type hint, then place it back on the stack
+                ContextVarNode::from(lhs)
+                    .try_increase_size(self)
+                    .into_expr_err(loc)?;
+                self.bit_not_inner(ctx, loc, ExprRet::Single(lhs))?;
+                Ok(())
+            }
+            ExprRet::Single(lhs) => {
+                let lhs_cvar = ContextVarNode::from(lhs);
+                tracing::trace!(
+                    "bitwise not: {}",
+                    lhs_cvar.display_name(self).into_expr_err(loc)?
+                );
+                let out_var = ContextVar {
+                    loc: Some(loc),
+                    name: format!(
+                        "tmp{}(~{})",
+                        ctx.new_tmp(self).into_expr_err(loc)?,
+                        lhs_cvar.name(self).into_expr_err(loc)?,
+                    ),
+                    display_name: format!("~{}", lhs_cvar.display_name(self).into_expr_err(loc)?,),
+                    storage: None,
+                    is_tmp: true,
+                    tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::BitNot, None)),
+                    is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
+                    is_return: false,
+                    ty: lhs_cvar.underlying(self).into_expr_err(loc)?.ty.clone(),
+                };
+
+                let expr = Elem::Expr(RangeExpr::<Concrete>::new(
+                    Elem::from(Dynamic::new(lhs_cvar.latest_version(self).into())),
+                    RangeOp::BitNot,
+                    Elem::Null,
+                ));
+
+                let out_var = ContextVarNode::from(self.add_node(Node::ContextVar(out_var)));
+
+                out_var
+                    .set_range_min(self, expr.clone())
+                    .into_expr_err(loc)?;
+                out_var.set_range_max(self, expr).into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Single(out_var.into()), self)
+                    .into_expr_err(loc)?;
+                Ok(())
+            }
+            ExprRet::Multi(f) => Err(ExprErr::MultiNot(
+                loc,
+                format!("Multiple elements in bitwise not expression: {f:?}"),
+            )),
+            ExprRet::Null => Err(ExprErr::NoRhs(
+                loc,
+                "No right hand side in `not` expression".to_string(),
+            )),
+        }
     }
 }

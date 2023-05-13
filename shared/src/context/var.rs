@@ -374,7 +374,7 @@ impl ContextVarNode {
                 val: c.underlying(analyzer)?.clone(),
                 loc,
             })),
-            _ => Ok(Elem::Dynamic(Dynamic::new(self.0.into()))),
+            _ => Ok(Elem::from(*self)),
         }
     }
 
@@ -414,18 +414,18 @@ impl ContextVarNode {
         mut new_min: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         if new_min.contains_node((*self).into()) {
-            if let Some(prev) = self.previous_version(analyzer) {
+            if let Some(prev) = self.previous_or_inherited_version(analyzer) {
                 new_min.filter_recursion((*self).into(), prev.into());
+            } else {
+                return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
             }
         }
 
         tracing::trace!(
-            "setting range minimum: {}, current: {}, new_min:\n{:#?}",
+            "setting range minimum: {} (node idx: {}), current:\n{:#?}, new_min:\n{:#?}",
             self.display_name(analyzer)?,
-            self.range_min(analyzer)?
-                .unwrap()
-                .to_range_string(false, analyzer)
-                .s,
+            self.0,
+            self.range_min(analyzer)?,
             new_min
         );
 
@@ -454,7 +454,7 @@ impl ContextVarNode {
         mut new_max: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         if new_max.contains_node((*self).into()) {
-            if let Some(prev) = self.previous_version(analyzer) {
+            if let Some(prev) = self.previous_or_inherited_version(analyzer) {
                 new_max.filter_recursion((*self).into(), prev.into());
             }
         }
@@ -652,6 +652,20 @@ impl ContextVarNode {
             .map(|edge| ContextVarNode::from(edge.target()))
             .take(1)
             .next()
+    }
+
+    pub fn previous_or_inherited_version(&self, analyzer: &impl GraphLike) -> Option<Self> {
+        if let Some(prev) = self.previous_version(analyzer) {
+            Some(prev)
+        } else {
+            analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Outgoing)
+                .filter(|edge| Edge::Context(ContextEdge::InheritedVariable) == *edge.weight())
+                .map(|edge| ContextVarNode::from(edge.target()))
+                .take(1)
+                .next()
+        }
     }
 
     pub fn range_deps(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {

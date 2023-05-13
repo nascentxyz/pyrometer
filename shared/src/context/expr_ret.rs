@@ -2,13 +2,11 @@ use crate::analyzer::AsDotStr;
 use crate::context::GraphError;
 use crate::{ContextVarNode, GraphLike, Node, NodeIdx, VarType};
 
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum KilledKind {
     Ended,
     Unreachable,
     Revert,
-    #[default]
-    Error,
 }
 
 impl KilledKind {
@@ -18,7 +16,6 @@ impl KilledKind {
             Ended => "Execution ended here successfully",
             Unreachable => "Unsatisifiable bounds, therefore dead code",
             Revert => "Execution guaranteed to revert here!",
-            Error => "Some error occurred while parsing",
         }
     }
 }
@@ -26,6 +23,7 @@ impl KilledKind {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExprRet {
     CtxKilled(KilledKind),
+    Null,
     Single(NodeIdx),
     SingleLiteral(NodeIdx),
     Multi(Vec<ExprRet>),
@@ -49,6 +47,24 @@ impl ExprRet {
                 )
             }
             ExprRet::CtxKilled(kind) => format!("CtxKilled({:?}", kind),
+            ExprRet::Null => "<null>".to_string(),
+        }
+    }
+
+    pub fn take_one(&mut self) -> Result<Option<ExprRet>, GraphError> {
+        match self {
+            ExprRet::Single(..) | ExprRet::SingleLiteral(..) => {
+                let ret = self.clone();
+                *self = ExprRet::Multi(vec![]);
+                Ok(Some(ret))
+            }
+            ExprRet::Multi(ref mut inner) => {
+                let elem = inner.pop();
+                Ok(elem)
+            }
+            e => Err(GraphError::ExpectedSingle(format!(
+                "Expected a single return got: {e:?}"
+            ))),
         }
     }
 
@@ -70,7 +86,7 @@ impl ExprRet {
                     Ok(())
                 } else {
                     Err(GraphError::StackLengthMismatch(format!(
-                        "Expected an element with {len} elements return got: 1 element"
+                        "Expected an element with {len} elements, return got: 1 element"
                     )))
                 }
             }
@@ -79,7 +95,7 @@ impl ExprRet {
                     Ok(())
                 } else {
                     Err(GraphError::StackLengthMismatch(format!(
-                        "Expected an element with {len} elements return got: {} elements",
+                        "Expected an element with {len} elements, return got: {} elements",
                         inner.len()
                     )))
                 }
@@ -87,6 +103,10 @@ impl ExprRet {
             ExprRet::CtxKilled(..) => Err(GraphError::StackLengthMismatch(format!(
                 "Expected an element with {len} elements, but context was killed"
             ))),
+            ExprRet::Null if len != 0 => Err(GraphError::StackLengthMismatch(format!(
+                "Expected an element with {len} elements, return got: 0 elements",
+            ))),
+            _ => Ok(()),
         }
     }
 
@@ -101,6 +121,14 @@ impl ExprRet {
 
     pub fn is_killed(&self) -> bool {
         matches!(self, ExprRet::CtxKilled(_))
+    }
+
+    pub fn killed_kind(&self) -> Option<KilledKind> {
+        match self {
+            ExprRet::CtxKilled(k) => Some(*k),
+            ExprRet::Multi(multis) => multis.iter().find_map(|expr_ret| expr_ret.killed_kind()),
+            _ => None,
+        }
     }
 
     pub fn has_fork(&self) -> bool {
@@ -135,7 +163,13 @@ impl ExprRet {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let idx = inner;
                 match VarType::try_from_idx(analyzer, *idx) {
-                    Some(var_ty) => format!("({})", var_ty.as_dot_str(analyzer)),
+                    Some(var_ty) => format!(
+                        "({})",
+                        var_ty
+                            .unresolved_as_resolved(analyzer)
+                            .unwrap()
+                            .as_dot_str(analyzer)
+                    ),
                     None => "UnresolvedType".to_string(),
                 }
             }

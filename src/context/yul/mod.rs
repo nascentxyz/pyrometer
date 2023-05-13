@@ -3,6 +3,7 @@ use crate::context::ContextBuilder;
 use crate::context::ExprParser;
 use crate::AnalyzerLike;
 use crate::ExprErr;
+use shared::context::Context;
 use shared::context::ContextVar;
 use shared::context::ContextVarNode;
 use shared::context::ExprRet;
@@ -58,7 +59,9 @@ pub trait YulBuilder:
         use YulStatement::*;
         // println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
 
-        let res = ctx.pop_expr(stmt.loc(), self).into_expr_err(stmt.loc());
+        let res = ctx
+            .pop_expr_latest(stmt.loc(), self)
+            .into_expr_err(stmt.loc());
         let _ = self.add_if_err(res);
 
         if ctx.is_killed(self).unwrap() {
@@ -73,7 +76,7 @@ pub trait YulBuilder:
                     {
                         Ok(()) => {
                             analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(lhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                                let Some(lhs_side) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                                     return Err(ExprErr::NoLhs(loc, "No left hand side assignments in yul block".to_string()))
                                 };
                                 if matches!(lhs_side, ExprRet::CtxKilled(_)) {
@@ -83,7 +86,7 @@ pub trait YulBuilder:
 
                                 analyzer.parse_ctx_yul_expr(yul_expr, ctx)?;
                                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                    let Some(rhs_side) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                                    let Some(rhs_side) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                                         return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
                                     };
 
@@ -130,7 +133,7 @@ pub trait YulBuilder:
                     if let Some(yul_expr) = maybe_yul_expr {
                         analyzer.parse_ctx_yul_expr(yul_expr, ctx)?;
                         analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                            let Some(ret) = ctx.pop_expr(loc, analyzer).into_expr_err(loc)? else {
+                            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                                 return Err(ExprErr::NoRhs(loc, "No right hand side assignments in yul block".to_string()))
                             };
 
@@ -154,13 +157,45 @@ pub trait YulBuilder:
                     })
                 }
                 For(YulFor {
-                    loc: _,
+                    loc,
                     init_block: _,
                     condition: _,
                     post_block: _,
                     execution_block: _,
                 }) => {
-                    todo!()
+                    let sctx = Context::new_subctx(ctx, None, *loc, None, None, false, analyzer, None)
+                        .into_expr_err(*loc)?;
+                    let subctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
+                    ctx.set_child_call(subctx, analyzer).into_expr_err(*loc)?;
+                    analyzer.apply_to_edges(subctx, *loc, &|analyzer, subctx, loc| {
+                        let vars = subctx.local_vars(analyzer).clone();
+                        vars.iter().for_each(|(name, var)| {
+                            // widen to max range
+                            if let Some(inheritor_var) = ctx.var_by_name(analyzer, name) {
+                                let inheritor_var = inheritor_var.latest_version(analyzer);
+                                if let Some(r) = var
+                                    .underlying(analyzer)
+                                    .unwrap()
+                                    .ty
+                                    .default_range(analyzer)
+                                    .unwrap()
+                                {
+                                    let new_inheritor_var = analyzer
+                                        .advance_var_in_ctx(inheritor_var, loc, ctx)
+                                        .unwrap();
+                                    let res = new_inheritor_var
+                                        .set_range_min(analyzer, r.min)
+                                        .into_expr_err(loc);
+                                    let _ = analyzer.add_if_err(res);
+                                    let res = new_inheritor_var
+                                        .set_range_max(analyzer, r.max)
+                                        .into_expr_err(loc);
+                                    let _ = analyzer.add_if_err(res);
+                                }
+                            }
+                        });
+                        Ok(())
+                    })
                 }
                 Switch(YulSwitch {
                     loc,
@@ -168,19 +203,18 @@ pub trait YulBuilder:
                     cases,
                     default,
                 }) => {
-                    // todo!()
                     analyzer.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                         analyzer.yul_switch_stmt(loc, condition.clone(), cases.to_vec(), default.clone(), ctx)
                     })
                 }
-                Leave(_loc) => {
-                    todo!()
+                Leave(loc) => {
+                    Err(ExprErr::Todo(*loc, "Yul `leave` statements are not currently supported".to_string()))
                 }
-                Break(_loc) => {
-                    todo!()
+                Break(loc) => {
+                    Err(ExprErr::Todo(*loc, "Yul `break` statements are not currently supported".to_string()))
                 }
-                Continue(_loc) => {
-                    todo!()
+                Continue(loc) => {
+                    Err(ExprErr::Todo(*loc, "Yul `continue` statements are not currently supported".to_string()))
                 }
                 Block(yul_block) => {
                     yul_block
@@ -189,14 +223,14 @@ pub trait YulBuilder:
                         .for_each(|stmt| analyzer.parse_ctx_yul_stmt_inner(stmt, ctx));
                     Ok(())
                 }
-                FunctionDefinition(_yul_func_def) => {
-                    todo!()
+                FunctionDefinition(yul_func_def) => {
+                    Err(ExprErr::Todo(yul_func_def.loc(), "Yul `function` defintions are not currently supported".to_string()))
                 }
                 FunctionCall(yul_func_call) => {
                     analyzer.yul_func_call(yul_func_call, ctx)
                 }
-                Error(_loc) => {
-                    todo!()
+                Error(loc) => {
+                    Err(ExprErr::ParseError(*loc, "Could not parse this yul statement".to_string()))
                 }
             }
         });
@@ -271,6 +305,7 @@ pub trait YulBuilder:
                 };
             }
             ExprRet::CtxKilled(_kind) => {}
+            ExprRet::Null => {}
         }
 
         Ok(())
@@ -301,6 +336,7 @@ pub trait YulBuilder:
                 ))
             }
             ExprRet::CtxKilled(..) => {}
+            ExprRet::Null => {}
         }
         Ok(())
     }
