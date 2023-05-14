@@ -446,8 +446,8 @@ impl Concrete {
                         Some(Concrete::from(I256::zero()))
                     }
                 }
-                _ => None
-            }
+                _ => None,
+            },
             _ => None,
         }
     }

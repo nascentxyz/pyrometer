@@ -506,7 +506,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
 
-                        if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
+                        if self
+                            .update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
                         {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -753,7 +754,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     return Ok(true);
                 }
                 // if its contained, we can set the min & max to it
-                nonconst_var.set_range_min(self, elem.clone()).into_expr_err(loc)?;
+                nonconst_var
+                    .set_range_min(self, elem.clone())
+                    .into_expr_err(loc)?;
                 nonconst_var.set_range_max(self, elem).into_expr_err(loc)?;
                 Ok(false)
             }

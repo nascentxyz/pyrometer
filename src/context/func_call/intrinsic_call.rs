@@ -134,11 +134,15 @@ pub trait IntrinsicFuncCaller:
                             Ok(())
                         }
                         "delegatecall" | "staticcall" | "call" => {
-                            println!("call stack: {:#?}", ctx.underlying(self).into_expr_err(*loc)?
+                            println!(
+                                "call stack: {:#?}",
+                                ctx.underlying(self)
+                                    .into_expr_err(*loc)?
                                     .expr_ret_stack
                                     .iter()
                                     .map(|i| i.debug_str(self))
-                                    .collect::<Vec<_>>());
+                                    .collect::<Vec<_>>()
+                            );
                             ctx.pop_expr_latest(*loc, self).into_expr_err(*loc)?;
                             // TODO: try to be smarter based on the address input
                             let booln = self.builtin_or_add(Builtin::Bool);
@@ -154,8 +158,14 @@ pub trait IntrinsicFuncCaller:
                             let node = self.add_node(Node::ContextVar(cvar));
                             ctx.add_var(node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.push_expr(ExprRet::Multi(vec![ExprRet::Single(bool_node), ExprRet::Single(node)]), self)
-                                .into_expr_err(*loc)?;
+                            ctx.push_expr(
+                                ExprRet::Multi(vec![
+                                    ExprRet::Single(bool_node),
+                                    ExprRet::Single(node),
+                                ]),
+                                self,
+                            )
+                            .into_expr_err(*loc)?;
                             Ok(())
                         }
                         "code" => {
