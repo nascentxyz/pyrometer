@@ -282,6 +282,13 @@ impl Concrete {
                         (val & mask).to_big_endian(&mut h.0);
                         Some(Concrete::Bytes(size, h))
                     }
+                    Builtin::Bool => {
+                        if val > U256::zero() {
+                            Some(Concrete::from(true))
+                        } else {
+                            Some(Concrete::from(false))
+                        }
+                    }
                     _ => None,
                 }
             }
@@ -339,6 +346,13 @@ impl Concrete {
                     let mut h = H256::default();
                     (val.into_raw() & mask).to_big_endian(h.as_mut());
                     Some(Concrete::Bytes(size, h))
+                }
+                Builtin::Bool => {
+                    if val.abs() > I256::from(0i32) {
+                        Some(Concrete::from(true))
+                    } else {
+                        Some(Concrete::from(false))
+                    }
                 }
                 _ => None,
             },
@@ -416,6 +430,24 @@ impl Concrete {
                 Builtin::String => todo!(),
                 _ => None,
             },
+            Concrete::Bool(ref b) => match builtin {
+                Builtin::Bool => Some(self),
+                Builtin::Uint(_) => {
+                    if *b {
+                        Some(Concrete::from(U256::from(1)))
+                    } else {
+                        Some(Concrete::from(U256::zero()))
+                    }
+                }
+                Builtin::Int(_) => {
+                    if *b {
+                        Some(Concrete::from(I256::from(1i32)))
+                    } else {
+                        Some(Concrete::from(I256::zero()))
+                    }
+                }
+                _ => None
+            }
             _ => None,
         }
     }

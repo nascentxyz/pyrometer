@@ -506,7 +506,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
 
-                        if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)
+                        if self.update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
                         {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -514,7 +514,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         }
                     }
                     (false, true) => {
-                        if self.update_nonconst_from_const(loc, op, new_rhs, new_lhs, lhs_range) {
+                        if self.update_nonconst_from_const(loc, op, new_rhs, new_lhs, lhs_range)? {
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -732,26 +732,30 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn update_nonconst_from_const(
         &mut self,
-        _loc: Loc,
+        loc: Loc,
         op: RangeOp,
         const_var: ContextVarNode,
         nonconst_var: ContextVarNode,
         mut nonconst_range: SolcRange,
-    ) -> bool {
+    ) -> Result<bool, ExprErr> {
         tracing::trace!("Setting range for nonconst from const");
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
                 let elem = Elem::from(const_var.latest_version(self));
 
-                if !nonconst_range.contains_elem(&elem, self) {
-                    return true;
+                let evaled_min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
+                if evaled_min.maybe_concrete().is_none() {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {evaled_min:?}")));
                 }
-                // println!("contained: {:?} {:?}", const_var.display_name(self), nonconst_var.display_name(self));
+
+                if !nonconst_range.contains_elem(&elem, self) {
+                    return Ok(true);
+                }
                 // if its contained, we can set the min & max to it
-                nonconst_var.set_range_min(self, elem.clone()).unwrap();
-                nonconst_var.set_range_max(self, elem).unwrap();
-                false
+                nonconst_var.set_range_min(self, elem.clone()).into_expr_err(loc)?;
+                nonconst_var.set_range_max(self, elem).into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Neq => {
                 // check if contains
@@ -760,53 +764,53 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range
                     .evaled_range_min(self)
-                    .unwrap()
+                    .into_expr_err(loc)?
                     .range_ord(&elem)
                 {
                     // mins are equivalent, add 1 instead of adding an exclusion
                     let Some(min) = nonconst_range
                         .evaled_range_min(self)
-                        .unwrap()
+                        .into_expr_err(loc)?
                         .maybe_concrete() else {
                         panic!("min: {:?}, max: {:?}", nonconst_range.evaled_range_min(self), nonconst_range.evaled_range_max(self));
                     };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
-                    nonconst_var.set_range_min(self, min).unwrap();
+                    nonconst_var.set_range_min(self, min).into_expr_err(loc)?;
                 } else if let Some(std::cmp::Ordering::Equal) = nonconst_range
                     .evaled_range_max(self)
-                    .unwrap()
+                    .into_expr_err(loc)?
                     .range_ord(&elem)
                 {
                     // maxs are equivalent, subtract 1 instead of adding an exclusion
                     let max = nonconst_range
                         .evaled_range_max(self)
-                        .unwrap()
+                        .into_expr_err(loc)?
                         .maybe_concrete()
                         .expect("Was not concrete");
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
-                    nonconst_var.set_range_max(self, max).unwrap();
+                    nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
                 } else {
                     // just add as an exclusion
                     nonconst_range.add_range_exclusion(elem);
                     nonconst_var
                         .set_range_exclusions(self, nonconst_range.exclusions)
-                        .unwrap();
+                        .into_expr_err(loc)?;
                 }
 
-                false
+                Ok(false)
             }
             RangeOp::Gt => {
                 let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst max is <= const, we can't make this true
-                let max = nonconst_range.evaled_range_max(self).unwrap();
+                let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
                 if matches!(
-                    max.range_ord(&elem.minimize(self).unwrap()),
+                    max.range_ord(&elem.minimize(self).into_expr_err(loc)?),
                     Some(Ordering::Less) | Some(Ordering::Equal)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 // we add one to the element because its strict >
@@ -817,8 +821,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         self,
                         (elem + one.into()).max(nonconst_range.range_min().into_owned()),
                     )
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Gte => {
                 let elem = Elem::from(const_var.latest_version(self));
@@ -827,28 +831,28 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 if matches!(
                     nonconst_range
                         .evaled_range_max(self)
-                        .unwrap()
-                        .range_ord(&elem.minimize(self).unwrap()),
+                        .into_expr_err(loc)?
+                        .range_ord(&elem.minimize(self).into_expr_err(loc)?),
                     Some(Ordering::Less)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 nonconst_var
                     .set_range_min(self, elem.max(nonconst_range.range_min().into_owned()))
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Lt => {
                 let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst min is >= const, we can't make this true
-                let min = nonconst_range.evaled_range_min(self).unwrap();
+                let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&elem.minimize(self).unwrap()),
+                    min.range_ord(&elem.minimize(self).into_expr_err(loc)?),
                     Some(Ordering::Greater) | Some(Ordering::Equal)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 // we add one to the element because its strict >
@@ -860,25 +864,25 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         self,
                         (elem - one.into()).min(nonconst_range.range_max().into_owned()),
                     )
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Lte => {
                 let elem = Elem::from(const_var.latest_version(self));
 
                 // if nonconst min is > const, we can't make this true
-                let min = nonconst_range.evaled_range_min(self).unwrap();
+                let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&elem.minimize(self).unwrap()),
+                    min.range_ord(&elem.minimize(self).into_expr_err(loc)?),
                     Some(Ordering::Greater)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 nonconst_var
                     .set_range_max(self, elem.min(nonconst_range.range_max().into_owned()))
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),
         }

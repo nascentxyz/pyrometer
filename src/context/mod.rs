@@ -551,6 +551,7 @@ pub trait ContextBuilder:
         lhs_paths: &ExprRet,
         rhs_paths: Option<&ExprRet>,
     ) -> Result<bool, ExprErr> {
+        println!("HERERERERE, {:?} {:?}", lhs_paths, rhs_paths);
         match (lhs_paths, rhs_paths) {
             (ExprRet::CtxKilled(kind), _) | (_, Some(ExprRet::CtxKilled(kind))) => {
                 ctx.kill(self, loc, *kind).into_expr_err(loc)?;
@@ -1184,11 +1185,12 @@ pub trait ContextBuilder:
             let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Assign operation had no right hand side".to_string()))
             };
-            let rhs_paths = rhs_paths.flatten();
+
             if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
                 ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
+            println!("ASSIGN rhs: {rhs_paths:?}");
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {

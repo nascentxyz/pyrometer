@@ -544,11 +544,6 @@ impl VarType {
                 Ok(s.unresolved_as_resolved(analyzer)? == o.unresolved_as_resolved(analyzer)?)
             }
             (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
-                println!(
-                    "ty_eq builtin: {:?} {:?}",
-                    s.underlying(analyzer)?,
-                    o.underlying(analyzer)?
-                );
                 match (s.underlying(analyzer)?, o.underlying(analyzer)?) {
                     (Builtin::Array(l), Builtin::Array(r)) => Ok(l
                         .unresolved_as_resolved(analyzer)?

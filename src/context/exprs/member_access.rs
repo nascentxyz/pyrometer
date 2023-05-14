@@ -94,15 +94,11 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             return self.length(loc, member_expr, ctx);
         }
 
-        println!("member expression: {member_expr:#?}");
-
         self.parse_ctx_expr(member_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(loc, "Attempted to perform member access without a left-hand side".to_string()));
             };
-
-            println!("member expression ret: {ret:#?}");
             if matches!(ret, ExprRet::CtxKilled(_)) {
                 ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                 return Ok(());
@@ -139,7 +135,6 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         ident: &Identifier,
         ctx: ContextNode,
     ) -> Result<ExprRet, ExprErr> {
-        println!("member access inner: {:#?}", self.node(member_idx));
         match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Struct(struct_node), _) => {

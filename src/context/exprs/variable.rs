@@ -17,7 +17,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
         recursion_target: Option<ContextNode>,
     ) -> Result<(), ExprErr> {
-        println!(
+        tracing::trace!(
             "Getting variable: {}, loc: {:?}, ctx: {}",
             &ident.name,
             ident.loc,

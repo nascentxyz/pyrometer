@@ -566,7 +566,7 @@ impl ContextNode {
         expr_ret: ExprRet,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        println!(
+        tracing::trace!(
             "pushing: {}, existing: {:?}, path: {}",
             expr_ret.debug_str(analyzer),
             self.underlying(analyzer)?
@@ -1026,57 +1026,27 @@ impl ContextNode {
         analyzer: &impl GraphLike,
         associated_fn: FunctionNode,
     ) -> Result<Option<ContextNode>, GraphError> {
-        println!("associated_fn: {}", associated_fn.name(analyzer)?);
         if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
-            println!("had returning context");
             if ret.associated_fn(analyzer)? == associated_fn {
-                println!("same fn");
                 return Ok(Some(ret));
             }
         }
 
         if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
-            println!("Had parent, checking if same fn");
             if parent.associated_fn(analyzer)? == associated_fn {
-                println!("same fn");
                 Ok(Some(parent))
             } else if let Some(mod_state) = &parent.underlying(analyzer)?.modifier_state {
-                println!("Had modifier, checking if same fn");
                 if mod_state.parent_fn == associated_fn {
                     Ok(Some(parent))
                 } else {
-                    println!("had parent & modifier, recursing");
                     parent.ancestor_in_fn(analyzer, associated_fn)
                 }
             } else {
-                println!("had parent, recursing");
                 parent.ancestor_in_fn(analyzer, associated_fn)
             }
         } else {
-            println!("no ret ctx, no parent, end");
             Ok(None)
         }
-
-        // println!("Parent wasnt in inheritance chain, checking if we have return ctx");
-        // if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
-        //     println!("had returning context");
-        //     if ret.associated_fn(analyzer)? == associated_fn {
-        //         println!("same fn");
-        //         Ok(Some(ret))
-        //     } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
-        //         println!("diff function, recursing into parent");
-        //         parent.ancestor_in_fn(analyzer, associated_fn)
-        //     } else {
-        //         println!("diff function, no parent, returning");
-        //         Ok(None)
-        //     }
-        // } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
-
-        //     parent.ancestor_in_fn(analyzer, associated_fn)
-        // } else {
-
-        //     Ok(None)
-        // }
     }
 
     /// Gets all variables associated with a context
@@ -1388,7 +1358,7 @@ impl ContextNode {
         kill_loc: Loc,
         kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
-        println!("killing: {}", self.path(analyzer));
+        tracing::trace!("killing: {}", self.path(analyzer));
         if let Some(child) = self.underlying(analyzer)?.child {
             match child {
                 CallFork::Call(call) => {
@@ -1437,7 +1407,7 @@ impl ContextNode {
         let all_edges = self.all_edges(analyzer)?;
         let reverted_edges = self.reverted_edges(analyzer)?;
         if reverted_edges.len() == all_edges.len() {
-            println!("killing recursively: {}", self.path(analyzer));
+            tracing::trace!("killing recursively: {}", self.path(analyzer));
             let context = self.underlying_mut(analyzer)?;
             if context.ret.is_empty() {
                 if context.killed.is_none() {
