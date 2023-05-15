@@ -6,13 +6,12 @@ use crate::analyzers::{LocStrSpan, ReportConfig};
 
 use shared::analyzer::GraphLike;
 use shared::{
-    analyzer::AnalyzerLike,
     context::*,
     range::{range_string::*, Range, RangeEval, SolcRange},
 };
 
 use ariadne::{Color, Fmt, Label, Span};
-use solang_parser::pt::{CodeLocation, StorageLocation};
+use solang_parser::pt::StorageLocation;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub static MIN_COLOR: Color = Color::Fixed(111);

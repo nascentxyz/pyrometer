@@ -14,7 +14,6 @@ shared = { path = "./shared" }
 hex = "0.4.3"
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = "0.3"
-itertools = "0.10.5"
 
 [workspace]
 members = ["cli", "shared"]
