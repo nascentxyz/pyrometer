@@ -27,3 +27,15 @@ abstract contract Y is X {
 contract D is Y, C {
     constructor(address _a) Y(_a) X(_a) C(_a) {} // inheriting abstract leads to needing to explicitly init the bases here
 }
+
+abstract contract F {
+    function foo() public virtual {
+
+    }
+}
+
+contract G is F {
+    function foo() public override {
+        super.foo();
+    }
+}

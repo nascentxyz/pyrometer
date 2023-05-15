@@ -70,8 +70,12 @@ pub trait NameSpaceFuncCaller:
                     }
                     self.parse_inputs(ctx, *loc, input_exprs)?;
                     return self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(loc, "Namespace function call had no inputs".to_string()))
+                        let inputs = if let Some(inputs) =
+                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        {
+                            inputs
+                        } else {
+                            ExprRet::Multi(vec![])
                         };
                         if possible_funcs.len() == 1 {
                             let mut inputs = inputs.as_vec();
@@ -81,7 +85,9 @@ pub trait NameSpaceFuncCaller:
                             }
                             let inputs = ExprRet::Multi(inputs);
                             if inputs.has_killed() {
-                                return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
+                                return ctx
+                                    .kill(analyzer, loc, inputs.killed_kind().unwrap())
+                                    .into_expr_err(loc);
                             }
                             analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
                         } else {
@@ -104,11 +110,16 @@ pub trait NameSpaceFuncCaller:
                             );
 
                             if inputs.has_killed() {
-                                return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
+                                return ctx
+                                    .kill(analyzer, loc, inputs.killed_kind().unwrap())
+                                    .into_expr_err(loc);
                             }
-                            if let Some(func) =
-                                analyzer.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
-                            {
+                            if let Some(func) = analyzer.disambiguate_fn_call(
+                                &ident.name,
+                                lits,
+                                &inputs,
+                                &possible_funcs,
+                            ) {
                                 analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
                             } else {
                                 Err(ExprErr::FunctionNotFound(
