@@ -213,7 +213,7 @@ pub trait NameSpaceFuncCaller:
                 let mut inputs = inputs.as_vec();
                 if let Node::ContextVar(_) = analyzer.node(member) { inputs.insert(0, ExprRet::Single(member)) }
                 let inputs = ExprRet::Multi(inputs);
-                
+
                 let as_input_str = inputs.try_as_func_input_str(analyzer);
 
                 // println!("as_input_str: {as_input_str}");

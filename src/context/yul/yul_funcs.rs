@@ -94,7 +94,7 @@ pub trait YulFuncCaller:
                     }
                     analyzer.bit_not_inner(ctx, loc, lhs.flatten())
                 })
-            },
+            }
             "add" | "sub" | "mul" | "div" | "sdiv" | "mod" | "smod" | "exp" | "and" | "or"
             | "xor" | "shl" | "shr" | "sar" => {
                 let op = match &*id.name {
