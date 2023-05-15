@@ -1655,6 +1655,16 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     loc: self.loc,
                 }))
             }
+            Concrete::Bytes(s, a) => {
+                let mut h = H256::default();
+                (0..*s).for_each(|i| {
+                    h.0[i as usize] = !a.0[i as usize];
+                });
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*s, h),
+                    loc: self.loc,
+                }))
+            }
             _ => None,
         }
     }

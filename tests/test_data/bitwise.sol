@@ -107,6 +107,16 @@ contract BitXor {
 }
 
 contract BitNot {
+    function bit_not(bytes32 d) public view returns (bytes32) {
+        bytes32 x = hex"1111";
+        require(~x == bytes32(0xeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff));
+        bytes16 x16 = hex"1111";
+        require(~x16 == bytes32(0xeeeeffffffffffffffffffffffffffff00000000000000000000000000000000));
+        bytes8 x8 = hex"1111";
+        require(~x8 == bytes32(0xeeeeffffffffffff000000000000000000000000000000000000000000000000));
+        return ~x;
+    }
+
     function bit_not(uint256 x) public returns (uint256) {
         return ~x;
     }
