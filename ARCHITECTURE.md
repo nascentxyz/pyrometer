@@ -14,7 +14,7 @@ Once we have ran the source through `solang`, we start building the graph. We de
 Once all user types and imports are handled, we can start analyzing function bodies. This is handled by the `parse_ctx_stmt` & `parse_ctx_expr`. The difference between `parse_*` and `parse_ctx_*` is whether they are done within a function body. 
 
 ## Graph Architecture
-The graph is heirarchial in a lot of ways - everything flows up to a more senior element. For example, a variable points to a previous version of that variable, which flows to the function that created the variable, which points to the contract, which points to a source unit part, which points to a source unit.
+The graph is hierarchical in a lot of ways - everything flows up to a more senior element. For example, a variable points to a previous version of that variable, which flows to the function that created the variable, which points to the contract, which points to a source unit part, which points to a source unit.
 ```mermaid
 flowchart TD
   NewestVersionOfVariable -->|Prev|Variable -->|Variable|Context -->|Function Body Context|Function -->|Func| Contract-->|Contract| SourceUnitPart-->|Source Part| Source
@@ -29,7 +29,7 @@ A function body consists of `Statement`s which are made up of `Expression`s. We 
 Each `ContextVar` has a `VarType` - this represents the type of the variable (e.g. `uint256` would be `VarType::Builtin`). Each solidity type has 2 forms: `Concrete` and `Builtin`. A `Concrete` is a raw number, i.e. `uint256(1337)` would be `Concrete::Uint(256, 1337)`. A `Builtin` is used when we know the type but it takes a range of values.
 
 #### Parsing an expression
-When we encounter an expression, we recursively parse its parts (most expressinos have subexpressions). This generates `ExprRet`, or an expression return, that takes a few forms: `Single`, `Multi`, `Fork`,  or `CtxKilled`. This generally holds the variable that the original expression cared about.
+When we encounter an expression, we recursively parse its parts (most expressions have subexpressions). This generates `ExprRet`, or an expression return, that takes a few forms: `Single`, `Multi`, `Fork`,  or `CtxKilled`. This generally holds the variable that the original expression cared about.
 
 As an example:
 ```solidity
@@ -52,7 +52,7 @@ When we parse `Expression::Variable("a")`, we look into the context for an attac
 ## Bounds/Ranges
 When we create a `VarType::Builtin`, we implicitly also create a `bound` or a `range`. The easiest way to think about this is for a simple type: `uint256`. By default, we know that this variable type *must* be between 0 and `type(uint256).max` (`2**256 - 1`).
 
-As we parse expressions, those expressions can change the range/bounds. Take for example a `require` expression: `require(a == 100)`. We can leverage the fact that if `a != 100`, the transaction would revert ending execution, and we want to model this in the bounds. And so, when we see a `require`, we can set the bounds for the variable based on the input, e.g. `a`'s bounds would be `a `∈` [100, 100]` due the require statement. If it is a math, bitwise, or some other operation, that can further changes the bounds. Sometimes an expression actually increases the bounds, but this is generally undesirable as it indicates a lack of knowledge about what the program will do.
+As we parse expressions, those expressions can change the range/bounds. Take for example a `require` expression: `require(a == 100)`. We can leverage the fact that if `a != 100`, the transaction would revert ending execution, and we want to model this in the bounds. And so, when we see a `require`, we can set the bounds for the variable based on the input, e.g. `a`'s bounds would be `a `∈` [100, 100]` due to the require statement. If it is a math, bitwise, or some other operation, that can further change the bounds. Sometimes an expression actually increases the bounds, but this is generally undesirable as it indicates a lack of knowledge about what the program will do.
 
 ## World Forking
 One interesting aspect of this analysis is what happens when there is an `if` statement. In this case, it splits the world in two. One world in which the `if` statement evaluates to true and another where it evaluates to false. Take this function for example:
