@@ -258,18 +258,11 @@ contract FuncCast {
         }
     }
 
-    // function foo() public {
-    //     address a = address(0);
-    //     a.call(hex"");
-    //     a.delegatecall(hex"");
+    function foo() public {
+        address a = address(0);
+        a.call(hex"");
+        a.delegatecall(hex"");
 
-    //     bytes memory data = hex"01234567";
-    // }
-    // function foo2() public {
-    //     bytes1 a = hex"";
-    //     bytes2 b = hex"";
-    //     bytes3 c = hex"";
-    //     bytes4 d = hex"";
-    //     bytes memory e = hex"";
-    // }
+        bytes memory data = hex"01234567";
+    }
 }

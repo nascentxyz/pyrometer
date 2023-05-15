@@ -68,6 +68,24 @@ impl ExprRet {
         }
     }
 
+    pub fn literals_list(&self) -> Result<Vec<bool>, GraphError> {
+        match self {
+            ExprRet::SingleLiteral(..) => Ok(vec![true]),
+            ExprRet::Single(..) => Ok(vec![false]),
+            ExprRet::Multi(ref inner) => {
+                let mut list = vec![];
+                inner.iter().try_for_each(|i| {
+                    list.extend(i.literals_list()?);
+                    Ok(())
+                })?;
+                Ok(list)
+            }
+            e => Err(GraphError::ExpectedSingle(format!(
+                "Expected a single return got: {e:?}"
+            ))),
+        }
+    }
+
     pub fn expect_single(&self) -> Result<NodeIdx, GraphError> {
         match self {
             ExprRet::Single(inner) => Ok(*inner),

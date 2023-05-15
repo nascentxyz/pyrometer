@@ -1,3 +1,5 @@
+use crate::FunctionParamNode;
+use crate::FunctionNode;
 use crate::as_dot_str;
 
 use crate::range::Range;
@@ -56,7 +58,7 @@ pub trait AnalyzerLike: GraphLike {
             idx
         }
     }
-    fn builtin_fn_or_maybe_add(&mut self, builtin_name: &str) -> Option<NodeIdx> {
+    fn builtin_fn_or_maybe_add(&mut self, builtin_name: &str) -> Option<NodeIdx> where Self: std::marker::Sized {
         if let Some(idx) = self.builtin_fn_nodes().get(builtin_name) {
             Some(*idx)
         } else if let Some(func) = self.builtin_fns().get(builtin_name) {
@@ -66,8 +68,14 @@ pub trait AnalyzerLike: GraphLike {
                 .expect("builtin func but no inputs")
                 .clone();
             let func_node = self.add_node(Node::Function(func.clone()));
+            let mut params_strs = vec![];
             inputs.into_iter().for_each(|input| {
                 let input_node = self.add_node(input);
+                params_strs.push(
+                    FunctionParamNode::from(input_node)
+                        .ty_str(self)
+                        .unwrap(),
+                );
                 self.add_edge(input_node, func_node, Edge::FunctionParam);
             });
             outputs.into_iter().for_each(|output| {

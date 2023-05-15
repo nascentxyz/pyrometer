@@ -297,11 +297,7 @@ impl FunctionNode {
 
     pub fn set_params_and_ret(
         &self,
-        analyzer: &'_ mut (impl GraphLike
-                     + AnalyzerLike<Expr = Expression>
-                     + Search
-                     + GraphLike
-                     + AnalyzerLike),
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
     ) -> Result<(), GraphError> {
         let underlying = self.underlying(analyzer)?.clone();
         let mut params_strs = vec![];
