@@ -1122,28 +1122,25 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 .advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx)
                 .unwrap();
             if let Some(lhs_range) = tmp_construction.lhs.ref_range(self).unwrap() {
-                match lhs_range.evaled_range_min(self).unwrap() {
-                    Elem::Concrete(c) => {
-                        new_underlying_lhs
-                            .set_range_min(
-                                self,
-                                Elem::Concrete(RangeConcrete {
-                                    val: Concrete::min(&c.val).unwrap_or_else(|| c.val.clone()),
-                                    loc,
-                                }),
-                            )
-                            .unwrap();
-                        new_underlying_lhs
-                            .set_range_max(
-                                self,
-                                Elem::Concrete(RangeConcrete {
-                                    val: Concrete::max(&c.val).unwrap_or(c.val),
-                                    loc,
-                                }),
-                            )
-                            .unwrap();
-                    }
-                    _ => todo!(),
+                if let Elem::Concrete(c) = lhs_range.evaled_range_min(self).unwrap() {
+                    new_underlying_lhs
+                        .set_range_min(
+                            self,
+                            Elem::Concrete(RangeConcrete {
+                                val: Concrete::min(&c.val).unwrap_or_else(|| c.val.clone()),
+                                loc,
+                            }),
+                        )
+                        .unwrap();
+                    new_underlying_lhs
+                        .set_range_max(
+                            self,
+                            Elem::Concrete(RangeConcrete {
+                                val: Concrete::max(&c.val).unwrap_or(c.val),
+                                loc,
+                            }),
+                        )
+                        .unwrap();
                 }
             }
         }
@@ -1284,7 +1281,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         }
                         let new_rhs =
                             ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        // panic!("HERE: old: {:#?},\nnew: {:#?}", rhs_cvar.underlying(self), new_rhs.underlying(self));
                         (false, new_rhs)
                     }
                     RangeOp::Div(..) => {
@@ -1296,7 +1292,28 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         }
                         let new_rhs =
                             ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        // panic!("HERE: old: {:#?},\nnew: {:#?}", rhs_cvar.underlying(self), new_rhs.underlying(self));
+                        (false, new_rhs)
+                    }
+                    RangeOp::Shl => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Shr => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
                         (false, new_rhs)
                     }
                     e => panic!("here {e:?}"),
