@@ -107,6 +107,14 @@ contract BitXor {
 }
 
 contract BitNot {
+    function yul_bit_not(bytes32 d) public view returns (bytes32) {
+        uint256 x;
+        assembly {
+            x := not(100)
+        }
+        require(x == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
+    }
+
     function bit_not(bytes32 d) public view returns (bytes32) {
         bytes32 x = hex"1111";
         require(~x == bytes32(0xeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff));

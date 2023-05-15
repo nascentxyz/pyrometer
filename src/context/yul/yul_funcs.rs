@@ -71,6 +71,30 @@ pub trait YulFuncCaller:
                     })
                 })
             }
+            "not" => {
+                if arguments.len() != 1 {
+                    return Err(ExprErr::InvalidFunctionInput(
+                        *loc,
+                        format!(
+                            "Yul function: `not` expected 1 argument found: {:?}",
+                            arguments.len()
+                        ),
+                    ));
+                }
+
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Not operation had no element".to_string()))
+                    };
+
+                    if matches!(lhs, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    analyzer.bit_not_inner(ctx, loc, lhs.flatten())
+                })
+            },
             "add" | "sub" | "mul" | "div" | "sdiv" | "mod" | "smod" | "exp" | "and" | "or"
             | "xor" | "shl" | "shr" | "sar" => {
                 let op = match &*id.name {
@@ -379,11 +403,6 @@ pub trait YulFuncCaller:
                     .into_expr_err(*loc)?;
                 Ok(())
             }
-            "not" => Err(ExprErr::Todo(
-                *loc,
-                format!("Unhandled builtin yul function: {id:?}"),
-            )),
-
             _ => Err(ExprErr::Todo(
                 *loc,
                 format!("Unhandled builtin yul function: {id:?}"),

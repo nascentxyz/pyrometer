@@ -41,7 +41,7 @@ pub trait NameSpaceFuncCaller:
         input_exprs: &[Expression],
     ) -> Result<(), ExprErr> {
         use solang_parser::pt::Expression::*;
-
+        tracing::trace!("Calling name spaced function");
         if let Variable(Identifier { name, .. }) = member_expr {
             if name == "abi" {
                 let func_name = format!("abi.{}", ident.name);
@@ -205,12 +205,18 @@ pub trait NameSpaceFuncCaller:
             // let mut inputs = inputs.as_vec();
 
             // let inputs = ExprRet::Multi(inputs);
+            // println!("possible_funcs: {:?}", possible_funcs);
             if possible_funcs.is_empty() {
                 if inputs.has_killed() {
                     return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
                 }
+                let mut inputs = inputs.as_vec();
+                if let Node::ContextVar(_) = analyzer.node(member) { inputs.insert(0, ExprRet::Single(member)) }
+                let inputs = ExprRet::Multi(inputs);
+                
                 let as_input_str = inputs.try_as_func_input_str(analyzer);
 
+                // println!("as_input_str: {as_input_str}");
                 let expr = &MemberAccess(
                     loc,
                     Box::new(member_expr.clone()),
@@ -230,6 +236,7 @@ pub trait NameSpaceFuncCaller:
                     }
                     let mut modifier_input_exprs = vec![member_expr.clone()];
                     modifier_input_exprs.extend(input_exprs.to_vec());
+                    // println!("modifier input exprs: {:?}", modifier_input_exprs);
                     analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
                 })
             } else if possible_funcs.len() == 1 {
