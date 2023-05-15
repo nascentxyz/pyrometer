@@ -459,7 +459,6 @@ pub trait FuncCaller:
         //  3. Call modifier 0, then 1, then 2, ... then N.
         //  4. Call this function
         //  5. Finish modifier N.. then 2, then 1, then 0
-
         let callee_ctx = if entry_call {
             ctx
         } else {
@@ -533,7 +532,7 @@ pub trait FuncCaller:
         caller_ctx: ContextNode,
         callee_ctx: ContextNode,
         func_node: FunctionNode,
-        renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
+        _renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
         func_call_str: Option<&str>,
     ) -> Result<(), ExprErr> {
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
@@ -556,8 +555,28 @@ pub trait FuncCaller:
             self.parse_ctx_statement(&body, false, Some(callee_ctx));
             self.ctx_rets(loc, caller_ctx, callee_ctx)
         } else {
-            self.inherit_input_changes(loc, caller_ctx, callee_ctx, renamed_inputs)?;
-            self.inherit_storage_changes(loc, caller_ctx, callee_ctx)?;
+            let ret_ctx = Context::new_subctx(
+                callee_ctx,
+                Some(caller_ctx),
+                loc,
+                None,
+                None,
+                false,
+                self,
+                caller_ctx
+                    .underlying(self)
+                    .into_expr_err(loc)?
+                    .modifier_state
+                    .clone(),
+            )
+            .unwrap();
+            let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
+            self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
+
+            let res = callee_ctx
+                .set_child_call(ret_subctx, self)
+                .into_expr_err(loc);
+            let _ = self.add_if_err(res);
             self.apply_to_edges(callee_ctx, loc, &|analyzer, ctx, loc| {
                 func_node
                     .returns(analyzer)
