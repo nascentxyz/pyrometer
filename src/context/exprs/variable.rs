@@ -72,16 +72,25 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let var = if let Some(con) = const_var {
                 con
             } else {
-                match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
-                    Some(v) => v,
-                    None => {
-                        return Err(ExprErr::VarBadType(
-                            ident.loc,
-                            format!(
-                                "Could not create context variable from user type: {:?}",
-                                self.node(*idx)
-                            ),
-                        ))
+                match self.node(*idx) {
+                    Node::Var(_) | Node::Enum(_) => {
+                        match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
+                            Some(v) => v,
+                            None => {
+                                return Err(ExprErr::VarBadType(
+                                    ident.loc,
+                                    format!(
+                                        "Could not create context variable from user type: {:?}",
+                                        self.node(*idx)
+                                    ),
+                                ))
+                            }
+                        }
+                    }
+                    _ => {
+                        return target_ctx
+                            .push_expr(ExprRet::Single(*idx), self)
+                            .into_expr_err(ident.loc)
                     }
                 }
             };

@@ -59,35 +59,10 @@ impl<T> TaintQuery for T where T: VarBoundAnalyzer + Search + AnalyzerLike + Siz
 pub trait TaintQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
     fn taint_query(&self, _entry: NodeIdx, _contract_name: String) {
-        // let contract = self
-        //     .search_children(entry, &crate::Edge::Contract)
-        //     .into_iter()
-        //     .filter(|contract| ContractNode::from(*contract).name(self).unwrap() == contract_name)
-        //     .take(1)
-        //     .next()
-        //     .expect("No contract with provided name");
-
-        // let con_node = ContractNode::from(contract);
-        // for func in con_node
-        //     .funcs(self)
-        //     .iter() {
-        //         let ctx = func.body_ctx(self);
-        //         let ext_ret_assignments = ctx.vars_assigned_from_ext_fn_ret(self);
-        //         println!("\n\nHERE ext ret assignments: {:#?}\n\n", ext_ret_assignments);
-        //         let children = &ctx.underlying(self).unwrap().children;
-        //         children.iter().for_each(|child| self.recurse_children(*child));
-        // }
+        todo!()
     }
 
     fn recurse_children(&self, _child: CallFork) {
-        // let node = child.either();
-        // let ext_ret_assignments = node.vars_assigned_from_ext_fn_ret(self);
-        // println!("\n\next ret assignments: {:#?}\n\n", ext_ret_assignments);
-        // let called_fns = node.called_functions(self).unwrap();
-        // called_fns.iter().filter(|fn_node| {
-        //     fn_node.name(self).unwrap() == "ecrecover"
-        // }).for_each(|fn_node| println!("CALLED ECRECOVER"));
-        // let children = &node.underlying(self).unwrap().children;
-        // children.iter().for_each(|child| self.recurse_children(*child));
+        todo!()
     }
 }

@@ -1,8 +1,7 @@
 use crate::analyzers::{VarBoundAnalyzer, *};
 use shared::{
     analyzer::*,
-    nodes::{ContractNode, FunctionNode},
-    range::{range_string::ToRangeString, Range, RangeEval, SolcRange},
+    range::{range_string::ToRangeString, Range, SolcRange},
     NodeIdx,
 };
 
@@ -121,17 +120,6 @@ impl ReportDisplay for StorageRangeReport {
         report.add_labels(self.analysis.labels(analyzer));
 
         let reports = vec![report.finish()];
-
-        // if self.analysis.report_config.show_subctxs {
-        //     reports.extend(
-        //         self.analysis
-        //             .sub_ctxs
-        //             .iter()
-        //             .flat_map(|analysis| analysis.reports(analyzer))
-        //             .collect::<Vec<_>>(),
-        //     );
-        // }
-
         reports
     }
 
@@ -155,62 +143,14 @@ pub trait StorageRangeQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
     fn func_query(
         &mut self,
-        entry: NodeIdx,
-        file_mapping: &'_ BTreeMap<usize, String>,
-        report_config: ReportConfig,
-        contract_name: String,
-        func_name: String,
-        storage_var_name: String,
-        mut target: SolcRange,
+        _entry: NodeIdx,
+        _file_mapping: &'_ BTreeMap<usize, String>,
+        _report_config: ReportConfig,
+        _contract_name: String,
+        _func_name: String,
+        _storage_var_name: String,
+        _target: SolcRange,
     ) -> Option<StorageRangeReport> {
-        // perform analysis on the func for the storage var
-        // collect bound changes of the var
-        // check if any of the bound changes' mins are less than or equal
-        // the target and if the maxs are greater than or equal the target
-        // report back dependencies
-        let contract = self
-            .search_children(entry, &crate::Edge::Contract)
-            .into_iter()
-            .filter(|contract| ContractNode::from(*contract).name(self).unwrap() == contract_name)
-            .take(1)
-            .next()
-            .expect("No contract with provided name");
-        let func = self
-            .search_children(contract, &crate::Edge::Func)
-            .into_iter()
-            .filter(|func| FunctionNode::from(*func).name(self).unwrap() == func_name)
-            .take(1)
-            .next()
-            .expect("No function in contract with provided name");
-        let ctx = FunctionNode::from(func).body_ctx(self);
-
-        let terminals = ctx.terminal_child_list(self).unwrap();
-        for mut analysis in terminals
-            .iter()
-            .map(|child| {
-                let mut parents = child.parent_list(self).unwrap();
-                parents.reverse();
-                parents.push(*child);
-                self.bounds_for_var_in_family_tree(
-                    file_mapping,
-                    parents.clone(),
-                    storage_var_name.clone(),
-                    report_config,
-                )
-            })
-            .filter(|analysis| terminals.contains(&analysis.ctx))
-            .filter(|analysis| !analysis.ctx.is_killed(self).unwrap())
-        {
-            if let Some(last) = analysis.bound_changes.iter_mut().last() {
-                if last.1.contains(&mut target, self) {
-                    return Some(StorageRangeReport {
-                        target,
-                        write_loc: Some(last.0.clone()),
-                        analysis,
-                    });
-                }
-            }
-        }
-        None
+        todo!()
     }
 }

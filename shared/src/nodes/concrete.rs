@@ -425,7 +425,34 @@ impl Concrete {
                 }
                 _ => None,
             },
-            Concrete::DynBytes(ref _b) => match builtin {
+            Concrete::String(s) => match builtin {
+                Builtin::Bytes(size) => {
+                    let as_bytes = s.as_bytes();
+                    if as_bytes.len() <= size.into() {
+                        let mut h = H256::default();
+                        as_bytes.iter().enumerate().for_each(|(i, byte)| {
+                            h.0[i] = *byte;
+                        });
+                        Some(Concrete::Bytes(size, h))
+                    } else {
+                        None
+                    }
+                }
+                Builtin::DynamicBytes => Some(Concrete::DynBytes(s.as_bytes().to_vec())),
+                _ => None,
+            },
+            Concrete::DynBytes(ref b) => match builtin {
+                Builtin::Bytes(size) => {
+                    if b.len() <= size.into() {
+                        let mut h = H256::default();
+                        b.iter().enumerate().for_each(|(i, byte)| {
+                            h.0[i] = *byte;
+                        });
+                        Some(Concrete::Bytes(size, h))
+                    } else {
+                        None
+                    }
+                }
                 Builtin::DynamicBytes => Some(self),
                 Builtin::String => todo!(),
                 _ => None,

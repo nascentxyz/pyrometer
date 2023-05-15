@@ -185,25 +185,28 @@ impl FunctionNode {
         {
             maybe_contract
         } else {
-            let parent = analyzer
-                .search_for_ancestor_multi(
-                    self.0.into(),
-                    &[
-                        Edge::Func,
-                        Edge::Constructor,
-                        Edge::Modifier,
-                        Edge::ReceiveFunc,
-                        Edge::FallbackFunc,
-                    ],
-                )
-                .unwrap_or_else(|| {
-                    analyzer.open_dot();
-                    panic!("detached function: {:?}", self.name(analyzer))
-                });
-            let contract = match analyzer.node(parent) {
-                Node::Contract(_) => Some(parent.into()),
-                _ => None,
-            };
+            let contract = analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Outgoing)
+                .filter(|edge| {
+                    matches!(
+                        *edge.weight(),
+                        Edge::Func
+                            | Edge::Modifier
+                            | Edge::Constructor
+                            | Edge::ReceiveFunc
+                            | Edge::FallbackFunc
+                    )
+                })
+                .filter_map(|edge| {
+                    let node = edge.target();
+                    match analyzer.node(node) {
+                        Node::Contract(_) => Some(ContractNode::from(node)),
+                        _ => None,
+                    }
+                })
+                .take(1)
+                .next();
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
@@ -225,8 +228,13 @@ impl FunctionNode {
             sup
         } else {
             let parent = analyzer
-                .search_for_ancestor(self.0.into(), &Edge::Func)
-                .expect("detached function");
+                .graph()
+                .edges_directed(self.0.into(), Direction::Outgoing)
+                .filter(|edge| *edge.weight() == Edge::Func)
+                .map(|edge| edge.target())
+                .take(1)
+                .next()
+                .unwrap_or_else(|| panic!("Detached function: {}", self.name(analyzer).unwrap()));
             let sup = match analyzer.node(parent) {
                 Node::Contract(_) => {
                     ContractNode::from(parent).associated_source_unit_part(analyzer)

@@ -9,6 +9,7 @@ use crate::NodeIdx;
 use crate::StructNode;
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
+use std::collections::BTreeMap;
 
 /// An index in the graph that references a [`Contract`] node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -51,11 +52,6 @@ impl ContractNode {
 
     pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
         let src = self.associated_source(analyzer);
-        println!(
-            "contract: {}, associated_source: {:?}",
-            self.name(analyzer).unwrap(),
-            analyzer.node(src)
-        );
         let all_contracts = analyzer.search_children_include_via(
             src,
             &Edge::Contract,
@@ -74,14 +70,6 @@ impl ContractNode {
                     &ContractNode::from(**contract).name(analyzer).unwrap() == inherited_name
                 })
                 .unwrap_or_else(|| {
-                    println!(
-                        "all contracts: {:#?}",
-                        all_contracts
-                            .iter()
-                            .map(|i| ContractNode::from(*i).name(analyzer).unwrap())
-                            .collect::<Vec<_>>()
-                    );
-                    analyzer.open_dot();
                     panic!(
                         "Could not find inherited contract: {inherited_name} for contract {:?}",
                         self.name(analyzer)
@@ -89,6 +77,21 @@ impl ContractNode {
                 });
             analyzer.add_edge(*found, *self, Edge::InheritedContract);
         });
+    }
+
+    pub fn direct_inherited_contracts(&self, analyzer: &impl GraphLike) -> Vec<ContractNode> {
+        self.underlying(analyzer).unwrap().inherits.clone()
+    }
+
+    pub fn all_inherited_contracts(&self, analyzer: &impl GraphLike) -> Vec<ContractNode> {
+        let mut inherits = self.direct_inherited_contracts(analyzer);
+        inherits.extend(
+            inherits
+                .iter()
+                .flat_map(|i| i.direct_inherited_contracts(analyzer))
+                .collect::<Vec<_>>(),
+        );
+        inherits.into_iter().collect::<Vec<_>>()
     }
 
     /// Gets the name from the underlying node data for the [`Contract`]
@@ -122,6 +125,40 @@ impl ContractNode {
             .into_iter()
             .map(FunctionNode::from)
             .collect()
+    }
+
+    pub fn funcs_mapping(
+        &self,
+        analyzer: &(impl GraphLike + Search + AnalyzerLike),
+    ) -> BTreeMap<String, FunctionNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
+            .into_iter()
+            .map(|i| {
+                let fn_node = FunctionNode::from(i);
+                (fn_node.name(analyzer).unwrap(), fn_node)
+            })
+            .collect::<BTreeMap<String, FunctionNode>>()
+    }
+
+    pub fn linearized_functions(
+        &self,
+        analyzer: &(impl GraphLike + Search + AnalyzerLike),
+    ) -> BTreeMap<String, FunctionNode> {
+        let mut mapping = self.funcs_mapping(analyzer);
+        self.direct_inherited_contracts(analyzer)
+            .iter()
+            .for_each(|inherited| {
+                inherited
+                    .linearized_functions(analyzer)
+                    .iter()
+                    .for_each(|(name, func)| {
+                        if !mapping.contains_key(name) {
+                            mapping.insert(name.to_string(), *func);
+                        }
+                    });
+            });
+        mapping
     }
 
     pub fn structs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<StructNode> {

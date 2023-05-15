@@ -197,7 +197,6 @@ pub trait FuncCaller:
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-
                     if *append.borrow() {
                         ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
                     } else {
@@ -459,9 +458,9 @@ pub trait FuncCaller:
         // pseudocode:
         //  1. Create context for the call
         //  2. Check for modifiers
-        //  3. Call modifier 0, then 1, then 2, etc.
+        //  3. Call modifier 0, then 1, then 2, ... then N.
         //  4. Call this function
-        //  5. Finish modifier 2, then 1, then 0
+        //  5. Finish modifier N.. then 2, then 1, then 0
 
         let callee_ctx = if entry_call {
             ctx
@@ -469,14 +468,15 @@ pub trait FuncCaller:
             self.create_call_ctx(ctx, loc, func_node, modifier_state)?
         };
 
-        if !entry_call {
-            let mapping = params
-                .iter()
-                .zip(inputs.iter())
-                .map(|(param, input)| (*input, *param))
-                .collect::<BTreeMap<_, _>>();
-            ctx.join(func_node, &mapping, self);
-        }
+        // TODO: implement joining
+        // if !entry_call {
+        //     let mapping = params
+        //         .iter()
+        //         .zip(inputs.iter())
+        //         .map(|(param, input)| (*input, *param))
+        //         .collect::<BTreeMap<_, _>>();
+        //     ctx.join(func_node, &mapping, self);
+        // }
 
         // handle remapping of variable names and bringing variables into the new context
         let renamed_inputs =
@@ -621,7 +621,6 @@ pub trait FuncCaller:
                 }
                 let callee_depth = callee_ctx.underlying(self).into_expr_err(loc)?.depth;
                 let caller_depth = caller_ctx.underlying(self).into_expr_err(loc)?.depth;
-                // println!("{} {}, {} {}", callee_ctx.associated_fn_name(self).unwrap(), caller_ctx.associated_fn_name(self).unwrap(), callee_depth, caller_depth);
                 if callee_depth != caller_depth {
                     let ctx = Context::new_subctx(
                         callee_ctx,
@@ -641,7 +640,6 @@ pub trait FuncCaller:
                     let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
                     self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
 
-                    // println!("child: {:?}", callee_ctx.underlying(self).into_expr_err(loc)?.child);
                     let res = callee_ctx
                         .set_child_call(ret_subctx, self)
                         .into_expr_err(loc);
@@ -767,7 +765,7 @@ pub trait FuncCaller:
         mod_state: ModifierState,
     ) -> Result<(), ExprErr> {
         let mod_node = func_node.modifiers(self)[mod_state.num];
-        println!(
+        tracing::trace!(
             "calling modifier {} for func {}",
             mod_node.name(self).into_expr_err(loc)?,
             func_node.name(self).into_expr_err(loc)?
@@ -777,7 +775,6 @@ pub trait FuncCaller:
             .modifier_input_vars(mod_state.num, self)
             .into_expr_err(loc)?;
 
-        println!("parsing modifier inputs!: {}", func_ctx.path(self));
         input_exprs
             .iter()
             .try_for_each(|expr| self.parse_ctx_expr(expr, func_ctx))?;
@@ -823,7 +820,6 @@ pub trait FuncCaller:
         let mods = modifier_state.parent_fn.modifiers(self);
         self.apply_to_edges(ctx, modifier_state.loc, &|analyzer, ctx, loc| {
             if modifier_state.num + 1 < mods.len() {
-                println!("more modifiers to go thru");
                 // use the next modifier
                 let mut mstate = modifier_state.clone();
                 mstate.num += 1;
@@ -851,7 +847,6 @@ pub trait FuncCaller:
                     modifier_state.parent_ctx,
                     Edge::Context(ContextEdge::Continue),
                 );
-                // println!("resume child: {:?}", new_parent_subctx.underlying(analyzer).into_expr_err(loc)?.child);
                 ctx.set_child_call(new_parent_subctx, analyzer)
                     .into_expr_err(modifier_state.loc)?;
 
@@ -884,24 +879,8 @@ pub trait FuncCaller:
                     modifier_state.parent_ctx,
                     Edge::Context(ContextEdge::Continue),
                 );
-                // println!("resume child: {:?}", new_parent_subctx.underlying(analyzer).into_expr_err(loc)?.child);
                 ctx.set_child_call(new_parent_subctx, analyzer)
                     .into_expr_err(modifier_state.loc)?;
-
-                // modifier_state.parent_ctx.vars(self).iter().try_for_each(|var| {
-                //     self.advance_var_in_ctx(var.latest_version(self), modifier_state.loc, new_parent_subctx)?;
-                //     Ok(())
-                // })?;
-
-                // pass up the variable changes
-                // self.inherit_input_changes(
-                //     modifier_state.loc,
-                //     new_parent_subctx,
-                //     ctx,
-                //     &modifier_state.renamed_inputs,
-                // )?;
-                // self.inherit_storage_changes(new_parent_subctx, ctx)
-                //     .into_expr_err(modifier_state.loc)?;
 
                 // actually execute the parent function
                 analyzer.execute_call_inner(
@@ -924,7 +903,6 @@ pub trait FuncCaller:
                     let modifier_after_subctx =
                         ContextNode::from(analyzer.add_node(Node::Context(mctx)));
 
-                    // println!("resume inherit child: {:?}", modifier_after_subctx.underlying(analyzer).into_expr_err(loc)?.child);
                     ctx.set_child_call(modifier_after_subctx, analyzer)
                         .into_expr_err(loc)?;
                     analyzer.add_edge(
@@ -1020,12 +998,6 @@ pub trait FuncCaller:
                     let var = old_var.latest_version(analyzer);
                     let underlying = var.underlying(analyzer).into_expr_err(loc)?;
                     if var.is_storage(analyzer).into_expr_err(loc)? {
-                        // println!(
-                        //     "{} -- {} --> {}",
-                        //     grantor_ctx.path(self),
-                        //     underlying.name,
-                        //     inheritor_ctx.path(self)
-                        // );
                         if let Some(inheritor_var) = inheritor_ctx.var_by_name(analyzer, name) {
                             let inheritor_var = inheritor_var.latest_version(analyzer);
                             if let Some(r) = underlying.ty.range(analyzer).into_expr_err(loc)? {

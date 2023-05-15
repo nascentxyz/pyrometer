@@ -131,6 +131,5 @@ pub enum Edge {
     FallbackFunc,
     Constructor,
     ReceiveFunc,
-    LibraryContract(NodeIdx),
     LibraryFunction(NodeIdx),
 }

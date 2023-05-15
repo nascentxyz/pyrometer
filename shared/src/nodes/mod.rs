@@ -57,6 +57,7 @@ impl VarType {
         match self {
             VarType::User(TypeNode::Enum(_), ref mut r)
             | VarType::User(TypeNode::Contract(_), ref mut r)
+            | VarType::User(TypeNode::Ty(_), ref mut r)
             | VarType::BuiltIn(_, ref mut r) => {
                 *r = Some(new_range);
                 Ok(())
@@ -64,6 +65,14 @@ impl VarType {
             _ => Err(GraphError::NodeConfusion(
                 "This type cannot have a range".to_string(),
             )),
+        }
+    }
+
+    pub fn ty_idx(&self) -> NodeIdx {
+        match self {
+            Self::User(ty_node, _) => (*ty_node).into(),
+            Self::BuiltIn(bn, _) => (*bn).into(),
+            Self::Concrete(c) => (*c).into(),
         }
     }
 
@@ -158,7 +167,7 @@ impl VarType {
         Ok(())
     }
 
-    pub fn try_from_idx(analyzer: &(impl GraphLike + ?Sized), node: NodeIdx) -> Option<VarType> {
+    pub fn try_from_idx(analyzer: &impl GraphLike, node: NodeIdx) -> Option<VarType> {
         // get node, check if typeable and convert idx into vartype
         match analyzer.node(node) {
             Node::VarType(a) => Some(a.clone()),
@@ -175,8 +184,8 @@ impl VarType {
             Node::Enum(enu) => {
                 let variants = enu.variants();
                 let range = if !variants.is_empty() {
-                    let min = Concrete::from(variants.first().unwrap().clone()).into();
-                    let max = Concrete::from(variants.last().unwrap().clone()).into();
+                    let min = Concrete::from(U256::zero()).into();
+                    let max = Concrete::from(U256::from(variants.len() - 1)).into();
                     Some(SolcRange::new(min, max, vec![]))
                 } else {
                     None
@@ -187,7 +196,12 @@ impl VarType {
             Node::Concrete(_) => Some(VarType::Concrete(node.into())),
             Node::ContextVar(cvar) => Some(cvar.ty.clone()),
             Node::Var(var) => VarType::try_from_idx(analyzer, var.ty),
-            Node::Ty(ty) => VarType::try_from_idx(analyzer, ty.ty),
+            Node::Ty(ty) => {
+                let range = SolcRange::try_from_builtin(
+                    BuiltInNode::from(ty.ty).underlying(analyzer).unwrap(),
+                )?;
+                Some(VarType::User(TypeNode::Ty(node.into()), Some(range)))
+            }
             Node::FunctionParam(inner) => VarType::try_from_idx(analyzer, inner.ty),
             Node::Error(..)
             | Node::ContextFork
@@ -217,6 +231,10 @@ impl VarType {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
+            (l, Self::User(TypeNode::Ty(ty), o_r)) => {
+                let t = Self::BuiltIn(BuiltInNode::from(ty.underlying(analyzer)?.ty), o_r.clone());
+                l.try_cast(&t, analyzer)
+            }
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Contract(cn), _)) => {
                 match from_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
@@ -270,6 +288,25 @@ impl VarType {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
+            (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Ty(ty), _)) => {
+                if ty.underlying(analyzer)?.ty == from_bn.into() {
+                    Ok(Some(Self::User(TypeNode::Ty(*ty), sr)))
+                } else {
+                    Ok(None)
+                }
+            }
+            (Self::Concrete(from_c), Self::User(TypeNode::Ty(ty), _)) => {
+                let concrete_underlying = from_c.underlying(analyzer)?.clone();
+                let as_bn = analyzer.builtin_or_add(concrete_underlying.as_builtin());
+                if ty.underlying(analyzer)?.ty == as_bn {
+                    Ok(Some(Self::User(
+                        TypeNode::Ty(*ty),
+                        SolcRange::from(concrete_underlying),
+                    )))
+                } else {
+                    Ok(None)
+                }
+            }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer)? {
                     Ok(Some(Self::BuiltIn(*to_bn, sr)))
@@ -394,6 +431,9 @@ impl VarType {
                     Ok(None)
                 }
             }
+            Self::User(TypeNode::Ty(ty), _) => {
+                BuiltInNode::from(ty.underlying(analyzer)?.ty).zero_range(analyzer)
+            }
             Self::BuiltIn(bn, None) => bn.zero_range(analyzer),
             Self::Concrete(cnode) => Ok(cnode.underlying(analyzer)?.as_builtin().zero_range()),
             _ => Ok(None),
@@ -409,6 +449,9 @@ impl VarType {
                 Ok(SolcRange::try_from_builtin(&Builtin::Address))
             }
             Self::User(TypeNode::Enum(enu), _) => enu.maybe_default_range(analyzer),
+            Self::User(TypeNode::Ty(ty), _) => Ok(SolcRange::try_from_builtin(
+                BuiltInNode::from(ty.underlying(analyzer)?.ty).underlying(analyzer)?,
+            )),
             Self::BuiltIn(bn, _) => Ok(SolcRange::try_from_builtin(bn.underlying(analyzer)?)),
             Self::Concrete(cnode) => Ok(SolcRange::from(cnode.underlying(analyzer)?.clone())),
             _ => Ok(None),
@@ -457,35 +500,60 @@ impl VarType {
     ) -> Result<Option<NodeIdx>, GraphError> {
         match self {
             Self::BuiltIn(_node, None) => Ok(None),
-            Self::BuiltIn(_node, Some(r)) => {
-                // check if the index exists as a key
-                let min = r.range_min();
-                if let Some(map) = min.dyn_map() {
-                    let name = index.name(analyzer)?;
-                    let is_const = index.is_const(analyzer)?;
-                    if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
-                        Elem::Dynamic(Dynamic { idx, .. }) => match analyzer.node(*idx) {
-                            Node::ContextVar(_) => {
-                                let cvar = ContextVarNode::from(*idx);
-                                cvar.name(analyzer).unwrap() == name
-                            }
-                            _ => false,
-                        },
-                        c @ Elem::Concrete(..) if is_const => {
-                            let index_val = index.evaled_range_min(analyzer).unwrap().unwrap();
-                            index_val.range_eq(c)
-                        }
-                        _ => false,
-                    }) {
-                        if let Some(idx) = val.node_idx() {
-                            return Ok(idx.into());
-                        } else if let Some(c) = val.concrete() {
-                            let cnode = analyzer.add_node(Node::Concrete(c));
-                            return Ok(cnode.into());
+            Self::BuiltIn(node, Some(r)) => {
+                if let Builtin::Bytes(size) = node.underlying(analyzer)? {
+                    if r.is_const(analyzer)? && index.is_const(analyzer)? {
+                        let Some(min) = r.evaled_range_min(analyzer)?.maybe_concrete() else {
+                            return Ok(None);
+                        };
+                        let Concrete::Bytes(_, val) = min.val else {
+                            return Ok(None);
+                        };
+                        let Some(idx) = index.evaled_range_min(analyzer)?.unwrap().maybe_concrete() else {
+                            return Ok(None)
+                        };
+                        let Concrete::Uint(_, idx) = idx.val else {
+                            return Ok(None);
+                        };
+                        if idx.low_u32() < (*size as u32) {
+                            let mut h = H256::default();
+                            h.0[0] = val.0[idx.low_u32() as usize];
+                            let ret_val = Concrete::Bytes(1, h);
+                            let node = analyzer.add_node(Node::Concrete(ret_val));
+                            return Ok(Some(node));
                         }
                     }
+                    Ok(None)
+                } else {
+                    // check if the index exists as a key
+                    let min = r.range_min();
+                    if let Some(map) = min.dyn_map() {
+                        let name = index.name(analyzer)?;
+                        let is_const = index.is_const(analyzer)?;
+                        if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
+                            Elem::Dynamic(Dynamic { idx, .. }) => match analyzer.node(*idx) {
+                                Node::ContextVar(_) => {
+                                    let cvar = ContextVarNode::from(*idx);
+                                    cvar.name(analyzer).unwrap() == name
+                                }
+                                _ => false,
+                            },
+                            c @ Elem::Concrete(..) if is_const => {
+                                let index_val = index.evaled_range_min(analyzer).unwrap().unwrap();
+                                index_val.range_eq(c)
+                            }
+                            _ => false,
+                        }) {
+                            if let Some(idx) = val.node_idx() {
+                                return Ok(idx.into());
+                            } else if let Some(c) = val.concrete() {
+                                let cnode = analyzer.add_node(Node::Concrete(c));
+                                return Ok(cnode.into());
+                            }
+                        }
+                    }
+                    Ok(None)
                 }
-                Ok(None)
             }
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Builtin but it was: {e:?}"
@@ -598,6 +666,7 @@ pub enum TypeNode {
     Contract(ContractNode),
     Struct(StructNode),
     Enum(EnumNode),
+    Ty(TyNode),
     Func(FunctionNode),
     Unresolved(NodeIdx),
 }
@@ -608,6 +677,7 @@ impl TypeNode {
             TypeNode::Contract(n) => n.name(analyzer),
             TypeNode::Struct(n) => n.name(analyzer),
             TypeNode::Enum(n) => n.name(analyzer),
+            TypeNode::Ty(n) => n.name(analyzer),
             TypeNode::Func(n) => Ok(format!("function {}", n.name(analyzer)?)),
             TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
         }
@@ -623,6 +693,7 @@ impl TypeNode {
                 Node::Contract(..) => Ok(TypeNode::Contract((*n).into())),
                 Node::Struct(..) => Ok(TypeNode::Struct((*n).into())),
                 Node::Enum(..) => Ok(TypeNode::Enum((*n).into())),
+                Node::Ty(..) => Ok(TypeNode::Ty((*n).into())),
                 Node::Function(..) => Ok(TypeNode::Func((*n).into())),
                 _ => Err(GraphError::NodeConfusion(
                     "Tried to type a non-typeable element".to_string(),
@@ -639,6 +710,7 @@ impl From<TypeNode> for NodeIdx {
             TypeNode::Contract(n) => n.into(),
             TypeNode::Struct(n) => n.into(),
             TypeNode::Enum(n) => n.into(),
+            TypeNode::Ty(n) => n.into(),
             TypeNode::Func(n) => n.into(),
             TypeNode::Unresolved(n) => n,
         }
@@ -688,7 +760,7 @@ impl BuiltInNode {
         match self.underlying(analyzer)? {
             Builtin::Array(v_ty) => v_ty.unresolved_as_resolved(analyzer),
             Builtin::Mapping(_, v_ty) => v_ty.unresolved_as_resolved(analyzer),
-            Builtin::DynamicBytes => Ok(VarType::BuiltIn(
+            Builtin::DynamicBytes | Builtin::Bytes(_) => Ok(VarType::BuiltIn(
                 analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
                 Some(SolcRange::new(
                     Elem::from(Concrete::from(vec![0x00])),
@@ -812,11 +884,8 @@ impl Builtin {
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
             Mapping { key, value, .. } => {
-                println!("HERE");
                 let key_idx = analyzer.parse_expr(&key);
-                println!("HERE2: {:?}", analyzer.node(key_idx));
                 let val_idx = analyzer.parse_expr(&value);
-                println!("HERE3: {:?}", analyzer.node(val_idx));
                 let key_var_ty = VarType::try_from_idx(analyzer, key_idx)?;
                 let val_var_ty = VarType::try_from_idx(analyzer, val_idx)?;
                 Some(Builtin::Mapping(key_var_ty, val_var_ty))

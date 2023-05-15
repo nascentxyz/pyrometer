@@ -487,14 +487,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             let mut new_var_range = lhs_range_fn(lhs_range.clone(), new_rhs);
 
             if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
-                // rhs_range.update_deps(new_rhs, ctx, self);
-                // println!("{lhs_range:#?} {:#?} {:#?}, {rhs_range:?} {:#?} {:#?}", lhs_range.evaled_range_min(self), lhs_range.evaled_range_max(self));
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
-                // println!("CONST: {} CONST: {}, {} {}", lhs_is_const, rhs_is_const, new_lhs.display_name(self).into_expr_err(loc)?, new_rhs.display_name(self).into_expr_err(loc)?);
                 match (lhs_is_const, rhs_is_const) {
                     (true, true) => {
-                        // println!("CONST CONST: {} {}", new_lhs.display_name(self).into_expr_err(loc)?, new_rhs.display_name(self).into_expr_err(loc)?);
                         if self.const_killable(op, lhs_range, rhs_range) {
                             tracing::trace!("const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -523,7 +519,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     (false, false) => {
                         if self.update_nonconst_from_nonconst(
                             loc, op, new_lhs, new_rhs, lhs_range, rhs_range,
-                        ) {
+                        )? {
                             tracing::trace!("nonconst killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
@@ -744,10 +740,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
                 let elem = Elem::from(const_var.latest_version(self));
-
                 let evaled_min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                 if evaled_min.maybe_concrete().is_none() {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {evaled_min:?}")));
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", evaled_min.to_range_string(false, self).s)));
                 }
 
                 if !nonconst_range.contains_elem(&elem, self) {
@@ -894,36 +889,38 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     /// Given a const var and a nonconst range, update the range based on the op. Returns whether its impossible
     fn update_nonconst_from_nonconst(
         &mut self,
-        _loc: Loc,
+        loc: Loc,
         op: RangeOp,
         new_lhs: ContextVarNode,
         new_rhs: ContextVarNode,
         mut lhs_range: SolcRange,
         mut rhs_range: SolcRange,
-    ) -> bool {
+    ) -> Result<bool, ExprErr> {
         tracing::trace!("Setting range for nonconst from nonconst");
         match op {
             RangeOp::Eq => {
                 // check that there is overlap in the ranges
                 if !lhs_range.overlaps(&rhs_range, self) {
-                    return true;
+                    return Ok(true);
                 }
 
                 // take the tighest range
                 match lhs_range
                     .evaled_range_min(self)
-                    .unwrap()
-                    .range_ord(&rhs_range.evaled_range_min(self).unwrap())
+                    .into_expr_err(loc)?
+                    .range_ord(&rhs_range.evaled_range_min(self).into_expr_err(loc)?)
                 {
                     Some(Ordering::Greater) => {
                         // take lhs range min as its tigher
-                        new_rhs.set_range_min(self, Elem::from(new_rhs)).unwrap();
+                        new_rhs
+                            .set_range_min(self, Elem::from(new_rhs))
+                            .into_expr_err(loc)?;
                     }
                     Some(Ordering::Less) => {
                         // take rhs range min as its tigher
                         new_lhs
                             .set_range_min(self, rhs_range.range_min().into_owned())
-                            .unwrap();
+                            .into_expr_err(loc)?;
                     }
                     _ => {
                         // equal or not comparable - both keep their minimums
@@ -933,27 +930,27 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 // take the tighest range
                 match lhs_range
                     .evaled_range_max(self)
-                    .unwrap()
-                    .range_ord(&rhs_range.evaled_range_max(self).unwrap())
+                    .into_expr_err(loc)?
+                    .range_ord(&rhs_range.evaled_range_max(self).into_expr_err(loc)?)
                 {
                     Some(Ordering::Less) => {
                         // take lhs range min as its tigher
                         new_rhs
                             .set_range_max(self, lhs_range.range_max().into_owned())
-                            .unwrap();
+                            .into_expr_err(loc)?;
                     }
                     Some(Ordering::Greater) => {
                         // take rhs range min as its tigher
                         new_lhs
                             .set_range_max(self, rhs_range.range_max().into_owned())
-                            .unwrap();
+                            .into_expr_err(loc)?;
                     }
                     _ => {
                         // equal or not comparable - both keep their maximums
                     }
                 }
 
-                false
+                Ok(false)
             }
             RangeOp::Neq => {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
@@ -961,30 +958,41 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 lhs_range.add_range_exclusion(rhs_elem);
                 new_lhs
                     .set_range_exclusions(self, lhs_range.exclusions)
-                    .unwrap();
+                    .into_expr_err(loc)?;
 
                 let lhs_elem = Elem::from(new_lhs.latest_version(self));
                 // just add as an exclusion
                 rhs_range.add_range_exclusion(lhs_elem);
                 new_rhs
                     .set_range_exclusions(self, rhs_range.exclusions)
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Gt => {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
                 let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if lhs.max is <= rhs.min, we can't make this true
-                let max = lhs_range.evaled_range_max(self).unwrap();
+                let max = lhs_range.evaled_range_max(self).into_expr_err(loc)?;
                 if matches!(
-                    max.range_ord(&rhs_elem.minimize(self).unwrap()),
+                    max.range_ord(&rhs_elem.minimize(self).into_expr_err(loc)?),
                     Some(Ordering::Less) | Some(Ordering::Equal)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
-                let max_conc = max.maybe_concrete().unwrap();
+                let Some(max_conc) = max.maybe_concrete() else {
+                    match lhs_range.max {
+                        Elem::Expr(expr) => {
+                            let lhs = expr.lhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
+                            let rhs = expr.rhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
+                            // println!("{} != {}", lhs, rhs);
+                        }
+                        _ => println!("other"),
+                    }
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                };
+
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
 
                 // we add/sub one to the element because its strict >
@@ -993,14 +1001,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         self,
                         (rhs_elem + one.clone().into()).max(lhs_range.range_min().into_owned()),
                     )
-                    .unwrap();
+                    .into_expr_err(loc)?;
                 new_rhs
                     .set_range_max(
                         self,
                         (lhs_elem - one.into()).min(rhs_range.range_max().into_owned()),
                     )
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Gte => {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
@@ -1010,37 +1018,37 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 if matches!(
                     lhs_range
                         .evaled_range_max(self)
-                        .unwrap()
-                        .range_ord(&rhs_elem.minimize(self).unwrap()),
+                        .into_expr_err(loc)?
+                        .range_ord(&rhs_elem.minimize(self).into_expr_err(loc)?),
                     Some(Ordering::Less)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 new_lhs
                     .set_range_min(self, rhs_elem.max(lhs_range.range_min().into_owned()))
-                    .unwrap();
+                    .into_expr_err(loc)?;
                 new_rhs
                     .set_range_max(self, lhs_elem.min(rhs_range.range_max().into_owned()))
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Lt => {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
                 let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if lhs min is >= rhs.max, we can't make this true
-                let min = lhs_range.evaled_range_min(self).unwrap();
+                let min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&rhs_elem.maximize(self).unwrap()),
+                    min.range_ord(&rhs_elem.maximize(self).into_expr_err(loc)?),
                     Some(Ordering::Greater) | Some(Ordering::Equal)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 // we add/sub one to the element because its strict >
                 let Some(min_conc) = min.maybe_concrete() else {
-                    panic!("min: {:?}, max: {:?}", lhs_range.evaled_range_min(self).unwrap().to_range_string(false, self).s, lhs_range.evaled_range_max(self).unwrap().to_range_string(true, self).s);
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(false, self).s)));
                 };
 
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
@@ -1050,35 +1058,35 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         self,
                         (rhs_elem - one.clone().into()).min(lhs_range.range_max().into_owned()),
                     )
-                    .unwrap();
+                    .into_expr_err(loc)?;
                 new_rhs
                     .set_range_min(
                         self,
                         (lhs_elem + one.into()).max(rhs_range.range_min().into_owned()),
                     )
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             RangeOp::Lte => {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
                 let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
                 // if nonconst min is > const, we can't make this true
-                let min = lhs_range.evaled_range_min(self).unwrap();
+                let min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&rhs_elem.maximize(self).unwrap()),
+                    min.range_ord(&rhs_elem.maximize(self).into_expr_err(loc)?),
                     Some(Ordering::Greater)
                 ) {
-                    return true;
+                    return Ok(true);
                 }
 
                 new_lhs
                     .set_range_max(self, rhs_elem.min(lhs_range.range_max().into_owned()))
-                    .unwrap();
+                    .into_expr_err(loc)?;
                 new_rhs
                     .set_range_min(self, lhs_elem.max(rhs_range.range_min().into_owned()))
-                    .unwrap();
-                false
+                    .into_expr_err(loc)?;
+                Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),
         }

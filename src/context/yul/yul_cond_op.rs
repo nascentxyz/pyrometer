@@ -129,7 +129,6 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             );
 
 
-            // println!("yul if else: {:?}", if_else_chain.if_expr);
             let if_expr_loc = if_else_chain.if_expr.loc();
             analyzer.apply_to_edges(true_subctx, if_expr_loc, &|analyzer, ctx, loc| {
                 analyzer.parse_ctx_yul_expr(&if_else_chain.if_expr, true_subctx)?;
@@ -144,7 +143,6 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     }
                     analyzer.match_yul_true(ctx, loc, &true_vars)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                        // println!("\n\nyul true stmt: {:?}\n\n", if_else_chain.true_stmt);
                         analyzer.parse_ctx_yul_statement(&if_else_chain.true_stmt, ctx);
                         Ok(())
                     })
@@ -155,7 +153,6 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             if let Some(next) = &if_else_chain.next {
                 match next {
                     ElseOrDefault::Default(default) => {
-                        // println!("handling default: {default:?}");
                         analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, _loc| {
                             analyzer.parse_ctx_yul_statement(default, ctx);
                             Ok(())
@@ -268,69 +265,6 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
             analyzer.yul_if_else(loc, &iec, ctx)
         })
-        // let mut curr_statement: Option<YulStatement> = match default {
-        //     Some(YulSwitchOptions::Default(_loc, block)) => {
-        //         Some(YulStatement::Block(block))
-        //     }
-        //     Some(_) => unreachable!("case as default"),
-        //     None => None,
-        // };
-        // let mut next_conditional = None;
-        // let mut parts: Vec<(YulExpression, YulStatement, Option<YulExpression>, Option<YulStatement>)> = cases.iter().rev().map(|case| {
-        //     match case {
-        //         YulSwitchOptions::Case(loc, expr, stmt) => {
-        //             let if_expr = YulExpression::FunctionCall(Box::new(YulFunctionCall {
-        //                 loc: *loc,
-        //                 id: Identifier {
-        //                     loc: *loc,
-        //                     name: "eq".to_string(),
-        //                 },
-        //                 arguments: vec![condition.clone(), expr.clone()],
-        //             }));
-        //             if let Some(ref mut curr_statement) = &mut curr_statement {
-        //                 // println!("{stmt:?}");
-        //                 let true_stmt: YulStatement = YulStatement::If(*loc, if_expr.clone(), stmt.clone());
-        //                 let false_conditional = next_conditional.take();
-        //                 next_conditional = Some(if_expr.clone());
-        //                 let ret = (if_expr, YulStatement::Block(stmt.clone()), false_conditional, Some(curr_statement.clone()));
-        //                 *curr_statement = YulStatement::Block(YulBlock { loc: *loc, statements: vec![
-        //                     true_stmt,
-        //                     curr_statement.clone()
-        //                 ]});
-        //                 ret
-        //             } else {
-        //                 let true_stmt = YulStatement::If(*loc, if_expr.clone(), stmt.clone());
-        //                 let ret = (if_expr, YulStatement::Block(stmt.clone()), None, None);
-        //                 curr_statement = Some(true_stmt);
-        //                 ret
-        //             }
-        //         }
-        //         YulSwitchOptions::Default(_loc, _block) => {
-        //             unreachable!("We shouldn't have a `default` case in cases - only in the `default` input parameter")
-        //         }
-        //     }
-        // }).collect();
-        // parts.reverse();
-
-        // println!("{parts:#?}");
-
-        // self.parse_ctx_yul_expr(&condition, ctx)?;
-        // if parts.is_empty() {
-        //     if let Some(curr_statement) = curr_statement {
-        //         self.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-        //             analyzer.parse_ctx_yul_statement(&curr_statement, ctx);
-        //             Ok(())
-        //         })
-        //     } else {
-        //         Ok(())
-        //     }
-        //     // empty switch statement
-        // } else {
-        //     parts.iter().try_for_each(|(if_expr, true_stmt, false_expr, false_stmt)| {
-
-        //     })
-        // }
-        // Ok(())
     }
 }
 

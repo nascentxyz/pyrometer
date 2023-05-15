@@ -91,18 +91,16 @@ pub trait ContextBuilder:
         //     println!("ctx: {}, {:#?}", ContextNode::from(ctx.into()).path(self), stmt);
         //     }
         // }
-        // println!("START STMT");
 
         // at the end of a statement we shouldn't have anything in the stack?
         if let Some(ctx) = parent_ctx {
             if let Node::Context(_) = self.node(ctx) {
                 let c = ContextNode::from(ctx.into());
-                c.pop_expr_latest(stmt.loc(), self);
-                // println!("popped");
+                let _ = c.pop_expr_latest(stmt.loc(), self);
                 if unchecked {
-                    c.set_unchecked(self);
+                    let _ = c.set_unchecked(self);
                 } else {
-                    c.unset_unchecked(self);
+                    let _ = c.unset_unchecked(self);
                 }
 
                 if c.killed_or_ret(self).unwrap() {
@@ -124,7 +122,6 @@ pub trait ContextBuilder:
                 let ctx_node = match self.node(parent) {
                     Node::Function(fn_node) => {
                         mods_set = fn_node.modifiers_set;
-                        // println!("{mods_set:?}, {:?}", fn_node.name);
                         entry_loc = Some(fn_node.loc);
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
@@ -510,7 +507,6 @@ pub trait ContextBuilder:
     }
 
     fn return_match(&mut self, ctx: ContextNode, loc: &Loc, paths: &ExprRet) {
-        println!("return match: {}", ctx.path(self));
         match paths {
             ExprRet::CtxKilled(kind) => {
                 let _ = ctx.kill(self, *loc, *kind);
@@ -551,7 +547,6 @@ pub trait ContextBuilder:
         lhs_paths: &ExprRet,
         rhs_paths: Option<&ExprRet>,
     ) -> Result<bool, ExprErr> {
-        println!("HERERERERE, {:?} {:?}", lhs_paths, rhs_paths);
         match (lhs_paths, rhs_paths) {
             (ExprRet::CtxKilled(kind), _) | (_, Some(ExprRet::CtxKilled(kind))) => {
                 ctx.kill(self, loc, *kind).into_expr_err(loc)?;
@@ -571,7 +566,6 @@ pub trait ContextBuilder:
                 )
             }
             (ExprRet::Single(ty), Some(ExprRet::Single(rhs))) => {
-                println!("HERE");
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let var = ContextVar {
@@ -585,28 +579,10 @@ pub trait ContextBuilder:
                     is_return: false,
                     ty,
                 };
-                println!("var: {var:?}");
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 let rhs = ContextVarNode::from(*rhs);
-
-                // fn match_assign_ret(
-                //     analyzer: &mut (impl GraphLike + AnalyzerLike),
-                //     ctx: ContextNode,
-                //     ret: ExprRet,
-                // ) {
-                //     match ret {
-                //         ExprRet::Single(new_lhs) | ExprRet::SingleLiteral(new_lhs) => {
-                //             analyzer.add_edge(new_lhs, ctx, Edge::Context(ContextEdge::Variable));
-                //         }
-                //         ExprRet::Multi(inner) => inner
-                //             .into_iter()
-                //             .for_each(|i| match_assign_ret(analyzer, ctx, i)),
-                //         ExprRet::CtxKilled(_) => {},
-                //         ExprRet::Null => {},
-                //     }
-                // }
 
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let _ = analyzer.assign(loc, lhs, rhs, ctx)?;
@@ -702,17 +678,17 @@ pub trait ContextBuilder:
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         use Expression::*;
-        println!(
-            "ctx: {}, current stack: {:?}, \n{:?}\n",
-            ctx.underlying(self).unwrap().path,
-            ctx.underlying(self)
-                .unwrap()
-                .expr_ret_stack
-                .iter()
-                .map(|i| i.debug_str(self))
-                .collect::<Vec<_>>(),
-            expr
-        );
+        // println!(
+        //     "ctx: {}, current stack: {:?}, \nexpr: {:?}\n",
+        //     ctx.underlying(self).unwrap().path,
+        //     ctx.underlying(self)
+        //         .unwrap()
+        //         .expr_ret_stack
+        //         .iter()
+        //         .map(|i| i.debug_str(self))
+        //         .collect::<Vec<_>>(),
+        //     expr
+        // );
         match expr {
             // literals
             NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
@@ -1190,7 +1166,6 @@ pub trait ContextBuilder:
                 ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            println!("ASSIGN rhs: {rhs_paths:?}");
             analyzer.parse_ctx_expr(lhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {

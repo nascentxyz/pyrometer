@@ -34,10 +34,15 @@ pub enum GraphError {
 pub trait AnalyzerLike: GraphLike {
     type Expr;
     type ExprErr;
+    /// Gets the builtin functions map
     fn builtin_fns(&self) -> &HashMap<String, Function>;
+    /// Mutably gets the builtin functions map
     fn builtin_fn_nodes_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
+    /// Gets the builtin function nodes mapping
     fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx>;
+    /// Returns the configured max call depth
     fn max_depth(&self) -> usize;
+    /// Returns the configured max fork width
     fn max_width(&self) -> usize;
     fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
     fn builtins(&self) -> &HashMap<Builtin, NodeIdx>;
@@ -650,19 +655,10 @@ pub trait Search: GraphLike {
         edge_ty: &Edge,
         include_edges: &[Edge],
     ) -> BTreeSet<NodeIdx> {
-        println!("{:?}", self.node(start));
-        println!("include_edges: {include_edges:?}");
         let mut edges: Vec<_> = self
             .graph()
             .edges_directed(start, Direction::Incoming)
             .collect();
-        // println!("edges: {:#?}", edges.iter().map(|edge| edge.weight()).collect::<Vec<_>>());
-
-        // println!("outgoing edges: {:#?}", self
-        //     .graph()
-        //     .edges_directed(start, Direction::Outgoing).collect::<Vec<_>>());
-        // println!("edges: {:#?}", edges.iter().map(|edge| edge.weight()).collect::<Vec<_>>());
-
         edges = edges
             .into_iter()
             .filter(|edge| include_edges.contains(edge.weight()))
@@ -677,13 +673,6 @@ pub trait Search: GraphLike {
                 }
             })
             .collect();
-        println!(
-            "children0: {:#?}",
-            this_children
-                .iter()
-                .map(|i| format!("{:?}", self.node(*i)))
-                .collect::<Vec<_>>()
-        );
 
         this_children.extend(
             edges
@@ -693,14 +682,6 @@ pub trait Search: GraphLike {
                     self.search_children_include_via(edge.source(), edge_ty, include_edges)
                 })
                 .collect::<BTreeSet<NodeIdx>>(),
-        );
-
-        println!(
-            "children1: {:#?}",
-            this_children
-                .iter()
-                .map(|i| format!("{:?}", self.node(*i)))
-                .collect::<Vec<_>>()
         );
         this_children
     }

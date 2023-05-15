@@ -38,7 +38,6 @@ pub struct SolcRange {
 
 impl AsDotStr for SolcRange {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        // println!("here: {}", self.exclusions.iter().map(|excl| excl.as_dot_str(analyzer)).collect::<Vec<_>>().join(", "));
         format!(
             "[{}, {}] excluding: [{}]",
             self.evaled_range_min(analyzer)
@@ -77,6 +76,12 @@ impl SolcRange {
             max_cached: None,
             exclusions,
         }
+    }
+
+    pub fn is_const(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        let min = self.evaled_range_min(analyzer)?;
+        let max = self.evaled_range_max(analyzer)?;
+        Ok(min.range_eq(&max))
     }
 
     pub fn min_is_negative(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -153,10 +158,7 @@ impl SolcRange {
                 }));
                 Some(SolcRange::new(r.clone(), r, vec![]))
             }
-            _e => {
-                // println!("from: {e:?}");
-                None
-            }
+            _e => None,
         }
     }
 

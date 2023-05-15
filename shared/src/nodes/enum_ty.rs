@@ -5,6 +5,7 @@ use crate::AsDotStr;
 use crate::Concrete;
 use crate::Node;
 use crate::NodeIdx;
+use ethers_core::types::U256;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 
 /// An index in the graph that references a [`Enum`] node
@@ -72,8 +73,9 @@ impl EnumNode {
     ) -> Result<SolcRange, GraphError> {
         let variants = self.variants(analyzer)?;
         assert!(variants.contains(&variant));
-        let min = Concrete::from(variant.clone()).into();
-        let max = Concrete::from(variant).into();
+        let val = U256::from(variants.iter().position(|v| v == &variant).unwrap());
+        let min = Concrete::from(val).into();
+        let max = Concrete::from(val).into();
         Ok(SolcRange::new(min, max, vec![]))
     }
 }

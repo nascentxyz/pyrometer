@@ -1,5 +1,6 @@
 use crate::nodes::GraphError;
 use crate::ContextVar;
+use crate::ContextVarNode;
 use crate::VarType;
 use crate::{
     analyzer::{AnalyzerLike, AsDotStr, GraphLike},
@@ -127,12 +128,31 @@ impl Var {
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {
+        let ty = analyzer.parse_expr(&var.ty);
+        let is_const = var
+            .attrs
+            .iter()
+            .any(|attr| matches!(attr, VariableAttribute::Constant(_)));
         Var {
             loc: var.loc,
-            ty: analyzer.parse_expr(&var.ty),
+            ty,
             attrs: var.attrs,
             name: var.name,
-            initializer: var.initializer.map(|init| analyzer.parse_expr(&init)),
+            initializer: var.initializer.and_then(|init| {
+                // we only evaluate this if the variable is constant
+                if is_const {
+                    let init = analyzer.parse_expr(&init);
+                    if let Node::ContextVar(_) = analyzer.node(init) {
+                        let v_ty = VarType::try_from_idx(analyzer, ty).unwrap();
+                        ContextVarNode::from(init).cast_from_ty(v_ty, analyzer).expect("Could not cast right hand side initializer to specified left hand side for variable");
+                        Some(init)
+                    } else {
+                        Some(init)
+                    }
+                } else {
+                    None
+                }
+            }),
             in_contract,
         }
     }

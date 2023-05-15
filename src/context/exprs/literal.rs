@@ -191,7 +191,7 @@ pub trait Literal: AnalyzerLike + Sized {
         let node = self.add_node(ccvar);
         ctx.add_var(node.into(), self).into_expr_err(loc)?;
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::Single(node), self)
+        ctx.push_expr(ExprRet::SingleLiteral(node), self)
             .into_expr_err(loc)?;
         Ok(())
     }
@@ -205,7 +205,7 @@ pub trait Literal: AnalyzerLike + Sized {
         let node = self.add_node(ccvar);
         ctx.add_var(node.into(), self).into_expr_err(loc)?;
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::Single(node), self)
+        ctx.push_expr(ExprRet::SingleLiteral(node), self)
             .into_expr_err(loc)?;
         Ok(())
     }
@@ -218,7 +218,7 @@ pub trait Literal: AnalyzerLike + Sized {
         let node = self.add_node(ccvar);
         ctx.add_var(node.into(), self).into_expr_err(loc)?;
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.push_expr(ExprRet::Single(node), self)
+        ctx.push_expr(ExprRet::SingleLiteral(node), self)
             .into_expr_err(loc)?;
         Ok(())
     }

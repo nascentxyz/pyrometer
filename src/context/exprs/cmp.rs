@@ -161,7 +161,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let exclusions = lhs_cvar
                         .ref_range(self)
                         .into_expr_err(loc)?
-                        .expect("No lhs rnage")
+                        .expect("No lhs range")
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
@@ -177,10 +177,10 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     loc: Some(loc),
                     name: format!(
                         "tmp{}({} {} {})",
+                        ctx.new_tmp(self).into_expr_err(loc)?,
                         lhs_cvar.name(self).into_expr_err(loc)?,
                         op.to_string(),
                         rhs_cvar.name(self).into_expr_err(loc)?,
-                        ctx.new_tmp(self).into_expr_err(loc)?
                     ),
                     display_name: format!(
                         "{} {} {}",

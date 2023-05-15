@@ -1,12 +1,19 @@
-contract Dummy {}
-
-enum DummyEnum {}
-
 contract Storage {
+	uint256 a;
 	mapping (address => uint256) public map;
 	mapping (address => mapping ( address => uint256)) public nestedMap;
 	uint256[] public arr;
 	uint256[][] public nestedArr;
+
+	function setUint(uint256 x, uint256 y) public returns (uint256) {
+		a = 100;
+		require(a == 100);
+		a = x;
+		require(a == x);
+
+		y += 1;
+		return x;
+	}
 
 	function setMap(address who) public {
 		map[who] = 1000;

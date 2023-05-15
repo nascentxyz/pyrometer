@@ -1,4 +1,14 @@
+enum MyEnum {
+    A,
+    B,
+    C
+}
+
 contract Logical {
+    function enumCmp() public returns (bool) {
+        return MyEnum.A > MyEnum.B;
+    }
+    
     function not() public {
         uint256 a = 100;
         bool s = a < 100;

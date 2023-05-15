@@ -68,11 +68,6 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
 
         let mut reports = vec![report.finish()];
 
-        // let mut called_fns = BTreeSet::new();
-        // let mut added_fn_calls = BTreeSet::new();
-        // let mut called_contracts = BTreeSet::new();
-        // let mut called_external_fns = BTreeSet::new();
-
         reports.extend(
             self.func_var_bound_analysis
                 .reports_for_forks(self.file_mapping, analyzer),

@@ -122,7 +122,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).latest_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx)?;
-                if !parent.is_mapping(self).into_expr_err(loc)? {
+                if !parent.is_mapping(self).into_expr_err(loc)? && parent.is_dyn(self).into_expr_err(loc)? {
                     let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
                     self.handle_require_inner(
                         ctx,
@@ -136,7 +136,6 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
 
                 let name = format!("{}[{}]", parent.name(self).into_expr_err(loc)?, index.name(self).into_expr_err(loc)?);
-                tracing::trace!("indexing: {}", name);
 
                 if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
                     let index_var = index_var.latest_version(self);

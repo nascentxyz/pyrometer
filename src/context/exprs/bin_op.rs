@@ -67,16 +67,6 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<(), ExprErr> {
-        // println!(
-        //     "BIN OP: {:?} {} {:?}, assign: {assign}, unchecked: {}",
-        //     lhs_paths.debug_str(self),
-        //     op.to_string(),
-        //     rhs_paths.debug_str(self),
-        //     match op {
-        //         RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) => u,
-        //         _ => false,
-        //     }
-        // );
         match (lhs_paths, rhs_paths) {
             (ExprRet::Null, _) => Err(ExprErr::NoLhs(
                 loc,

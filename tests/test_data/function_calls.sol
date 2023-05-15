@@ -22,6 +22,10 @@ contract B {
     function addToA(uint256 x) public {
         a += x;
     }
+
+    constructor(uint256 x) {
+        a = x;
+    }
 }
 
 contract ExternalFuncCalls {

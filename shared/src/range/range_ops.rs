@@ -1256,17 +1256,17 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                         ..
                     }),
                 )),
-            ) => {
-                let mut existing = other.val.clone();
-                existing.extend(self.val.clone());
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: other.len.clone(),
-                    val: existing,
-                    loc: other.loc,
-                })))
-            }
+            )
+            | (
+                Some((
+                    _,
+                    &Elem::Concrete(RangeConcrete {
+                        val: Concrete::Bytes(..),
+                        ..
+                    }),
+                )),
+                None,
+            ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
             (
                 Some((
                     _,
@@ -1282,17 +1282,17 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                         ..
                     }),
                 )),
-            ) => {
-                let mut existing = other.val.clone();
-                existing.extend(self.val.clone());
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: other.len.clone(),
-                    val: existing,
-                    loc: other.loc,
-                })))
-            }
+            )
+            | (
+                Some((
+                    _,
+                    Elem::Concrete(RangeConcrete {
+                        val: Concrete::Uint(..),
+                        ..
+                    }),
+                )),
+                None,
+            ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
             (
                 Some((
                     _,
@@ -1308,20 +1308,53 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                         ..
                     }),
                 )),
-            ) => {
-                let mut existing = other.val.clone();
-                existing.extend(self.val.clone());
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: other.len.clone(),
-                    val: existing,
-                    loc: other.loc,
-                })))
-            }
+            )
+            | (
+                Some((
+                    _,
+                    Elem::Concrete(RangeConcrete {
+                        val: Concrete::Int(..),
+                        ..
+                    }),
+                )),
+                None,
+            ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
             (Some((_, l @ Elem::Dynamic(_))), None) => Some(l.clone()),
             (None, Some((_, r @ Elem::Dynamic(_)))) => Some(r.clone()),
             (None, None) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            _e => None,
+        }
+    }
+}
+
+impl RangeCast<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
+    fn range_cast(&self, other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
+        let (_k, val): (_, &Elem<Concrete>) = self.val.iter().take(1).next()?;
+        let o_val = &other.val;
+        // println!("HERE {:?} {:?} {:?}", k, val, o_val);
+        match (val, o_val) {
+            (
+                &Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(1, ..),
+                    ..
+                }),
+                Concrete::Bytes(size, _),
+            ) => {
+                let mut h = H256::default();
+                for (i, (_, val)) in self.val.iter().take(*size as usize).enumerate() {
+                    match val {
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(1, v),
+                            ..
+                        }) => {
+                            // consume as many as we can
+                            h.0[i] = v.0[0];
+                        }
+                        _ => break,
+                    }
+                }
+                Some(Elem::Concrete(Concrete::Bytes(*size, h).into()))
+            }
             _e => None,
         }
     }
@@ -1331,7 +1364,11 @@ impl RangeCast<Concrete> for Elem<Concrete> {
     fn range_cast(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_cast(b),
-            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
+            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => {
+                // super dumb type stuff here that makes it so we have to specify
+                <RangeDyn<Concrete> as RangeCast<Concrete>>::range_cast(a, b)
+            }
+            (Elem::ConcreteDyn(a), Elem::Concrete(b)) => a.range_cast(b),
             (Elem::Concrete(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
             _e => None,
         }
@@ -1576,23 +1613,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     fn range_bit_not(&self) -> Option<Elem<Concrete>> {
         match &self.val {
             Concrete::Uint(size, a) => {
-                println!("size: {:?}", size);
-                println!("pre: {:b} {:b} {:b} {:b}", a.0[0], a.0[1], a.0[2], a.0[3]);
                 let max = Concrete::max(&self.val).unwrap().uint_val().unwrap();
-                println!(
-                    "max: {:b} {:b} {:b} {:b}",
-                    max.0[0], max.0[1], max.0[2], max.0[3]
-                );
                 let val = U256(
                     a.0.into_iter()
                         .map(|i| !i)
                         .collect::<Vec<_>>()
                         .try_into()
                         .unwrap(),
-                );
-                println!(
-                    "post: {:b} {:b} {:b} {:b}",
-                    val.0[0], val.0[1], val.0[2], val.0[3]
                 );
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Uint(*size, val & max),

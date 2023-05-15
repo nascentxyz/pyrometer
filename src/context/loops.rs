@@ -40,16 +40,7 @@ pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr>
         let sctx = Context::new_subctx(ctx, None, loc, None, None, false, self, None)
             .into_expr_err(loc)?;
         let subctx = ContextNode::from(self.add_node(Node::Context(sctx)));
-        ctx.set_child_call(subctx, self);
-        // let res = ctx.set_child_call(subctx, self).into_expr_err(loc);
-        // let _ = self.add_if_err(res);
-        // let ctx_fork = self.add_node(Node::FunctionCall);
-        // self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
-        // self.add_edge(
-        //     NodeIdx::from(subctx.0),
-        //     ctx_fork,
-        //     Edge::Context(ContextEdge::Subcontext),
-        // );
+        ctx.set_child_call(subctx, self).into_expr_err(loc)?;
         self.parse_ctx_statement(body, false, Some(subctx));
         self.apply_to_edges(subctx, loc, &|analyzer, ctx, loc| {
             let vars = subctx.local_vars(analyzer).clone();

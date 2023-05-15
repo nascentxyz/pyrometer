@@ -173,7 +173,6 @@ impl<'a> FunctionVarsBoundAnalysis {
                         );
 
                         analysis.spanned_ctx_info.iter().for_each(|ctx_switch| {
-                            // println!("ctxswitch ctx: {:?}", ctx_switch);
                             if !handled_ctx_switches.contains(ctx_switch) {
                                 handled_ctx_switches.insert(ctx_switch);
                                 labels.extend(
@@ -183,7 +182,6 @@ impl<'a> FunctionVarsBoundAnalysis {
                                         .unwrap()
                                         .into_iter()
                                         .filter_map(|(loc, var)| {
-                                            // println!("return loc: {loc:?}");
                                             let range = var.ref_range(analyzer).unwrap()?;
                                             let (parts, _unsat) =
                                                 range_parts(analyzer, &self.report_config, &range);
@@ -240,7 +238,6 @@ impl<'a> FunctionVarsBoundAnalysis {
                             .unwrap()
                             .into_iter()
                             .filter_map(|(loc, var)| {
-                                // println!("return loc: {loc:?}");
                                 let range = var.ref_range(analyzer).unwrap()?;
                                 let (parts, _unsat) =
                                     range_parts(analyzer, &self.report_config, &range);
@@ -305,7 +302,6 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
         let lineage_analyses = edges
             .iter()
             .filter_map(|fork| {
-                // println!("{}, {}", fork.path(self), fork.underlying(self).unwrap().width);
                 if !report_config.show_unreachables
                     && matches!(
                         fork.underlying(self).unwrap().killed,
@@ -344,15 +340,6 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                                 | (report_config.show_consts && var.is_const(self).unwrap())
                                 | (report_config.show_symbolics && var.is_symbolic(self).unwrap())
                             {
-                                // println!("var: {}, is_ret: {}, show_tmps: {}, is const: {}, is symbolic: {}, show_symbolics: {}",
-                                //     var.display_name(self).unwrap(),
-                                //     is_ret,
-                                //     report_config.show_tmps,
-                                //     (report_config.show_consts && var.is_const(self).unwrap()),
-                                //     (report_config.show_symbolics && var.is_symbolic(self).unwrap()),
-                                //     report_config.show_symbolics
-
-                                // );
                                 Some(self.bounds_for_var_in_family_tree(
                                     file_mapping,
                                     parents.clone(),

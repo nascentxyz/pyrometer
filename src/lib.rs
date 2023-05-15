@@ -32,35 +32,68 @@ use petgraph::{graph::*, Directed};
 mod builtin_fns;
 
 pub mod context;
-pub mod tracer;
 // pub mod range;
 use context::*;
 pub use shared;
 
+#[derive(Debug, Clone, Default)]
+pub struct FinalPassItem {
+    pub funcs: Vec<FunctionNode>,
+    pub usings: Vec<(Using, NodeIdx)>,
+    pub inherits: Vec<(ContractNode, Vec<String>)>,
+}
+impl FinalPassItem {
+    pub fn new(
+        funcs: Vec<FunctionNode>,
+        usings: Vec<(Using, NodeIdx)>,
+        inherits: Vec<(ContractNode, Vec<String>)>,
+    ) -> Self {
+        Self {
+            funcs,
+            usings,
+            inherits,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Analyzer {
+    /// The root path of the contract to be analyzed
     pub root: PathBuf,
+    /// Solidity remappings - as would be passed into the solidity compiler
     pub remappings: Vec<(String, String)>,
+    /// Imported sources - the canonicalized string to the entry source element index
     pub imported_srcs: BTreeMap<OsString, Option<NodeIdx>>,
-    pub final_pass_items: Vec<(
-        Vec<FunctionNode>,
-        Vec<(Using, NodeIdx)>,
-        Vec<(ContractNode, Vec<String>)>,
-    )>,
+    /// Since we use a staged approach to analysis, we analyze all user types first then go through and patch up any missing or unresolved
+    /// parts of a contract (i.e. we parsed a struct which is used as an input to a function signature, we have to know about the struct)
+    pub final_pass_items: Vec<FinalPassItem>,
+    /// The next file number to use when parsing a new file
     pub file_no: usize,
+    /// The index of the current `msg` node
     pub msg: MsgNode,
+    /// The index of the current `block` node
     pub block: BlockNode,
+    /// The underlying graph holding all of the elements of the contracts
     pub graph: Graph<Node, Edge, Directed, usize>,
+    /// The entry node - this is the root of the dag, all relevant things should eventually point back to this (otherwise can be discarded)
     pub entry: NodeIdx,
+    /// A mapping of a solidity builtin to the index in the graph
     pub builtins: HashMap<Builtin, NodeIdx>,
+    /// A mapping of a user type's name to the index in the graph (i.e. `struct A` would mapped `A` -> index)
     pub user_types: HashMap<String, NodeIdx>,
+    /// A mapping of solidity builtin function to a [Function] struct, i.e. `ecrecover` -> `Function { name: "ecrecover", ..}`
     pub builtin_fns: HashMap<String, Function>,
+    /// A mapping of solidity builtin functions to their indices in the graph
     pub builtin_fn_nodes: HashMap<String, NodeIdx>,
+    /// A mapping of solidity builtin function names to their parameters and returns, i.e. `ecrecover` -> `([hash, r, s, v], [signer])`
     pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
+    /// Accumulated errors that happened while analyzing
     pub expr_errs: Vec<ExprErr>,
+    /// The maximum depth to analyze to (i.e. call depth)
     pub max_depth: usize,
     /// The maximum number of forks throughout the lifetime of the analysis.
     pub max_width: usize,
+    /// Dummy function used during parsing to attach contexts to for more complex first-pass parsing (i.e. before `final_pass`)
     pub parse_fn: FunctionNode,
 }
 
@@ -98,7 +131,7 @@ impl Default for Analyzer {
         let pf = Function {
             name: Some(Identifier {
                 loc: solang_parser::pt::Loc::Implicit,
-                name: "__parser_fn__".into(),
+                name: "<parser_fn>".into(),
             }),
             ..Default::default()
         };
@@ -184,8 +217,6 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        println!("top level expr: {:?}", expr);
-
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
@@ -227,24 +258,6 @@ impl AnalyzerLike for Analyzer {
                     inner_ty
                 }
             }
-            ArraySubscript(_loc, ty_expr, Some(index_expr)) => {
-                let _inner_ty = self.parse_expr(ty_expr);
-                let _index_ty = self.parse_expr(index_expr);
-                // println!("here: {:?}", index_expr);
-                // if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-                //     let dyn_b = DynBuiltin::Array(var_type);
-                //     if let Some(idx) = self.dyn_builtins.get(&dyn_b) {
-                //         *idx
-                //     } else {
-                //         let idx = self.add_node(Node::DynBuiltin(dyn_b.clone()));
-                //         self.dyn_builtins.insert(dyn_b, idx);
-                //         idx
-                //     }
-                // } else {
-                //     todo!("???")
-                // }
-                0.into()
-            }
             NumberLiteral(_loc, int, exp, _unit) => {
                 let int = U256::from_dec_str(int).unwrap();
                 let val = if !exp.is_empty() {
@@ -271,7 +284,7 @@ impl Analyzer {
     pub fn complicated_parse(&mut self, expr: &Expression) -> Option<ExprRet> {
         let dummy_ctx = Context::new(
             self.parse_fn,
-            "__parser_fn__".to_string(),
+            "<parser_fn>".to_string(),
             solang_parser::pt::Loc::Implicit,
         );
         let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
@@ -369,21 +382,27 @@ impl Analyzer {
 
     pub fn final_pass(&mut self) {
         let elems = self.final_pass_items.clone();
-        elems.iter().for_each(|(funcs, usings, inherits)| {
-            inherits.iter().for_each(|(contract, inherits)| {
-                contract.inherit(inherits.to_vec(), self);
-            });
-            usings.iter().for_each(|(using, scope_node)| {
-                self.parse_using(using, *scope_node);
-            });
-            funcs.iter().for_each(|func| {
+        elems.iter().for_each(|final_pass_item| {
+            final_pass_item
+                .inherits
+                .iter()
+                .for_each(|(contract, inherits)| {
+                    contract.inherit(inherits.to_vec(), self);
+                });
+            final_pass_item
+                .usings
+                .iter()
+                .for_each(|(using, scope_node)| {
+                    self.parse_using(using, *scope_node);
+                });
+            final_pass_item.funcs.iter().for_each(|func| {
                 // add params now that parsing is done
                 func.set_params_and_ret(self).unwrap();
             });
         });
 
-        elems.into_iter().for_each(|(funcs, _usings, _inherits)| {
-            funcs.into_iter().for_each(|func| {
+        elems.into_iter().for_each(|final_pass_item| {
+            final_pass_item.funcs.into_iter().for_each(|func| {
                 if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                     self.parse_ctx_statement(body, false, Some(func));
                 }
@@ -399,11 +418,7 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &Path,
-    ) -> (
-        Vec<FunctionNode>,
-        Vec<(Using, NodeIdx)>,
-        Vec<(ContractNode, Vec<String>)>,
-    ) {
+    ) -> FinalPassItem {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
         let mut all_inherits = vec![];
@@ -424,7 +439,7 @@ impl Analyzer {
                 all_usings.extend(usings);
                 all_inherits.extend(inherits);
             });
-        (all_funcs, all_usings, all_inherits)
+        FinalPassItem::new(all_funcs, all_usings, all_inherits)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -714,21 +729,54 @@ impl Analyzer {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_using(&mut self, using_def: &Using, scope_node: NodeIdx) {
         tracing::trace!("Parsing \"using\" {:?}", using_def);
-        let ty_idx = self.parse_expr(
-            &using_def
-                .ty
-                .clone()
-                .expect("No type defined for using statement"),
-        );
+        let Some(ref using_def_ty) = using_def.ty else {
+            self.add_expr_err(ExprErr::Todo(using_def.loc(), "Using statements with wildcards currently unsupported".to_string()));
+            return;
+        };
+        let maybe_cvar_idx = self.parse_expr(using_def_ty);
+        let ty_idx = match VarType::try_from_idx(self, maybe_cvar_idx) {
+            Some(v_ty) => v_ty.ty_idx(),
+            None => {
+                self.add_expr_err(ExprErr::Unresolved(
+                    using_def.loc(),
+                    "Unable to deduce the type for which to apply the `using` statement to"
+                        .to_string(),
+                ));
+                return;
+            }
+        };
+
         match &using_def.list {
             UsingList::Library(ident_paths) => {
                 ident_paths.identifiers.iter().for_each(|ident| {
                     if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
-                        self.add_edge(
-                            *hopefully_contract,
-                            ty_idx,
-                            Edge::LibraryContract(scope_node),
-                        );
+                        match self.node(*hopefully_contract) {
+                            Node::Contract(_) => {
+                                let funcs = ContractNode::from(*hopefully_contract).funcs(self);
+                                let relevant_funcs: Vec<_> = funcs
+                                    .iter()
+                                    .filter_map(|func| {
+                                        let first_param: FunctionParamNode =
+                                            *func.params(self).iter().take(1).next()?;
+                                        let param_ty = first_param.ty(self).unwrap();
+                                        if param_ty == ty_idx {
+                                            Some(func)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .copied()
+                                    .collect();
+                                relevant_funcs.iter().for_each(|func| {
+                                    self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
+                                });
+                            }
+                            _ => self.add_expr_err(ExprErr::ParseError(
+                                using_def.loc(),
+                                "Tried to use a non-contract as a contract in a `using` statement"
+                                    .to_string(),
+                            )),
+                        }
                     } else {
                         panic!("Cannot find library contract {}", ident.name);
                     }
@@ -749,7 +797,7 @@ impl Analyzer {
                                         .starts_with(&ident_paths.path.identifiers[1].name)
                                 })
                             {
-                                self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                                self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
                             } else {
                                 panic!(
                                     "Cannot find library function {}.{}",
@@ -779,7 +827,7 @@ impl Analyzer {
                                 .unwrap()
                                 .starts_with(&ident_paths.path.identifiers[0].name)
                         }) {
-                            self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                            self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
                         } else {
                             panic!(
                                 "Cannot find library function {}",
@@ -936,7 +984,17 @@ impl Analyzer {
 
     pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {
         let ty = Ty::new(self, ty_def.clone());
-        TyNode(self.add_node(ty).index())
+        let name = ty.name.name.clone();
+        let ty_node: TyNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+            let unresolved = self.node_mut(user_ty_node);
+            *unresolved = Node::Ty(ty);
+            user_ty_node.into()
+        } else {
+            let node = self.add_node(Node::Ty(ty));
+            self.user_types.insert(name, node);
+            node.into()
+        };
+        ty_node
     }
 }
 

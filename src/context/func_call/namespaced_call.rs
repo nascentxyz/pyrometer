@@ -1,17 +1,13 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::ExprErr;
 use crate::context::{
-    exprs::MemberAccess, func_call::intrinsic_call::IntrinsicFuncCaller, func_call::FuncCaller,
-    ContextBuilder,
+    exprs::{IntoExprErr, MemberAccess},
+    func_call::intrinsic_call::IntrinsicFuncCaller,
+    func_call::FuncCaller,
+    ContextBuilder, ExprErr,
 };
-use shared::context::ExprRet;
-use shared::NodeIdx;
-
-use shared::context::ContextVarNode;
-
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
-    context::ContextNode,
+    context::{ContextNode, ContextVarNode, ExprRet},
+    Node, NodeIdx,
 };
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
@@ -135,6 +131,7 @@ pub trait NameSpaceFuncCaller:
                 ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
+
             analyzer.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
         })
     }
@@ -194,6 +191,7 @@ pub trait NameSpaceFuncCaller:
 
         ctx.push_expr(ExprRet::Single(member), self)
             .into_expr_err(loc)?;
+
         self.parse_inputs(ctx, loc, input_exprs)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
@@ -204,6 +202,12 @@ pub trait NameSpaceFuncCaller:
                 ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
+            let mut inputs = inputs.as_vec();
+
+            // Add the member back in if its a context variable
+            if let Node::ContextVar(_) = analyzer.node(member) { inputs.insert(0, ExprRet::Single(member)) }
+
+            let inputs = ExprRet::Multi(inputs);
             if possible_funcs.is_empty() {
                 if inputs.has_killed() {
                     return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);

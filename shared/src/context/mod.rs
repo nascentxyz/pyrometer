@@ -58,6 +58,7 @@ pub enum ContextEdge {
     AttrAccess,
     Index,
     IndexAccess,
+    StructAccess,
     FuncAccess,
 
     // Variable incoming edges
@@ -212,7 +213,6 @@ impl Context {
         }
 
         let tw = parent_ctx.total_width(analyzer)?;
-        println!("total width: {tw}");
         if analyzer.max_width() < tw {
             return Err(GraphError::MaxStackWidthReached(format!(
                 "Stack width limit reached: {}",
@@ -287,6 +287,8 @@ impl Context {
             },
             unchecked: if fork_expr.is_some() {
                 parent_ctx.underlying(analyzer)?.unchecked
+            } else if let Some(ret_ctx) = returning_ctx {
+                ret_ctx.underlying(analyzer)?.unchecked
             } else {
                 false
             },
@@ -295,11 +297,15 @@ impl Context {
                 vars: Default::default(),
                 visible_funcs: if fork_expr.is_some() {
                     parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
+                } else if let Some(ret_ctx) = returning_ctx {
+                    ret_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
                 } else {
                     None
                 },
                 first_ancestor: if fork_expr.is_some() {
                     parent_ctx.underlying(analyzer)?.cache.first_ancestor
+                } else if let Some(ret_ctx) = returning_ctx {
+                    ret_ctx.underlying(analyzer)?.cache.first_ancestor
                 } else {
                     None
                 },
@@ -377,6 +383,7 @@ impl ContextNode {
         _mapping: &BTreeMap<ContextVarNode, FunctionParamNode>,
         _analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) {
+        todo!("Joining not supported yet");
         // println!("joining");
         // if let Some(body_ctx) = func.maybe_body_ctx(analyzer) {
         //     let vars: Vec<_> = body_ctx.vars(analyzer).values().map(|var| var.latest_version(analyzer)).collect();
@@ -677,7 +684,6 @@ impl ContextNode {
     }
 
     pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
-        // println!("vars_assigned_from_ext_fn_ret: {}", self.path(analyzer));
         self.local_vars(analyzer)
             .iter()
             .flat_map(|(_name, var)| var.ext_return_assignments(analyzer))
@@ -736,19 +742,8 @@ impl ContextNode {
                 .associated_source = Some(src);
             src
         } else {
-            match analyzer.search_for_ancestor(self.0.into(), &Edge::Part) {
-                Some(src) => {
-                    self.underlying_mut(analyzer)
-                        .unwrap()
-                        .cache
-                        .associated_source = Some(src);
-                    src
-                }
-                None => panic!(
-                    "No associated source for context? {:#?}",
-                    analyzer.node(*self)
-                ),
-            }
+            let func = self.associated_fn(analyzer).unwrap();
+            func.associated_source(analyzer)
         }
     }
 
@@ -785,7 +780,6 @@ impl ContextNode {
                 &Edge::InheritedContract,
                 &[Edge::Func],
             );
-            // println!("inherited: [{:#?}]", inherited_contracts.iter().map(|i| ContractNode::from(*i).name(analyzer)).collect::<Vec<_>>());
             modifiers.extend(
                 inherited_contracts
                     .into_iter()
@@ -836,51 +830,27 @@ impl ContextNode {
             return Ok(vis.clone());
         }
         if let Some(contract) = self.maybe_associated_contract(analyzer)? {
-            let mut funcs = contract.funcs(analyzer);
+            let mut mapping = contract.linearized_functions(analyzer);
             // extend with free floating functions
-            funcs.extend(
+            mapping.extend(
                 analyzer
                     .search_children_depth(analyzer.entry(), &Edge::Func, 2, 0)
                     .into_iter()
-                    .map(FunctionNode::from)
-                    .collect::<Vec<_>>(),
-            );
-
-            // extend with inherited functions
-            let inherited_contracts = analyzer.search_children_exclude_via(
-                contract.0.into(),
-                &Edge::InheritedContract,
-                &[Edge::Func],
-            );
-            funcs.extend(
-                inherited_contracts
-                    .into_iter()
-                    .flat_map(|inherited_contract| {
-                        ContractNode::from(inherited_contract).funcs(analyzer)
+                    .filter_map(|i| {
+                        let fn_node = FunctionNode::from(i);
+                        if let Ok(name) = fn_node.name(analyzer) {
+                            if !mapping.contains_key(&name) {
+                                Some((name, fn_node))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
                     })
-                    .collect::<Vec<_>>(),
+                    .collect::<BTreeMap<_, _>>(),
             );
-
-            let mut mapping: BTreeMap<String, BTreeSet<FunctionNode>> = BTreeMap::new();
-            for func in funcs.iter() {
-                let entry = mapping.entry(func.name(analyzer)?).or_default();
-                entry.insert(*func);
-            }
-            let funcs: Vec<_> = mapping
-                .into_values()
-                .map(|funcs_set| {
-                    let as_vec = funcs_set.iter().collect::<Vec<_>>();
-
-                    if as_vec.len() > 2 {
-                        println!("{}", as_vec.iter().map(|i| i.name(analyzer).unwrap()).collect::<Vec<_>>().join(", "));
-                        panic!("3+ visible functions with the same name. This is invalid solidity, {as_vec:#?}")
-                    } else if as_vec.len() == 2 {
-                        as_vec[0].get_overriding(as_vec[1], analyzer)
-                    } else {
-                        Ok(*as_vec[0])
-                    }
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let funcs: Vec<_> = mapping.values().copied().collect();
             self.underlying_mut(analyzer)?.cache.visible_funcs = Some(funcs.clone());
             Ok(funcs)
         } else {

@@ -1,6 +1,6 @@
 use crate::analyzer::GraphError;
 use crate::context::ContextVarNode;
-use crate::nodes::VarType;
+use crate::nodes::{TypeNode, VarType};
 use crate::range::range_ops::*;
 use crate::range::Range;
 use crate::range::{elem::RangeOp, *};
@@ -56,7 +56,10 @@ impl RangeElem<Concrete> for Dynamic {
 
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
         match &cvar.ty {
-            VarType::BuiltIn(_, maybe_range) => {
+            VarType::User(TypeNode::Contract(_), maybe_range)
+            | VarType::User(TypeNode::Enum(_), maybe_range)
+            | VarType::User(TypeNode::Ty(_), maybe_range)
+            | VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.evaled_range_max(analyzer)
                 } else {
@@ -78,7 +81,10 @@ impl RangeElem<Concrete> for Dynamic {
 
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
         match &cvar.ty {
-            VarType::BuiltIn(_, maybe_range) => {
+            VarType::User(TypeNode::Contract(_), maybe_range)
+            | VarType::User(TypeNode::Enum(_), maybe_range)
+            | VarType::User(TypeNode::Ty(_), maybe_range)
+            | VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
                     range.evaled_range_min(analyzer)
                 } else {
@@ -710,11 +716,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     }
 
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
-        // println!("filter {} for {}, {:?}", node_idx.index(), new_idx.index(), self);
         match self {
             Self::Dynamic(ref mut d) => {
                 if d.idx == node_idx {
-                    // println!("match");
                     d.idx = new_idx
                 }
             }
@@ -993,8 +997,6 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let rhs_min = self.rhs.minimize(analyzer)?;
         let rhs_max = self.rhs.maximize(analyzer)?;
 
-        // println!("\n\n\n{lhs_min:?}\n\n{lhs_max:?}\n\n{rhs_min:?}\n\n{rhs_max:?}\n\n\n");
-
         tracing::trace!(
             "executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}",
             self.lhs,
@@ -1011,7 +1013,6 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let rhs_min_neg = rhs_min.pre_evaled_is_negative();
         let rhs_max_neg = rhs_max.pre_evaled_is_negative();
 
-        // println!("op: {}, lhs_min: {} lhs_max: {}, rhs_min: {}, rhs_max: {}", self.op.to_string(), lhs_min.to_range_string(false, analyzer).s, lhs_max.to_range_string(true, analyzer).s, rhs_min.to_range_string(false, analyzer).s, rhs_max.to_range_string(true, analyzer).s);
         let res = match self.op {
             RangeOp::Add(unchecked) => {
                 if unchecked {

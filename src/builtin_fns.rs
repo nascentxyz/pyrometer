@@ -19,6 +19,24 @@ macro_rules! builtin_fn {
 pub fn builtin_fns() -> HashMap<String, Function> {
     let funcs = [
         builtin_fn!(
+             name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "wrap".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+             name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "unwrap".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "concat".to_string(),
@@ -291,6 +309,8 @@ pub fn builtin_fns_inputs(
     analyzer: &mut (impl GraphLike + AnalyzerLike),
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
+        ("wrap", vec![], vec![]),
+        ("unwrap", vec![], vec![]),
         (
             "addmod",
             vec![

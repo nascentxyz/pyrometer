@@ -1,66 +1,9 @@
 contract B {
-    struct Trace224 {
-        Checkpoint224[] _checkpoints;
-    }
+    function sendValue(address payable recipient, uint256 amount) internal {
+        require(address(this).balance >= amount, "Address: insufficient balance");
 
-    struct Checkpoint224 {
-        uint32 _key;
-        uint224 _value;
-    }
-
-    function upperLookup(Trace224 storage self, uint32 key) internal view returns (uint224) {
-        uint256 len = self._checkpoints.length;
-        uint256 pos = _upperBinaryLookup(self._checkpoints, key, 0, len);
-        if (pos == 0) {
-            return 0;
-        } else {
-            Checkpoint224[] storage s = self._checkpoints;
-            Checkpoint224 storage res = _unsafeAccess(s, pos - 1);
-            return res._value;
-        }
-        // return pos == 0 ? 0 : ._value;
-    }
-
-    function _upperBinaryLookup(
-        Checkpoint224[] storage self,
-        uint32 key,
-        uint256 low,
-        uint256 high
-    ) private view returns (uint256) {
-        // while (low < high) {
-        //     uint256 mid = Math.average(low, high);
-        //     if (_unsafeAccess(self, mid)._key > key) {
-        //         high = mid;
-        //     } else {
-        //         low = mid + 1;
-        //     }
-        // }
-        return high;
-    }
-
-    function _unsafeAccess(Checkpoint224[] storage self, uint256 pos) private pure returns (Checkpoint224 storage result) {
-        assembly {
-            mstore(0, self.slot)
-            result.slot := add(keccak256(0, 0x20), pos)
-        }
-    }
-}
-
-// SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts (last updated v4.8.0) (utils/math/Math.sol)
-
-
-/**
- * @dev Standard math utilities missing in the Solidity language.
- */
-library Math {
-    /**
-     * @dev Returns the average of two numbers. The result is rounded towards
-     * zero.
-     */
-    function average(uint256 a, uint256 b) internal pure returns (uint256) {
-        // (a + b) / 2 can overflow.
-        return (a & b) + (a ^ b) / 2;
+        (bool success, ) = recipient.call{value: amount}("");
+        require(success, "Address: unable to send value, recipient may have reverted");
     }
 }
 

@@ -163,14 +163,14 @@ impl ExprRet {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let idx = inner;
                 match VarType::try_from_idx(analyzer, *idx) {
-                    Some(var_ty) => format!(
-                        "({})",
-                        var_ty
-                            .unresolved_as_resolved(analyzer)
-                            .unwrap()
-                            .as_dot_str(analyzer)
-                    ),
-                    None => "UnresolvedType".to_string(),
+                    Some(var_ty) => {
+                        if let Ok(ty) = var_ty.unresolved_as_resolved(analyzer) {
+                            format!("({})", ty.as_dot_str(analyzer))
+                        } else {
+                            "<UnresolvedType>".to_string()
+                        }
+                    }
+                    None => "<UnresolvedType>".to_string(),
                 }
             }
             ExprRet::Multi(inner) if !self.has_fork() => {
