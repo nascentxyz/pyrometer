@@ -140,6 +140,19 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .into_expr_err(loc)?;
                 self.cmp_inner(ctx, loc, &ExprRet::Single(*rhs), op, rhs_paths)
             }
+            (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
+                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                lhs_cvar.try_increase_size(self).into_expr_err(loc)?;
+                rhs_cvar.try_increase_size(self).into_expr_err(loc)?;
+                self.cmp_inner(
+                    ctx,
+                    loc,
+                    &ExprRet::Single(lhs_cvar.into()),
+                    op,
+                    &ExprRet::Single(rhs_cvar.into()),
+                )
+            }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 ContextVarNode::from(*rhs)
                     .literal_cast_from(&ContextVarNode::from(*lhs), self)
@@ -241,7 +254,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
             (e, f) => Err(ExprErr::UnhandledCombo(
                 loc,
-                format!("Unhandled combination in `not`: {e:?} {f:?}"),
+                format!("Unhandled combination in `cmp`: {e:?} {f:?}"),
             )),
         }
     }

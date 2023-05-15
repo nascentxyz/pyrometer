@@ -8,6 +8,15 @@ contract Logical {
     function enumCmp() public returns (bool) {
         return MyEnum.A > MyEnum.B;
     }
+
+
+    function yulCmp() internal {
+        uint x;
+        assembly {
+            x := gt(2,3)
+        }
+    }
+
     
     function not() public {
         uint256 a = 100;
