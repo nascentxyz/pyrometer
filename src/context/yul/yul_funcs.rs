@@ -1,4 +1,3 @@
-use solang_parser::pt::YulExpression;
 use crate::context::exprs::BinOp;
 use crate::context::exprs::Cmp;
 use crate::context::exprs::IntoExprErr;
@@ -12,6 +11,7 @@ use ethers_core::types::U256;
 use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
+use solang_parser::pt::YulExpression;
 
 use shared::range::{elem_ty::Elem, SolcRange};
 use shared::{context::ContextEdge, nodes::Builtin, Edge};
@@ -71,7 +71,7 @@ pub trait YulFuncCaller:
                 })
             }
             "add" | "sub" | "mul" | "div" | "sdiv" | "mod" | "smod" | "exp" | "and" | "or"
-            | "xor" |"shl" | "shr" | "sar" => {
+            | "xor" | "shl" | "shr" | "sar" => {
                 let op = match &*id.name {
                     "add" => RangeOp::Add(true),
                     "sub" => RangeOp::Sub(true),
@@ -98,12 +98,13 @@ pub trait YulFuncCaller:
                     ));
                 }
 
-                let (lhs, rhs): (&YulExpression, &YulExpression) = if matches!(&*id.name, "shl" | "shr" | "sar") {
-                    // yul shifts are super dumb and are reversed.
-                    (&arguments[1], &arguments[0])
-                } else {
-                    (&arguments[0], &arguments[1])
-                };
+                let (lhs, rhs): (&YulExpression, &YulExpression) =
+                    if matches!(&*id.name, "shl" | "shr" | "sar") {
+                        // yul shifts are super dumb and are reversed.
+                        (&arguments[1], &arguments[0])
+                    } else {
+                        (&arguments[0], &arguments[1])
+                    };
 
                 self.parse_ctx_yul_expr(lhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {

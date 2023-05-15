@@ -230,7 +230,8 @@ impl FunctionNode {
             let parent = analyzer
                 .graph()
                 .edges_directed(self.0.into(), Direction::Outgoing)
-                .filter(|edge| matches!(
+                .filter(|edge| {
+                    matches!(
                         *edge.weight(),
                         Edge::Func
                             | Edge::Modifier
@@ -238,7 +239,7 @@ impl FunctionNode {
                             | Edge::ReceiveFunc
                             | Edge::FallbackFunc
                     )
-                )
+                })
                 .map(|edge| edge.target())
                 .take(1)
                 .next()

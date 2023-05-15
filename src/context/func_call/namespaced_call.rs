@@ -202,12 +202,9 @@ pub trait NameSpaceFuncCaller:
                 ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            let mut inputs = inputs.as_vec();
+            // let mut inputs = inputs.as_vec();
 
-            // Add the member back in if its a context variable
-            if let Node::ContextVar(_) = analyzer.node(member) { inputs.insert(0, ExprRet::Single(member)) }
-
-            let inputs = ExprRet::Multi(inputs);
+            // let inputs = ExprRet::Multi(inputs);
             if possible_funcs.is_empty() {
                 if inputs.has_killed() {
                     return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
@@ -238,16 +235,22 @@ pub trait NameSpaceFuncCaller:
             } else if possible_funcs.len() == 1 {
                 let mut inputs = inputs.as_vec();
                 let func = possible_funcs[0];
-                if func.params(analyzer).len() < inputs.len() {
-                    inputs = inputs[1..].to_vec();
+                if func.params(analyzer).len() > inputs.len() {
+                    // Add the member back in if its a context variable
+                    if let Node::ContextVar(_) = analyzer.node(member) { inputs.insert(0, ExprRet::Single(member)) }
                 }
                 let inputs = ExprRet::Multi(inputs);
                 if inputs.has_killed() {
                     return ctx.kill(analyzer, loc, inputs.killed_kind().unwrap()).into_expr_err(loc);
                 }
 
+
                 analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
             } else {
+                // Add the member back in if its a context variable
+                let mut inputs = inputs.as_vec();
+                if let Node::ContextVar(_) = analyzer.node(member) { inputs.insert(0, ExprRet::Single(member)) }
+                let inputs = ExprRet::Multi(inputs);
                 // this is the annoying case due to function overloading & type inference on number literals
                 let mut lits = vec![false];
                 lits.extend(
