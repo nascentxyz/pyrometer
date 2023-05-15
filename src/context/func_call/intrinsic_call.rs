@@ -7,7 +7,6 @@ use crate::context::{ExprErr, IntoExprErr};
 use ethers_core::types::U256;
 use shared::nodes::BuiltInNode;
 use shared::nodes::TyNode;
-use shared::range::elem::RangeElem;
 
 use shared::analyzer::Search;
 use shared::analyzer::{AnalyzerLike, GraphLike};

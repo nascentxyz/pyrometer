@@ -984,8 +984,8 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 let Some(max_conc) = max.maybe_concrete() else {
                     match lhs_range.max {
                         Elem::Expr(expr) => {
-                            let lhs = expr.lhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            let rhs = expr.rhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
+                            let _lhs = expr.lhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
+                            let _rhs = expr.rhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
                             // println!("{} != {}", lhs, rhs);
                         }
                         _ => println!("other"),
