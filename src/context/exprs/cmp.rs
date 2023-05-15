@@ -221,8 +221,7 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
                     self,
                 )
-                .into_expr_err(loc)?;
-                Ok(())
+                .into_expr_err(loc)
             }
             (l @ ExprRet::Single(_lhs), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides

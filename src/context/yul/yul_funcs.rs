@@ -11,6 +11,7 @@ use ethers_core::types::U256;
 use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
+use shared::range::elem_ty::RangeExpr;
 use solang_parser::pt::YulExpression;
 
 use shared::range::{elem_ty::Elem, SolcRange};
@@ -169,7 +170,26 @@ pub trait YulFuncCaller:
                             ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                             return Ok(());
                         }
-                        analyzer.cmp_inner(ctx, loc, &lhs_paths, op, &rhs_paths)
+                        analyzer.cmp_inner(ctx, loc, &lhs_paths, op, &rhs_paths)?;
+                        let Some(result) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Yul Binary operation had no return".to_string()))
+                        };
+
+                        let res = ContextVarNode::from(result.expect_single().into_expr_err(loc)?);
+                        let next = analyzer.advance_var_in_ctx(res, loc, ctx)?;
+                        let expr = Elem::Expr(RangeExpr::new(
+                            Elem::from(res),
+                            RangeOp::Cast,
+                            Elem::from(Concrete::Uint(1, U256::zero()))
+                        ));
+
+                        next.set_range_min(analyzer, expr.clone()).into_expr_err(loc)?;
+                        next.set_range_max(analyzer, expr).into_expr_err(loc)?;
+                        ctx.push_expr(
+                            ExprRet::Single(next.into()),
+                            analyzer,
+                        )
+                        .into_expr_err(loc)
                     })
                 })
             }
