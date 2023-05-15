@@ -12,8 +12,10 @@ contract Logical {
 
     function yulCmp() internal {
         uint x;
+        uint y;
         assembly {
             x := gt(2,3)
+            y := eq(2,3)
         }
     }
 
