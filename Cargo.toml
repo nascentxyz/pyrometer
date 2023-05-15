@@ -7,16 +7,25 @@ edition = "2021"
 
 [dependencies]
 petgraph = "0.6.2"
-solang-parser = { version = "0.2.3", features = ["pt-serde"] }
+solang-parser = { version = "0.2.4", features = ["pt-serde"] }
 ethers-core = "*"
 ariadne = "0.2.0"
 shared = { path = "./shared" }
 hex = "0.4.3"
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = "0.3"
+itertools = "0.10.5"
 
 [workspace]
 members = ["cli", "shared"]
 
-[profile.release.package.cli]
+
+[patch.crates-io]
+ariadne = {git = "https://github.com/brockelmore/ariadne"}
+
+[profile.release]
 debug = true
+
+[profile.dev]
+opt-level = 1  # Enable some optimizations like tail call
+inline = true

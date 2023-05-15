@@ -1,11 +1,7 @@
-use crate::analyzers::{
-    bounds::{BoundAnalysis, BoundAnalyzer},
-    *,
-};
+use crate::analyzers::{VarBoundAnalyzer, *};
 use shared::{
     analyzer::*,
-    nodes::{ContractNode, FunctionNode},
-    range::{range_string::ToRangeString, Range, RangeEval, SolcRange},
+    range::{range_string::ToRangeString, Range, SolcRange},
     NodeIdx,
 };
 
@@ -16,49 +12,60 @@ use std::collections::BTreeMap;
 pub struct StorageRangeReport {
     pub target: SolcRange,
     pub write_loc: Option<LocStrSpan>,
-    pub analysis: BoundAnalysis,
+    pub analysis: VarBoundAnalysis,
 }
 
 impl ReportDisplay for StorageRangeReport {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Storage Write Query", Color::Green)
     }
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String {
+    fn msg(&self, analyzer: &impl GraphLike) -> String {
         let bounds_string = self
             .analysis
             .ctx
             .ctx_deps(analyzer)
+            .unwrap()
             .iter()
             .filter_map(|(_name, cvar)| {
                 let min = if self.analysis.report_config.eval_bounds {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer)
+                        .unwrap()?
                         .evaled_range_min(analyzer)
+                        .unwrap()
                         .to_range_string(false, analyzer)
                         .s
                 } else if self.analysis.report_config.simplify_bounds {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer)
+                        .unwrap()?
                         .simplified_range_min(analyzer)
+                        .unwrap()
                         .to_range_string(false, analyzer)
                         .s
                 } else {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer)
+                        .unwrap()?
                         .range_min()
                         .to_range_string(false, analyzer)
                         .s
                 };
 
                 let max = if self.analysis.report_config.eval_bounds {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer)
+                        .unwrap()?
                         .evaled_range_max(analyzer)
+                        .unwrap()
                         .to_range_string(true, analyzer)
                         .s
                 } else if self.analysis.report_config.simplify_bounds {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer)
+                        .unwrap()?
                         .simplified_range_max(analyzer)
+                        .unwrap()
                         .to_range_string(true, analyzer)
                         .s
                 } else {
-                    cvar.range(analyzer)?
+                    cvar.range(analyzer)
+                        .unwrap()?
                         .range_max()
                         .to_range_string(true, analyzer)
                         .s
@@ -66,7 +73,7 @@ impl ReportDisplay for StorageRangeReport {
 
                 Some(format!(
                     "\"{}\" ∈ {{{}, {}}}",
-                    cvar.display_name(analyzer),
+                    cvar.display_name(analyzer).unwrap(),
                     min,
                     max,
                 ))
@@ -78,10 +85,10 @@ impl ReportDisplay for StorageRangeReport {
             self.analysis.ctx.path(analyzer),
             self.analysis.var_name,
             self.target
-                .evaled_range_min(analyzer) .to_range_string(false, analyzer)
+                .evaled_range_min(analyzer).unwrap() .to_range_string(false, analyzer)
                 .s,
             self.target
-                .evaled_range_max(analyzer) .to_range_string(true, analyzer)
+                .evaled_range_max(analyzer).unwrap() .to_range_string(true, analyzer)
                 .s,
             if bounds_string.is_empty() {
                 ""
@@ -92,11 +99,11 @@ impl ReportDisplay for StorageRangeReport {
         )
     }
 
-    fn labels(&self, _analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>> {
+    fn labels(&self, _analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.analysis.report_kind(),
             self.analysis.var_def.0.source(),
@@ -112,33 +119,18 @@ impl ReportDisplay for StorageRangeReport {
 
         report.add_labels(self.analysis.labels(analyzer));
 
-        let mut reports = vec![report.finish()];
-
-        if self.analysis.report_config.show_subctxs {
-            reports.extend(
-                self.analysis
-                    .sub_ctxs
-                    .iter()
-                    .flat_map(|analysis| analysis.reports(analyzer))
-                    .collect::<Vec<_>>(),
-            );
-        }
-
+        let reports = vec![report.finish()];
         reports
     }
 
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search)) {
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut *src).unwrap();
         }
     }
 
-    fn eprint_reports(
-        &self,
-        mut src: &mut impl Cache<String>,
-        analyzer: &(impl AnalyzerLike + Search),
-    ) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
@@ -146,67 +138,19 @@ impl ReportDisplay for StorageRangeReport {
     }
 }
 
-impl<T> StorageRangeQuery for T where T: BoundAnalyzer + Search + AnalyzerLike + Sized {}
-pub trait StorageRangeQuery: BoundAnalyzer + Search + AnalyzerLike + Sized {
+impl<T> StorageRangeQuery for T where T: VarBoundAnalyzer + Search + AnalyzerLike + Sized {}
+pub trait StorageRangeQuery: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
     #[allow(clippy::too_many_arguments)]
     fn func_query(
-        &self,
-        entry: NodeIdx,
-        file_mapping: &'_ BTreeMap<usize, String>,
-        report_config: ReportConfig,
-        contract_name: String,
-        func_name: String,
-        storage_var_name: String,
-        mut target: SolcRange,
+        &mut self,
+        _entry: NodeIdx,
+        _file_mapping: &'_ BTreeMap<usize, String>,
+        _report_config: ReportConfig,
+        _contract_name: String,
+        _func_name: String,
+        _storage_var_name: String,
+        _target: SolcRange,
     ) -> Option<StorageRangeReport> {
-        // perform analysis on the func for the storage var
-        // collect bound changes of the var
-        // check if any of the bound changes' mins are less than or equal
-        // the target and if the maxs are greater than or equal the target
-        // report back dependencies
-        let contract = self
-            .search_children(entry, &crate::Edge::Contract)
-            .into_iter()
-            .filter(|contract| ContractNode::from(*contract).name(self) == contract_name)
-            .take(1)
-            .next()
-            .expect("No contract with provided name");
-        let func = self
-            .search_children(contract, &crate::Edge::Func)
-            .into_iter()
-            .filter(|func| FunctionNode::from(*func).name(self) == func_name)
-            .take(1)
-            .next()
-            .expect("No function in contract with provided name");
-        let ctx = FunctionNode::from(func).body_ctx(self);
-
-        let terminals = ctx.terminal_child_list(self);
-        for mut analysis in terminals
-            .iter()
-            .map(|child| {
-                let mut parents = child.parent_list(self);
-                parents.reverse();
-                parents.push(*child);
-                self.bounds_for_var_in_family_tree(
-                    file_mapping,
-                    parents.clone(),
-                    storage_var_name.clone(),
-                    report_config,
-                )
-            })
-            .filter(|analysis| terminals.contains(&analysis.ctx))
-            .filter(|analysis| !analysis.ctx.is_killed(self))
-        {
-            if let Some(last) = analysis.bound_changes.iter_mut().last() {
-                if last.1.contains(&mut target, self) {
-                    return Some(StorageRangeReport {
-                        target,
-                        write_loc: Some(last.0.clone()),
-                        analysis,
-                    });
-                }
-            }
-        }
-        None
+        todo!()
     }
 }

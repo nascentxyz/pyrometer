@@ -499,6 +499,16 @@ contract AssignMath {
         return (y, x);
     }
 
+    function predecrement(uint256 x) public returns (uint256, uint256) {
+        uint256 y = --x;
+        return (y, x);
+    }
+
+    function postdecrement(uint256 x) public returns (uint256, uint256) {
+        uint256 y = x--;
+        return (y, x);
+    }
+
     function pre_conc() public {
         (uint256 y, uint256 x) = preincrement(100);
         require(y == 101);
@@ -509,6 +519,18 @@ contract AssignMath {
         (uint256 y, uint256 x) = postincrement(100);
         require(y == 100);
         require(x == 101);
+    }
+
+    function pre_deconc() public {
+        (uint256 y, uint256 x) = predecrement(100);
+        require(y == 99);
+        require(x == 99);
+    }
+
+    function post_deconc() public {
+        (uint256 y, uint256 x) = postdecrement(100);
+        require(y == 100);
+        require(x == 99);
     }
 }
 
@@ -527,5 +549,72 @@ contract Math {
 
     function int_rexp(int256 x, uint256 y) public returns (int256) {
         return x ** y;
+    }
+}
+
+contract Unchecked {
+    function assemblyWrappingSub(uint256 a) public {
+        assembly {
+            a := sub(0, 100)
+        }
+        require(a == 115792089237316195423570985008687907853269984665640564039457584007913129639836);
+
+        int256 y = type(int256).min;
+        assembly {
+            a := sub(y, 100)
+        }
+        require(a == 57896044618658097711785492504343953926634992332820282019728792003956564819868);
+    }
+
+    function uncheckedSub(uint256 a) public {
+        unchecked {
+            a = 0 - 100;
+        }
+        require(a == 115792089237316195423570985008687907853269984665640564039457584007913129639836);
+
+        int256 y = type(int256).min;
+        unchecked {
+            a = y - 100;
+        }
+        require(a == 57896044618658097711785492504343953926634992332820282019728792003956564819868);
+    }
+
+    function assemblyWrappingAdd(uint256 a) public {
+        uint256 m = type(uint256).max;
+        assembly {
+            a := add(m, 100)
+        }
+        require(a == 99);
+        a += (type(uint256).max - 99);
+        require(a == type(uint256).max);
+    }
+
+    function uncheckedAdd(uint256 a) public {
+        unchecked {
+            a = type(uint256).max + 100;
+        }
+        require(a == 99);
+        a += (type(uint256).max - 99);
+        require(a == type(uint256).max);
+    }
+
+    function assemblyWrappingMul(uint256 a) public {
+        uint256 m = type(uint128).max;
+        assembly {
+            a := mul(m, m)
+        }
+        require(a == 115792089237316195423570985008687907852589419931798687112530834793049593217025);
+        a /= 3;
+        a *= 3;
+        // require(a == 115792089237316195423570985008687907852589419931798687112530834793049593217025);
+    }
+
+    function uncheckedMul(uint256 a) public {
+        unchecked {
+            a = type(uint256).max + 100;
+        }
+        require(a == 99);
+        a += (type(uint256).max - 99);
+        require(a == type(uint256).max);
     }
 }

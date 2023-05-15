@@ -1,7 +1,9 @@
+use crate::analyzer::GraphError;
+use crate::analyzer::GraphLike;
 use crate::context::ContextVarNode;
 use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeExpr;
-use crate::GraphLike;
+
 use crate::NodeIdx;
 use std::collections::BTreeMap;
 
@@ -9,13 +11,13 @@ use std::collections::BTreeMap;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum RangeOp {
     /// Addition
-    Add,
+    Add(bool),
     /// Multiplication
-    Mul,
+    Mul(bool),
     /// Subtraction
-    Sub,
+    Sub(bool),
     /// Division
-    Div,
+    Div(bool),
     /// Modulos
     Mod,
     /// Minimum
@@ -54,8 +56,12 @@ pub enum RangeOp {
     BitOr,
     /// Bitwise XOR
     BitXor,
+    /// Bitwise Not
+    BitNot,
     /// Exponentiation
     Exp,
+    /// Concatenation
+    Concat,
 }
 
 impl RangeOp {
@@ -63,10 +69,10 @@ impl RangeOp {
     pub fn inverse(self) -> Option<Self> {
         use RangeOp::*;
         match self {
-            Add => Some(Sub),
-            Mul => Some(Div),
-            Sub => Some(Add),
-            Div => Some(Mul),
+            Add(i) => Some(Sub(i)),
+            Mul(i) => Some(Div(i)),
+            Sub(i) => Some(Add(i)),
+            Div(i) => Some(Mul(i)),
             Shl => Some(Shr),
             Shr => Some(Shl),
             Eq => Some(Neq),
@@ -80,10 +86,10 @@ impl ToString for RangeOp {
     fn to_string(&self) -> String {
         use RangeOp::*;
         match self {
-            Add => "+".to_string(),
-            Mul => "*".to_string(),
-            Sub => "-".to_string(),
-            Div => "/".to_string(),
+            Add(..) => "+".to_string(),
+            Mul(..) => "*".to_string(),
+            Sub(..) => "-".to_string(),
+            Div(..) => "/".to_string(),
             Shl => "<<".to_string(),
             Shr => ">>".to_string(),
             Mod => "%".to_string(),
@@ -104,19 +110,24 @@ impl ToString for RangeOp {
             BitAnd => "&".to_string(),
             BitOr => "|".to_string(),
             BitXor => "^".to_string(),
+            BitNot => "~".to_string(),
+            Concat => "concat".to_string(),
         }
     }
 }
 
 pub trait RangeElem<T> {
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
-    fn maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn cache_maximize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
-    fn minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn uncache(&mut self);
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Elem<T>;
+    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Checks if two range elements are equal
     fn range_eq(&self, other: &Self) -> bool;
     /// Tries to compare the ordering of two range elements
@@ -146,5 +157,5 @@ pub trait RangeElem<T> {
     /// e.g.: take the basic expression `x + y`, in normal checked solidity math
     /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
     /// cyclic dependency.
-    fn filter_recursion(&mut self, node_idx: NodeIdx, old: Elem<T>);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx);
 }

@@ -1,18 +1,24 @@
 pub mod bounds;
-use bounds::*;
 
 use crate::AnalyzerLike;
+use crate::GraphLike;
 use ariadne::{Cache, Label, Report, ReportKind, Span};
+use bounds::*;
 use shared::analyzer::Search;
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
+mod func_analyzer;
+pub use func_analyzer::*;
+mod var_analyzer;
+pub use var_analyzer::*;
+
 pub trait ContextAnalyzer:
-    AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer
+    AnalyzerLike + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 impl<T> ContextAnalyzer for T where
-    T: AnalyzerLike + Search + BoundAnalyzer + FunctionVarsBoundAnalyzer
+    T: AnalyzerLike + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 
@@ -62,7 +68,7 @@ impl Default for LocStrSpan {
 }
 
 impl LocStrSpan {
-    fn new(file_mapping: &BTreeMap<usize, String>, loc: Loc) -> Self {
+    pub fn new(file_mapping: &BTreeMap<usize, String>, loc: Loc) -> Self {
         let source = match loc {
             Loc::File(ref f, _, _) => f,
             Loc::Implicit => &0,
@@ -107,9 +113,11 @@ pub struct ReportConfig {
     pub simplify_bounds: bool,
     pub show_tmps: bool,
     pub show_consts: bool,
-    pub show_subctxs: bool,
+    pub show_symbolics: bool,
     pub show_initial_bounds: bool,
     pub show_all_lines: bool,
+    pub show_reverts: bool,
+    pub show_unreachables: bool,
 }
 
 impl ReportConfig {
@@ -118,18 +126,22 @@ impl ReportConfig {
         simplify_bounds: bool,
         show_tmps: bool,
         show_consts: bool,
-        show_subctxs: bool,
+        show_symbolics: bool,
         show_initial_bounds: bool,
         show_all_lines: bool,
+        show_reverts: bool,
+        show_unreachables: bool,
     ) -> Self {
         Self {
             eval_bounds,
             simplify_bounds,
             show_tmps,
             show_consts,
-            show_subctxs,
+            show_symbolics,
             show_initial_bounds,
             show_all_lines,
+            show_reverts,
+            show_unreachables,
         }
     }
 }
@@ -141,18 +153,20 @@ impl Default for ReportConfig {
             simplify_bounds: false,
             show_tmps: false,
             show_consts: false,
-            show_subctxs: true,
-            show_initial_bounds: true,
+            show_symbolics: true,
+            show_initial_bounds: false,
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         }
     }
 }
 
 pub trait ReportDisplay {
     fn report_kind(&self) -> ReportKind;
-    fn msg(&self, analyzer: &(impl AnalyzerLike + Search)) -> String;
-    fn labels(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Label<LocStrSpan>>;
-    fn reports(&self, analyzer: &(impl AnalyzerLike + Search)) -> Vec<Report<LocStrSpan>>;
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search));
-    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &(impl AnalyzerLike + Search));
+    fn msg(&self, analyzer: &impl GraphLike) -> String;
+    fn labels(&self, analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>>;
+    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>>;
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike);
+    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike);
 }

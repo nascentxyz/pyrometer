@@ -1,5 +1,7 @@
+use crate::analyzer::GraphError;
+use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::Builtin;
-use crate::{analyzer::GraphLike, Node, NodeIdx};
+use crate::{Node, NodeIdx};
 use ethers_core::types::{Address, H256, I256, U256};
 
 /// An index in the graph that references a [`Concrete`] node
@@ -8,16 +10,21 @@ pub struct ConcreteNode(pub usize);
 
 impl ConcreteNode {
     /// Gets the underlying node data for the [`Concrete`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Concrete {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Concrete, GraphError> {
         match analyzer.node(*self) {
-            Node::Concrete(c) => c,
-            e => panic!("Node type confusion: expected node to be Concrete but it was: {e:?}"),
+            Node::Concrete(c) => Ok(c),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Concrete but it was: {e:?}"
+            ))),
         }
     }
 
-    pub fn max_size(&self, analyzer: &mut impl GraphLike) -> Self {
-        let c = self.underlying(analyzer).max_size();
-        analyzer.add_node(Node::Concrete(c)).into()
+    pub fn max_size(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Self, GraphError> {
+        let c = self.underlying(analyzer)?.max_size();
+        Ok(analyzer.add_node(Node::Concrete(c)).into())
     }
 }
 
@@ -52,7 +59,7 @@ pub enum Concrete {
     Address(Address),
     /// A boolean
     Bool(bool),
-    /// A (capacity, vector of bytes)
+    /// A vector of bytes
     DynBytes(Vec<u8>),
     /// A string, (TODO: solidity doesn't enforce utf-8 encoding like rust. Likely this type
     /// should be modeled with a `Vec<u8>` instead.)
@@ -210,10 +217,21 @@ impl Concrete {
         }
     }
 
+    pub fn concat(self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Concrete::String(a), Concrete::String(b)) => Some(Concrete::from(format!("{a}{b}"))),
+            (Concrete::DynBytes(mut a), Concrete::DynBytes(b)) => {
+                a.extend(b);
+                Some(Concrete::from(a))
+            }
+            _ => None,
+        }
+    }
+
     /// Cast the concrete to another type as denoted by a [`Builtin`].
     pub fn cast(self, builtin: Builtin) -> Option<Self> {
         match self {
-            Concrete::Uint(_, val) => {
+            Concrete::Uint(r_size, val) => {
                 match builtin {
                     Builtin::Address => {
                         let mut bytes = [0u8; 32];
@@ -221,15 +239,20 @@ impl Concrete {
                         Some(Concrete::Address(Address::from_slice(&bytes[12..])))
                     }
                     Builtin::Uint(size) => {
-                        let mask = if size == 256 {
-                            U256::MAX
+                        // no op
+                        if r_size == size {
+                            Some(self)
                         } else {
-                            U256::from(2).pow(size.into()) - 1
-                        };
-                        if val < mask {
-                            Some(Concrete::Uint(size, val))
-                        } else {
-                            Some(Concrete::Uint(size, mask))
+                            let mask = if size == 256 {
+                                U256::MAX
+                            } else {
+                                U256::from(2).pow(size.into()) - 1
+                            };
+                            if val < mask {
+                                Some(Concrete::Uint(size, val))
+                            } else {
+                                Some(Concrete::Uint(size, mask))
+                            }
                         }
                     }
                     Builtin::Int(size) => {
@@ -259,10 +282,17 @@ impl Concrete {
                         (val & mask).to_big_endian(&mut h.0);
                         Some(Concrete::Bytes(size, h))
                     }
+                    Builtin::Bool => {
+                        if val > U256::zero() {
+                            Some(Concrete::from(true))
+                        } else {
+                            Some(Concrete::from(false))
+                        }
+                    }
                     _ => None,
                 }
             }
-            Concrete::Int(_, val) => match builtin {
+            Concrete::Int(r_size, val) => match builtin {
                 Builtin::Address => {
                     let mut bytes = [0u8; 32];
                     val.to_big_endian(&mut bytes);
@@ -286,20 +316,25 @@ impl Concrete {
                     }
                 }
                 Builtin::Int(size) => {
-                    let mask = if size == 256 {
-                        U256::MAX / 2
+                    // no op
+                    if r_size == size {
+                        Some(self)
                     } else {
-                        U256::from(2).pow((size - 1).into()) - 1
-                    };
+                        let mask = if size == 256 {
+                            U256::MAX / 2
+                        } else {
+                            U256::from(2).pow((size - 1).into()) - 1
+                        };
 
-                    let (sign, abs) = val.into_sign_and_abs();
-                    if abs < mask {
-                        Some(Concrete::Int(size, val))
-                    } else {
-                        Some(Concrete::Int(
-                            size,
-                            I256::checked_from_sign_and_abs(sign, mask).unwrap(),
-                        ))
+                        let (sign, abs) = val.into_sign_and_abs();
+                        if abs < mask {
+                            Some(Concrete::Int(size, val))
+                        } else {
+                            Some(Concrete::Int(
+                                size,
+                                I256::checked_from_sign_and_abs(sign, mask).unwrap(),
+                            ))
+                        }
                     }
                 }
                 Builtin::Bytes(size) => {
@@ -311,6 +346,13 @@ impl Concrete {
                     let mut h = H256::default();
                     (val.into_raw() & mask).to_big_endian(h.as_mut());
                     Some(Concrete::Bytes(size, h))
+                }
+                Builtin::Bool => {
+                    if val.abs() > I256::from(0i32) {
+                        Some(Concrete::from(true))
+                    } else {
+                        Some(Concrete::from(false))
+                    }
                 }
                 _ => None,
             },
@@ -383,9 +425,54 @@ impl Concrete {
                 }
                 _ => None,
             },
-            Concrete::DynBytes(ref _b) => match builtin {
+            Concrete::String(s) => match builtin {
+                Builtin::Bytes(size) => {
+                    let as_bytes = s.as_bytes();
+                    if as_bytes.len() <= size.into() {
+                        let mut h = H256::default();
+                        as_bytes.iter().enumerate().for_each(|(i, byte)| {
+                            h.0[i] = *byte;
+                        });
+                        Some(Concrete::Bytes(size, h))
+                    } else {
+                        None
+                    }
+                }
+                Builtin::DynamicBytes => Some(Concrete::DynBytes(s.as_bytes().to_vec())),
+                _ => None,
+            },
+            Concrete::DynBytes(ref b) => match builtin {
+                Builtin::Bytes(size) => {
+                    if b.len() <= size.into() {
+                        let mut h = H256::default();
+                        b.iter().enumerate().for_each(|(i, byte)| {
+                            h.0[i] = *byte;
+                        });
+                        Some(Concrete::Bytes(size, h))
+                    } else {
+                        None
+                    }
+                }
                 Builtin::DynamicBytes => Some(self),
                 Builtin::String => todo!(),
+                _ => None,
+            },
+            Concrete::Bool(ref b) => match builtin {
+                Builtin::Bool => Some(self),
+                Builtin::Uint(_) => {
+                    if *b {
+                        Some(Concrete::from(U256::from(1)))
+                    } else {
+                        Some(Concrete::from(U256::zero()))
+                    }
+                }
+                Builtin::Int(_) => {
+                    if *b {
+                        Some(Concrete::from(I256::from(1i32)))
+                    } else {
+                        Some(Concrete::from(I256::zero()))
+                    }
+                }
                 _ => None,
             },
             _ => None,
@@ -475,19 +562,19 @@ impl Concrete {
     pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
         let mut builtins = vec![];
         match self {
-            Concrete::Uint(size, val) => {
+            Concrete::Uint(_size, val) => {
                 let mut min_bits = (256 - val.leading_zeros()) as u16;
-                let mut s = *size;
+                let mut s = 256;
                 while s > min_bits {
                     builtins.push(Builtin::Uint(s));
                     s -= 8;
                 }
                 // now ints
                 min_bits = min_bits.saturating_sub(1);
-                let mut s = *size;
+                let mut s = 255;
                 while s > min_bits {
-                    builtins.push(Builtin::Int(s));
-                    s -= 8;
+                    builtins.push(Builtin::Int(s + 1));
+                    s = s.saturating_sub(8);
                 }
             }
             Concrete::Int(size, val) => {
@@ -559,7 +646,7 @@ impl Concrete {
                     I256::from_raw(U256::from(1u8) << U256::from(*size - 1)) - I256::from(1)
                 };
 
-                let min = max * I256::from(-1i32);
+                let min = max * I256::from(-1i32) - I256::from(1i32);
                 Some(Concrete::Int(*size, min))
             }
             Concrete::Bytes(size, _) => {
@@ -570,10 +657,9 @@ impl Concrete {
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0x00; 20]))),
             Concrete::Bool(_) => Some(Concrete::Bool(false)),
-            e => {
-                println!("was other: {e:?}");
-                None
-            }
+            Concrete::String(_) => Some(Concrete::String("".to_string())),
+            Concrete::DynBytes(_) => Some(Concrete::DynBytes(vec![])),
+            Concrete::Array(_) => Some(Concrete::Array(vec![])),
         }
     }
 
@@ -626,7 +712,13 @@ impl Concrete {
                     hex::encode(a)
                 }
             }
-            e => todo!("Concrete as string {e:?}"),
+            Concrete::Array(arr) => format!(
+                "[{}]",
+                arr.iter()
+                    .map(|i| i.as_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 
@@ -703,7 +795,13 @@ impl Concrete {
                     hex::encode(a)
                 }
             }
-            e => todo!("Concrete as string: {e:?}"),
+            Concrete::Array(arr) => format!(
+                "[{}]",
+                arr.iter()
+                    .map(|i| i.as_human_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }

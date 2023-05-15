@@ -1,9 +1,20 @@
+use crate::analyzers::LocStrSpan;
+use crate::context::exprs::IntoExprErr;
+use crate::exprs::ExprErr;
+use ariadne::Source;
 use ethers_core::types::U256;
 use shared::analyzer::*;
+use shared::context::ContextNode;
+use shared::context::ExprRet;
+use shared::context::{Context, ContextEdge};
 use shared::nodes::*;
 use shared::{Edge, Node, NodeIdx};
+use solang_parser::diagnostics::Diagnostic;
+use solang_parser::helpers::CodeLocation;
+use solang_parser::pt::Identifier;
 use solang_parser::pt::Import;
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
+
 use std::ffi::OsString;
 use std::path::Path;
 
@@ -15,6 +26,7 @@ use solang_parser::pt::{
 use std::path::PathBuf;
 use std::{collections::HashMap, fs};
 
+use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
 use petgraph::{graph::*, Directed};
 
 mod builtin_fns;
@@ -24,25 +36,65 @@ pub mod context;
 use context::*;
 pub use shared;
 
+#[derive(Debug, Clone, Default)]
+pub struct FinalPassItem {
+    pub funcs: Vec<FunctionNode>,
+    pub usings: Vec<(Using, NodeIdx)>,
+    pub inherits: Vec<(ContractNode, Vec<String>)>,
+}
+impl FinalPassItem {
+    pub fn new(
+        funcs: Vec<FunctionNode>,
+        usings: Vec<(Using, NodeIdx)>,
+        inherits: Vec<(ContractNode, Vec<String>)>,
+    ) -> Self {
+        Self {
+            funcs,
+            usings,
+            inherits,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Analyzer {
+    /// The root path of the contract to be analyzed
     pub root: PathBuf,
+    /// Solidity remappings - as would be passed into the solidity compiler
     pub remappings: Vec<(String, String)>,
-    pub imported_srcs: BTreeSet<OsString>,
-    pub final_pass_items: Vec<(
-        Vec<FunctionNode>,
-        Vec<(Using, NodeIdx)>,
-        Vec<(ContractNode, Vec<String>)>,
-    )>,
+    /// Imported sources - the canonicalized string to the entry source element index
+    pub imported_srcs: BTreeMap<OsString, Option<NodeIdx>>,
+    /// Since we use a staged approach to analysis, we analyze all user types first then go through and patch up any missing or unresolved
+    /// parts of a contract (i.e. we parsed a struct which is used as an input to a function signature, we have to know about the struct)
+    pub final_pass_items: Vec<FinalPassItem>,
+    /// The next file number to use when parsing a new file
     pub file_no: usize,
+    /// The index of the current `msg` node
     pub msg: MsgNode,
+    /// The index of the current `block` node
     pub block: BlockNode,
+    /// The underlying graph holding all of the elements of the contracts
     pub graph: Graph<Node, Edge, Directed, usize>,
+    /// The entry node - this is the root of the dag, all relevant things should eventually point back to this (otherwise can be discarded)
     pub entry: NodeIdx,
+    /// A mapping of a solidity builtin to the index in the graph
     pub builtins: HashMap<Builtin, NodeIdx>,
+    /// A mapping of a user type's name to the index in the graph (i.e. `struct A` would mapped `A` -> index)
     pub user_types: HashMap<String, NodeIdx>,
+    /// A mapping of solidity builtin function to a [Function] struct, i.e. `ecrecover` -> `Function { name: "ecrecover", ..}`
     pub builtin_fns: HashMap<String, Function>,
+    /// A mapping of solidity builtin functions to their indices in the graph
+    pub builtin_fn_nodes: HashMap<String, NodeIdx>,
+    /// A mapping of solidity builtin function names to their parameters and returns, i.e. `ecrecover` -> `([hash, r, s, v], [signer])`
     pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
+    /// Accumulated errors that happened while analyzing
+    pub expr_errs: Vec<ExprErr>,
+    /// The maximum depth to analyze to (i.e. call depth)
+    pub max_depth: usize,
+    /// The maximum number of forks throughout the lifetime of the analysis.
+    pub max_width: usize,
+    /// Dummy function used during parsing to attach contexts to for more complex first-pass parsing (i.e. before `final_pass`)
+    pub parse_fn: FunctionNode,
 }
 
 impl Default for Analyzer {
@@ -60,18 +112,32 @@ impl Default for Analyzer {
             builtins: Default::default(),
             user_types: Default::default(),
             builtin_fns: builtin_fns::builtin_fns(),
+            builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
+            expr_errs: Default::default(),
+            max_depth: 1024,
+            max_width: 2_i32.pow(14) as usize,
+            parse_fn: NodeIdx::from(0).into(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
         let msg = Msg::default();
-        // msg.sender = Some(Address::random());
         let block = Block::default();
         let msg = a.graph.add_node(Node::Msg(msg)).into();
         let block = a.graph.add_node(Node::Block(block)).into();
         a.msg = msg;
         a.block = block;
         a.entry = a.add_node(Node::Entry);
+        let pf = Function {
+            name: Some(Identifier {
+                loc: solang_parser::pt::Loc::Implicit,
+                name: "<parser_fn>".into(),
+            }),
+            ..Default::default()
+        };
+        let parser_fn = FunctionNode::from(a.add_node(pf));
+        a.add_edge(parser_fn, a.entry, Edge::Func);
+        a.parse_fn = parser_fn;
         a
     }
 }
@@ -88,6 +154,34 @@ impl GraphLike for Analyzer {
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
+    type ExprErr = ExprErr;
+
+    fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx> {
+        &self.builtin_fn_nodes
+    }
+
+    fn builtin_fn_nodes_mut(&mut self) -> &mut HashMap<String, NodeIdx> {
+        &mut self.builtin_fn_nodes
+    }
+
+    fn max_depth(&self) -> usize {
+        self.max_depth
+    }
+
+    fn max_width(&self) -> usize {
+        self.max_width
+    }
+
+    fn add_expr_err(&mut self, err: ExprErr) {
+        if !self.expr_errs.contains(&err) {
+            self.expr_errs.push(err);
+        }
+    }
+
+    fn expr_errs(&self) -> Vec<ExprErr> {
+        self.expr_errs.clone()
+    }
+
     fn entry(&self) -> NodeIdx {
         self.entry
     }
@@ -123,7 +217,6 @@ impl AnalyzerLike for Analyzer {
 
     fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
         use Expression::*;
-        // println!("top level expr: {:?}", expr);
         match expr {
             Type(_loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
@@ -134,6 +227,9 @@ impl AnalyzerLike for Analyzer {
                         self.builtins.insert(builtin, idx);
                         idx
                     }
+                } else if let Some(idx) = self.complicated_parse(expr) {
+                    self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
+                        .unwrap_or(0.into())
                 } else {
                     0.into()
                 }
@@ -159,26 +255,8 @@ impl AnalyzerLike for Analyzer {
                         idx
                     }
                 } else {
-                    todo!("???")
+                    inner_ty
                 }
-            }
-            ArraySubscript(_loc, ty_expr, Some(index_expr)) => {
-                let _inner_ty = self.parse_expr(ty_expr);
-                let _index_ty = self.parse_expr(index_expr);
-                // println!("here: {:?}", index_expr);
-                // if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-                //     let dyn_b = DynBuiltin::Array(var_type);
-                //     if let Some(idx) = self.dyn_builtins.get(&dyn_b) {
-                //         *idx
-                //     } else {
-                //         let idx = self.add_node(Node::DynBuiltin(dyn_b.clone()));
-                //         self.dyn_builtins.insert(dyn_b, idx);
-                //         idx
-                //     }
-                // } else {
-                //     todo!("???")
-                // }
-                0.into()
             }
             NumberLiteral(_loc, int, exp, _unit) => {
                 let int = U256::from_dec_str(int).unwrap();
@@ -190,12 +268,35 @@ impl AnalyzerLike for Analyzer {
                 };
                 self.add_node(Node::Concrete(Concrete::Uint(256, val)))
             }
-            _ => 0.into(),
+            _ => {
+                if let Some(idx) = self.complicated_parse(expr) {
+                    self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
+                        .unwrap_or(0.into())
+                } else {
+                    0.into()
+                }
+            }
         }
     }
 }
 
 impl Analyzer {
+    pub fn complicated_parse(&mut self, expr: &Expression) -> Option<ExprRet> {
+        let dummy_ctx = Context::new(
+            self.parse_fn,
+            "<parser_fn>".to_string(),
+            solang_parser::pt::Loc::Implicit,
+        );
+        let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
+        self.add_edge(ctx, self.entry(), Edge::Context(ContextEdge::Context));
+        let res = self.parse_ctx_expr(expr, ctx);
+        self.add_if_err(res);
+        let res = ctx
+            .pop_expr_latest(expr.loc(), self)
+            .into_expr_err(expr.loc());
+        let res = self.add_if_err(res);
+        res?
+    }
     pub fn set_remappings_and_root(&mut self, remappings_path: String) {
         self.root = PathBuf::from(&remappings_path)
             .parent()
@@ -212,6 +313,33 @@ impl Analyzer {
             .map(|x| x.split_once('=').expect("Invalid remapping"))
             .map(|(name, path)| (name.to_owned(), path.to_owned()))
             .collect();
+    }
+
+    pub fn print_errors(
+        &self,
+        file_mapping: &'_ BTreeMap<usize, String>,
+        mut src: &mut impl Cache<String>,
+    ) {
+        if self.expr_errs.is_empty() {
+        } else {
+            self.expr_errs.iter().for_each(|error| {
+                let str_span = LocStrSpan::new(file_mapping, error.loc());
+                let report = Report::build(ReportKind::Error, str_span.source(), str_span.start())
+                    .with_message(error.report_msg())
+                    .with_config(
+                        Config::default()
+                            .with_cross_gap(false)
+                            .with_underlines(true)
+                            .with_tab_width(4),
+                    )
+                    .with_label(
+                        Label::new(str_span)
+                            .with_color(Color::Red)
+                            .with_message(format!("{}", error.msg().fg(Color::Red))),
+                    );
+                report.finish().print(&mut src).unwrap();
+            });
+        }
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -245,28 +373,37 @@ impl Analyzer {
 
                 (Some(parent), imported)
             }
-            Err(e) => panic!("FAIL to parse, {e:?}"),
+            Err(diagnostics) => {
+                print_diagnostics_report(src, current_path, diagnostics).unwrap();
+                panic!("Failed to parse Solidity code for {current_path:?}.");
+            }
         }
     }
 
     pub fn final_pass(&mut self) {
         let elems = self.final_pass_items.clone();
-        elems.iter().for_each(|(funcs, usings, inherits)| {
-            inherits.iter().for_each(|(contract, inherits)| {
-                contract.inherit(inherits.to_vec(), self);
-            });
-            usings.iter().for_each(|(using, scope_node)| {
-                self.parse_using(using, *scope_node);
-            });
-            funcs.iter().for_each(|func| {
+        elems.iter().for_each(|final_pass_item| {
+            final_pass_item
+                .inherits
+                .iter()
+                .for_each(|(contract, inherits)| {
+                    contract.inherit(inherits.to_vec(), self);
+                });
+            final_pass_item
+                .usings
+                .iter()
+                .for_each(|(using, scope_node)| {
+                    self.parse_using(using, *scope_node);
+                });
+            final_pass_item.funcs.iter().for_each(|func| {
                 // add params now that parsing is done
-                func.set_params_and_ret(self);
+                func.set_params_and_ret(self).unwrap();
             });
         });
 
-        elems.into_iter().for_each(|(funcs, _usings, _inherits)| {
-            funcs.into_iter().for_each(|func| {
-                if let Some(body) = &func.underlying(self).body.clone() {
+        elems.into_iter().for_each(|final_pass_item| {
+            final_pass_item.funcs.into_iter().for_each(|func| {
+                if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                     self.parse_ctx_statement(body, false, Some(func));
                 }
             });
@@ -281,11 +418,7 @@ impl Analyzer {
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &Path,
-    ) -> (
-        Vec<FunctionNode>,
-        Vec<(Using, NodeIdx)>,
-        Vec<(ContractNode, Vec<String>)>,
-    ) {
+    ) -> FinalPassItem {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
         let mut all_inherits = vec![];
@@ -306,7 +439,7 @@ impl Analyzer {
                 all_usings.extend(usings);
                 all_inherits.extend(inherits);
             });
-        (all_funcs, all_usings, all_inherits)
+        FinalPassItem::new(all_funcs, all_usings, all_inherits)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -375,7 +508,9 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), parent)),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
-            ImportDirective(import) => imported.extend(self.parse_import(import, current_path)),
+            ImportDirective(import) => {
+                imported.extend(self.parse_import(import, current_path, parent))
+            }
         }
         (sup_node, func_nodes, usings, inherits)
     }
@@ -385,6 +520,7 @@ impl Analyzer {
         &mut self,
         import: &Import,
         current_path: &Path,
+        parent: NodeIdx,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
         match import {
             Import::Plain(import_path, _) => {
@@ -409,19 +545,40 @@ impl Analyzer {
                 };
 
                 let canonical = fs::canonicalize(&remapped)
-                    .unwrap_or_else(|_| panic!("Could not find file: {remapped:?}"));
+                    .unwrap_or_else(|_| panic!(
+                            "Could not find file: {remapped:?}{}",
+                            if self.remappings.is_empty() {
+                                ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                            } else { "" }
+                        )
+                    );
                 let canonical_str_path = canonical.as_os_str();
-                if self.imported_srcs.contains(canonical_str_path) {
+                if let Some(other_entry) = self.imported_srcs.get(canonical_str_path) {
+                    if let Some(o_e) = other_entry {
+                        self.add_edge(*o_e, parent, Edge::Import);
+                    }
                     return vec![];
                 }
-                self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {canonical:?}")
+                    panic!(
+                        "Could not find file for dependency: {canonical:?}{}",
+                        if self.remappings.is_empty() {
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input (where `remappings.txt` is the output of `forge remappings > remappings.txt`)"
+                        } else { "" }
+                    )
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
+                // breaks recursion issues
+                self.imported_srcs.insert(canonical_str_path.into(), None);
                 let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
+                self.imported_srcs
+                    .insert(canonical_str_path.into(), maybe_entry);
+                if let Some(other_entry) = maybe_entry {
+                    self.add_edge(other_entry, parent, Edge::Import);
+                }
+
                 inner_sources.push((
                     maybe_entry,
                     remapped.to_str().unwrap().to_owned(),
@@ -451,19 +608,41 @@ impl Analyzer {
                         .join(import_path.string.clone())
                 };
 
-                let canonical = fs::canonicalize(&remapped).unwrap();
+                let canonical = fs::canonicalize(&remapped).unwrap_or_else(|_| panic!(
+                        "Could not find file: {remapped:?}{}",
+                        if self.remappings.is_empty() {
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                        } else { "" }
+                    )
+                );
                 let canonical_str_path = canonical.as_os_str();
-                if self.imported_srcs.contains(canonical_str_path) {
+                if let Some(other_entry) = self.imported_srcs.get(canonical_str_path) {
+                    if let Some(o_e) = other_entry {
+                        self.add_edge(*o_e, parent, Edge::Import);
+                    }
                     return vec![];
                 }
-                self.imported_srcs.insert(canonical_str_path.into());
 
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!("Could not find file for dependency: {canonical:?}")
+                    panic!(
+                        "Could not find file for dependency: {canonical:?}{}",
+                        if self.remappings.is_empty() {
+                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
+                        } else { "" }
+                    )
                 });
                 self.file_no += 1;
                 let file_no = self.file_no;
+
+                // breaks recursion issues
+                self.imported_srcs.insert(canonical_str_path.into(), None);
                 let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
+                self.imported_srcs
+                    .insert(canonical_str_path.into(), maybe_entry);
+                if let Some(other_entry) = maybe_entry {
+                    self.add_edge(other_entry, parent, Edge::Import);
+                }
+
                 inner_sources.push((
                     maybe_entry,
                     remapped.to_str().unwrap().to_owned(),
@@ -543,28 +722,61 @@ impl Analyzer {
             StraySemicolon(_loc) => todo!(),
         });
         self.user_types
-            .insert(con_node.name(self), con_node.0.into());
+            .insert(con_node.name(self).unwrap(), con_node.0.into());
         (con_node, func_nodes, usings, unhandled_inherits)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_using(&mut self, using_def: &Using, scope_node: NodeIdx) {
         tracing::trace!("Parsing \"using\" {:?}", using_def);
-        let ty_idx = self.parse_expr(
-            &using_def
-                .ty
-                .clone()
-                .expect("No type defined for using statement"),
-        );
+        let Some(ref using_def_ty) = using_def.ty else {
+            self.add_expr_err(ExprErr::Todo(using_def.loc(), "Using statements with wildcards currently unsupported".to_string()));
+            return;
+        };
+        let maybe_cvar_idx = self.parse_expr(using_def_ty);
+        let ty_idx = match VarType::try_from_idx(self, maybe_cvar_idx) {
+            Some(v_ty) => v_ty.ty_idx(),
+            None => {
+                self.add_expr_err(ExprErr::Unresolved(
+                    using_def.loc(),
+                    "Unable to deduce the type for which to apply the `using` statement to"
+                        .to_string(),
+                ));
+                return;
+            }
+        };
+
         match &using_def.list {
             UsingList::Library(ident_paths) => {
                 ident_paths.identifiers.iter().for_each(|ident| {
                     if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
-                        self.add_edge(
-                            *hopefully_contract,
-                            ty_idx,
-                            Edge::LibraryContract(scope_node),
-                        );
+                        match self.node(*hopefully_contract) {
+                            Node::Contract(_) => {
+                                let funcs = ContractNode::from(*hopefully_contract).funcs(self);
+                                let relevant_funcs: Vec<_> = funcs
+                                    .iter()
+                                    .filter_map(|func| {
+                                        let first_param: FunctionParamNode =
+                                            *func.params(self).iter().take(1).next()?;
+                                        let param_ty = first_param.ty(self).unwrap();
+                                        if param_ty == ty_idx {
+                                            Some(func)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .copied()
+                                    .collect();
+                                relevant_funcs.iter().for_each(|func| {
+                                    self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
+                                });
+                            }
+                            _ => self.add_expr_err(ExprErr::ParseError(
+                                using_def.loc(),
+                                "Tried to use a non-contract as a contract in a `using` statement"
+                                    .to_string(),
+                            )),
+                        }
                     } else {
                         panic!("Cannot find library contract {}", ident.name);
                     }
@@ -581,10 +793,11 @@ impl Analyzer {
                                 .iter()
                                 .find(|func| {
                                     func.name(self)
+                                        .unwrap()
                                         .starts_with(&ident_paths.path.identifiers[1].name)
                                 })
                             {
-                                self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                                self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
                             } else {
                                 panic!(
                                     "Cannot find library function {}.{}",
@@ -611,9 +824,10 @@ impl Analyzer {
                         if let Some(func) = funcs.iter().find(|func| {
                             FunctionNode::from(**func)
                                 .name(self)
+                                .unwrap()
                                 .starts_with(&ident_paths.path.identifiers[0].name)
                         }) {
-                            self.add_edge(*func, ty_idx, Edge::LibraryFunction(scope_node));
+                            self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
                         } else {
                             panic!(
                                 "Cannot find library function {}",
@@ -763,12 +977,49 @@ impl Analyzer {
             func = Some(Function::from(var_def.clone()));
         }
         let var_node = VarNode::from(self.add_node(var));
-        self.user_types.insert(var_node.name(self), var_node.into());
+        self.user_types
+            .insert(var_node.name(self).unwrap(), var_node.into());
         (var_node, func)
     }
 
     pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {
         let ty = Ty::new(self, ty_def.clone());
-        TyNode(self.add_node(ty).index())
+        let name = ty.name.name.clone();
+        let ty_node: TyNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
+            let unresolved = self.node_mut(user_ty_node);
+            *unresolved = Node::Ty(ty);
+            user_ty_node.into()
+        } else {
+            let node = self.add_node(Node::Ty(ty));
+            self.user_types.insert(name, node);
+            node.into()
+        };
+        ty_node
     }
+}
+
+/// Print the report of parser's diagnostics
+pub fn print_diagnostics_report(
+    content: &str,
+    path: &Path,
+    diagnostics: Vec<Diagnostic>,
+) -> std::io::Result<()> {
+    let filename = path.file_name().unwrap().to_string_lossy().to_string();
+    for diag in diagnostics {
+        let (start, end) = (diag.loc.start(), diag.loc.end());
+        let mut report = Report::build(ReportKind::Error, &filename, start)
+            .with_message(format!("{:?}", diag.ty))
+            .with_label(
+                Label::new((&filename, start..end))
+                    .with_color(Color::Red)
+                    .with_message(format!("{}", diag.message.fg(Color::Red))),
+            );
+
+        for note in diag.notes {
+            report = report.with_note(note.message);
+        }
+
+        report.finish().print((&filename, Source::from(content)))?;
+    }
+    Ok(())
 }

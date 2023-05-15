@@ -1,18 +1,14 @@
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
-use pyrometer::context::queries::storage_write::StorageRangeQuery;
+use pyrometer::context::analyzers::FunctionVarsBoundAnalyzer;
 use pyrometer::{
-    context::{
-        analyzers::{bounds::FunctionVarsBoundAnalyzer, ReportDisplay},
-        queries::storage_write::AccessStorageWriteQuery,
-        *,
-    },
+    context::{analyzers::ReportDisplay, *},
     Analyzer,
 };
-use shared::nodes::Concrete;
+
 use shared::nodes::FunctionNode;
-use shared::range::SolcRange;
+
 use shared::Edge;
 use shared::{
     analyzer::{GraphLike, Search},
@@ -29,28 +25,59 @@ use std::fs;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    /// The path to the solidity file to process
     #[clap(value_hint = ValueHint::FilePath, value_name = "PATH")]
     pub path: String,
+    /// The path to the `remappings.txt` as per the output of `forge remappings`
     #[clap(long, short)]
     pub remappings: Option<String>,
+    /// Limit the output to just contracts that start with the name passed. i.e. `--contracts "MyCon"` woudl match "MyContract", "MyCon2", .. etc.
+    ///
+    /// Can be passed multiple times, i.e. `--contract "MyCon" --contract "MyOtherContract"`
     #[clap(long, short)]
     pub contracts: Vec<String>,
+    /// Limit the output to just functions that start with the name passed. i.e. `--funcs "myFunc"` would match "myFunction", "myFunc2", .. etc.
+    ///
+    /// Can be passed multiple times, i.e. `--funcs "myFunc" --funcs "myOtherFunc"`
     #[clap(long, short)]
     pub funcs: Vec<String>,
+    /// Verbosity of the bounds analysis
+    ///
+    /// Pass multiple times to increase the verbosity (e.g. -v, -vv, -vvv).
+    ///
+    /// Verbosity levels:
+    ///
+    ///   0: Print return value changes
+    ///   1: Print storage variable changes, input variable changes, and return value changes
+    ///   2: Print all previous values as well as temporary values
+    ///   3: Print all previous values as well as initial values
+    ///   4: Print all previous values as well as constants
+    ///   5: Print all previous values for all successful branches and reverting branches
+    ///   6: Print all previous values for all successful branches, reverting branches, and unreachable branches
     #[clap(long, short, verbatim_doc_comment, action = ArgAction::Count)]
     pub verbosity: u8,
+    /// Whether to print out a dot string of the analyzed contracts
     #[clap(long, short, default_value = "false")]
     pub dot: bool,
+    /// Whether to generate and open a dot visualization of the analyzed contracts
     #[clap(long, short, default_value = "false")]
     pub open_dot: bool,
+    /// Whether to evaluate variables down to their intervals or to keep them symbolic/relational to other variables
     #[clap(long, short)]
     pub eval: Option<bool>,
+    /// Whether to show initial values in the bounds analysis output
     #[clap(long, short)]
     pub show_inits: Option<bool>,
-    #[clap(long, short)]
-    pub access_query: Vec<String>,
-    #[clap(long, short)]
-    pub write_query: Vec<String>,
+    // #[clap(long, short)]
+    // pub access_query: Vec<String>,
+    // #[clap(long, short)]
+    // pub query: Vec<String>,
+    // #[clap(long, short)]
+    // pub write_query: Vec<String>,
+    /// A debugging command to prevent bound analysis printing. Useful for debugging parse errors during development. Only prints out parse errors
+    /// then ends the program
+    #[clap(long)]
+    pub debug: bool,
 }
 
 pub fn subscriber() {
@@ -71,54 +98,88 @@ fn main() {
             simplify_bounds: false,
             show_tmps: false,
             show_consts: false,
-            show_subctxs: true,
+            show_symbolics: false,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         1 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: false,
-            show_consts: true,
-            show_subctxs: true,
+            show_consts: false,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         2 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
-            show_consts: true,
-            show_subctxs: true,
+            show_consts: false,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(false),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         3 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
-            show_consts: true,
-            show_subctxs: true,
+            show_consts: false,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
         },
         4 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
             show_consts: true,
-            show_subctxs: true,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
-            show_all_lines: true,
+            show_all_lines: false,
+            show_reverts: false,
+            show_unreachables: false,
+        },
+        5 => ReportConfig {
+            eval_bounds: args.eval.unwrap_or(true),
+            simplify_bounds: false,
+            show_tmps: true,
+            show_consts: true,
+            show_symbolics: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
+            show_all_lines: false,
+            show_reverts: true,
+            show_unreachables: false,
+        },
+        6 => ReportConfig {
+            eval_bounds: args.eval.unwrap_or(true),
+            simplify_bounds: false,
+            show_tmps: true,
+            show_consts: true,
+            show_symbolics: true,
+            show_initial_bounds: args.show_inits.unwrap_or(true),
+            show_all_lines: false,
+            show_reverts: true,
+            show_unreachables: true,
         },
         _ => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
             simplify_bounds: false,
             show_tmps: true,
             show_consts: true,
-            show_subctxs: true,
+            show_symbolics: true,
             show_initial_bounds: args.show_inits.unwrap_or(true),
             show_all_lines: true,
+            show_reverts: true,
+            show_unreachables: true,
         },
     };
 
@@ -135,7 +196,10 @@ fn main() {
     let t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) =
         analyzer.parse(&sol, &PathBuf::from(args.path.clone()), true);
-    let _parse_time = t0.elapsed().as_millis();
+    let parse_time = t0.elapsed().as_millis();
+
+    println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
+
     all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
 
@@ -154,8 +218,19 @@ fn main() {
             .collect::<HashMap<_, _>>(),
     );
 
+    // let t = petgraph::algo::toposort(&analyzer.graph, None);
+    analyzer.print_errors(&file_mapping, &mut source_map);
+
+    if args.open_dot {
+        analyzer.open_dot()
+    }
+
     if args.dot {
         println!("{}", analyzer.dot_str_no_tmps());
+    }
+
+    if args.debug {
+        return;
     }
 
     let all_contracts = analyzer
@@ -171,16 +246,17 @@ fn main() {
                 if args.funcs.iter().any(|analyze_for| {
                     FunctionNode::from(func)
                         .name(&analyzer)
+                        .unwrap()
                         .starts_with(analyze_for)
                 }) {
-                    if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+                    if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);
                         analysis.print_reports(&mut source_map, &analyzer);
                     }
                 }
-            } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&analyzer) {
+            } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
                 let analysis = analyzer
                     .bounds_for_all(&file_mapping, ctx, config)
                     .as_cli_compat(&file_mapping);
@@ -188,23 +264,27 @@ fn main() {
             }
         }
     } else {
-        // println!("specified contracts: {:?}", all_contracts);
         all_contracts
             .iter()
-            .filter(|contract| args.contracts.contains(&contract.name(&analyzer)))
+            .filter(|contract| {
+                let name: String = contract.name(&analyzer).unwrap();
+                args.contracts.contains(&name)
+            })
+            .collect::<Vec<_>>()
+            .iter()
             .for_each(|contract| {
                 let funcs = contract.funcs(&analyzer);
                 for func in funcs.into_iter() {
                     if !args.funcs.is_empty() {
-                        if args.funcs.contains(&func.name(&analyzer)) {
-                            let ctx = func.body_ctx(&analyzer);
+                        if args.funcs.contains(&func.name(&analyzer).unwrap()) {
+                            let ctx = func.body_ctx(&mut analyzer);
                             let analysis = analyzer
                                 .bounds_for_all(&file_mapping, ctx, config)
                                 .as_cli_compat(&file_mapping);
                             analysis.print_reports(&mut source_map, &analyzer);
                         }
                     } else {
-                        let ctx = func.body_ctx(&analyzer);
+                        let ctx = func.body_ctx(&mut analyzer);
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);
@@ -214,42 +294,42 @@ fn main() {
             });
     }
 
-    args.access_query.iter().for_each(|query| {
-        let split: Vec<&str> = query.split('.').collect();
-        analyzer
-            .access_query(
-                entry,
-                &file_mapping,
-                config,
-                split[0].to_string(),
-                split[1].to_string(),
-            )
-            .print_reports(&mut source_map, &analyzer);
-        println!();
-    });
+    // args.query.iter().for_each(|query| {
+    //     analyzer.taint_query(entry, query.to_string());
+    //     println!();
+    // });
 
-    args.write_query.iter().for_each(|query| {
-        let split: Vec<&str> = query.split('.').collect();
-        // println!("{:?}", split);
-        if let Some(report) = analyzer.func_query(
-            entry,
-            &file_mapping,
-            config,
-            split[0].to_string(),
-            split[1].to_string(),
-            split[2].to_string(),
-            SolcRange::new(
-                Concrete::Bool(true).into(),
-                Concrete::Bool(true).into(),
-                vec![],
-            ),
-        ) {
-            report.print_reports(&mut source_map, &analyzer);
-        }
-        println!();
-    });
+    // args.access_query.iter().for_each(|query| {
+    //     let split: Vec<&str> = query.split('.').collect();
+    //     analyzer
+    //         .access_query(
+    //             entry,
+    //             &file_mapping,
+    //             config,
+    //             split[0].to_string(),
+    //             split[1].to_string(),
+    //         )
+    //         .print_reports(&mut source_map, &analyzer);
+    //     println!();
+    // });
 
-    if args.open_dot {
-        analyzer.open_dot()
-    }
+    // args.write_query.iter().for_each(|query| {
+    //     let split: Vec<&str> = query.split('.').collect();
+    //     if let Some(report) = analyzer.func_query(
+    //         entry,
+    //         &file_mapping,
+    //         config,
+    //         split[0].to_string(),
+    //         split[1].to_string(),
+    //         split[2].to_string(),
+    //         SolcRange::new(
+    //             Concrete::Bool(true).into(),
+    //             Concrete::Bool(true).into(),
+    //             vec![],
+    //         ),
+    //     ) {
+    //         report.print_reports(&mut source_map, &analyzer);
+    //     }
+    //     println!();
+    // });
 }

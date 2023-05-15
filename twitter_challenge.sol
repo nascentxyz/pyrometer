@@ -1,155 +1,205 @@
-interface IERC20 {
-    function transfer(address, uint256) returns (bool);
-    function transferFrom(address, address, uint256) returns (bool);
-}
+contract B {
+    function sendValue(address payable recipient, uint256 amount) internal {
+        require(address(this).balance >= amount, "Address: insufficient balance");
 
-abstract contract Ownable {
-    address private _owner;
-
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    /**
-     * @dev Initializes the contract setting the deployer as the initial owner.
-     */
-    constructor() {
-        _transferOwnership(msg.sender);
-    }
-
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
-    modifier onlyOwner() {
-        _checkOwner();
-        _;
-    }
-
-    /**
-     * @dev Returns the address of the current owner.
-     */
-    function owner() public view virtual returns (address) {
-        return _owner;
-    }
-
-    /**
-     * @dev Throws if the sender is not the owner.
-     */
-    function _checkOwner() internal view virtual {
-        require(owner() == msg.sender, "Ownable: caller is not the owner");
-    }
-
-    /**
-     * @dev Leaves the contract without owner. It will not be possible to call
-     * `onlyOwner` functions anymore. Can only be called by the current owner.
-     *
-     * NOTE: Renouncing ownership will leave the contract without an owner,
-     * thereby removing any functionality that is only available to the owner.
-     */
-    function renounceOwnership() public virtual onlyOwner {
-        _transferOwnership(address(0));
-    }
-
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     * Can only be called by the current owner.
-     */
-    function transferOwnership(address newOwner) public virtual onlyOwner {
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
-        _transferOwnership(newOwner);
-    }
-
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     * Internal function without access restriction.
-     */
-    function _transferOwnership(address newOwner) internal virtual {
-        address oldOwner = _owner;
-        _owner = newOwner;
-        emit OwnershipTransferred(oldOwner, newOwner);
+        (bool success, ) = recipient.call{value: amount}("");
+        require(success, "Address: unable to send value, recipient may have reverted");
     }
 }
 
 
-abstract contract StakingRewardsFundingBuggy is Ownable {
-    uint80 public rewardRate;
-    uint40 public lastUpdate;
-    uint40 public periodFinish;
-    uint96 public totalRewardAdded;
-    uint256 public constant periodDuration = 1 days;
-    IERC20 public immutable token;
+// contract Apron {
+//     uint256 k;
+//     uint256 i;
+//     function entry() public returns (uint256, uint256) {
+//         k = 0;
+//         i = 0;
+//         bb1();
+//         return (i, k);
+//     }
 
-    event RewardRemoved(uint256 reward);
-    event RewardAdded(uint256 reward);
-    event PeriodDurationUpdated(uint256 newDuration);
+//     function bb1() public {
+//         bb1_t();
+//         bb1_f();
+//     }
 
-    constructor(address rewardsToken) {
-        token = IERC20(rewardsToken); // deployer must ensure token reverts on failed transfers
-    }
+//     function bb1_t() public {
+//         if (i <= 1) {
+//             bb2();
+//         }
+//     }
 
-    function setPeriodDuration(uint256 newDuration) external onlyOwner {
-        require(block.timestamp >= periodFinish, "ONGOING_PERIOD");
-        require(newDuration >= 2 ** 16 + 1, "SHORT_PERIOD_DURATION");
-        require(newDuration <= type(uint32).max, "LONG_PERIOD_DURATION");
-        emit PeriodDurationUpdated(periodDuration = newDuration);
-    }
+//     function bb2() public {
+//         i += 1;
+//         k += 1;
+//         if (i <= 1) {
+//             bb1();
+//         }
+//     }
 
-    function removeReward() external onlyOwner {
-        uint256 tmpPeriodFinish = periodFinish;
-        uint256 leftover;
-        if (tmpPeriodFinish > block.timestamp) {
-            unchecked {
-                leftover = (tmpPeriodFinish - block.timestamp) * rewardRate;
-                totalRewardAdded -= uint96(leftover);
-                periodFinish = uint40(block.timestamp);
-            }
-        }
-        token.transfer(msg.sender, leftover);
-        emit RewardRemoved(leftover);
-    }
+//     function bb1_f() public {
+//         require(-1 * int256(i) <= -2);
+//     }
+// }
 
-    function addReward(uint256 amount) external onlyOwner {
-        uint256 tmpPeriodDuration = periodDuration;
-        require(amount <= type(uint96).max, "INVALID_AMOUNT");
-        unchecked {
-            uint256 tmpTotalRewardAdded = totalRewardAdded;
-            uint256 newTotalRewardAdded = tmpTotalRewardAdded + amount;
-            require(newTotalRewardAdded <= type(uint96).max, "OVERFLOW");
-            totalRewardAdded = uint96(newTotalRewardAdded);
-        }
-        uint256 newRewardRate;
-        if (lastUpdate >= periodFinish) {
-            unchecked {
-                newRewardRate = amount / tmpPeriodDuration;
-            }
-        } else {
-            unchecked {
-                uint256 leftover = (periodFinish - lastUpdate) * rewardRate;
-                unchecked {
-                    newRewardRate = ((amount + leftover) / tmpPeriodDuration);
-                }
-            }
-        }
-        require(newRewardRate != 0, "ZERO_REWARD_RATE");
-        rewardRate = uint80(newRewardRate); // MIN_PERIOD_DURATION ensures no truncation
-        unchecked {
-            lastUpdate = uint40(block.timestamp);
-            periodFinish = uint40(block.timestamp + tmpPeriodDuration);
-        }
-        token.transferFrom(msg.sender, address(this), amount);
-        emit RewardAdded(amount);
-    }
+// contract constant_fold {
 
-    function _claim() internal returns (uint256 reward) {
-        reward = _pendingRewards();
-        lastUpdate = uint40(block.timestamp);
-    }
+//     function _getCaller() internal pure returns (address result) {
+//         bytes memory array = msg.data;
+//         uint256 index = msg.data.length;
+//         assembly {
+//             result := and(mload(add(array, index)), 0xffffffffffffffffffffffffffffffffffffffff)
+//         }
+//         return result;
+//     }
 
-    function _pendingRewards() internal view returns (uint256 rewards) {
-        uint256 tmpPeriodFinish = periodFinish;
-        uint256 lastTimeRewardApplicable =
-            tmpPeriodFinish < block.timestamp ? tmpPeriodFinish : block.timestamp;
-        uint256 tmpLastUpdate = lastUpdate;
-        if (lastTimeRewardApplicable > tmpLastUpdate) {
-            unchecked { rewards = (lastTimeRewardApplicable - tmpLastUpdate) * rewardRate; }
-        }
-    }
-}
+//     function transfer(address dst, uint wad) delegated external returns (bool) {
+//         return _transferFrom(_getCaller(), _getCaller(), dst, wad);
+//     }
+//     // function transferFrom(address src, address dst, uint wad) delegated external returns (bool) {
+//     //     return _transferFrom(_getCaller(), src, dst, wad);
+//     // }
+
+
+//     function _transferFrom(
+//         address caller, address src, address dst, uint wad
+//     ) internal returns (bool) {
+//         return true;
+//     }
+// }
+
+    // function good0(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
+    //     address signer = ecrecover(hash, v, r, s);
+    //     require(signer != address(0), "ECDSA: invalid signature");
+    //     return true;
+    // }
+    // function good1(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
+    //     require(ecrecover(hash, v, r, s) != address(0), "ECDSA: invalid signature");
+    //     return true;
+    // }
+    // function good2(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
+    //     if (ecrecover(hash, v, r, s) != address(0)) {
+    //         bool second_pass = good3(v, r, s, hash);
+    //         return true;
+    //     }
+
+
+    //     revert("here");
+    // }
+
+    // function good3(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
+    //     if (ecrecover(hash, v, r, s) > address(0)) {
+    //         return true;
+    //     }
+    //     return false;
+    // }
+
+    // function bad0(uint8 v, bytes32 r, bytes32 s, bytes32 hash) external pure returns (bool) {
+    //     address signer = ecrecover(hash, v, r, s);
+    //     return true;
+    // }
+
+    // struct TokenStream {
+    //     uint256 lastCumulativeRewardPerToken;
+    //     uint256 virtualBalance;
+    //     // tokens is amount (uint112) scaled by 10**18 (which fits in 2**64), so 112 + 64 == 176.
+    //     uint224 tokens;
+    //     uint32 lastUpdate;
+    //     uint224 rewards;
+    //     bool merkleAccess;
+    // }
+
+    // /// @dev Stream start time
+    // uint32 private immutable startTime;
+    // /// @dev Length of stream
+    // uint32 private immutable streamDuration;
+
+    // /// @dev End of stream
+    // uint32 private immutable endStream;
+    // uint256 private cumulativeRewardPerToken;
+    // uint256 public totalVirtualBalance;
+
+    // uint112 private immutable depositScale;
+    // uint112 private immutable rewardScale;
+
+    // function lastApplicableTime() internal view returns (uint32) {
+    //     if (block.timestamp <= endStream) {
+    //         if (block.timestamp <= startTime) {
+    //             return startTime;
+    //         } else {
+    //             if (block.timestamp == 0) {
+    //                 return 100;
+    //             } else {
+    //                 return uint32(block.timestamp);    
+    //             }
+    //         }
+    //     } else {
+    //         return endStream;
+    //     }
+    // }
+
+    // uint32 public lastUpdate;
+    // uint112 private rewardTokenAmount;
+
+    // mapping(address => TokenStream) public tokenStreamForAccount;
+
+    // function rewardPerToken() public view returns (uint256) {
+    //     if (totalVirtualBalance == 0) {
+    //         return cumulativeRewardPerToken;
+    //     } else {
+    //         // ∆time*rewardTokensPerSecond*oneDepositToken / totalVirtualBalance
+    //         uint256 rewardsPerToken;
+    //         // Safety:
+    //         //  1. lastApplicableTime has the same bounds as lastUpdate for minimum, current, and max
+    //         //  2. lastApplicableTime() - lastUpdate guaranteed to be <= streamDuration
+    //         //  3. streamDuration*rewardTokenAmount*depositDecimalOne is guaranteed to not overflow in `fundStream`
+    //         //  4. streamDuration and totalVirtualBalance guaranteed to not be 0
+    //         // NOTE: this causes rounding down. This leaves a bit of dust in the contract
+    //         // because when we do rewardDelta calculation for users, its basically (currUnderestimateRPT - storedUnderestimateRPT)
+    //         unchecked {
+    //             uint256 rewardsOverTime = (uint256(lastApplicableTime() - lastUpdate) * normalizeRewardTokenAmt(rewardTokenAmount)) / streamDuration;
+    //             rewardsPerToken = rewardsOverTime / totalVirtualBalance;
+    //         }
+    //         return cumulativeRewardPerToken + rewardsPerToken;
+    //     }
+    // }
+
+    // function normalizeRewardTokenAmt(uint256 _rewardTokens) public view returns (uint224) {
+    //     // 2**112 * 2**112 always fits in a 2**224
+    //     unchecked { return uint224(_rewardTokens * rewardScale); }
+    // }
+
+    // function normalizeDepositTokenAmt(uint256 _depositTokens) public view returns (uint224) {
+    //     // 2**112 * 2**112 always fits in a 2**224
+    //     unchecked { return uint224(_depositTokens * depositScale); }
+    // }
+
+    // function denormalizeRewardTokenAmt(uint256 _rewardTokens) public view returns (uint112) {
+    //     unchecked { return uint112(_rewardTokens / rewardScale); }
+    // }
+
+    // function denormalizeDepositTokenAmt(uint256 _depositTokens) public view returns (uint112) {
+    //     unchecked { return uint112(_depositTokens / depositScale); }
+    // }
+
+    // function getEarned(address who) external view returns (uint256) {
+    //     TokenStream storage ts = tokenStreamForAccount[who];
+    //     return earned(ts, rewardPerToken()) / 10**18;
+    // }
+
+    // function earned(TokenStream storage ts, uint256 currCumRewardPerToken) internal view returns (uint224) {
+    //     uint256 rewardDelta;
+    //     // Safety:
+    //     //  1. currCumRewardPerToken - ts.lastCumulativeRewardPerToken: currCumRewardPerToken will always be >= ts.lastCumulativeRewardPerToken
+    //     unchecked {
+    //         rewardDelta = currCumRewardPerToken - ts.lastCumulativeRewardPerToken;
+    //     }
+
+    //     // TODO: Think more about the bounds on ts.virtualBalance. This mul may be able to be unchecked?
+    //     // NOTE: This can cause small rounding issues that will leave dust in the contract
+    //     // virtualBalance is 
+    //     uint224 reward = uint224(normalizeDepositTokenAmt(ts.virtualBalance) * rewardDelta / normalizeDepositTokenAmt(1));
+    //     return reward + ts.rewards;
+    // }
+
+// }

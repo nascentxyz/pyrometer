@@ -1,34 +1,47 @@
+use crate::context::exprs::IntoExprErr;
 use crate::context::func_call::FuncCaller;
-use crate::{context::ContextNode, AnalyzerLike, ExprRet};
+use crate::context::ExprErr;
+use crate::{context::ContextNode, AnalyzerLike};
+use shared::context::ExprRet;
 use solang_parser::pt::Expression;
 
 use solang_parser::pt::Identifier;
 
-impl<T> Env for T where T: AnalyzerLike<Expr = Expression> + Sized {}
-pub trait Env: AnalyzerLike<Expr = Expression> + Sized {
-    fn env_variable(&mut self, ident: &Identifier, ctx: ContextNode) -> Option<ExprRet> {
+impl<T> Env for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn env_variable(
+        &mut self,
+        ident: &Identifier,
+        ctx: ContextNode,
+    ) -> Result<Option<()>, ExprErr> {
         match &*ident.name {
-            "msg" => Some(ExprRet::Single((ctx, self.msg().into()))),
-            "block" => Some(ExprRet::Single((ctx, self.block().into()))),
-            "abi" => Some(ExprRet::Multi(vec![])),
+            "msg" | "tx" => {
+                ctx.push_expr(ExprRet::Single(self.msg().into()), self)
+                    .into_expr_err(ident.loc)?;
+                Ok(Some(()))
+            }
+            "block" => {
+                ctx.push_expr(ExprRet::Single(self.block().into()), self)
+                    .into_expr_err(ident.loc)?;
+                Ok(Some(()))
+            }
+            "abi" => Ok(Some(())),
             "_" => {
                 #[allow(clippy::manual_map)]
-                if let Some(mod_state) = &ctx.underlying(self).modifier_state.clone() {
-                    // println!("going back to function execution from modifier: {}", mod_state.num);
-                    let res = self.resume_from_modifier(ctx, mod_state.clone());
-                    // println!("back in modifier: {}", mod_state.num);
-
-                    // TODO: inherit the input changes as well
-                    // println!("inheriting back from parent into modifier");
-                    self.inherit_storage_changes(ctx, mod_state.parent_ctx);
-
+                if let Some(mod_state) = &ctx
+                    .underlying(self)
+                    .into_expr_err(ident.loc)?
+                    .modifier_state
+                    .clone()
+                {
+                    self.resume_from_modifier(ctx, mod_state.clone())?;
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
-                    Some(res)
+                    Ok(Some(()))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
-            _e => None,
+            _e => Ok(None),
         }
     }
 }

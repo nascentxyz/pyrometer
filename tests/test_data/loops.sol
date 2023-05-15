@@ -5,6 +5,7 @@ contract For {
             x += 1;
         }
 
+        x += 1;
         require(x == 10);
         return x;
     }

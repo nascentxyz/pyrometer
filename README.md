@@ -62,34 +62,34 @@ Read the [Architecture](./ARCHITECTURE.md) page first, then start hacking. Hop i
 
 ## TODO
 - [ ] General
-    - [ ] Cleanup repo (remove unnecessary files, automate testing, etc.)
-    - [ ] Graceful error handling
+    - [x] Cleanup repo (remove unnecessary files, automate testing, etc.)
+    - [x] Graceful error handling
     - [ ] Trait/Lang separation cleanup
     - [ ] Propogate requirements across variables (i.e. `y = x;` & `x != 0;` therefore `y != 0;`)
 - [ ] Language
-    - [ ] Better import handling (`foundry.toml` reading?)
+    - [x] Better import handling (`foundry.toml` reading?)
     - [ ] User Types, i.e. `type MyType is uint256;`
-    - [ ] Better Library handling
-    - [ ] Operator overloading
+    - [x] Better Library handling
+    - [x] Operator overloading
     - [ ] Storage
         - [ ] Consider constructor
         - [ ] Consider non-constructor initializer
-    - [ ] Functions
+    - [x] Functions
         - [x] Call modifier at start of function analysis
         - [x] Call modifiers when calling another function from within a function
-        - [ ] Handle virtual/overriding
-    - [ ] Consider `unchecked` math
-        - [ ] Keep uncheckedness for the entire block
-        - [ ] Pass uncheckedness into `bin_op`
-    - [ ] Support `assembly`
+        - [x] Handle virtual/overriding
+    - [x] Consider `unchecked` math
+        - [x] Keep uncheckedness for the entire block
+        - [x] Pass uncheckedness into `bin_op`
+    - [x] Support `assembly`
     - [ ] Improve Support for `for/while` loops
         - [ ] Be smarter about the variables by looking at max num of iters and determine if we should just unroll & execute it
         - [ ] Take a guess at the gas usage inside the body of the for-loop and try to set upper bounds
     - [x] Support `++i/i++/--i/i++`
-    - [ ] Support low-level call
+    - [x] Support low-level call
 - [ ] Analyzers
-    - [ ] Bound Analyzer
-        - [ ] Cleanup CLI output
+    - [x] Bound Analyzer
+        - [x] Cleanup CLI output
         - [x] Fix multiple calls to single function that don't show
     - [ ] Taint Analyzer
     - [ ] Gas Optimization Analyzer

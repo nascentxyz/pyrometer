@@ -1,9 +1,11 @@
 use crate::analyzer::AsDotStr;
-use crate::AnalyzerLike;
+use crate::analyzer::{AnalyzerLike, GraphLike};
+use crate::nodes::GraphError;
 use crate::Builtin;
 use crate::Concrete;
+use crate::ContextNode;
 use crate::ContextVar;
-use crate::GraphLike;
+
 use crate::Node;
 use crate::NodeIdx;
 use ethers_core::types::Address;
@@ -14,17 +16,19 @@ use solang_parser::pt::Loc;
 pub struct MsgNode(pub usize);
 
 impl MsgNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> &'a Msg {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Msg, GraphError> {
         match analyzer.node(*self) {
-            Node::Msg(st) => st,
-            e => panic!("Node type confusion: expected node to be Msg but it was: {e:?}"),
+            Node::Msg(st) => Ok(st),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Msg but it was: {e:?}"
+            ))),
         }
     }
 }
 
 impl AsDotStr for MsgNode {
     fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
-        format!("msg {{ {:?} }}", self.underlying(analyzer))
+        format!("msg {{ {:?} }}", self.underlying(analyzer).unwrap())
     }
 }
 
@@ -56,132 +60,131 @@ impl Msg {
         &self,
         elem: &str,
         loc: Loc,
+        ctx: ContextNode,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> ContextVar {
+    ) -> Result<ContextVar, GraphError> {
         let (node, name) = match elem {
             "data" => {
                 if let Some(d) = self.data.clone() {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)).into(),
-                        "msg.data".to_string(),
-                    )
+                    (analyzer.add_node(Node::Concrete(c)), "msg.data".to_string())
                 } else {
                     let b = Builtin::DynamicBytes;
                     let node = analyzer.builtin_or_add(b);
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.data".to_string();
                     var.display_name = "msg.data".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "sender" => {
                 if let Some(d) = self.sender {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "msg.sender".to_string(),
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Address);
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.sender".to_string();
                     var.display_name = "msg.sender".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "sig" => {
                 if let Some(d) = self.sig {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)).into(),
-                        "msg.sig".to_string(),
-                    )
+                    (analyzer.add_node(Node::Concrete(c)), "msg.sig".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Bytes(4));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.sig".to_string();
                     var.display_name = "msg.sig".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "value" => {
                 if let Some(d) = self.value {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "msg.value".to_string(),
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(256));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "msg.value".to_string();
                     var.display_name = "msg.value".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "origin" => {
                 if let Some(d) = self.origin {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "tx.origin".to_string(),
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Address);
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "tx.origin".to_string();
                     var.display_name = "tx.origin".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "gasprice" => {
                 if let Some(d) = self.gasprice {
                     let c = Concrete::from(d);
                     (
-                        analyzer.add_node(Node::Concrete(c)).into(),
+                        analyzer.add_node(Node::Concrete(c)),
                         "tx.gasprice".to_string(),
                     )
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.name = "tx.gasprice".to_string();
                     var.display_name = "tx.gasprice".to_string();
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
             "gaslimit" => {
                 if let Some(d) = self.gaslimit {
                     let c = Concrete::from(d);
-                    (analyzer.add_node(Node::Concrete(c)).into(), "".to_string())
+                    (analyzer.add_node(Node::Concrete(c)), "".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
-                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer);
+                    let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
                     var.is_tmp = false;
                     var.is_symbolic = true;
-                    return var;
+                    return Ok(var);
                 }
             }
-            e => panic!("unknown msg attribute: {e:?}"),
+            e => {
+                return Err(GraphError::NodeConfusion(format!(
+                    "Unknown msg attribute: {e:?}"
+                )))
+            }
         };
 
-        let mut var = ContextVar::new_from_concrete(loc, node, analyzer);
+        let mut var = ContextVar::new_from_concrete(loc, ctx, node.into(), analyzer)?;
         var.name = name.clone();
         var.display_name = name;
         var.is_tmp = false;
         var.is_symbolic = true;
-        var
+        Ok(var)
     }
 }

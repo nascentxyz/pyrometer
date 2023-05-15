@@ -1,4 +1,6 @@
-use crate::{context::ContextBuilder, ExprRet};
+use crate::context::exprs::IntoExprErr;
+use crate::context::ContextBuilder;
+use crate::context::ExprErr;
 use shared::{analyzer::AnalyzerLike, context::*, nodes::*, Edge, Node};
 use solang_parser::pt::Expression;
 
@@ -6,27 +8,51 @@ use solang_parser::pt::{Parameter, ParameterList};
 
 use solang_parser::pt::Loc;
 
-impl<T> List for T where T: AnalyzerLike<Expr = Expression> + Sized {}
+impl<T> List for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
 
-pub trait List: AnalyzerLike<Expr = Expression> + Sized {
-    fn list(&mut self, ctx: ContextNode, _loc: Loc, params: &ParameterList) -> ExprRet {
-        let rets = params
+pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn list(&mut self, ctx: ContextNode, loc: Loc, params: &ParameterList) -> Result<(), ExprErr> {
+        params
             .iter()
-            .filter_map(|(loc, input)| {
+            .try_for_each(|(loc, input)| {
                 if let Some(input) = input {
-                    let ret = self.parse_ctx_expr(&input.ty, ctx);
-                    Some(self.match_ty(loc, &ret, input))
+                    self.parse_ctx_expr(&input.ty, ctx)?;
+                    self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
+                        };
+                        if matches!(ret, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        ctx.append_tmp_expr(analyzer.match_ty(ctx, &loc, &ret, input)?, analyzer).into_expr_err(loc)
+                    })
                 } else {
-                    None
+                    // create a dummy var
+                    self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                        ctx.append_tmp_expr(ExprRet::Null, analyzer).into_expr_err(loc)
+                    })
                 }
-            })
-            .collect();
-        ExprRet::Multi(rets).flatten()
+            })?;
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoLhs(loc, "List did not have left hand sides".to_string()));
+            };
+            ctx.push_expr(ret, analyzer).into_expr_err(loc)
+        })
     }
 
-    fn match_ty(&mut self, loc: &Loc, ty_ret: &ExprRet, input: &Parameter) -> ExprRet {
+    fn match_ty(
+        &mut self,
+        ctx: ContextNode,
+        loc: &Loc,
+        ty_ret: &ExprRet,
+        input: &Parameter,
+    ) -> Result<ExprRet, ExprErr> {
         match ty_ret {
-            ExprRet::Single((lhs_ctx, ty)) | ExprRet::SingleLiteral((lhs_ctx, ty)) => {
+            ExprRet::Null => Ok(ExprRet::Null),
+            ExprRet::Single(ty) | ExprRet::SingleLiteral(ty) => {
                 if let Some(input_name) = &input.name {
                     let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                     let var = ContextVar {
@@ -37,21 +63,23 @@ pub trait List: AnalyzerLike<Expr = Expression> + Sized {
                         is_tmp: false,
                         is_symbolic: false,
                         tmp_of: None,
+                        is_return: false,
                         ty,
                     };
                     let input_node = self.add_node(Node::ContextVar(var));
-                    self.add_edge(input_node, *lhs_ctx, Edge::Context(ContextEdge::Variable));
-                    ExprRet::Single((*lhs_ctx, input_node))
+                    ctx.add_var(input_node.into(), self).into_expr_err(*loc)?;
+                    self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
+                    Ok(ExprRet::Single(input_node))
                 } else {
                     match self.node(*ty) {
                         Node::ContextVar(_var) => {
                             // reference the variable directly, don't create a temporary variable
-                            ExprRet::Single((*lhs_ctx, *ty))
+                            Ok(ExprRet::Single(*ty))
                         }
                         _ => {
                             // create a tmp
                             let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                            let tmp_num = lhs_ctx.new_tmp(self);
+                            let tmp_num = ctx.new_tmp(self).into_expr_err(*loc)?;
                             let new_lhs_underlying = ContextVar {
                                 loc: Some(*loc),
                                 name: format!("tmp{tmp_num}"),
@@ -60,27 +88,24 @@ pub trait List: AnalyzerLike<Expr = Expression> + Sized {
                                 is_tmp: true,
                                 is_symbolic: false,
                                 tmp_of: None,
+                                is_return: false,
                                 ty,
                             };
                             let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
-                            self.add_edge(
-                                input_node,
-                                *lhs_ctx,
-                                Edge::Context(ContextEdge::Variable),
-                            );
-                            ExprRet::Single((*lhs_ctx, input_node))
+                            ctx.add_var(input_node.into(), self).into_expr_err(*loc)?;
+                            self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
+                            Ok(ExprRet::Single(input_node))
                         }
                     }
                 }
             }
-            ExprRet::Multi(inner) => {
-                ExprRet::Multi(inner.iter().map(|i| self.match_ty(loc, i, input)).collect())
-            }
-            ExprRet::Fork(w1, w2) => ExprRet::Fork(
-                Box::new(self.match_ty(loc, w1, input)),
-                Box::new(self.match_ty(loc, w2, input)),
-            ),
-            ExprRet::CtxKilled => ExprRet::CtxKilled,
+            ExprRet::Multi(inner) => Ok(ExprRet::Multi(
+                inner
+                    .iter()
+                    .map(|i| self.match_ty(ctx, loc, i, input))
+                    .collect::<Result<_, _>>()?,
+            )),
+            ExprRet::CtxKilled(kind) => Ok(ExprRet::CtxKilled(*kind)),
         }
     }
 }

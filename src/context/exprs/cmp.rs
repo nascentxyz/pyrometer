@@ -1,5 +1,8 @@
-use crate::{ContextBuilder, ExprRet};
-use shared::range::elem_ty::Dynamic;
+use crate::context::exprs::IntoExprErr;
+use crate::context::ExprErr;
+use crate::ContextBuilder;
+use shared::analyzer::GraphError;
+
 use shared::{
     analyzer::AnalyzerLike,
     context::*,
@@ -15,50 +18,74 @@ use shared::{
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;
 
-impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression> + Sized {}
-pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
-    fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> ExprRet {
-        let lhs = self.parse_ctx_expr(lhs_expr, ctx);
-        self.not_inner(loc, lhs)
+impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
+        self.parse_ctx_expr(lhs_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoRhs(loc, "Not operation had no element".to_string()))
+            };
+
+            if matches!(lhs, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
+            analyzer.not_inner(ctx, loc, lhs.flatten())
+        })
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn not_inner(&mut self, loc: Loc, lhs_expr: ExprRet) -> ExprRet {
+    fn not_inner(&mut self, ctx: ContextNode, loc: Loc, lhs_expr: ExprRet) -> Result<(), ExprErr> {
         match lhs_expr {
-            ExprRet::CtxKilled => lhs_expr,
-            ExprRet::Single((ctx, lhs)) | ExprRet::SingleLiteral((ctx, lhs)) => {
+            ExprRet::CtxKilled(kind) => {
+                ctx.kill(self, loc, kind).into_expr_err(loc)?;
+                ctx.push_expr(lhs_expr, self).into_expr_err(loc)?;
+                Ok(())
+            }
+            ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
-
-                tracing::trace!("not: {}", lhs_cvar.display_name(self));
-
-                let range = self.not_eval(ctx, loc, lhs_cvar);
-
+                tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
+                let range = self.not_eval(ctx, loc, lhs_cvar)?;
                 let out_var = ContextVar {
                     loc: Some(loc),
-                    name: format!("tmp{}(!{})", lhs_cvar.name(self), ctx.new_tmp(self)),
-                    display_name: format!("!{}", lhs_cvar.display_name(self),),
+                    name: format!(
+                        "tmp{}(!{})",
+                        ctx.new_tmp(self).into_expr_err(loc)?,
+                        lhs_cvar.name(self).into_expr_err(loc)?,
+                    ),
+                    display_name: format!("!{}", lhs_cvar.display_name(self).into_expr_err(loc)?,),
                     storage: None,
                     is_tmp: true,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::Not, None)),
-                    is_symbolic: lhs_cvar.is_symbolic(self),
+                    is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
+                    is_return: false,
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                         Some(range),
                     ),
                 };
 
-                ExprRet::Single((ctx, self.add_node(Node::ContextVar(out_var))))
+                ctx.push_expr(
+                    ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                Ok(())
             }
-            ExprRet::Multi(f) => {
-                panic!("not: {f:?}")
-            }
-            ExprRet::Fork(world1, world2) => ExprRet::Fork(
-                Box::new(self.not_inner(loc, *world1)),
-                Box::new(self.not_inner(loc, *world2)),
-            ),
+            ExprRet::Multi(f) => Err(ExprErr::MultiNot(
+                loc,
+                format!("Multiple elements in not expression: {f:?}"),
+            )),
+            ExprRet::Null => Err(ExprErr::NoRhs(
+                loc,
+                "No right hand side in `not` expression".to_string(),
+            )),
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cmp(
         &mut self,
         loc: Loc,
@@ -66,72 +93,110 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         op: RangeOp,
         rhs_expr: &Expression,
         ctx: ContextNode,
-    ) -> ExprRet {
-        let lhs_paths = self.parse_ctx_expr(lhs_expr, ctx).flatten();
-        let rhs_paths = self.parse_ctx_expr(rhs_expr, ctx).flatten();
-        self.cmp_inner(loc, &lhs_paths, op, &rhs_paths)
+    ) -> Result<(), ExprErr> {
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            analyzer.parse_ctx_expr(rhs_expr, ctx)?;
+            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoRhs(loc, "Cmp operation had no right hand side".to_string()))
+                };
+                let rhs_paths = rhs_paths.flatten();
+
+                if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
+
+                analyzer.parse_ctx_expr(lhs_expr, ctx)?;
+                analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Cmp operation had no left hand side".to_string()))
+                    };
+
+                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    analyzer.cmp_inner(ctx, loc, &lhs_paths.flatten(), op, &rhs_paths)
+                })
+            })
+        })
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     fn cmp_inner(
         &mut self,
+        ctx: ContextNode,
         loc: Loc,
         lhs_paths: &ExprRet,
         op: RangeOp,
         rhs_paths: &ExprRet,
-    ) -> ExprRet {
+    ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
-            (ExprRet::SingleLiteral((_ctx, lhs)), ExprRet::Single((rhs_ctx, rhs))) => {
-                ContextVarNode::from(*lhs).literal_cast_from(&ContextVarNode::from(*rhs), self);
-                self.cmp_inner(loc, &ExprRet::Single((*rhs_ctx, *rhs)), op, rhs_paths)
+            (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
+            (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
+                ContextVarNode::from(*lhs)
+                    .literal_cast_from(&ContextVarNode::from(*rhs), self)
+                    .into_expr_err(loc)?;
+                self.cmp_inner(ctx, loc, &ExprRet::Single(*rhs), op, rhs_paths)
             }
-            (ExprRet::Single((_ctx, lhs)), ExprRet::SingleLiteral((rhs_ctx, rhs))) => {
-                ContextVarNode::from(*rhs).literal_cast_from(&ContextVarNode::from(*lhs), self);
-                self.cmp_inner(loc, lhs_paths, op, &ExprRet::Single((*rhs_ctx, *rhs)))
+            (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
+                ContextVarNode::from(*rhs)
+                    .literal_cast_from(&ContextVarNode::from(*lhs), self)
+                    .into_expr_err(loc)?;
+                self.cmp_inner(ctx, loc, lhs_paths, op, &ExprRet::Single(*rhs))
             }
-            (ExprRet::Single((ctx, lhs)), ExprRet::Single((_rhs_ctx, rhs))) => {
+            (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 let range = {
                     let elem = Elem::Expr(RangeExpr {
-                        lhs: Box::new(Elem::Dynamic(Dynamic::new(lhs_cvar.into(), loc))),
+                        minimized: None,
+                        maximized: None,
+                        lhs: Box::new(Elem::from(lhs_cvar)),
                         op,
-                        rhs: Box::new(Elem::Dynamic(Dynamic::new(rhs_cvar.into(), loc))),
+                        rhs: Box::new(Elem::from(rhs_cvar)),
                     });
 
                     let exclusions = lhs_cvar
-                        .range(self)
-                        .expect("No lhs rnage")
+                        .ref_range(self)
+                        .into_expr_err(loc)?
+                        .expect("No lhs range")
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
 
                 tracing::trace!(
                     "cmp: {} {} {}",
-                    lhs_cvar.name(self),
+                    lhs_cvar.name(self).into_expr_err(loc)?,
                     op.to_string(),
-                    rhs_cvar.name(self)
+                    rhs_cvar.name(self).into_expr_err(loc)?
                 );
 
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(
                         "tmp{}({} {} {})",
-                        lhs_cvar.name(self),
+                        ctx.new_tmp(self).into_expr_err(loc)?,
+                        lhs_cvar.name(self).into_expr_err(loc)?,
                         op.to_string(),
-                        rhs_cvar.name(self),
-                        ctx.new_tmp(self)
+                        rhs_cvar.name(self).into_expr_err(loc)?,
                     ),
                     display_name: format!(
                         "{} {} {}",
-                        lhs_cvar.display_name(self),
+                        lhs_cvar.display_name(self).into_expr_err(loc)?,
                         op.to_string(),
-                        rhs_cvar.display_name(self),
+                        rhs_cvar.display_name(self).into_expr_err(loc)?,
                     ),
                     storage: None,
                     is_tmp: true,
-                    is_symbolic: ContextVarNode::from(*lhs).is_symbolic(self)
-                        || ContextVarNode::from(*rhs).is_symbolic(self),
+                    is_symbolic: ContextVarNode::from(*lhs)
+                        .is_symbolic(self)
+                        .into_expr_err(loc)?
+                        || ContextVarNode::from(*rhs)
+                            .is_symbolic(self)
+                            .into_expr_err(loc)?,
+                    is_return: false,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
@@ -139,82 +204,68 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     ),
                 };
 
-                ExprRet::Single((*ctx, self.add_node(Node::ContextVar(out_var))))
+                ctx.push_expr(
+                    ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                Ok(())
             }
-            (l @ ExprRet::Single((_lhs_ctx, _lhs)), ExprRet::Multi(rhs_sides)) => ExprRet::Multi(
+            (l @ ExprRet::Single(_lhs), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides
                     .iter()
-                    .map(|expr_ret| self.cmp_inner(loc, l, op, expr_ret))
-                    .collect(),
-            ),
-            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => ExprRet::Multi(
+                    .try_for_each(|expr_ret| self.cmp_inner(ctx, loc, l, op, expr_ret))?;
+                Ok(())
+            }
+            (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => {
                 lhs_sides
                     .iter()
-                    .map(|expr_ret| self.cmp_inner(loc, expr_ret, op, r))
-                    .collect(),
-            ),
+                    .try_for_each(|expr_ret| self.cmp_inner(ctx, loc, expr_ret, op, r))?;
+                Ok(())
+            }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
-                    ExprRet::Multi(
-                        lhs_sides
-                            .iter()
-                            .zip(rhs_sides.iter())
-                            .map(|(lhs_expr_ret, rhs_expr_ret)| {
-                                self.cmp_inner(loc, lhs_expr_ret, op, rhs_expr_ret)
-                            })
-                            .collect(),
-                    )
+                    lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
+                        |(lhs_expr_ret, rhs_expr_ret)| {
+                            self.cmp_inner(ctx, loc, lhs_expr_ret, op, rhs_expr_ret)
+                        },
+                    )?;
+                    Ok(())
                 } else {
-                    ExprRet::Multi(
-                        rhs_sides
-                            .iter()
-                            .map(|rhs_expr_ret| self.cmp_inner(loc, lhs_paths, op, rhs_expr_ret))
-                            .collect(),
-                    )
+                    rhs_sides.iter().try_for_each(|rhs_expr_ret| {
+                        self.cmp_inner(ctx, loc, lhs_paths, op, rhs_expr_ret)
+                    })?;
+                    Ok(())
                 }
             }
-            (ExprRet::Fork(lhs_world1, lhs_world2), ExprRet::Fork(rhs_world1, rhs_world2)) => {
-                ExprRet::Fork(
-                    Box::new(ExprRet::Fork(
-                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world1)),
-                        Box::new(self.cmp_inner(loc, lhs_world1, op, rhs_world2)),
-                    )),
-                    Box::new(ExprRet::Fork(
-                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world1)),
-                        Box::new(self.cmp_inner(loc, lhs_world2, op, rhs_world2)),
-                    )),
-                )
-            }
-            (l @ ExprRet::Single(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
-                Box::new(self.cmp_inner(loc, l, op, world1)),
-                Box::new(self.cmp_inner(loc, l, op, world2)),
-            ),
-            (ExprRet::Fork(world1, world2), r @ ExprRet::Single(_)) => ExprRet::Fork(
-                Box::new(self.cmp_inner(loc, world1, op, r)),
-                Box::new(self.cmp_inner(loc, world2, op, r)),
-            ),
-            (m @ ExprRet::Multi(_), ExprRet::Fork(world1, world2)) => ExprRet::Fork(
-                Box::new(self.cmp_inner(loc, m, op, world1)),
-                Box::new(self.cmp_inner(loc, m, op, world2)),
-            ),
-            (e, f) => todo!("any: {:?} {:?}", e, f),
+            (e, f) => Err(ExprErr::UnhandledCombo(
+                loc,
+                format!("Unhandled combination in `not`: {e:?} {f:?}"),
+            )),
         }
     }
 
-    fn not_eval(&self, _ctx: ContextNode, loc: Loc, lhs_cvar: ContextVarNode) -> SolcRange {
-        if let Some(lhs_range) = lhs_cvar.range(self) {
-            let lhs_min = lhs_range.evaled_range_min(self);
+    fn not_eval(
+        &self,
+        _ctx: ContextNode,
+        loc: Loc,
+        lhs_cvar: ContextVarNode,
+    ) -> Result<SolcRange, ExprErr> {
+        if let Some(lhs_range) = lhs_cvar.range(self).into_expr_err(loc)? {
+            let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
 
             // invert
-            if lhs_min.range_eq(&lhs_range.evaled_range_max(self)) {
+            if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?) {
                 let val = Elem::Expr(RangeExpr {
-                    lhs: Box::new(lhs_min),
+                    minimized: None,
+                    maximized: None,
+                    lhs: Box::new(lhs_range.range_min().into_owned()),
                     op: RangeOp::Not,
                     rhs: Box::new(Elem::Null),
                 });
 
-                return SolcRange::new(val.clone(), val, lhs_range.exclusions);
+                return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions));
             }
         }
 
@@ -227,7 +278,11 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
             val: Concrete::Bool(true),
             loc,
         };
-        SolcRange::new(Elem::Concrete(min), Elem::Concrete(max), vec![])
+        Ok(SolcRange::new(
+            Elem::Concrete(min),
+            Elem::Concrete(max),
+            vec![],
+        ))
     }
 
     fn range_eval(
@@ -236,30 +291,30 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
         op: RangeOp,
-    ) -> SolcRange {
-        if let Some(lhs_range) = lhs_cvar.range(self) {
-            if let Some(rhs_range) = rhs_cvar.range(self) {
+    ) -> Result<SolcRange, GraphError> {
+        if let Some(lhs_range) = lhs_cvar.ref_range(self)? {
+            if let Some(rhs_range) = rhs_cvar.ref_range(self)? {
                 match op {
                     RangeOp::Lt => {
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // true
 
-                        let lhs_max = lhs_range.evaled_range_max(self);
-                        let rhs_min = rhs_range.evaled_range_min(self);
+                        let lhs_max = lhs_range.evaled_range_max(self)?;
+                        let rhs_min = rhs_range.evaled_range_min(self)?;
                         if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
-                            return true.into();
+                            return Ok(true.into());
                         }
 
                         // Similarly if lhs_min >= rhs_max, we know this cmp will evaluate to
                         // false
-                        let lhs_min = lhs_range.evaled_range_min(self);
-                        let rhs_max = rhs_range.evaled_range_max(self);
+                        let lhs_min = lhs_range.evaled_range_min(self)?;
+                        let rhs_max = rhs_range.evaled_range_max(self)?;
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
-                                return false.into();
+                                return Ok(false.into());
                             }
                             Some(Ordering::Equal) => {
-                                return false.into();
+                                return Ok(false.into());
                             }
                             _ => {}
                         }
@@ -267,22 +322,22 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Gt => {
                         // if lhs_min > rhs_max, we know this cmp will evaluate to
                         // true
-                        let lhs_min = lhs_range.evaled_range_min(self);
-                        let rhs_max = rhs_range.evaled_range_max(self);
+                        let lhs_min = lhs_range.evaled_range_min(self)?;
+                        let rhs_max = rhs_range.evaled_range_max(self)?;
                         if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
-                            return true.into();
+                            return Ok(true.into());
                         }
 
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
                         // false
-                        let lhs_max = lhs_range.evaled_range_max(self);
-                        let rhs_min = rhs_range.evaled_range_min(self);
+                        let lhs_max = lhs_range.evaled_range_max(self)?;
+                        let rhs_min = rhs_range.evaled_range_min(self)?;
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
-                                return false.into();
+                                return Ok(false.into());
                             }
                             Some(Ordering::Equal) => {
-                                return false.into();
+                                return Ok(false.into());
                             }
                             _ => {}
                         }
@@ -290,56 +345,56 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                     RangeOp::Lte => {
                         // if lhs_max <= rhs_min, we know this cmp will evaluate to
                         // true
-                        let lhs_max = lhs_range.evaled_range_max(self);
-                        let rhs_min = rhs_range.evaled_range_min(self);
+                        let lhs_max = lhs_range.evaled_range_max(self)?;
+                        let rhs_min = rhs_range.evaled_range_min(self)?;
                         match lhs_max.range_ord(&rhs_min) {
                             Some(Ordering::Less) => {
-                                return true.into();
+                                return Ok(true.into());
                             }
                             Some(Ordering::Equal) => {
-                                return true.into();
+                                return Ok(true.into());
                             }
                             _ => {}
                         }
 
                         // Similarly if lhs_min > rhs_max, we know this cmp will evaluate to
                         // false
-                        let lhs_min = lhs_range.evaled_range_min(self);
-                        let rhs_max = rhs_range.evaled_range_max(self);
+                        let lhs_min = lhs_range.evaled_range_min(self)?;
+                        let rhs_max = rhs_range.evaled_range_max(self)?;
                         if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
-                            return false.into();
+                            return Ok(false.into());
                         }
                     }
                     RangeOp::Gte => {
                         // if lhs_min >= rhs_max, we know this cmp will evaluate to
                         // true
-                        let lhs_min = lhs_range.evaled_range_min(self);
-                        let rhs_max = rhs_range.evaled_range_max(self);
+                        let lhs_min = lhs_range.evaled_range_min(self)?;
+                        let rhs_max = rhs_range.evaled_range_max(self)?;
                         match lhs_min.range_ord(&rhs_max) {
                             Some(Ordering::Greater) => {
-                                return true.into();
+                                return Ok(true.into());
                             }
                             Some(Ordering::Equal) => {
-                                return true.into();
+                                return Ok(true.into());
                             }
                             _ => {}
                         }
 
                         // if lhs_max < rhs_min, we know this cmp will evaluate to
                         // false
-                        let lhs_max = lhs_range.evaled_range_max(self);
-                        let rhs_min = rhs_range.evaled_range_min(self);
+                        let lhs_max = lhs_range.evaled_range_max(self)?;
+                        let rhs_min = rhs_range.evaled_range_min(self)?;
                         if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
-                            return false.into();
+                            return Ok(false.into());
                         }
                     }
                     RangeOp::Eq => {
                         // if all elems are equal we know its true
                         // we dont know anything else
-                        let lhs_min = lhs_range.evaled_range_min(self);
-                        let lhs_max = lhs_range.evaled_range_max(self);
-                        let rhs_min = rhs_range.evaled_range_min(self);
-                        let rhs_max = rhs_range.evaled_range_max(self);
+                        let lhs_min = lhs_range.evaled_range_min(self)?;
+                        let lhs_max = lhs_range.evaled_range_max(self)?;
+                        let rhs_min = rhs_range.evaled_range_min(self)?;
+                        let rhs_max = rhs_range.evaled_range_max(self)?;
                         if let (
                             Some(Ordering::Equal),
                             Some(Ordering::Equal),
@@ -352,16 +407,16 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                             // check rhs_min == rhs_max, ensures rhs is const
                             rhs_min.range_ord(&rhs_max),
                         ) {
-                            return true.into();
+                            return Ok(true.into());
                         }
                     }
                     RangeOp::Neq => {
                         // if all elems are equal we know its true
                         // we dont know anything else
-                        let lhs_min = lhs_range.evaled_range_min(self);
-                        let lhs_max = lhs_range.evaled_range_max(self);
-                        let rhs_min = rhs_range.evaled_range_min(self);
-                        let rhs_max = rhs_range.evaled_range_max(self);
+                        let lhs_min = lhs_range.evaled_range_min(self)?;
+                        let lhs_max = lhs_range.evaled_range_max(self)?;
+                        let rhs_min = rhs_range.evaled_range_min(self)?;
+                        let rhs_max = rhs_range.evaled_range_max(self)?;
                         if let (
                             Some(Ordering::Equal),
                             Some(Ordering::Equal),
@@ -374,17 +429,17 @@ pub trait Cmp: AnalyzerLike<Expr = Expression> + Sized {
                             // check rhs_min == rhs_max, ensures rhs is const
                             rhs_min.range_ord(&rhs_max),
                         ) {
-                            return false.into();
+                            return Ok(false.into());
                         }
                     }
                     e => unreachable!("Cmp with strange op: {:?}", e),
                 }
-                SolcRange::default_bool()
+                Ok(SolcRange::default_bool())
             } else {
-                SolcRange::default_bool()
+                Ok(SolcRange::default_bool())
             }
         } else {
-            SolcRange::default_bool()
+            Ok(SolcRange::default_bool())
         }
     }
 }

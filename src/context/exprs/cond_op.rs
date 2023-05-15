@@ -1,11 +1,13 @@
-use crate::{exprs::Require, AnalyzerLike, ContextBuilder, ExprRet};
+use crate::context::exprs::IntoExprErr;
+use crate::context::ExprErr;
+use crate::{exprs::Require, AnalyzerLike, ContextBuilder};
 use shared::{context::*, Edge, Node, NodeIdx};
 
 use solang_parser::pt::CodeLocation;
 use solang_parser::pt::{Expression, Loc, Statement};
 
-impl<T> CondOp for T where T: AnalyzerLike<Expr = Expression> + Require + Sized {}
-pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
+impl<T> CondOp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require + Sized {}
+pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn cond_op_stmt(
         &mut self,
@@ -14,35 +16,106 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
         true_stmt: &Statement,
         false_stmt: &Option<Box<Statement>>,
         ctx: ContextNode,
-    ) {
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ))));
-        ctx.add_fork(true_subctx, self);
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ))));
-        ctx.add_fork(false_subctx, self);
-        let ctx_fork = self.add_node(Node::ContextFork);
-        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
-        self.add_edge(
-            NodeIdx::from(true_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-        self.add_edge(
-            NodeIdx::from(false_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
+    ) -> Result<(), ExprErr> {
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let tctx =
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+            let fctx =
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
+            ctx.set_child_fork(true_subctx, false_subctx, analyzer)
+                .into_expr_err(loc)?;
+            let ctx_fork = analyzer.add_node(Node::ContextFork);
+            analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+            analyzer.add_edge(
+                NodeIdx::from(true_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(false_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
 
-        self.true_fork_if_cvar(true_stmt.loc(), if_expr.clone(), true_subctx);
-        self.parse_ctx_statement(true_stmt, false, Some(true_subctx));
+            // we want to check if the true branch is possible to take
+            analyzer.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
+            let mut true_killed = false;
+            if true_subctx.is_killed(analyzer).into_expr_err(loc)? {
+                // it was killed, therefore true branch is unreachable.
+                // since it is unreachable, we want to not create
+                // unnecessary subcontexts
+                true_killed = true;
+            }
 
-        if let Some(false_stmt) = false_stmt {
-            self.false_fork_if_cvar(false_stmt.loc(), if_expr.clone(), false_subctx);
-            self.parse_ctx_statement(false_stmt, false, Some(false_subctx));
-        }
+            // we want to check if the false branch is possible to take
+            analyzer.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
+            let mut false_killed = false;
+            if false_subctx.is_killed(analyzer).into_expr_err(loc)? {
+                // it was killed, therefore true branch is unreachable.
+                // since it is unreachable, we want to not create
+                // unnecessary subcontexts
+                false_killed = true;
+            }
+
+            match (true_killed, false_killed) {
+                (true, true) => {
+                    // both have been killed, delete the child and dont process the bodies
+                    ctx.delete_child(analyzer).into_expr_err(loc)?;
+                }
+                (true, false) => {
+                    // the true context has been killed, delete child, process the false fork expression
+                    // in the parent context and parse the false body
+                    ctx.delete_child(analyzer).into_expr_err(loc)?;
+                    analyzer.false_fork_if_cvar(if_expr.clone(), ctx)?;
+                    if let Some(false_stmt) = false_stmt {
+                        return analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
+                            analyzer.parse_ctx_statement(false_stmt, false, Some(ctx));
+                            Ok(())
+                        });
+                    }
+                }
+                (false, true) => {
+                    // the false context has been killed, delete child, process the true fork expression
+                    // in the parent context and parse the true body
+                    ctx.delete_child(analyzer).into_expr_err(loc)?;
+                    analyzer.true_fork_if_cvar(if_expr.clone(), ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
+                        analyzer.parse_ctx_statement(
+                            true_stmt,
+                            ctx.unchecked(analyzer).into_expr_err(loc)?,
+                            Some(ctx),
+                        );
+                        Ok(())
+                    })?;
+                }
+                (false, false) => {
+                    // both branches are reachable. process each body
+                    analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, _loc| {
+                        analyzer.parse_ctx_statement(
+                            true_stmt,
+                            ctx.unchecked(analyzer).into_expr_err(loc)?,
+                            Some(ctx),
+                        );
+                        Ok(())
+                    })?;
+                    if let Some(false_stmt) = false_stmt {
+                        return analyzer.apply_to_edges(
+                            false_subctx,
+                            loc,
+                            &|analyzer, ctx, _loc| {
+                                analyzer.parse_ctx_statement(false_stmt, false, Some(ctx));
+                                Ok(())
+                            },
+                        );
+                    }
+                }
+            }
+            Ok(())
+        })
     }
 
     /// When we have a conditional operator, we create a fork in the context. One side of the fork is
@@ -55,112 +128,75 @@ pub trait CondOp: AnalyzerLike<Expr = Expression> + Require + Sized {
         true_expr: &Expression,
         false_expr: &Expression,
         ctx: ContextNode,
-    ) -> ExprRet {
+    ) -> Result<(), ExprErr> {
         tracing::trace!("conditional operator");
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ))));
-        ctx.add_fork(true_subctx, self);
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(Context::new_subctx(
-            ctx, loc, true, None, false, self, None,
-        ))));
-        ctx.add_fork(false_subctx, self);
-        let ctx_fork = self.add_node(Node::ContextFork);
-        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
-        self.add_edge(
-            NodeIdx::from(true_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-        self.add_edge(
-            NodeIdx::from(false_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let tctx =
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+            let fctx =
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
+            ctx.set_child_fork(true_subctx, false_subctx, analyzer)
+                .into_expr_err(loc)?;
+            let ctx_fork = analyzer.add_node(Node::ContextFork);
+            analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+            analyzer.add_edge(
+                NodeIdx::from(true_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(false_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
 
-        let true_loc = true_expr.loc();
-        let true_cvars = self.parse_ctx_expr(true_expr, true_subctx);
-        self.match_true(true_loc, &true_cvars, if_expr);
+            analyzer.true_fork_if_cvar(if_expr.clone(), true_subctx)?;
+            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, _loc| {
+                analyzer.parse_ctx_expr(true_expr, ctx)
+            })?;
 
-        let false_loc = false_expr.loc();
-        let false_cvars = self.parse_ctx_expr(false_expr, false_subctx);
-        self.match_false(false_loc, &false_cvars, if_expr);
-
-        ExprRet::Fork(Box::new(true_cvars), Box::new(false_cvars))
-    }
-
-    fn match_true(&mut self, loc: Loc, true_cvars: &ExprRet, if_expr: &Expression) {
-        match true_cvars {
-            ExprRet::CtxKilled => {}
-            ExprRet::Single((fork_ctx, _true_cvar))
-            | ExprRet::SingleLiteral((fork_ctx, _true_cvar)) => {
-                self.true_fork_if_cvar(loc, if_expr.clone(), *fork_ctx);
-            }
-            ExprRet::Multi(ref true_paths) => true_paths.iter().take(1).for_each(|expr_ret| {
-                let (fork_ctx, _) = expr_ret.expect_single();
-                self.true_fork_if_cvar(loc, if_expr.clone(), fork_ctx);
-            }),
-            ExprRet::Fork(true_paths, other_true_paths) => {
-                self.match_true(loc, true_paths, if_expr);
-                self.match_true(loc, other_true_paths, if_expr);
-            }
-        }
-    }
-
-    fn match_false(&mut self, loc: Loc, false_cvars: &ExprRet, if_expr: &Expression) {
-        match false_cvars {
-            ExprRet::CtxKilled => {}
-            ExprRet::Single((fork_ctx, _false_cvar))
-            | ExprRet::SingleLiteral((fork_ctx, _false_cvar)) => {
-                self.false_fork_if_cvar(loc, if_expr.clone(), *fork_ctx);
-            }
-            ExprRet::Multi(ref false_paths) => false_paths.iter().take(1).for_each(|expr_ret| {
-                let (fork_ctx, _) = expr_ret.expect_single();
-                self.false_fork_if_cvar(loc, if_expr.clone(), fork_ctx);
-            }),
-            ExprRet::Fork(false_paths, other_false_paths) => {
-                self.match_false(loc, false_paths, if_expr);
-                self.match_false(loc, other_false_paths, if_expr);
-            }
-        }
+            analyzer.false_fork_if_cvar(if_expr.clone(), false_subctx)?;
+            analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, _loc| {
+                analyzer.parse_ctx_expr(false_expr, ctx)
+            })
+        })
     }
 
     /// Creates the true_fork cvar (updates bounds assuming its true)
-    fn true_fork_if_cvar(&mut self, loc: Loc, if_expr: Expression, true_fork_ctx: ContextNode) {
-        let if_expr = match if_expr {
-            Expression::Equal(_loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
-            Expression::And(_loc, lhs, rhs) => Expression::And(loc, lhs, rhs),
-            Expression::Or(_loc, lhs, rhs) => Expression::Or(loc, lhs, rhs),
-            Expression::Not(_loc, lhs) => Expression::Not(loc, lhs),
-            Expression::NotEqual(_loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
-            Expression::Less(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
-            Expression::More(_loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
-            Expression::MoreEqual(_loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
-            Expression::LessEqual(_loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
-            Expression::Variable(ref ident) => {
-                let mut c = ident.clone();
-                c.loc = loc;
-                Expression::Variable(c)
-            }
-            e => e,
-        };
-        // println!("true fork if: {if_expr:?} {true_fork_ctx:?}");
-        self.handle_require(&[if_expr], true_fork_ctx)
+    fn true_fork_if_cvar(
+        &mut self,
+        if_expr: Expression,
+        true_fork_ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        self.apply_to_edges(true_fork_ctx, if_expr.loc(), &|analyzer, ctx, _loc| {
+            analyzer.handle_require(&[if_expr.clone()], ctx)?;
+            // let context = ctx.underlying_mut(analyzer).into_expr_err(loc)?;
+            // if let Some(ref mut killed) = context.killed {
+            //     *killed = (loc, KilledKind::Unreachable);
+            // }
+            Ok(())
+        })
     }
 
     /// Creates the false_fork cvar (inverts the expression and sets the bounds assuming its false)
-    fn false_fork_if_cvar(&mut self, loc: Loc, if_expr: Expression, false_fork_ctx: ContextNode) {
-        let inv_if_expr = match if_expr {
-            Expression::Equal(_loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
-            Expression::NotEqual(_loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
-            Expression::Less(_loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
-            Expression::More(_loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
-            Expression::MoreEqual(_loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
-            Expression::LessEqual(_loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
-            Expression::Variable(ref _ident) => Expression::Not(loc, Box::new(if_expr)),
-            _ => Expression::Not(loc, Box::new(if_expr)),
-        };
-        // println!("inverse if expr: {inv_if_expr:?}");
-        self.handle_require(&[inv_if_expr], false_fork_ctx)
+    fn false_fork_if_cvar(
+        &mut self,
+        if_expr: Expression,
+        false_fork_ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        let loc = if_expr.loc();
+        let inv_if_expr = Expression::Not(loc, Box::new(if_expr));
+        self.apply_to_edges(false_fork_ctx, loc, &|analyzer, ctx, loc| {
+            analyzer.handle_require(&[inv_if_expr.clone()], ctx)?;
+            let context = ctx.underlying_mut(analyzer).into_expr_err(loc)?;
+            if let Some(ref mut killed) = context.killed {
+                *killed = (loc, KilledKind::Unreachable);
+            }
+            Ok(())
+        })
     }
 }

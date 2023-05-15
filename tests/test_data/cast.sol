@@ -1,3 +1,7 @@
+type ShortString is bytes32;
+type MyUint is uint256;
+type MyInt is int256;
+
 contract Cast {
     function u_int(uint256 x) public {
         uint248 x_uint248 = uint248(x);
@@ -211,5 +215,26 @@ contract Cast {
         address round_trip = u_int_addr(addr_uint(address(1337)));
         require(round_trip == address(1337));
         return round_trip;
+    }
+
+    function userStr() internal {
+        bytes32 x = bytes32("test");
+        ShortString a = ShortString.wrap(x);
+        bytes32 b = ShortString.unwrap(a);
+        require(b == x);
+    }
+
+    function userUint() internal {
+        uint256 x = 100;
+        MyUint a = MyUint.wrap(x);
+        uint256 b = MyUint.unwrap(a);
+        require(b == x);
+    }
+
+    function userInt() internal {
+        int256 x = -100;
+        MyUint a = MyInt.wrap(x);
+        int256 b = MyInt.unwrap(a);
+        require(b == x);
     }
 }

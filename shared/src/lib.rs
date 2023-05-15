@@ -2,10 +2,8 @@ use crate::analyzer::GraphLike;
 use crate::context::ContextVarNode;
 use std::collections::HashMap;
 
-use crate::context::ContextNode;
-
-use crate::analyzer::AnalyzerLike;
 use crate::analyzer::AsDotStr;
+use crate::context::ContextNode;
 use crate::{
     context::{Context, ContextEdge, ContextVar},
     nodes::*,
@@ -53,11 +51,11 @@ pub enum Node {
 pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
     use crate::Node::*;
     match analyzer.node(idx) {
-        Context(_) => ContextNode::from(idx).as_string(),
+        Context(_) => ContextNode::from(idx).as_dot_str(analyzer),
         ContextVar(_) => ContextVarNode::from(idx).as_dot_str(analyzer),
         ContextFork => "Context Fork".to_string(),
         FunctionCall => "Function Call".to_string(),
-        Builtin(bi) => bi.as_string(analyzer),
+        Builtin(bi) => bi.as_string(analyzer).unwrap(),
         VarType(v_ty) => v_ty.as_dot_str(analyzer),
         Contract(_c) => ContractNode::from(idx).as_dot_str(analyzer),
         Function(_f) => FunctionNode::from(idx).as_dot_str(analyzer),
@@ -113,6 +111,7 @@ lazy_static! {
 pub enum Edge {
     Source,
     Part,
+    Import,
     Context(ContextEdge),
     Contract,
     InheritedContract,
@@ -132,6 +131,5 @@ pub enum Edge {
     FallbackFunc,
     Constructor,
     ReceiveFunc,
-    LibraryContract(NodeIdx),
     LibraryFunction(NodeIdx),
 }

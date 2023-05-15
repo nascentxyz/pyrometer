@@ -1,5 +1,6 @@
 use crate::Builtin;
-use crate::{AnalyzerLike, Function, FunctionParam, FunctionReturn};
+use crate::{Function, FunctionParam, FunctionReturn};
+use shared::analyzer::{AnalyzerLike, GraphLike};
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};
 use std::collections::HashMap;
 
@@ -18,9 +19,81 @@ macro_rules! builtin_fn {
 pub fn builtin_fns() -> HashMap<String, Function> {
     let funcs = [
         builtin_fn!(
+             name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "wrap".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+             name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "unwrap".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "concat".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "addmod".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "mulmod".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "balance".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "code".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
                 name: "push".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "pop".to_string(),
             }),
             attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
                 Loc::Builtin,
@@ -233,10 +306,126 @@ pub fn builtin_fns() -> HashMap<String, Function> {
 }
 
 pub fn builtin_fns_inputs(
-    analyzer: &mut impl AnalyzerLike,
+    analyzer: &mut (impl GraphLike + AnalyzerLike),
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
+        ("wrap", vec![], vec![]),
+        ("unwrap", vec![], vec![]),
+        (
+            "addmod",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                storage: None,
+                name: None,
+            }],
+        ),
+        (
+            "mulmod",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                storage: None,
+                name: None,
+            }],
+        ),
+        (
+            "balance",
+            vec![FunctionParam {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Address),
+                order: 0,
+                storage: None,
+                name: None,
+            }],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                storage: None,
+                name: None,
+            }],
+        ),
+        (
+            "code",
+            vec![FunctionParam {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Address),
+                order: 0,
+                storage: None,
+                name: None,
+            }],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                storage: None,
+                name: None,
+            }],
+        ),
+        (
+            "codehash",
+            vec![FunctionParam {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Address),
+                order: 0,
+                storage: None,
+                name: None,
+            }],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
+                storage: None,
+                name: None,
+            }],
+        ),
+        ("concat", vec![], vec![]),
         ("push", vec![], vec![]),
+        ("pop", vec![], vec![]),
         (
             "ecrecover",
             vec![

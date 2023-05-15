@@ -1,4 +1,14 @@
+enum MyEnum {
+    A,
+    B,
+    C
+}
+
 contract Logical {
+    function enumCmp() public returns (bool) {
+        return MyEnum.A > MyEnum.B;
+    }
+    
     function not() public {
         uint256 a = 100;
         bool s = a < 100;
@@ -8,9 +18,10 @@ contract Logical {
     function cond_not(uint256 a) public {
         bool s = a < 100;
         if (!s) {
-            require(s);
+            require(!s);
+        } else {
+            require(s);    
         }
-        require(s);
     }
 
     function cond_if(uint256 a) public {
