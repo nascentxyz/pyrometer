@@ -174,10 +174,6 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
     ) -> Result<(), ExprErr> {
         self.apply_to_edges(true_fork_ctx, if_expr.loc(), &|analyzer, ctx, _loc| {
             analyzer.handle_require(&[if_expr.clone()], ctx)?;
-            // let context = ctx.underlying_mut(analyzer).into_expr_err(loc)?;
-            // if let Some(ref mut killed) = context.killed {
-            //     *killed = (loc, KilledKind::Unreachable);
-            // }
             Ok(())
         })
     }
@@ -189,13 +185,9 @@ pub trait CondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require +
         false_fork_ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         let loc = if_expr.loc();
-        let inv_if_expr = Expression::Not(loc, Box::new(if_expr));
-        self.apply_to_edges(false_fork_ctx, loc, &|analyzer, ctx, loc| {
+        let inv_if_expr = self.inverse_expr(if_expr);
+        self.apply_to_edges(false_fork_ctx, loc, &|analyzer, ctx, _loc| {
             analyzer.handle_require(&[inv_if_expr.clone()], ctx)?;
-            let context = ctx.underlying_mut(analyzer).into_expr_err(loc)?;
-            if let Some(ref mut killed) = context.killed {
-                *killed = (loc, KilledKind::Unreachable);
-            }
             Ok(())
         })
     }

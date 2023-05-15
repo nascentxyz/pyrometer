@@ -1,0 +1,47 @@
+## TODO
+- [ ] General
+    - [x] Cleanup repo (remove unnecessary files, automate testing, etc.)
+    - [x] Graceful error handling
+    - [ ] `join` operations between contexts
+    - [ ] Trait/Lang separation cleanup
+    - [ ] Propogate requirements across variables (i.e. `y = x;` & `x != 0;` therefore `y != 0;`)
+- [ ] Language
+    - [x] Better import handling (`foundry.toml` reading?)
+    - [x] User Types, i.e. `type MyType is uint256;`
+    - [x] Better Library handling
+    - [x] Operator overloading
+    - [ ] Storage
+        - [ ] Consider constructor
+        - [ ] Consider non-constructor initializer
+    - [x] Functions
+        - [x] Call modifier at start of function analysis
+        - [x] Call modifiers when calling another function from within a function
+        - [x] Handle virtual/overriding
+    - [x] Consider `unchecked` math
+        - [x] Keep uncheckedness for the entire block
+        - [x] Pass uncheckedness into `bin_op`
+    - [x] Support `assembly`
+    - [ ] Improve Support for `for/while` loops
+        - [ ] Be smarter about the variables by looking at max num of iters and determine if we should just unroll & execute it
+        - [ ] Take a guess at the gas usage inside the body of the for-loop and try to set upper bounds
+    - [x] Support `++i/i++/--i/i++`
+    - [x] Support low-level call
+- [ ] Analyzers
+    - [x] Bound Analyzer
+        - [x] Cleanup CLI output
+        - [x] Fix multiple calls to single function that don't show
+    - [ ] Taint Analyzer
+    - [ ] Gas Optimization Analyzer
+        - [ ] Unchecked Recommendation Analyzer
+        - [ ] Storage Variable Initialization Analyzer
+    - [ ] Invariant Analyzer
+    - [ ] Reentrancy Analyzer
+- [ ] Queries
+    - [ ] Access Control Querier
+        - [ ] Cleanup output
+    - [ ] Code Path Querier
+- [ ] Long term
+    - [ ] GUI for better exploring code execution forks
+    - [ ] LSP/IDE integration
+    - [ ] DSL for writing queries
+    - [ ] Export bounds for SMT solvers (z3, cvc5, etc.)

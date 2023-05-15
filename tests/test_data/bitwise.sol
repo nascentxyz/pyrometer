@@ -112,6 +112,28 @@ contract BitNot {
 }
 
 contract BitShl {
+    function yulShl(uint256 x, uint256 y) public returns (uint256) {
+        uint256 ret;
+        assembly {
+            ret := shl(y, x)
+        }
+        return ret;
+    }
+
+    function yulShl_conc() public {
+        uint256 ret = yulShl(10, 1);
+        uint256 other_ret = 10 << 1;
+        require(ret == other_ret);
+    }
+
+    function yulShr(uint256 x, uint256 y) public returns (uint256) {
+        uint256 ret;
+        assembly {
+            ret := shr(x, y)
+        }
+        return ret;
+    }
+
     function shl(uint256 x, uint256 y) public returns (uint256) {
         return x << y;
     }

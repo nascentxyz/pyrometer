@@ -25,6 +25,34 @@ use std::cmp::Ordering;
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
 pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
+    /// Inverts a comparator expression
+    fn inverse_expr(&self, expr: Expression) -> Expression {
+        match expr {
+            Expression::Equal(loc, lhs, rhs) => {
+                Expression::NotEqual(loc, lhs, rhs)
+            },
+            Expression::NotEqual(loc, lhs, rhs) => {
+                Expression::Equal(loc, lhs, rhs)
+            },
+            Expression::Less(loc, lhs, rhs) => {
+                Expression::MoreEqual(loc, lhs, rhs)
+            },
+            Expression::More(loc, lhs, rhs) => {
+                Expression::LessEqual(loc, lhs, rhs)
+            },
+            Expression::MoreEqual(loc, lhs, rhs) => {
+                Expression::Less(loc, lhs, rhs)
+            },
+            Expression::LessEqual(loc, lhs, rhs) => {
+                Expression::More(loc, lhs, rhs)
+            },
+            Expression::Not(loc, lhs) => {
+                Expression::Equal(loc, lhs, Box::new(Expression::BoolLiteral(loc, true)))
+            },
+            e => Expression::Not(e.loc(), Box::new(e)),
+        }
+    }
+
     /// Handles a require expression
     #[tracing::instrument(level = "trace", skip_all)]
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
