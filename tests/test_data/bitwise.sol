@@ -1,4 +1,16 @@
 contract BitAnd {
+    function bit_and(bytes32 x, bytes32 y) public returns (bytes32) {
+        return x & y;
+    }
+
+    function bit_and_conc(bytes32 d) public {
+        require(bytes32(type(uint256).max) & bytes32(uint(100)) == 100);
+        require(bytes32(0) & bytes32(uint(100)) == 0);
+        require(bytes32(101) & bytes32(105) == 97);
+        require(bytes32(type(uint24).max) & bytes32(1225) == 1225);
+        require(bit_and(bytes32(50), bytes32(500)) == 48);
+    }
+
     function bit_and(uint256 x, uint256 y) public returns (uint256) {
         return x & y;
     }
@@ -29,6 +41,18 @@ contract BitAnd {
 }
 
 contract BitOr {
+    function bit_or(bytes32 x, bytes32 y) public returns (bytes32) {
+        return x | y;
+    }
+
+    function bit_or_conc(bytes32 d) public {
+        require(bytes32(type(uint256).max) | bytes32(uint(100)) == bytes32(type(uint256).max));
+        require(bytes32(0) | bytes32(uint(100)) == bytes32(100));
+        require(bytes32(101) | bytes32(105) == bytes32(109));
+        require(bytes32(type(uint24).max) | bytes32(5) == bytes32(type(uint24).max) );
+        require(bit_or(bytes32(50), bytes32(500)) == 502);
+    }
+
     function bit_or(uint256 x, uint256 y) public returns (uint256) {
         return x | y;
     }

@@ -1566,6 +1566,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     loc: self.loc,
                 }))
             }
+            (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*size, a & b),
+                    loc: self.loc,
+                }))
+            }
             _ => None,
         }
     }
@@ -1586,6 +1593,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     loc: self.loc,
                 }))
             }
+            (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*size, a | b),
+                    loc: self.loc,
+                }))
+            }
             _ => None,
         }
     }
@@ -1603,6 +1617,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let size = if s > s2 { s } else { s2 };
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Int(*size, *a ^ *b),
+                    loc: self.loc,
+                }))
+            }
+            (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*size, a ^ b),
                     loc: self.loc,
                 }))
             }
