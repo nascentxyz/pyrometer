@@ -887,9 +887,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             match node.underlying(self).into_expr_err(loc)?.clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                     match &*ident.name {
-                        "delegatecall"
-                        | "call"
-                        | "staticcall" => {
+                        "delegatecall" | "call" | "staticcall" => {
                             // TODO: check if the address is known to be a certain type and the function signature is known
                             // and call into the function
                             let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];

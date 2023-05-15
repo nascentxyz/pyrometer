@@ -7,7 +7,8 @@ use crate::context::{
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::{ContextNode, ContextVarNode, ExprRet},
-    Node, NodeIdx, nodes::FunctionNode,
+    nodes::FunctionNode,
+    Node, NodeIdx,
 };
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
