@@ -214,10 +214,6 @@ pub trait NameSpaceFuncCaller:
                 ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            // let mut inputs = inputs.as_vec();
-
-            // let inputs = ExprRet::Multi(inputs);
-            println!("possible_funcs: {:?}", possible_funcs);
             if possible_funcs.is_empty() {
                 // TODO: this is extremely ugly.
                 if inputs.has_killed() {

@@ -665,10 +665,13 @@ pub trait FuncCaller:
                     let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
 
                     if rets.is_empty() {
-                        callee_ctx
+                        let func_rets: Vec<FunctionReturnNode> = callee_ctx
                             .associated_fn(self)
                             .into_expr_err(loc)?
                             .returns(self)
+                            .collect();
+                        func_rets
+                            .iter()
                             .filter_map(|ret| {
                                 let n: String = ret.maybe_name(self).ok()??;
                                 let ret_loc: Loc = ret.loc(self).ok()?;
@@ -692,6 +695,36 @@ pub trait FuncCaller:
                                         Edge::Context(ContextEdge::Return),
                                     );
                                 }
+                                Ok(())
+                            })?;
+
+                        // add unnamed rets
+                        func_rets
+                            .into_iter()
+                            .filter(|ret| ret.maybe_name(self).unwrap().is_none())
+                            .collect::<Vec<_>>()
+                            .iter()
+                            .try_for_each(|ret| {
+                                let ret_loc = ret.loc(self).into_expr_err(loc)?;
+                                let cvar = ContextVar::new_from_func_ret(
+                                    callee_ctx,
+                                    self,
+                                    ret.underlying(self).into_expr_err(loc)?.clone(),
+                                )
+                                .into_expr_err(loc)?
+                                .unwrap();
+                                let cvar =
+                                    ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
+                                callee_ctx.add_var(cvar, self).into_expr_err(loc)?;
+                                self.add_edge(
+                                    cvar,
+                                    callee_ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
+                                callee_ctx
+                                    .add_return_node(ret_loc, cvar, self)
+                                    .into_expr_err(loc)?;
+                                self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
                                 Ok(())
                             })?;
                         rets = callee_ctx.underlying(self).unwrap().ret.clone();
