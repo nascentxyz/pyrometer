@@ -12,7 +12,10 @@ use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
 use shared::range::elem_ty::RangeExpr;
+use shared::range::range_string::ToRangeString;
 use solang_parser::pt::YulExpression;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use shared::range::{elem_ty::Elem, SolcRange};
 use shared::{context::ContextEdge, nodes::Builtin, Edge};
@@ -35,6 +38,15 @@ pub trait YulFuncCaller:
         let YulFunctionCall { loc, id, arguments } = func_call;
 
         match &*id.name {
+            "chainid" => {
+                let b = Builtin::Uint(64);
+                let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
+                    .into_expr_err(*loc)?;
+                let node = self.add_node(Node::ContextVar(var));
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(*loc)?;
+                Ok(())
+            }
             "log0" | "log1" | "log2" | "log3" | "log4" => {
                 ctx.push_expr(ExprRet::Multi(vec![]), self)
                     .into_expr_err(*loc)?;
@@ -123,35 +135,29 @@ pub trait YulFuncCaller:
                     ));
                 }
 
-                let (lhs, rhs): (&YulExpression, &YulExpression) =
-                    if matches!(&*id.name, "shl" | "shr" | "sar") {
-                        // yul shifts are super dumb and are reversed.
-                        (&arguments[1], &arguments[0])
-                    } else {
-                        (&arguments[0], &arguments[1])
-                    };
+                let inputs: Vec<YulExpression> = if matches!(&*id.name, "shl" | "shr" | "sar") {
+                    // yul shifts are super dumb and are reversed.
+                    vec![arguments[1].clone(), arguments[0].clone()]
+                } else {
+                    vec![arguments[0].clone(), arguments[1].clone()]
+                };
 
-                self.parse_ctx_yul_expr(lhs, ctx)?;
+                self.parse_inputs(ctx, *loc, &inputs)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Yul Binary operation had no right hand side".to_string()))
+                    let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul Binary operation had no inputs".to_string()))
                     };
-                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                    if matches!(inputs, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.parse_ctx_yul_expr(rhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(loc, "Yul Binary operation had no left hand side".to_string()))
-                        };
 
-                        if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, false)
-                    })
+                    inputs.expect_length(2).into_expr_err(loc)?;
+                    let inputs = inputs.as_vec();
+
+                    let lhs_paths = &inputs[0];
+                    let rhs_paths = &inputs[1];
+                    analyzer.op_match(ctx, loc, lhs_paths, rhs_paths, op, false)
                 })
             }
             "lt" | "gt" | "slt" | "sgt" | "eq" => {
@@ -455,4 +461,49 @@ pub trait YulFuncCaller:
     //         }
     //     }
     // }
+
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn parse_inputs(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        inputs: &[YulExpression],
+    ) -> Result<(), ExprErr> {
+        let append = if ctx.underlying(self).into_expr_err(loc)?.tmp_expr.is_empty() {
+            Rc::new(RefCell::new(true))
+        } else {
+            Rc::new(RefCell::new(false))
+        };
+
+        inputs
+            .iter()
+            .try_for_each(|input| {
+                self.parse_ctx_yul_expr(input, ctx)?;
+                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
+                    };
+                    if matches!(ret, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    if *append.borrow() {
+                        ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
+                    } else {
+                        *append.borrow_mut() = true;
+                        ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
+                    }
+                })
+            })?;
+        if !inputs.is_empty() {
+            self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
+                };
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)
+            })
+        } else {
+            Ok(())
+        }
+    }
 }

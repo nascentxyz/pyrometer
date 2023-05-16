@@ -490,7 +490,7 @@ pub trait ContextBuilder:
         }
     }
 
-    fn widen_if_limit_hit(&mut self, _ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
+    fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {
             Err(e @ ExprErr::GraphError(_, GraphError::MaxStackWidthReached(..), ..)) => {
                 // TODO: we should ideally peak at each if statement body and only widen variables referenced in there
@@ -499,6 +499,10 @@ pub trait ContextBuilder:
                 true
             }
             Err(e) => {
+                let res = ctx
+                    .kill(self, e.loc(), KilledKind::ParseError)
+                    .into_expr_err(e.loc());
+                let _ = self.add_if_err(res);
                 self.add_expr_err(e);
                 false
             }

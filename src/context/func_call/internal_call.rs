@@ -265,7 +265,8 @@ pub trait InternalFuncCaller:
                     Err(ExprErr::FunctionNotFound(
                         loc,
                         format!(
-                            "Could not disambiguate function, possible functions: {:#?}",
+                            "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
+                            inputs.try_as_func_input_str(analyzer),
                             possible_funcs
                                 .iter()
                                 .map(|i| i.name(analyzer).unwrap())

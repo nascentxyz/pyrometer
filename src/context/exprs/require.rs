@@ -1266,10 +1266,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) -> Result<(), ExprErr> {
         tracing::trace!("Recursing through range");
         // handle lhs
-        let inverse = tmp_construction
+        let Some(inverse) = tmp_construction
             .op
-            .inverse()
-            .expect("impossible to not invert op");
+            .inverse() else {
+            return Ok(());
+        };
 
         if !tmp_construction.lhs.is_const(self).into_expr_err(loc)? {
             tracing::trace!("handling lhs range recursion");

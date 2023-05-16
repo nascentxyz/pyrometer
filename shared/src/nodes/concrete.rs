@@ -555,6 +555,7 @@ impl Concrete {
                 Some(Concrete::Bytes((size / 8) as u8, h))
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0xff; 20]))),
+            Concrete::Bool(_) => Some(Concrete::Bool(true)),
             _ => None,
         }
     }
@@ -631,6 +632,7 @@ impl Concrete {
                 b[19] = 0x01;
                 Some(Concrete::Address(Address::from_slice(&b)))
             }
+            Concrete::Bool(_) => Some(Concrete::Bool(true)),
             _ => None,
         }
     }

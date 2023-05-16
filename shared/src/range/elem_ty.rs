@@ -1021,6 +1021,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         lhs_min.range_wrapping_add(&rhs_max),
                         lhs_max.range_wrapping_add(&rhs_min),
                         lhs_max.range_wrapping_add(&rhs_max),
+                        lhs_max.range_add(&rhs_max),
+                        lhs_min.range_add(&rhs_min),
                     ];
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                     candidates.sort_by(|a, b| match a.range_ord(b) {
