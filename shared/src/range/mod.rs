@@ -676,19 +676,25 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     }
 
     fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphLike) -> bool {
-        let min_contains = matches!(
-            self.evaled_range_min(analyzer)
-                .unwrap()
-                .range_ord(&other.minimize(analyzer).unwrap()),
-            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
-        );
+        let min_contains = match self
+            .evaled_range_min(analyzer)
+            .unwrap()
+            .range_ord(&other.minimize(analyzer).unwrap())
+        {
+            Some(std::cmp::Ordering::Less) => true,
+            Some(std::cmp::Ordering::Equal) => return true,
+            _ => false,
+        };
 
-        let max_contains = matches!(
-            self.evaled_range_max(analyzer)
-                .unwrap()
-                .range_ord(&other.maximize(analyzer).unwrap()),
-            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
-        );
+        let max_contains = match self
+            .evaled_range_max(analyzer)
+            .unwrap()
+            .range_ord(&other.maximize(analyzer).unwrap())
+        {
+            Some(std::cmp::Ordering::Greater) => true,
+            Some(std::cmp::Ordering::Equal) => return true,
+            _ => false,
+        };
 
         min_contains && max_contains
     }

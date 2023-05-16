@@ -80,6 +80,20 @@ impl RangeOp {
             _ => None, // e => panic!("tried to inverse unreversable op: {:?}", e),
         }
     }
+
+    pub fn require_parts(self) -> Option<(Self, Self, (Self, Self))> {
+        use RangeOp::*;
+        let t = match self {
+            Eq => (Eq, Neq, (Neq, Eq)),
+            Neq => (Neq, Eq, (Eq, Neq)),
+            Lte => (Lte, Gte, (Gte, Lte)),
+            Gte => (Gte, Lte, (Lte, Gte)),
+            Gt => (Gt, Lt, (Lt, Gt)),
+            Lt => (Lt, Gt, (Gt, Lt)),
+            _ => return None,
+        };
+        Some(t)
+    }
 }
 
 impl ToString for RangeOp {

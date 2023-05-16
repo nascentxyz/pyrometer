@@ -2,6 +2,7 @@ use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::ContextBuilder;
 use shared::analyzer::GraphError;
+use shared::range::range_string::ToRangeString;
 
 use shared::{
     analyzer::AnalyzerLike,
@@ -178,13 +179,19 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
+                // println!("{:?}", range.evaled_range_max(self));
+                // println!("{:?}", range.evaled_range_min(self));
 
-                tracing::trace!(
-                    "cmp: {} {} {}",
-                    lhs_cvar.name(self).into_expr_err(loc)?,
-                    op.to_string(),
-                    rhs_cvar.name(self).into_expr_err(loc)?
-                );
+                // println!(
+                //     "cmp: {} {} {}, [{}, {}], [{}, {}] ",
+                //     lhs_cvar.name(self).into_expr_err(loc)?,
+                //     op.to_string(),
+                //     rhs_cvar.name(self).into_expr_err(loc)?,
+                //     lhs_cvar.evaled_range_min(self).into_expr_err(loc)?.unwrap().to_range_string(false, self).s,
+                //     lhs_cvar.evaled_range_max(self).into_expr_err(loc)?.unwrap().to_range_string(true, self).s,
+                //     rhs_cvar.evaled_range_min(self).into_expr_err(loc)?.unwrap().to_range_string(false, self).s,
+                //     rhs_cvar.evaled_range_max(self).into_expr_err(loc)?.unwrap().to_range_string(true, self).s
+                // );
 
                 let out_var = ContextVar {
                     loc: Some(loc),
