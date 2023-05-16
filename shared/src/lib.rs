@@ -132,4 +132,5 @@ pub enum Edge {
     Constructor,
     ReceiveFunc,
     LibraryFunction(NodeIdx),
+    BuiltinFunction,
 }

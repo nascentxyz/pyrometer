@@ -11,6 +11,8 @@ use ethers_core::types::U256;
 use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
+use shared::range::elem_ty::RangeExpr;
+use solang_parser::pt::YulExpression;
 
 use shared::range::{elem_ty::Elem, SolcRange};
 use shared::{context::ContextEdge, nodes::Builtin, Edge};
@@ -69,6 +71,30 @@ pub trait YulFuncCaller:
                     })
                 })
             }
+            "not" => {
+                if arguments.len() != 1 {
+                    return Err(ExprErr::InvalidFunctionInput(
+                        *loc,
+                        format!(
+                            "Yul function: `not` expected 1 argument found: {:?}",
+                            arguments.len()
+                        ),
+                    ));
+                }
+
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Not operation had no element".to_string()))
+                    };
+
+                    if matches!(lhs, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    analyzer.bit_not_inner(ctx, loc, lhs.flatten())
+                })
+            }
             "add" | "sub" | "mul" | "div" | "sdiv" | "mod" | "smod" | "exp" | "and" | "or"
             | "xor" | "shl" | "shr" | "sar" => {
                 let op = match &*id.name {
@@ -97,7 +123,15 @@ pub trait YulFuncCaller:
                     ));
                 }
 
-                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                let (lhs, rhs): (&YulExpression, &YulExpression) =
+                    if matches!(&*id.name, "shl" | "shr" | "sar") {
+                        // yul shifts are super dumb and are reversed.
+                        (&arguments[1], &arguments[0])
+                    } else {
+                        (&arguments[0], &arguments[1])
+                    };
+
+                self.parse_ctx_yul_expr(lhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Yul Binary operation had no right hand side".to_string()))
@@ -106,7 +140,7 @@ pub trait YulFuncCaller:
                         ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.parse_ctx_yul_expr(&arguments[1], ctx)?;
+                    analyzer.parse_ctx_yul_expr(rhs, ctx)?;
                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(loc, "Yul Binary operation had no left hand side".to_string()))
@@ -160,7 +194,26 @@ pub trait YulFuncCaller:
                             ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                             return Ok(());
                         }
-                        analyzer.cmp_inner(ctx, loc, &lhs_paths, op, &rhs_paths)
+                        analyzer.cmp_inner(ctx, loc, &lhs_paths, op, &rhs_paths)?;
+                        let Some(result) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Yul Binary operation had no return".to_string()))
+                        };
+
+                        let res = ContextVarNode::from(result.expect_single().into_expr_err(loc)?);
+                        let next = analyzer.advance_var_in_ctx(res, loc, ctx)?;
+                        let expr = Elem::Expr(RangeExpr::new(
+                            Elem::from(res),
+                            RangeOp::Cast,
+                            Elem::from(Concrete::Uint(1, U256::zero()))
+                        ));
+
+                        next.set_range_min(analyzer, expr.clone()).into_expr_err(loc)?;
+                        next.set_range_max(analyzer, expr).into_expr_err(loc)?;
+                        ctx.push_expr(
+                            ExprRet::Single(next.into()),
+                            analyzer,
+                        )
+                        .into_expr_err(loc)
                     })
                 })
             }
@@ -350,11 +403,6 @@ pub trait YulFuncCaller:
                     .into_expr_err(*loc)?;
                 Ok(())
             }
-            "not" => Err(ExprErr::Todo(
-                *loc,
-                format!("Unhandled builtin yul function: {id:?}"),
-            )),
-
             _ => Err(ExprErr::Todo(
                 *loc,
                 format!("Unhandled builtin yul function: {id:?}"),

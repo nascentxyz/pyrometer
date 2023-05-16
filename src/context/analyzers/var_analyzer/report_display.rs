@@ -1,6 +1,5 @@
 use crate::analyzers::{LocStrSpan, ReportDisplay};
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
-use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 
 use crate::analyzers::var_analyzer::*;

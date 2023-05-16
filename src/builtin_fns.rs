@@ -298,6 +298,24 @@ pub fn builtin_fns() -> HashMap<String, Function> {
                 Loc::Builtin,
             )))],
         ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "transfer".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "send".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
     ];
     funcs
         .into_iter()
@@ -741,6 +759,51 @@ pub fn builtin_fns_inputs(
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::DynamicBytes),
                 storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                name: None,
+            }],
+        ),
+        (
+            "transfer",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Address),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 1,
+                    storage: None,
+                    name: None,
+                },
+            ],
+            vec![],
+        ),
+        (
+            "send",
+            vec![
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Address),
+                    order: 0,
+                    storage: None,
+                    name: None,
+                },
+                FunctionParam {
+                    loc: Loc::Builtin,
+                    ty: analyzer.builtin_or_add(Builtin::Uint(256)),
+                    order: 1,
+                    storage: None,
+                    name: None,
+                },
+            ],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Bool),
+                storage: None,
                 name: None,
             }],
         ),

@@ -1,4 +1,16 @@
 contract BitAnd {
+    function bit_and(bytes32 x, bytes32 y) public returns (bytes32) {
+        return x & y;
+    }
+
+    function bit_and_conc(bytes32 d) public {
+        require(bytes32(type(uint256).max) & bytes32(uint(100)) == 100);
+        require(bytes32(0) & bytes32(uint(100)) == 0);
+        require(bytes32(101) & bytes32(105) == 97);
+        require(bytes32(type(uint24).max) & bytes32(1225) == 1225);
+        require(bit_and(bytes32(50), bytes32(500)) == 48);
+    }
+
     function bit_and(uint256 x, uint256 y) public returns (uint256) {
         return x & y;
     }
@@ -29,6 +41,18 @@ contract BitAnd {
 }
 
 contract BitOr {
+    function bit_or(bytes32 x, bytes32 y) public returns (bytes32) {
+        return x | y;
+    }
+
+    function bit_or_conc(bytes32 d) public {
+        require(bytes32(type(uint256).max) | bytes32(uint(100)) == bytes32(type(uint256).max));
+        require(bytes32(0) | bytes32(uint(100)) == bytes32(100));
+        require(bytes32(101) | bytes32(105) == bytes32(109));
+        require(bytes32(type(uint24).max) | bytes32(5) == bytes32(type(uint24).max) );
+        require(bit_or(bytes32(50), bytes32(500)) == 502);
+    }
+
     function bit_or(uint256 x, uint256 y) public returns (uint256) {
         return x | y;
     }
@@ -83,6 +107,24 @@ contract BitXor {
 }
 
 contract BitNot {
+    function yul_bit_not(bytes32 d) public view returns (bytes32) {
+        uint256 x;
+        assembly {
+            x := not(100)
+        }
+        require(x == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
+    }
+
+    function bit_not(bytes32 d) public view returns (bytes32) {
+        bytes32 x = hex"1111";
+        require(~x == bytes32(0xeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff));
+        bytes16 x16 = hex"1111";
+        require(~x16 == bytes32(0xeeeeffffffffffffffffffffffffffff00000000000000000000000000000000));
+        bytes8 x8 = hex"1111";
+        require(~x8 == bytes32(0xeeeeffffffffffff000000000000000000000000000000000000000000000000));
+        return ~x;
+    }
+
     function bit_not(uint256 x) public returns (uint256) {
         return ~x;
     }
@@ -112,6 +154,28 @@ contract BitNot {
 }
 
 contract BitShl {
+    function yulShl(uint256 x, uint256 y) public returns (uint256) {
+        uint256 ret;
+        assembly {
+            ret := shl(y, x)
+        }
+        return ret;
+    }
+
+    function yulShl_conc() public {
+        uint256 ret = yulShl(10, 1);
+        uint256 other_ret = 10 << 1;
+        require(ret == other_ret);
+    }
+
+    function yulShr(uint256 x, uint256 y) public returns (uint256) {
+        uint256 ret;
+        assembly {
+            ret := shr(x, y)
+        }
+        return ret;
+    }
+
     function shl(uint256 x, uint256 y) public returns (uint256) {
         return x << y;
     }

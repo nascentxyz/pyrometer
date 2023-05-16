@@ -961,7 +961,7 @@ impl ContextNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Context, GraphError> {
         match analyzer.node(*self) {
             Node::Context(c) => Ok(c),
-            e => Err(GraphError::NodeConfusion(panic!(
+            e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Context but it was: {e:?}"
             ))),
         }

@@ -1135,7 +1135,6 @@ dependencies = [
  "ariadne",
  "ethers-core",
  "hex",
- "itertools",
  "petgraph",
  "shared",
  "solang-parser",

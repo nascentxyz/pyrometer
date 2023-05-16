@@ -389,16 +389,17 @@ impl Analyzer {
                 .for_each(|(contract, inherits)| {
                     contract.inherit(inherits.to_vec(), self);
                 });
+            final_pass_item.funcs.iter().for_each(|func| {
+                // add params now that parsing is done
+                func.set_params_and_ret(self).unwrap();
+            });
+
             final_pass_item
                 .usings
                 .iter()
                 .for_each(|(using, scope_node)| {
                     self.parse_using(using, *scope_node);
                 });
-            final_pass_item.funcs.iter().for_each(|func| {
-                // add params now that parsing is done
-                func.set_params_and_ret(self).unwrap();
-            });
         });
 
         elems.into_iter().for_each(|final_pass_item| {
@@ -680,8 +681,20 @@ impl Analyzer {
 
         let (contract, unhandled_inherits) =
             Contract::from_w_imports(contract_def.clone(), source, imports, self);
+
         let inherits = contract.inherits.clone();
-        let con_node = ContractNode(self.add_node(contract).index());
+        let con_name = contract.name.clone().unwrap().name;
+        let con_node: ContractNode =
+            if let Some(user_ty_node) = self.user_types.get(&con_name).cloned() {
+                let unresolved = self.node_mut(user_ty_node);
+                *unresolved = Node::Contract(contract);
+                user_ty_node.into()
+            } else {
+                let node = self.add_node(Node::Contract(contract));
+                self.user_types.insert(con_name, node);
+                node.into()
+            };
+
         inherits.iter().for_each(|contract_node| {
             self.add_edge(*contract_node, con_node, Edge::InheritedContract);
         });
@@ -721,8 +734,6 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), con_node.0.into())),
             StraySemicolon(_loc) => todo!(),
         });
-        self.user_types
-            .insert(con_node.name(self).unwrap(), con_node.0.into());
         (con_node, func_nodes, usings, unhandled_inherits)
     }
 

@@ -1051,7 +1051,6 @@ pub trait ContextBuilder:
                         Ok(())
                     }
                 } else {
-                    todo!("{ty:?}");
                     ctx.push_expr(ExprRet::Null, self).into_expr_err(*loc)?;
                     Ok(())
                 }
@@ -1377,13 +1376,12 @@ pub trait ContextBuilder:
         if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
             return Err(ExprErr::GraphError(
                 loc,
-                // GraphError::VariableUpdateInOldContext(format!(
-                panic!(
+                GraphError::VariableUpdateInOldContext(format!(
                     "Variable update of {} in old context: parent: {}, child: {:#?}",
                     cvar_node.display_name(self).unwrap(),
                     ctx.path(self),
                     child
-                ), //),
+                )),
             ));
         }
         let mut new_cvar = cvar_node

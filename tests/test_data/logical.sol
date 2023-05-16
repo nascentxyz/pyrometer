@@ -8,6 +8,26 @@ contract Logical {
     function enumCmp() public returns (bool) {
         return MyEnum.A > MyEnum.B;
     }
+
+
+    function yulCmp() internal {
+        uint x;
+        uint y;
+        assembly {
+            x := gt(2,3)
+            y := eq(2,3)
+        }
+    }
+
+    function yulComplicatedCmp(address a) internal {
+        bool success;
+        /// @solidity memory-safe-assembly
+        assembly {
+            success := and(eq(a, 0), call(gas(), a, 4, 5, 6, 7, 8)) //error
+        }
+        require(success);
+    }
+
     
     function not() public {
         uint256 a = 100;

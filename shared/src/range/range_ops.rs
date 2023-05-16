@@ -1566,6 +1566,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     loc: self.loc,
                 }))
             }
+            (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*size, a & b),
+                    loc: self.loc,
+                }))
+            }
             _ => None,
         }
     }
@@ -1586,6 +1593,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     loc: self.loc,
                 }))
             }
+            (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*size, a | b),
+                    loc: self.loc,
+                }))
+            }
             _ => None,
         }
     }
@@ -1603,6 +1617,13 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let size = if s > s2 { s } else { s2 };
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Int(*size, *a ^ *b),
+                    loc: self.loc,
+                }))
+            }
+            (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
+                let size = if s > s2 { s } else { s2 };
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*size, a ^ b),
                     loc: self.loc,
                 }))
             }
@@ -1631,6 +1652,16 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let (val, _) = val.overflowing_sub(1.into());
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Int(*size, val),
+                    loc: self.loc,
+                }))
+            }
+            Concrete::Bytes(s, a) => {
+                let mut h = H256::default();
+                (0..*s).for_each(|i| {
+                    h.0[i as usize] = !a.0[i as usize];
+                });
+                Some(Elem::Concrete(RangeConcrete {
+                    val: Concrete::Bytes(*s, h),
                     loc: self.loc,
                 }))
             }
