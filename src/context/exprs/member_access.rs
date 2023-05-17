@@ -28,12 +28,15 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Contract(con_node), _) => {
-                    let mut funcs = con_node.funcs(self);
-                    funcs.extend(self
+                    let mut funcs = con_node.linearized_functions(self);
+                    self
                     .possible_library_funcs(ctx, con_node.0.into())
                     .into_iter()
-                    .collect::<Vec<_>>());
-                    funcs
+                    .for_each(|func| {
+                        let name = func.name(self).unwrap();
+                        funcs.entry(name).or_insert(func);
+                    });
+                    funcs.values().copied().collect()
                 },
                 VarType::BuiltIn(bn, _) => self
                     .possible_library_funcs(ctx, bn.0.into())

@@ -59,3 +59,16 @@ contract ExternalFuncCalls {
         require(z2 == 4);
     }
 }
+
+contract K {
+    struct L {
+        uint b;
+        uint c;
+    }
+
+    function foo() internal {
+        L memory l = L(2, 3);
+        require(l.b == 2);
+        require(l.c == 3);
+    }
+}

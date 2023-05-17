@@ -19,6 +19,7 @@ tracing-subscriber = "0.3"
 members = ["cli", "shared"]
 
 
+# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
 [patch.crates-io]
 ariadne = {git = "https://github.com/brockelmore/ariadne"}
 
