@@ -12,7 +12,7 @@ use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
 use shared::range::elem_ty::RangeExpr;
-use shared::range::range_string::ToRangeString;
+
 use solang_parser::pt::YulExpression;
 use std::cell::RefCell;
 use std::rc::Rc;

@@ -10,7 +10,6 @@ use shared::{
 };
 use solang_parser::pt::{
     Expression,
-    Expression::{HexLiteral, Negate, NumberLiteral},
     Identifier, Loc, NamedArgument,
 };
 
