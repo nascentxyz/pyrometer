@@ -289,7 +289,7 @@ impl Context {
                 parent_ctx.underlying(analyzer)?.unchecked
             } else if let Some(ret_ctx) = returning_ctx {
                 ret_ctx.underlying(analyzer)?.unchecked
-            }  else {
+            } else {
                 false
             },
             number_of_live_edges: 0,
@@ -306,7 +306,7 @@ impl Context {
                     parent_ctx.underlying(analyzer)?.cache.first_ancestor
                 } else if let Some(ret_ctx) = returning_ctx {
                     ret_ctx.underlying(analyzer)?.cache.first_ancestor
-                }  else {
+                } else {
                     None
                 },
                 associated_source: None,
@@ -836,7 +836,7 @@ impl ContextNode {
                             None
                         }
                     })
-                    .collect::<BTreeMap<_, _>>()
+                    .collect::<BTreeMap<_, _>>(),
             );
             let funcs: Vec<_> = mapping.values().copied().collect();
             self.underlying_mut(analyzer)?.cache.visible_funcs = Some(funcs.clone());

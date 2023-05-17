@@ -8,10 +8,7 @@ use shared::{
     context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
     Edge, Node,
 };
-use solang_parser::pt::{
-    Expression,
-    Identifier, Loc, NamedArgument,
-};
+use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
 impl<T> InternalFuncCaller for T where
     T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
