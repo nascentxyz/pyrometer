@@ -934,7 +934,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let max_conc = max.maybe_concrete().expect("Was not concrete");
+                let Some(max_conc) = max.maybe_concrete() else {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                };
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
                 nonconst_var
                     .set_range_min(
@@ -976,7 +978,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let min_conc = min.maybe_concrete().expect("Was not concrete");
+
+                let Some(min_conc) = min.maybe_concrete() else {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(true, self).s)));
+                };
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
                 nonconst_var
