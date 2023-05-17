@@ -490,8 +490,12 @@ pub trait ContextBuilder:
         }
     }
 
-    fn widen_if_limit_hit(&mut self, _ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
+    fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {
+            Err(ExprErr::FunctionCallBlockTodo(_, _s)) => {
+                // dont kill for this one
+                false
+            }
             Err(e @ ExprErr::GraphError(_, GraphError::MaxStackWidthReached(..), ..)) => {
                 // TODO: we should ideally peak at each if statement body and only widen variables referenced in there
                 // but for now we just delete the forks, and reset all local variables
@@ -499,6 +503,10 @@ pub trait ContextBuilder:
                 true
             }
             Err(e) => {
+                let res = ctx
+                    .kill(self, e.loc(), KilledKind::ParseError)
+                    .into_expr_err(e.loc());
+                let _ = self.add_if_err(res);
                 self.add_expr_err(e);
                 false
             }
@@ -905,7 +913,7 @@ pub trait ContextBuilder:
                 let updated_func_expr = match **func_expr {
                     FunctionCallBlock(_loc, ref inner_func_expr, ref call_block) => {
                         // we dont currently handle the `{value: .. gas: ..}` msg updating
-                        self.add_expr_err(ExprErr::Todo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take affect".to_string()));
+                        self.add_expr_err(ExprErr::FunctionCallBlockTodo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take affect".to_string()));
                         inner_func_expr.clone()
                     }
                     _ => func_expr.clone(),

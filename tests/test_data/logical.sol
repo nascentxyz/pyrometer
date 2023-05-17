@@ -44,6 +44,17 @@ contract Logical {
         }
     }
 
+    function cond_and(bool a, bool b) public {
+        if (a && b) {
+            require(a);
+            require(b);
+            bool f = a && b;
+            require(f);
+        } else {
+            require(!a || !b);
+        }
+    }
+
     function cond_if(uint256 a) public {
         bool s = a < 100;
         if (s) {

@@ -27,7 +27,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<Vec<FunctionNode>, ExprErr> {
         let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
-                VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
+                VarType::User(TypeNode::Contract(con_node), _) => {
+                    let mut funcs = con_node.linearized_functions(self);
+                    self
+                    .possible_library_funcs(ctx, con_node.0.into())
+                    .into_iter()
+                    .for_each(|func| {
+                        let name = func.name(self).unwrap();
+                        funcs.entry(name).or_insert(func);
+                    });
+                    funcs.values().copied().collect()
+                },
                 VarType::BuiltIn(bn, _) => self
                     .possible_library_funcs(ctx, bn.0.into())
                     .into_iter()
@@ -291,6 +301,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 .unwrap_or_else(|| "interface".to_string()),
             ident.name
         );
+
         if let Some(func) = con_node
             .funcs(self)
             .into_iter()
@@ -374,7 +385,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     return Err(ExprErr::ContractFunctionNotFound(
                         loc,
                         format!(
-                        "No function or struct with name {:?} in contract: {:?}. Functions: {:?}",
+                        "No function or struct with name {:?} in contract: {:?}. Functions: {:#?}",
                         ident.name,
                         con_node.name(self).unwrap(),
                         con_node

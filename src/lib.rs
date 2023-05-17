@@ -258,14 +258,15 @@ impl AnalyzerLike for Analyzer {
                     inner_ty
                 }
             }
-            NumberLiteral(_loc, int, exp, _unit) => {
-                let int = U256::from_dec_str(int).unwrap();
-                let val = if !exp.is_empty() {
-                    let exp = U256::from_dec_str(exp).unwrap();
-                    int.pow(exp)
+            NumberLiteral(_loc, integer, exponent, _unit) => {
+                let int = U256::from_dec_str(integer).unwrap();
+                let val = if !exponent.is_empty() {
+                    let exp = U256::from_dec_str(exponent).unwrap();
+                    int * U256::from(10).pow(exp)
                 } else {
                     int
                 };
+
                 self.add_node(Node::Concrete(Concrete::Uint(256, val)))
             }
             _ => {

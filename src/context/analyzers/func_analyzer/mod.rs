@@ -262,9 +262,8 @@ impl<'a> FunctionVarsBoundAnalysis {
                             .collect::<Vec<_>>(),
                     );
                     if let Some(body) = ctx
-                        .underlying(analyzer)
+                        .associated_fn(analyzer)
                         .unwrap()
-                        .parent_fn
                         .underlying(analyzer)
                         .unwrap()
                         .body

@@ -63,6 +63,8 @@ pub enum ExprErr {
     MemberAccessNotFound(Loc, String),
     FunctionNotFound(Loc, String),
 
+    FunctionCallBlockTodo(Loc, String),
+
     NonStoragePush(Loc, String),
     IntrinsicNamedArgs(Loc, String),
     InvalidFunctionInput(Loc, String),
@@ -92,6 +94,7 @@ impl ExprErr {
             MultiNot(loc, ..) => *loc,
             VarBadType(loc, ..) => *loc,
             Todo(loc, ..) => *loc,
+            FunctionCallBlockTodo(loc, ..) => *loc,
             BadRange(loc, ..) => *loc,
             ContractFunctionNotFound(loc, ..) => *loc,
             MemberAccessNotFound(loc, ..) => *loc,
@@ -119,6 +122,7 @@ impl ExprErr {
             MultiNot(_, msg, ..) => msg,
             VarBadType(_, msg, ..) => msg,
             Todo(_, msg, ..) => msg,
+            FunctionCallBlockTodo(_, msg, ..) => msg,
             BadRange(_, msg, ..) => msg,
             ContractFunctionNotFound(_, msg, ..) => msg,
             MemberAccessNotFound(_, msg, ..) => msg,
@@ -156,6 +160,7 @@ impl ExprErr {
             MultiNot(..) => "Expected a single ExprRet in Not statement, got ExprRet::Multi",
             VarBadType(..) => "This type cannot be made into a variable",
             Todo(..) => "TODO",
+            FunctionCallBlockTodo(..) => "TODO",
             Unresolved(..) => "Unresolved type: This is likely a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             BadRange(..) => "Expected a range for a variable but there was none",
             ContractFunctionNotFound(..) => "Contract function could not be Found",

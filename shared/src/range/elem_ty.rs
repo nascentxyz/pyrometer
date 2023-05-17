@@ -1021,6 +1021,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         lhs_min.range_wrapping_add(&rhs_max),
                         lhs_max.range_wrapping_add(&rhs_min),
                         lhs_max.range_wrapping_add(&rhs_max),
+                        lhs_max.range_add(&rhs_max),
+                        lhs_min.range_add(&rhs_min),
                     ];
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                     candidates.sort_by(|a, b| match a.range_ord(b) {
@@ -1545,65 +1547,37 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 };
 
                 if maximize {
-                    // if they are constants and equal, we can stop here
-                    //   (rhs min == rhs max) == (lhs min == lhs max )
-                    if let (
-                        Some(std::cmp::Ordering::Equal),
-                        Some(std::cmp::Ordering::Equal),
-                        Some(std::cmp::Ordering::Equal),
-                    ) = (
-                        // check if lhs is constant
-                        lhs_min.range_ord(&lhs_max),
-                        // check if rhs is constant
-                        rhs_min.range_ord(&rhs_max),
-                        // check if lhs is equal to rhs
-                        lhs_min.range_ord(&rhs_min),
-                    ) {
+                    // check for any overlap
+                    let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min);
+                    let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max);
+
+                    // if lhs max is less than the rhs min, it has to be false
+                    if matches!(lhs_max_rhs_min_ord, Some(std::cmp::Ordering::Less)) {
                         return Ok(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bool(true),
+                            val: Concrete::Bool(false),
                             loc,
                         }));
                     }
 
-                    // they aren't constants, check if there is any overlap
-                    match (
-                        // check if lhs minimum is contained within the right hand side
-                        // this means the values could be equal
-                        // effectively:
-                        //   rhs min <= lhs min <= rhs max
-                        lhs_min.range_ord(&rhs_min),
-                        lhs_min.range_ord(&rhs_max),
-                    ) {
-                        (_, Some(std::cmp::Ordering::Equal))
-                        | (Some(std::cmp::Ordering::Equal), _)
-                        | (Some(std::cmp::Ordering::Greater), Some(std::cmp::Ordering::Less)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc,
-                            }))
-                        }
-                        _ => {}
+                    // if lhs min is greater than the rhs max, it has to be false
+                    if matches!(lhs_min_rhs_max_ord, Some(std::cmp::Ordering::Greater)) {
+                        return Ok(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(false),
+                            loc,
+                        }));
                     }
 
-                    match (
-                        // check if the lhs maximum is contained within the right hand side
-                        // effectively:
-                        //   rhs min <= lhs max <= rhs max
-                        lhs_max.range_ord(&rhs_min),
-                        lhs_max.range_ord(&rhs_max),
-                    ) {
-                        (_, Some(std::cmp::Ordering::Equal))
-                        | (Some(std::cmp::Ordering::Equal), _)
-                        | (Some(std::cmp::Ordering::Greater), Some(std::cmp::Ordering::Less)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc,
-                            }))
-                        }
-                        _ => {}
+                    // lhs_max >= rhs_min
+                    // lhs_min <= rhs_max
+                    // therefore its possible to set some value to true here
+                    if lhs_max_rhs_min_ord.is_some() && lhs_min_rhs_max_ord.is_some() {
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(true),
+                            loc,
+                        })
+                    } else {
+                        Elem::Expr(self.clone())
                     }
-
-                    Elem::Expr(self.clone())
                 } else {
                     // check if either lhs element is *not* contained by rhs
                     match (

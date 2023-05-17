@@ -73,3 +73,6 @@ Notice the `where` statements in the output, telling you `x >= 10` for one and `
 
 
 Those are the core aspects of Pyrometer needed to know to hop in the codebase.
+
+
+For more theoretical backing, see the [Theory](./Theory.md) page.

@@ -17,11 +17,12 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
     fn range_add(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                let max = Concrete::max(&self.val).unwrap().into_u256().unwrap();
+                let max = Concrete::max(&self.val).unwrap();
+                let max_uint = max.into_u256().unwrap();
                 Some(Elem::Concrete(RangeConcrete {
                     val: self
                         .val
-                        .u256_as_original(lhs_val.saturating_add(rhs_val).min(max)),
+                        .u256_as_original(lhs_val.saturating_add(rhs_val).min(max_uint)),
                     loc: self.loc,
                 }))
             }
