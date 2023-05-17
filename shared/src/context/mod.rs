@@ -289,7 +289,7 @@ impl Context {
                 parent_ctx.underlying(analyzer)?.unchecked
             } else if let Some(ret_ctx) = returning_ctx {
                 ret_ctx.underlying(analyzer)?.unchecked
-            } else {
+            }  else {
                 false
             },
             number_of_live_edges: 0,
@@ -306,7 +306,7 @@ impl Context {
                     parent_ctx.underlying(analyzer)?.cache.first_ancestor
                 } else if let Some(ret_ctx) = returning_ctx {
                     ret_ctx.underlying(analyzer)?.cache.first_ancestor
-                } else {
+                }  else {
                     None
                 },
                 associated_source: None,
@@ -464,18 +464,6 @@ impl ContextNode {
             Ok(*self)
         }
     }
-
-    // pub fn next_inheritable_parent(
-    //     &self,
-    //     analyzer: &mut (impl GraphLike + AnalyzerLike),
-    // ) -> Result<ContextNode, GraphError> {
-    //     if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
-    //         return Ok(ret);
-    //     }
-
-    //     let associated_fn = self.associated_fn(analyzer)?;
-    //     Ok(self.ancestor_in_fn(associated_fn)?.expect("No ancestors"))
-    // }
 
     pub fn total_width(
         &self,
@@ -848,7 +836,7 @@ impl ContextNode {
                             None
                         }
                     })
-                    .collect::<BTreeMap<_, _>>(),
+                    .collect::<BTreeMap<_, _>>()
             );
             let funcs: Vec<_> = mapping.values().copied().collect();
             self.underlying_mut(analyzer)?.cache.visible_funcs = Some(funcs.clone());
@@ -1255,15 +1243,13 @@ impl ContextNode {
                 Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
                 None => unreachable!(),
             };
-            // Err(GraphError::ChildRedefinition(format!(
-            panic!(
-                "Tried to redefine a child context, parent:\n{}, current child:\n{},\nnew child: Fork({}, {})",
+            Err(GraphError::ChildRedefinition(format!(
+                "This is a bug. Tried to redefine a child context, parent:\n{}, current child:\n{},\nnew child: Fork({}, {})",
                 self.path(analyzer),
                 child_str,
                 w1.path(analyzer),
                 w2.path(analyzer),
-            )
-            // ))
+            )))
         } else {
             Ok(())
         }
@@ -1287,14 +1273,13 @@ impl ContextNode {
                 None => unreachable!(),
             };
             tracing::trace!("Error setting child as a call");
-            // Err(GraphError::ChildRedefinition(format!(
-            panic!(
-                "Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
+            Err(GraphError::ChildRedefinition(format!(
+                "This is a bug. Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
                 self.path(analyzer),
                 child_str,
                 call.path(analyzer)
             )
-            // ))
+            ))
         } else {
             Ok(())
         }

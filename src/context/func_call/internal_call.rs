@@ -267,7 +267,7 @@ pub trait InternalFuncCaller:
                 } else {
                     Err(ExprErr::FunctionNotFound(
                         loc,
-                        panic!(
+                        format!(
                             "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
                             inputs.try_as_func_input_str(analyzer),
                             possible_funcs
