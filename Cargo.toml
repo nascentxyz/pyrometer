@@ -41,6 +41,9 @@ debug = true
 ######################################
 # Benchmarks
 ######################################
+[[example]]
+name = "parse"
+path = "examples/parse.rs"
 
 [[bench]]
 name = "parse"
