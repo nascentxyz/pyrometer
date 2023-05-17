@@ -492,7 +492,7 @@ pub trait ContextBuilder:
 
     fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {
-            Err(ExprErr::FunctionCallBlockTodo(_, s)) => {
+            Err(ExprErr::FunctionCallBlockTodo(_, _s)) => {
                 // dont kill for this one
                 false
             }
