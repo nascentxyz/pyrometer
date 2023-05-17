@@ -889,11 +889,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // mins are equivalent, add 1 instead of adding an exclusion
-                    let Some(min) = nonconst_range
-                        .evaled_range_min(self)
-                        .into_expr_err(loc)?
+                    let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
+                    let Some(min) = min
                         .maybe_concrete() else {
-                        panic!("min: {:?}, max: {:?}", nonconst_range.evaled_range_min(self), nonconst_range.evaled_range_max(self));
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(false, self).s)));
                     };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
@@ -904,11 +903,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // maxs are equivalent, subtract 1 instead of adding an exclusion
-                    let max = nonconst_range
-                        .evaled_range_max(self)
-                        .into_expr_err(loc)?
-                        .maybe_concrete()
-                        .expect("Was not concrete");
+                    let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
+
+                    let Some(max) = max.maybe_concrete() else {
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                    };
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
                     nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
@@ -1105,14 +1104,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 let Some(max_conc) = max.maybe_concrete() else {
-                    match lhs_range.max {
-                        Elem::Expr(expr) => {
-                            let _lhs = expr.lhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            let _rhs = expr.rhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            // println!("{} != {}", lhs, rhs);
-                        }
-                        _ => println!("other"),
-                    }
                     return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
                 };
 
