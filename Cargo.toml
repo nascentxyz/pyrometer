@@ -2,6 +2,8 @@
 name = "pyrometer"
 version = "0.1.0"
 edition = "2021"
+autobenches = false # turns off autodiscovery of benchmarks in ./benches
+exclude = ["benches"] # exclude the benches directory from the build
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,10 +17,13 @@ hex = "0.4.3"
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = "0.3"
 
+[dev-dependencies]
+criterion = { version = "0.4"} # benching
+
 [workspace]
 members = ["cli", "shared"]
 
-
+# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
 [patch.crates-io]
 ariadne = {git = "https://github.com/brockelmore/ariadne"}
 
@@ -28,3 +33,18 @@ debug = true
 [profile.dev]
 opt-level = 1  # Enable some optimizations like tail call
 inline = true
+
+[profile.bench]
+debug = true
+
+
+######################################
+# Benchmarks
+######################################
+[[example]]
+name = "parse"
+path = "examples/parse.rs"
+
+[[bench]]
+name = "parse"
+harness = false
