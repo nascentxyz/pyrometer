@@ -70,7 +70,7 @@ You will generally see a line underlined followed by the `∈` symbol followed b
 ` "x" ∈ [ 0, 10 ] && ∉ { 5 }`, you can read this as "x is in the range 0 to 10, excluding 5". Each solidity type has their own default bounds. If you see `"x" == 3`, `x` must be 3 at that point in the program.
 
 ## Whats the theory behind this?
-See the [Theory](./Theory.md) page for details. 
+See the [Theory](./THEORY.md) page for details. 
 
 ## How is the repo structured?
 See the [Architecture](./ARCHITECTURE.md) page for details. 
