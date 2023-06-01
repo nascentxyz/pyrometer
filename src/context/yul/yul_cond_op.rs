@@ -76,7 +76,7 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             //     },
             //     arguments: vec![if_expr.clone()],
             // }));
-            analyzer.parse_ctx_yul_expr(&if_expr, false_subctx)?;
+            analyzer.parse_ctx_yul_expr(if_expr, false_subctx)?;
             analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "False conditional had no lhs".to_string()));
