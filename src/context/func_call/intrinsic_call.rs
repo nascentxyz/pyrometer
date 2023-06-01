@@ -833,7 +833,7 @@ pub trait IntrinsicFuncCaller:
                 self.parse_inputs(ctx, *loc, input_exprs)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Function call failed".to_string()))
+                        return Err(ExprErr::NoRhs(loc, "Struct Function call failed".to_string()))
                     };
 
                     let inputs = inputs.as_vec();

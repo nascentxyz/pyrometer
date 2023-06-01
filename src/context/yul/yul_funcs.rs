@@ -1,5 +1,6 @@
 use crate::context::exprs::BinOp;
 use crate::context::exprs::Cmp;
+use crate::context::exprs::Env;
 use crate::context::exprs::IntoExprErr;
 use crate::context::yul::YulBuilder;
 use crate::context::ContextBuilder;
@@ -11,6 +12,7 @@ use ethers_core::types::U256;
 use shared::analyzer::AnalyzerLike;
 use shared::analyzer::GraphLike;
 use shared::context::ExprRet;
+use shared::nodes::VarType;
 use shared::range::elem_ty::RangeExpr;
 
 use solang_parser::pt::YulExpression;
@@ -38,14 +40,30 @@ pub trait YulFuncCaller:
         let YulFunctionCall { loc, id, arguments } = func_call;
 
         match &*id.name {
-            "chainid" => {
-                let b = Builtin::Uint(64);
-                let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
-                    .into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
-                ctx.push_expr(ExprRet::Single(node), self)
-                    .into_expr_err(*loc)?;
+            "caller" => {
+                let t = self.msg_access(*loc, ctx, "sender")?;
+                ctx.push_expr(t, self).into_expr_err(*loc)
+            }
+            "origin" => {
+                let t = self.msg_access(*loc, ctx, "origin")?;
+                ctx.push_expr(t, self).into_expr_err(*loc)
+            }
+            "gasprice" => {
+                let t = self.msg_access(*loc, ctx, "gasprice")?;
+                ctx.push_expr(t, self).into_expr_err(*loc)
+            }
+            "callvalue" => {
+                let t = self.msg_access(*loc, ctx, "value")?;
+                ctx.push_expr(t, self).into_expr_err(*loc)
+            }
+            "pop" => {
+                let _ = ctx.pop_expr_latest(*loc, self).into_expr_err(*loc)?;
                 Ok(())
+            }
+            "hash" | "basefee" | "chainid" | "coinbase" | "difficulty" | "gaslimit" | "number"
+            | "prevrandao" | "timestamp" => {
+                let t = self.block_access(*loc, ctx, &id.name)?;
+                ctx.push_expr(t, self).into_expr_err(*loc)
             }
             "log0" | "log1" | "log2" | "log3" | "log4" => {
                 ctx.push_expr(ExprRet::Multi(vec![]), self)
@@ -155,9 +173,15 @@ pub trait YulFuncCaller:
                     inputs.expect_length(2).into_expr_err(loc)?;
                     let inputs = inputs.as_vec();
 
-                    let lhs_paths = &inputs[0];
-                    let rhs_paths = &inputs[1];
-                    analyzer.op_match(ctx, loc, lhs_paths, rhs_paths, op, false)
+                    // we have to cast the inputs into an EVM word, which is effectively a u256.
+                    let word_ty = analyzer.builtin_or_add(Builtin::Uint(256));
+                    let cast_ty = VarType::try_from_idx(analyzer, word_ty).unwrap();
+                    let lhs_paths = ContextVarNode::from(inputs[0].expect_single().into_expr_err(loc)?);
+                    lhs_paths.cast_from_ty(cast_ty.clone(), analyzer).into_expr_err(loc)?;
+                    let rhs_paths = ContextVarNode::from(inputs[1].expect_single().into_expr_err(loc)?);
+                    rhs_paths.cast_from_ty(cast_ty, analyzer).into_expr_err(loc)?;
+
+                    analyzer.op_match(ctx, loc, &ExprRet::Single(lhs_paths.into()), &ExprRet::Single(rhs_paths.into()), op, false)
                 })
             }
             "lt" | "gt" | "slt" | "sgt" | "eq" => {
@@ -408,6 +432,129 @@ pub trait YulFuncCaller:
                 ctx.push_expr(ExprRet::Multi(vec![]), self)
                     .into_expr_err(*loc)?;
                 Ok(())
+            }
+            "balance" => {
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul `balance` operation had no input".to_string()))
+                    };
+
+                    let b = Builtin::Uint(256);
+                    let mut var = ContextVar::new_from_builtin(loc, analyzer.builtin_or_add(b).into(), analyzer)
+                        .into_expr_err(loc)?;
+                    let elem = ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
+                    var.display_name = format!("balance({})", elem.display_name(analyzer).into_expr_err(loc)?);
+                    let node = analyzer.add_node(Node::ContextVar(var));
+                    ctx.push_expr(ExprRet::Single(node), analyzer)
+                        .into_expr_err(loc)
+                })
+            }
+            "selfbalance" => {
+                let b = Builtin::Uint(256);
+                let mut var =
+                    ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
+                        .into_expr_err(*loc)?;
+                var.display_name = "selfbalance()".to_string();
+                let node = self.add_node(Node::ContextVar(var));
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(*loc)
+            }
+            "address" => {
+                let b = Builtin::Address;
+                let mut var =
+                    ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
+                        .into_expr_err(*loc)?;
+                var.display_name = "address()".to_string();
+                let node = self.add_node(Node::ContextVar(var));
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(*loc)
+            }
+            "extcodesize" => {
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul `extcodesize` operation had no input".to_string()))
+                    };
+
+                    let b = Builtin::Uint(256);
+                    let mut var = ContextVar::new_from_builtin(loc, analyzer.builtin_or_add(b).into(), analyzer)
+                        .into_expr_err(loc)?;
+                    let elem = ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
+                    var.display_name = format!("extcodesize({})", elem.display_name(analyzer).into_expr_err(loc)?);
+                    let node = analyzer.add_node(Node::ContextVar(var));
+                    ctx.push_expr(ExprRet::Single(node), analyzer)
+                        .into_expr_err(loc)
+                })
+            }
+            "codesize" => {
+                let b = Builtin::Uint(256);
+                let mut var =
+                    ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
+                        .into_expr_err(*loc)?;
+                var.display_name = "codesize()".to_string();
+                let node = self.add_node(Node::ContextVar(var));
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(*loc)
+            }
+            "codecopy" => {
+                if arguments.len() != 3 {
+                    return Err(ExprErr::InvalidFunctionInput(
+                        *loc,
+                        format!(
+                            "Yul function: `{}` expects 3 arguments found: {:?}",
+                            id.name,
+                            arguments.len()
+                        ),
+                    ));
+                }
+
+                self.parse_inputs(ctx, *loc, arguments)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(_lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul `codecopy` operation had no input".to_string()))
+                    };
+                    ctx.push_expr(ExprRet::Multi(vec![]), analyzer)
+                        .into_expr_err(loc)
+                })
+            }
+            "extcodecopy" => {
+                if arguments.len() != 4 {
+                    return Err(ExprErr::InvalidFunctionInput(
+                        *loc,
+                        format!(
+                            "Yul function: `{}` expects 4 arguments found: {:?}",
+                            id.name,
+                            arguments.len()
+                        ),
+                    ));
+                }
+
+                self.parse_inputs(ctx, *loc, arguments)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(_lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul `extcodecopy` operation had no input".to_string()))
+                    };
+                    ctx.push_expr(ExprRet::Multi(vec![]), analyzer)
+                        .into_expr_err(loc)
+                })
+            }
+            "extcodehash" => {
+                self.parse_ctx_yul_expr(&arguments[0], ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Yul `extcodesize` operation had no input".to_string()))
+                    };
+
+                    let b = Builtin::Bytes(32);
+                    let mut var = ContextVar::new_from_builtin(loc, analyzer.builtin_or_add(b).into(), analyzer)
+                        .into_expr_err(loc)?;
+                    let elem = ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
+                    var.display_name = format!("extcodehash({})", elem.display_name(analyzer).into_expr_err(loc)?);
+                    let node = analyzer.add_node(Node::ContextVar(var));
+                    ctx.push_expr(ExprRet::Single(node), analyzer)
+                        .into_expr_err(loc)
+                })
             }
             _ => Err(ExprErr::Todo(
                 *loc,

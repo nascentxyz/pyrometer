@@ -610,7 +610,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
+                // println!("is const: {lhs_is_const},[{}, {}]", new_lhs.evaled_range_min(self).unwrap().expect("REASON").to_range_string(false, self).s, new_lhs.evaled_range_max(self).unwrap().expect("REASON").to_range_string(true, self).s);
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
+                // println!("is const: {rhs_is_const}, [{}, {}]", new_rhs.evaled_range_min(self).unwrap().expect("REASON").to_range_string(false, self).s, new_rhs.evaled_range_max(self).unwrap().expect("REASON").to_range_string(true, self).s);
                 match (lhs_is_const, rhs_is_const) {
                     (true, true) => {
                         if self.const_killable(op, lhs_range, rhs_range) {
@@ -623,7 +625,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         // flip the new range around to be in terms of rhs
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
-
                         if self
                             .update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
                         {
@@ -1410,6 +1411,28 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         (false, new_rhs)
                     }
                     RangeOp::Shr => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Eq => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Neq => {
                         let new_rhs =
                             self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
                         if matches!(new_rhs, ExprRet::CtxKilled(_)) {

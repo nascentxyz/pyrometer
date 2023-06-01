@@ -118,6 +118,7 @@ pub struct ReportConfig {
     pub show_all_lines: bool,
     pub show_reverts: bool,
     pub show_unreachables: bool,
+    pub show_nonreverts: bool,
 }
 
 impl ReportConfig {
@@ -131,6 +132,7 @@ impl ReportConfig {
         show_all_lines: bool,
         show_reverts: bool,
         show_unreachables: bool,
+        show_nonreverts: bool,
     ) -> Self {
         Self {
             eval_bounds,
@@ -142,6 +144,7 @@ impl ReportConfig {
             show_all_lines,
             show_reverts,
             show_unreachables,
+            show_nonreverts,
         }
     }
 }
@@ -158,6 +161,7 @@ impl Default for ReportConfig {
             show_all_lines: false,
             show_reverts: false,
             show_unreachables: false,
+            show_nonreverts: true,
         }
     }
 }

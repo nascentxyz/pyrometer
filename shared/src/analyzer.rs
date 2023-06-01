@@ -93,7 +93,7 @@ pub trait AnalyzerLike: GraphLike {
     }
     fn user_types(&self) -> &HashMap<String, NodeIdx>;
     fn user_types_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
-    fn parse_expr(&mut self, expr: &Self::Expr) -> NodeIdx;
+    fn parse_expr(&mut self, expr: &Self::Expr, parent: Option<NodeIdx>) -> NodeIdx;
     fn msg(&mut self) -> MsgNode;
     fn block(&mut self) -> BlockNode;
     fn entry(&self) -> NodeIdx;

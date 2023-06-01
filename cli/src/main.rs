@@ -56,7 +56,6 @@ struct Args {
     ///   6: Print all previous values for all successful branches, reverting branches, and unreachable branches
     #[clap(long, short, verbatim_doc_comment, action = ArgAction::Count)]
     pub verbosity: u8,
-
     /// Whether to print out a dot string of the analyzed contracts
     #[clap(long, short, default_value = "false")]
     pub dot: bool,
@@ -66,13 +65,21 @@ struct Args {
     /// Whether to evaluate variables down to their intervals or to keep them symbolic/relational to other variables
     #[clap(long, short)]
     pub eval: Option<bool>,
+    /// Whether to simplify expressions down to variables down to their intervals or to keep them symbolic/relational to other variables
+    #[clap(long, short)]
+    pub simplify: Option<bool>,
     /// Whether to show initial values in the bounds analysis output
     #[clap(long)]
     pub show_inits: Option<bool>,
+    /// Show reverting paths
     #[clap(long)]
     pub show_reverts: Option<bool>,
+    /// Show unreachable paths
     #[clap(long)]
     pub show_unreachables: Option<bool>,
+    /// Show non-revert paths
+    #[clap(long)]
+    pub show_nonreverts: Option<bool>,
     // #[clap(long, short)]
     // pub access_query: Vec<String>,
     // #[clap(long, short)]
@@ -100,7 +107,7 @@ fn main() {
     let config = match verbosity {
         0 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: false,
             show_consts: false,
             show_symbolics: false,
@@ -108,10 +115,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(false),
             show_unreachables: args.show_unreachables.unwrap_or(false),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         1 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: false,
             show_consts: false,
             show_symbolics: true,
@@ -119,10 +127,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(false),
             show_unreachables: args.show_unreachables.unwrap_or(false),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         2 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: true,
             show_consts: false,
             show_symbolics: true,
@@ -130,10 +139,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(false),
             show_unreachables: args.show_unreachables.unwrap_or(false),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         3 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: true,
             show_consts: false,
             show_symbolics: true,
@@ -141,10 +151,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(false),
             show_unreachables: args.show_unreachables.unwrap_or(false),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         4 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: true,
             show_consts: true,
             show_symbolics: true,
@@ -152,10 +163,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(false),
             show_unreachables: args.show_unreachables.unwrap_or(false),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         5 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: true,
             show_consts: true,
             show_symbolics: true,
@@ -163,10 +175,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(true),
             show_unreachables: args.show_unreachables.unwrap_or(false),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         6 => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: true,
             show_consts: true,
             show_symbolics: true,
@@ -174,10 +187,11 @@ fn main() {
             show_all_lines: false,
             show_reverts: args.show_reverts.unwrap_or(true),
             show_unreachables: args.show_unreachables.unwrap_or(true),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
         _ => ReportConfig {
             eval_bounds: args.eval.unwrap_or(true),
-            simplify_bounds: false,
+            simplify_bounds: args.simplify.unwrap_or(false),
             show_tmps: true,
             show_consts: true,
             show_symbolics: true,
@@ -185,6 +199,7 @@ fn main() {
             show_all_lines: true,
             show_reverts: args.show_reverts.unwrap_or(true),
             show_unreachables: args.show_unreachables.unwrap_or(true),
+            show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
 

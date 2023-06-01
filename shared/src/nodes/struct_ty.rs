@@ -189,7 +189,7 @@ impl Field {
         analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
         var_def: VariableDeclaration,
     ) -> Field {
-        let ty_idx = analyzer.parse_expr(&var_def.ty);
+        let ty_idx = analyzer.parse_expr(&var_def.ty, None);
         Field {
             loc: var_def.loc,
             ty: ty_idx,
