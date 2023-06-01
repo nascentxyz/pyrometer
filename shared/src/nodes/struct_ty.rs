@@ -36,12 +36,14 @@ impl StructNode {
     }
 
     pub fn fields(&self, analyzer: &impl GraphLike) -> Vec<FieldNode> {
-        analyzer
+        let mut fields: Vec<_> = analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| Edge::Field == *edge.weight())
             .map(|edge| FieldNode::from(edge.source()))
-            .collect()
+            .collect();
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        fields
     }
 
     pub fn find_field(&self, analyzer: &impl GraphLike, ident: &Identifier) -> Option<FieldNode> {
@@ -187,7 +189,7 @@ impl Field {
         analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
         var_def: VariableDeclaration,
     ) -> Field {
-        let ty_idx = analyzer.parse_expr(&var_def.ty);
+        let ty_idx = analyzer.parse_expr(&var_def.ty, None);
         Field {
             loc: var_def.loc,
             ty: ty_idx,

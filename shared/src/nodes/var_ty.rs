@@ -1,11 +1,13 @@
+use crate::analyzer::Search;
 use crate::nodes::GraphError;
-use crate::ContextVar;
-use crate::ContextVarNode;
+use crate::ContractNode;
 use crate::VarType;
 use crate::{
     analyzer::{AnalyzerLike, AsDotStr, GraphLike},
     Node, NodeIdx,
 };
+use crate::{ContextVar, Edge};
+use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{
     Expression, Identifier, Loc, VariableAttribute, VariableDefinition, Visibility,
 };
@@ -21,6 +23,73 @@ impl VarNode {
                 "Node type confusion: expected node to be Var but it was: {e:?}"
             ))),
         }
+    }
+
+    pub fn underlying_mut<'a>(
+        &self,
+        analyzer: &'a mut impl GraphLike,
+    ) -> Result<&'a mut Var, GraphError> {
+        match analyzer.node_mut(*self) {
+            Node::Var(func) => Ok(func),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Var but it was: {e:?}"
+            ))),
+        }
+    }
+
+    pub fn parse_initializer(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        parent: NodeIdx,
+    ) -> Result<(), GraphError> {
+        if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
+            tracing::trace!("Parsing variable initializer");
+            let init = analyzer.parse_expr(&expr, Some(parent));
+            self.underlying_mut(analyzer)?.initializer = Some(init);
+        }
+        Ok(())
+    }
+
+    pub fn maybe_associated_contract(&self, analyzer: &impl GraphLike) -> Option<ContractNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| matches!(*edge.weight(), Edge::Var))
+            .filter_map(|edge| {
+                let node = edge.target();
+                match analyzer.node(node) {
+                    Node::Contract(_) => Some(ContractNode::from(node)),
+                    _ => None,
+                }
+            })
+            .take(1)
+            .next()
+            .map(ContractNode::from)
+    }
+
+    pub fn maybe_associated_source_unit_part(&self, analyzer: &impl GraphLike) -> Option<NodeIdx> {
+        if let Some(con) = self.maybe_associated_contract(analyzer) {
+            Some(con.associated_source_unit_part(analyzer))
+        } else {
+            analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Outgoing)
+                .filter(|edge| matches!(*edge.weight(), Edge::Var))
+                .filter_map(|edge| {
+                    let node = edge.target();
+                    match analyzer.node(node) {
+                        Node::SourceUnitPart(..) => Some(node),
+                        _ => None,
+                    }
+                })
+                .take(1)
+                .next()
+        }
+    }
+
+    pub fn maybe_associated_source(&self, analyzer: &(impl GraphLike + Search)) -> Option<NodeIdx> {
+        let sup = self.maybe_associated_source_unit_part(analyzer)?;
+        analyzer.search_for_ancestor(sup, &Edge::Part)
     }
 
     pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
@@ -113,6 +182,7 @@ pub struct Var {
     pub attrs: Vec<VariableAttribute>,
     pub name: Option<Identifier>,
     pub initializer: Option<NodeIdx>,
+    pub initializer_expr: Option<Expression>,
     pub in_contract: bool,
 }
 
@@ -128,31 +198,15 @@ impl Var {
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {
-        let ty = analyzer.parse_expr(&var.ty);
-        let is_const = var
-            .attrs
-            .iter()
-            .any(|attr| matches!(attr, VariableAttribute::Constant(_)));
+        tracing::trace!("Parsing Var type");
+        let ty = analyzer.parse_expr(&var.ty, None);
         Var {
             loc: var.loc,
             ty,
             attrs: var.attrs,
             name: var.name,
-            initializer: var.initializer.and_then(|init| {
-                // we only evaluate this if the variable is constant
-                if is_const {
-                    let init = analyzer.parse_expr(&init);
-                    if let Node::ContextVar(_) = analyzer.node(init) {
-                        let v_ty = VarType::try_from_idx(analyzer, ty).unwrap();
-                        ContextVarNode::from(init).cast_from_ty(v_ty, analyzer).expect("Could not cast right hand side initializer to specified left hand side for variable");
-                        Some(init)
-                    } else {
-                        Some(init)
-                    }
-                } else {
-                    None
-                }
-            }),
+            initializer: None,
+            initializer_expr: var.initializer,
             in_contract,
         }
     }

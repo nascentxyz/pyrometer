@@ -7,6 +7,7 @@ pub enum KilledKind {
     Ended,
     Unreachable,
     Revert,
+    ParseError,
 }
 
 impl KilledKind {
@@ -16,6 +17,7 @@ impl KilledKind {
             Ended => "Execution ended here successfully",
             Unreachable => "Unsatisifiable bounds, therefore dead code",
             Revert => "Execution guaranteed to revert here!",
+            ParseError => "Unexpected parse error. This is likely a bug or invalid solidity. See the `errors` section of the CLI output or rerun with `--debug` for more information",
         }
     }
 }

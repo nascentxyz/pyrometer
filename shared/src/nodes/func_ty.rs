@@ -215,17 +215,17 @@ impl FunctionNode {
         }
     }
 
-    pub fn associated_source_unit_part(
+    pub fn maybe_associated_source_unit_part(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> NodeIdx {
+    ) -> Option<NodeIdx> {
         if let Some(sup) = self
             .underlying(analyzer)
             .unwrap()
             .cache
             .associated_source_unit_part
         {
-            sup
+            Some(sup)
         } else {
             let parent = analyzer
                 .graph()
@@ -242,20 +242,19 @@ impl FunctionNode {
                 })
                 .map(|edge| edge.target())
                 .take(1)
-                .next()
-                .unwrap_or_else(|| panic!("Detached function: {}", self.name(analyzer).unwrap()));
+                .next()?;
             let sup = match analyzer.node(parent) {
                 Node::Contract(_) => {
                     ContractNode::from(parent).associated_source_unit_part(analyzer)
                 }
                 Node::SourceUnitPart(..) => parent,
-                _ => panic!("detached function"),
+                _e => return None,
             };
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
                 .associated_source_unit_part = Some(sup);
-            sup
+            Some(sup)
         }
     }
 
@@ -263,7 +262,9 @@ impl FunctionNode {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
             src
         } else {
-            let sup = self.associated_source_unit_part(analyzer);
+            let sup = self
+                .maybe_associated_source_unit_part(analyzer)
+                .expect("No associated source unit part");
             let src = analyzer
                 .search_for_ancestor(sup, &Edge::Part)
                 .expect("detached function");
@@ -272,6 +273,23 @@ impl FunctionNode {
                 .cache
                 .associated_source = Some(src);
             src
+        }
+    }
+
+    pub fn maybe_associated_source(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<NodeIdx> {
+        if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
+            Some(src)
+        } else {
+            let sup = self.maybe_associated_source_unit_part(analyzer)?;
+            let src = analyzer.search_for_ancestor(sup, &Edge::Part)?;
+            self.underlying_mut(analyzer)
+                .unwrap()
+                .cache
+                .associated_source = Some(src);
+            Some(src)
         }
     }
 
@@ -762,7 +780,7 @@ impl FunctionParam {
     ) -> Self {
         FunctionParam {
             loc: param.loc,
-            ty: analyzer.parse_expr(&param.ty),
+            ty: analyzer.parse_expr(&param.ty, None),
             order,
             storage: param.storage,
             name: param.name,
@@ -853,7 +871,7 @@ impl FunctionReturn {
     ) -> Self {
         FunctionReturn {
             loc: param.loc,
-            ty: analyzer.parse_expr(&param.ty),
+            ty: analyzer.parse_expr(&param.ty, None),
             storage: param.storage,
             name: param.name,
         }

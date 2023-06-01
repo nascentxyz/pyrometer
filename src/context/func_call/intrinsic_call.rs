@@ -6,6 +6,7 @@ use crate::context::{
 use crate::context::{ExprErr, IntoExprErr};
 use ethers_core::types::U256;
 use shared::nodes::BuiltInNode;
+use shared::nodes::StructNode;
 use shared::nodes::TyNode;
 
 use shared::analyzer::Search;
@@ -818,6 +819,56 @@ pub trait IntrinsicFuncCaller:
                     } else {
                         unreachable!()
                     }
+                })
+            }
+            Node::Struct(_) => {
+                // struct construction
+                let strukt = StructNode::from(func_idx);
+                let var =
+                    ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
+                let cvar = self.add_node(Node::ContextVar(var));
+                ctx.add_var(cvar.into(), self).into_expr_err(*loc)?;
+                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+
+                self.parse_inputs(ctx, *loc, input_exprs)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "Struct Function call failed".to_string()))
+                    };
+
+                    let inputs = inputs.as_vec();
+                    // set struct fields
+                    strukt
+                        .fields(analyzer)
+                        .iter()
+                        .zip(inputs)
+                        .try_for_each(|(field, input)| {
+                            let field_cvar = ContextVar::maybe_new_from_field(
+                                analyzer,
+                                loc,
+                                ContextVarNode::from(cvar)
+                                    .underlying(analyzer)
+                                    .into_expr_err(loc)?,
+                                field.underlying(analyzer).unwrap().clone(),
+                            )
+                            .expect("Invalid struct field");
+
+                            let fc_node = analyzer.add_node(Node::ContextVar(field_cvar));
+                            analyzer.add_edge(
+                                fc_node,
+                                cvar,
+                                Edge::Context(ContextEdge::AttrAccess),
+                            );
+                            analyzer.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                            ctx.add_var(fc_node.into(), analyzer).into_expr_err(loc)?;
+                            let field_as_ret = ExprRet::Single(fc_node);
+                            analyzer.match_assign_sides(ctx, loc, &field_as_ret, &input)?;
+                            let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
+                            Ok(())
+                        })?;
+
+                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                        .into_expr_err(loc)
                 })
             }
             e => Err(ExprErr::FunctionNotFound(*loc, format!("{e:?}"))),

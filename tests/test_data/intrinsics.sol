@@ -20,6 +20,15 @@ contract Intrinsics {
 
 	}
 
+	function yulIntrinsics() public {
+        assembly {
+            let a := timestamp()
+            let b := caller()
+            pop(staticcall(0, 0, 0, 0, 0, 0))
+            let c := extcodesize(b)
+        }
+    }
+
 
 	function blockData() public {
 		uint256 fee = block.basefee;

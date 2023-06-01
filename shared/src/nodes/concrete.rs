@@ -255,20 +255,7 @@ impl Concrete {
                             }
                         }
                     }
-                    Builtin::Int(size) => {
-                        let mask = if size == 256 {
-                            // we ignore the top bit
-                            U256::from(2).pow(255.into()) - 1
-                        } else {
-                            U256::from(2).pow(size.into()) - 1
-                        };
-
-                        if val < mask {
-                            Some(Concrete::Int(size, I256::from_raw(val)))
-                        } else {
-                            Some(Concrete::Int(size, I256::from_raw(mask)))
-                        }
-                    }
+                    Builtin::Int(size) => Some(Concrete::Int(size, I256::from_raw(val))),
                     Builtin::Bytes(size) => {
                         let mask = if size == 32 {
                             U256::MAX
@@ -304,16 +291,7 @@ impl Concrete {
                     } else {
                         U256::from(2).pow(size.into()) - 1
                     };
-
-                    let (_sign, abs) = val.into_sign_and_abs();
-
-                    if val.signum() <= 0.into() {
-                        Some(Concrete::Uint(size, U256::zero()))
-                    } else if abs < mask {
-                        Some(Concrete::Uint(size, abs))
-                    } else {
-                        Some(Concrete::Uint(size, mask))
-                    }
+                    Some(Concrete::Uint(size, val.into_raw() & mask))
                 }
                 Builtin::Int(size) => {
                     // no op
@@ -555,6 +533,7 @@ impl Concrete {
                 Some(Concrete::Bytes((size / 8) as u8, h))
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0xff; 20]))),
+            Concrete::Bool(_) => Some(Concrete::Bool(true)),
             _ => None,
         }
     }
@@ -631,6 +610,7 @@ impl Concrete {
                 b[19] = 0x01;
                 Some(Concrete::Address(Address::from_slice(&b)))
             }
+            Concrete::Bool(_) => Some(Concrete::Bool(true)),
             _ => None,
         }
     }

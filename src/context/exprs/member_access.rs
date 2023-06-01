@@ -1,3 +1,4 @@
+use crate::context::exprs::env::Env;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{context::exprs::variable::Variable, ContextBuilder, NodeIdx};
@@ -27,7 +28,17 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
     ) -> Result<Vec<FunctionNode>, ExprErr> {
         let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
-                VarType::User(TypeNode::Contract(con_node), _) => con_node.funcs(self),
+                VarType::User(TypeNode::Contract(con_node), _) => {
+                    let mut funcs = con_node.linearized_functions(self);
+                    self
+                    .possible_library_funcs(ctx, con_node.0.into())
+                    .into_iter()
+                    .for_each(|func| {
+                        let name = func.name(self).unwrap();
+                        funcs.entry(name).or_insert(func);
+                    });
+                    funcs.values().copied().collect()
+                },
                 VarType::BuiltIn(bn, _) => self
                     .possible_library_funcs(ctx, bn.0.into())
                     .into_iter()
@@ -291,6 +302,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 .unwrap_or_else(|| "interface".to_string()),
             ident.name
         );
+
         if let Some(func) = con_node
             .funcs(self)
             .into_iter()
@@ -374,7 +386,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     return Err(ExprErr::ContractFunctionNotFound(
                         loc,
                         format!(
-                        "No function or struct with name {:?} in contract: {:?}. Functions: {:?}",
+                        "No function or struct with name {:?} in contract: {:?}. Functions: {:#?}",
                         ident.name,
                         con_node.name(self).unwrap(),
                         con_node
@@ -448,421 +460,8 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
             Node::Ty(_ty) => {
                 self.ty_member_access(member_idx, TyNode::from(member_idx), ident, ctx, loc, None)
             }
-            Node::Msg(_msg) => {
-                let name = format!("msg.{}", ident.name);
-                tracing::trace!("Msg Env member access: {}", name);
-
-                if let Some(attr_var) =
-                    ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)?
-                {
-                    Ok(ExprRet::Single(attr_var.latest_version(self).into()))
-                } else {
-                    let (node, name) = match &*ident.name {
-                        "data" => {
-                            if let Some(d) =
-                                self.msg().underlying(self).into_expr_err(loc)?.data.clone()
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "msg.data".to_string(),
-                                )
-                            } else {
-                                let b = Builtin::DynamicBytes;
-                                let node = self.builtin_or_add(b);
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "msg.data".to_string();
-                                var.display_name = "msg.data".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "sender" => {
-                            if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.sender
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "msg.sender".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Address);
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "msg.sender".to_string();
-                                var.display_name = "msg.sender".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "sig" => {
-                            if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.sig {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "msg.sig".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Bytes(4));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "msg.sig".to_string();
-                                var.display_name = "msg.sig".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "value" => {
-                            if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.value {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "msg.value".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "msg.value".to_string();
-                                var.display_name = "msg.value".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "origin" => {
-                            if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.origin
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "tx.origin".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Address);
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "tx.origin".to_string();
-                                var.display_name = "tx.origin".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "gasprice" => {
-                            if let Some(d) =
-                                self.msg().underlying(self).into_expr_err(loc)?.gasprice
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "tx.gasprice".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(64));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "tx.gasprice".to_string();
-                                var.display_name = "tx.gasprice".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "gaslimit" => {
-                            if let Some(d) =
-                                self.msg().underlying(self).into_expr_err(loc)?.gaslimit
-                            {
-                                let c = Concrete::from(d);
-                                (self.add_node(Node::Concrete(c)).into(), "".to_string())
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(64));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        e => {
-                            return Err(ExprErr::MemberAccessNotFound(
-                                loc,
-                                format!("Unknown member access on msg: {e:?}"),
-                            ))
-                        }
-                    };
-
-                    let mut var =
-                        ContextVar::new_from_concrete(loc, ctx, node, self).into_expr_err(loc)?;
-                    var.name = name.clone();
-                    var.display_name = name;
-                    var.is_tmp = false;
-                    var.is_symbolic = true;
-                    let cvar = self.add_node(Node::ContextVar(var));
-                    ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                    self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                    Ok(ExprRet::Single(cvar))
-                }
-            }
-            Node::Block(_b) => {
-                let name = format!("block.{}", ident.name);
-                tracing::trace!("Block Env member access: {}", name);
-                if let Some(attr_var) =
-                    ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)?
-                {
-                    Ok(ExprRet::Single(attr_var.latest_version(self).into()))
-                } else {
-                    let (node, name) = match &*ident.name {
-                        "hash" => {
-                            if let Some(d) = self.block().underlying(self).into_expr_err(loc)?.hash
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.blockhash".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Bytes(32));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.blockhash".to_string();
-                                var.display_name = "block.blockhash".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "basefee" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.basefee
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.basefee".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.basefee".to_string();
-                                var.display_name = "block.basefee".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "chainid" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.chainid
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.chainid".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.chainid".to_string();
-                                var.display_name = "block.chainid".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "coinbase" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.coinbase
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.coinbase".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Address);
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.coinbase".to_string();
-                                var.display_name = "block.coinbase".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "difficulty" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.difficulty
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.difficulty".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.difficulty".to_string();
-                                var.display_name = "block.difficulty".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "gaslimit" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.gaslimit
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.gaslimit".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.gaslimit".to_string();
-                                var.display_name = "block.gaslimit".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "number" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.number
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.number".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.number".to_string();
-                                var.display_name = "block.number".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "prevrandao" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.prevrandao
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.prevrandao".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.prevrandao".to_string();
-                                var.display_name = "block.prevrandao".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        "timestamp" => {
-                            if let Some(d) =
-                                self.block().underlying(self).into_expr_err(loc)?.timestamp
-                            {
-                                let c = Concrete::from(d);
-                                (
-                                    self.add_node(Node::Concrete(c)).into(),
-                                    "block.timestamp".to_string(),
-                                )
-                            } else {
-                                let node = self.builtin_or_add(Builtin::Uint(256));
-                                let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
-                                    .into_expr_err(loc)?;
-                                var.name = "block.timestamp".to_string();
-                                var.display_name = "block.timestamp".to_string();
-                                var.is_tmp = false;
-                                var.is_symbolic = true;
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                return Ok(ExprRet::Single(cvar));
-                            }
-                        }
-                        e => {
-                            return Err(ExprErr::MemberAccessNotFound(
-                                loc,
-                                format!("Unknown member access on block: {e:?}"),
-                            ))
-                        }
-                    };
-                    let mut var =
-                        ContextVar::new_from_concrete(loc, ctx, node, self).into_expr_err(loc)?;
-                    var.name = name.clone();
-                    var.display_name = name;
-                    var.is_tmp = false;
-                    var.is_symbolic = true;
-                    let cvar = self.add_node(Node::ContextVar(var));
-                    ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-                    self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                    Ok(ExprRet::Single(cvar))
-                }
-            }
+            Node::Msg(_msg) => self.msg_access(loc, ctx, &ident.name),
+            Node::Block(_b) => self.block_access(loc, ctx, &ident.name),
             Node::Builtin(ref _b) => {
                 self.builtin_member_access(loc, ctx, BuiltInNode::from(member_idx), false, ident)
             }
@@ -881,6 +480,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         is_storage: bool,
         ident: &Identifier,
     ) -> Result<ExprRet, ExprErr> {
+        tracing::trace!("Looking for builtin member function");
         if let Some(ret) = self.library_func_search(ctx, node.0.into(), ident) {
             Ok(ret)
         } else {
@@ -1029,6 +629,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         ))
                     }
                 }
+                Builtin::SizedArray(s, _) => Err(ExprErr::MemberAccessNotFound(
+                    loc,
+                    format!(
+                        "Unknown member access on array[{s}]: {:?}, ctx: {}",
+                        ident.name,
+                        ctx.path(self)
+                    ),
+                )),
                 Builtin::Mapping(_, _) => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
@@ -1174,12 +782,13 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         }
 
         // Search for global `using` funcs
-        let source = ctx.associated_source(self);
-        funcs.extend(
-            self.graph().edges_directed(ty, Direction::Outgoing).filter(|edge| {
-                matches!(*edge.weight(), Edge::LibraryFunction(scope) if scope == source)
-            }).map(|edge| edge.target().into()).collect::<BTreeSet<FunctionNode>>()
-        );
+        if let Some(source) = ctx.maybe_associated_source(self) {
+            funcs.extend(
+                self.graph().edges_directed(ty, Direction::Outgoing).filter(|edge| {
+                    matches!(*edge.weight(), Edge::LibraryFunction(scope) if scope == source)
+                }).map(|edge| edge.target().into()).collect::<BTreeSet<FunctionNode>>()
+            );
+        }
 
         funcs
     }
@@ -1296,6 +905,12 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
         if let Some(attr_var) = array_ctx.var_by_name_or_recurse(self, &name).unwrap() {
             attr_var.latest_version(self)
         } else {
+            let range = if let Ok(Some(size)) = arr.ty(self).unwrap().maybe_array_size(self) {
+                SolcRange::from(Concrete::from(size))
+            } else {
+                SolcRange::try_from_builtin(&Builtin::Uint(256))
+            };
+
             let len_var = ContextVar {
                 loc: Some(loc),
                 name: arr.name(self).unwrap() + ".length",
@@ -1307,7 +922,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                 is_return: false,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
-                    SolcRange::try_from_builtin(&Builtin::Uint(256)),
+                    range,
                 ),
             };
             let len_node = self.add_node(Node::ContextVar(len_var));
@@ -1410,6 +1025,14 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         .into_expr_err(loc)?;
                     Ok(())
                 } else {
+                    let range = if let Ok(Some(size)) =
+                        arr.ty(self).into_expr_err(loc)?.maybe_array_size(self)
+                    {
+                        SolcRange::from(Concrete::from(size))
+                    } else {
+                        SolcRange::try_from_builtin(&Builtin::Uint(256))
+                    };
+
                     let len_var = ContextVar {
                         loc: Some(loc),
                         name,
@@ -1421,7 +1044,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                         is_return: false,
                         ty: VarType::BuiltIn(
                             BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
-                            SolcRange::try_from_builtin(&Builtin::Uint(256)),
+                            range,
                         ),
                     };
                     let len_node = self.add_node(Node::ContextVar(len_var));

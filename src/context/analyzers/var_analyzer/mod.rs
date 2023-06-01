@@ -172,7 +172,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
                         .map(|body| LocStrSpan::new(file_mapping, body.loc())),
                 )
             } else {
-                let fn_call = ctx.underlying(self).unwrap().parent_fn;
+                let fn_call = ctx.associated_fn(self).unwrap();
                 (
                     LocStrSpan::new(file_mapping, fn_call.underlying(self).unwrap().loc),
                     fn_call

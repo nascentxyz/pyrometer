@@ -68,6 +68,20 @@ impl VarType {
         }
     }
 
+    pub fn possible_builtins_from_ty_inf(&self, analyzer: &impl GraphLike) -> Vec<Builtin> {
+        match self {
+            Self::BuiltIn(bn, _) => bn
+                .underlying(analyzer)
+                .unwrap()
+                .possible_builtins_from_ty_inf(),
+            Self::Concrete(c) => c
+                .underlying(analyzer)
+                .unwrap()
+                .possible_builtins_from_ty_inf(),
+            _ => vec![],
+        }
+    }
+
     pub fn ty_idx(&self) -> NodeIdx {
         match self {
             Self::User(ty_node, _) => (*ty_node).into(),
@@ -599,6 +613,24 @@ impl VarType {
         }
     }
 
+    pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => Ok(node.is_sized_array(analyzer)?),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be a Builtin but it was: {e:?}"
+            ))),
+        }
+    }
+
+    pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => node.maybe_array_size(analyzer),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be a Builtin but it was: {e:?}"
+            ))),
+        }
+    }
+
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => Ok(node.is_dyn(analyzer)?),
@@ -616,6 +648,10 @@ impl VarType {
                     (Builtin::Array(l), Builtin::Array(r)) => Ok(l
                         .unresolved_as_resolved(analyzer)?
                         == r.unresolved_as_resolved(analyzer)?),
+                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => Ok(l
+                        .unresolved_as_resolved(analyzer)?
+                        == r.unresolved_as_resolved(analyzer)?
+                        && l_size == r_size),
                     (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => Ok(lk
                         .unresolved_as_resolved(analyzer)?
                         == rk.unresolved_as_resolved(analyzer)?
@@ -758,7 +794,9 @@ impl BuiltInNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<VarType, GraphError> {
         match self.underlying(analyzer)? {
-            Builtin::Array(v_ty) => v_ty.unresolved_as_resolved(analyzer),
+            Builtin::Array(v_ty) | Builtin::SizedArray(_, v_ty) => {
+                v_ty.unresolved_as_resolved(analyzer)
+            }
             Builtin::Mapping(_, v_ty) => v_ty.unresolved_as_resolved(analyzer),
             Builtin::DynamicBytes | Builtin::Bytes(_) => Ok(VarType::BuiltIn(
                 analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
@@ -776,6 +814,21 @@ impl BuiltInNode {
 
     pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(matches!(self.underlying(analyzer)?, Builtin::Mapping(_, _)))
+    }
+
+    pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(matches!(
+            self.underlying(analyzer)?,
+            Builtin::SizedArray(_, _)
+        ))
+    }
+
+    pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
+        if let Builtin::SizedArray(s, _) = self.underlying(analyzer)? {
+            Ok(Some(*s))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -812,35 +865,56 @@ pub enum Builtin {
     Rational,
     DynamicBytes,
     Array(VarType),
+    SizedArray(U256, VarType),
     Mapping(VarType, VarType),
     Func(Vec<VarType>, Vec<VarType>),
 }
 
 impl Builtin {
-    // pub fn resolved_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
-    //     match (self, other) => {
-    //         (
-    //             Array(inner_l), Array(inner_r)
-    //         ) => {
-    //             Array(inner_l.unresolved_as_resolved(analyzer)).resolved_eq(
-    //                 Array(inner_r.unresolved_as_resolved(analyzer))
-    //             )
-    //         }
-    //     }
-    // }
-
     pub fn unresolved_as_resolved(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Self, GraphError> {
         match self {
             Builtin::Array(n) => Ok(Builtin::Array(n.unresolved_as_resolved(analyzer)?)),
+            Builtin::SizedArray(s, n) => {
+                Ok(Builtin::SizedArray(*s, n.unresolved_as_resolved(analyzer)?))
+            }
             Builtin::Mapping(k, v) => Ok(Builtin::Mapping(
                 k.unresolved_as_resolved(analyzer)?,
                 v.unresolved_as_resolved(analyzer)?,
             )),
             _ => Ok(self.clone()),
         }
+    }
+
+    pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
+        let mut builtins = vec![];
+        match self {
+            Builtin::Uint(size) => {
+                let mut s = *size;
+                while s > 0 {
+                    builtins.push(Builtin::Uint(s));
+                    s -= 8;
+                }
+            }
+            Builtin::Int(size) => {
+                let mut s = *size;
+                while s > 0 {
+                    builtins.push(Builtin::Int(s));
+                    s -= 8;
+                }
+            }
+            Builtin::Bytes(size) => {
+                let mut s = *size;
+                while s > 0 {
+                    builtins.push(Builtin::Bytes(s));
+                    s -= 1;
+                }
+            }
+            _ => {}
+        }
+        builtins
     }
 
     pub fn zero_range(&self) -> Option<SolcRange> {
@@ -864,6 +938,16 @@ impl Builtin {
                 }));
                 Some(SolcRange::new(zero.clone(), zero, vec![]))
             }
+            Builtin::SizedArray(s, _) => {
+                let sized = Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
+                    len: Elem::from(Concrete::from(*s)),
+                    val: Default::default(),
+                    loc: Loc::Implicit,
+                }));
+                Some(SolcRange::new(sized.clone(), sized, vec![]))
+            }
             Builtin::Rational | Builtin::Func(_, _) => None,
         }
     }
@@ -884,8 +968,8 @@ impl Builtin {
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
             Mapping { key, value, .. } => {
-                let key_idx = analyzer.parse_expr(&key);
-                let val_idx = analyzer.parse_expr(&value);
+                let key_idx = analyzer.parse_expr(&key, None);
+                let val_idx = analyzer.parse_expr(&value, None);
                 let key_var_ty = VarType::try_from_idx(analyzer, key_idx)?;
                 let val_var_ty = VarType::try_from_idx(analyzer, val_idx)?;
                 Some(Builtin::Mapping(key_var_ty, val_var_ty))
@@ -898,7 +982,7 @@ impl Builtin {
                 let inputs = params
                     .iter()
                     .filter_map(|(_, param)| param.as_ref())
-                    .map(|param| analyzer.parse_expr(&param.ty))
+                    .map(|param| analyzer.parse_expr(&param.ty, None))
                     .collect::<Vec<_>>();
                 let inputs = inputs
                     .iter()
@@ -909,7 +993,7 @@ impl Builtin {
                     let tmp_outputs = params
                         .iter()
                         .filter_map(|(_, param)| param.as_ref())
-                        .map(|param| analyzer.parse_expr(&param.ty))
+                        .map(|param| analyzer.parse_expr(&param.ty, None))
                         .collect::<Vec<_>>();
                     outputs = tmp_outputs
                         .iter()
@@ -927,12 +1011,19 @@ impl Builtin {
     pub fn is_dyn(&self) -> bool {
         matches!(
             self,
-            Builtin::DynamicBytes | Builtin::Array(..) | Builtin::Mapping(..) | Builtin::String
+            Builtin::DynamicBytes
+                | Builtin::Array(..)
+                | Builtin::SizedArray(..)
+                | Builtin::Mapping(..)
+                | Builtin::String
         )
     }
 
     pub fn requires_input(&self) -> bool {
-        matches!(self, Builtin::Array(..) | Builtin::Mapping(..))
+        matches!(
+            self,
+            Builtin::Array(..) | Builtin::SizedArray(..) | Builtin::Mapping(..)
+        )
     }
 
     pub fn num_size(&self) -> Option<u16> {
@@ -990,6 +1081,11 @@ impl Builtin {
             Array(v_ty) => Ok(format!(
                 "{}[]",
                 v_ty.unresolved_as_resolved(analyzer)?.as_string(analyzer)?
+            )),
+            SizedArray(s, v_ty) => Ok(format!(
+                "{}[{}]",
+                v_ty.unresolved_as_resolved(analyzer)?.as_string(analyzer)?,
+                s
             )),
             Mapping(key_ty, v_ty) => Ok(format!(
                 "mapping ({} => {})",

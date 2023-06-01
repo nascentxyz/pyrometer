@@ -175,36 +175,41 @@ impl<'a> FunctionVarsBoundAnalysis {
                         analysis.spanned_ctx_info.iter().for_each(|ctx_switch| {
                             if !handled_ctx_switches.contains(ctx_switch) {
                                 handled_ctx_switches.insert(ctx_switch);
-                                labels.extend(
-                                    ctx_switch
-                                        .ctx
-                                        .return_nodes(analyzer)
-                                        .unwrap()
-                                        .into_iter()
-                                        .filter_map(|(loc, var)| {
-                                            let range = var.ref_range(analyzer).unwrap()?;
-                                            let (parts, _unsat) =
-                                                range_parts(analyzer, &self.report_config, &range);
-                                            Some(
-                                                Label::new(LocStrSpan::new(file_mapping, loc))
-                                                    .with_message(
-                                                        format!(
-                                                            "returns: \"{}\"{}",
-                                                            var.display_name(analyzer).unwrap(),
-                                                            parts
-                                                                .into_iter()
-                                                                .map(|i| i.to_cli_string())
-                                                                .collect::<Vec<_>>()
-                                                                .join(", ")
+                                if ctx_switch.ctx != *ctx {
+                                    labels.extend(
+                                        ctx_switch
+                                            .ctx
+                                            .return_nodes(analyzer)
+                                            .unwrap()
+                                            .into_iter()
+                                            .filter_map(|(loc, var)| {
+                                                let range = var.ref_range(analyzer).unwrap()?;
+                                                let (parts, _unsat) = range_parts(
+                                                    analyzer,
+                                                    &self.report_config,
+                                                    &range,
+                                                );
+                                                Some(
+                                                    Label::new(LocStrSpan::new(file_mapping, loc))
+                                                        .with_message(
+                                                            format!(
+                                                                "returns: \"{}\"{}",
+                                                                var.display_name(analyzer).unwrap(),
+                                                                parts
+                                                                    .into_iter()
+                                                                    .map(|i| i.to_cli_string())
+                                                                    .collect::<Vec<_>>()
+                                                                    .join(", ")
+                                                            )
+                                                            .fg(Color::Yellow),
                                                         )
-                                                        .fg(Color::Yellow),
-                                                    )
-                                                    .with_color(Color::Yellow)
-                                                    .with_order(50),
-                                            )
-                                        })
-                                        .collect::<Vec<_>>(),
-                                );
+                                                        .with_color(Color::Yellow)
+                                                        .with_order(50),
+                                                )
+                                            })
+                                            .collect::<Vec<_>>(),
+                                    );
+                                }
                                 if ctx_switch.ctx == *ctx {
                                     if let Some((killed_loc, kind)) = &ctx_switch.killed_loc {
                                         labels.push(
@@ -232,39 +237,38 @@ impl<'a> FunctionVarsBoundAnalysis {
                     }
                 }
 
-                if !self_handled {
-                    labels.extend(
-                        ctx.return_nodes(analyzer)
-                            .unwrap()
-                            .into_iter()
-                            .filter_map(|(loc, var)| {
-                                let range = var.ref_range(analyzer).unwrap()?;
-                                let (parts, _unsat) =
-                                    range_parts(analyzer, &self.report_config, &range);
-                                Some(
-                                    Label::new(LocStrSpan::new(file_mapping, loc))
-                                        .with_message(
-                                            format!(
-                                                "returns: \"{}\"{}",
-                                                var.display_name(analyzer).unwrap(),
-                                                parts
-                                                    .into_iter()
-                                                    .map(|i| i.to_cli_string())
-                                                    .collect::<Vec<_>>()
-                                                    .join(", ")
-                                            )
-                                            .fg(Color::Yellow),
-                                        )
-                                        .with_color(Color::Yellow)
-                                        .with_order(50),
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    );
-                    if let Some(body) = ctx
-                        .underlying(analyzer)
+                labels.extend(
+                    ctx.return_nodes(analyzer)
                         .unwrap()
-                        .parent_fn
+                        .into_iter()
+                        .filter_map(|(loc, var)| {
+                            let range = var.ref_range(analyzer).unwrap()?;
+                            let (parts, _unsat) =
+                                range_parts(analyzer, &self.report_config, &range);
+                            Some(
+                                Label::new(LocStrSpan::new(file_mapping, loc))
+                                    .with_message(
+                                        format!(
+                                            "returns: \"{}\"{}",
+                                            var.display_name(analyzer).unwrap(),
+                                            parts
+                                                .into_iter()
+                                                .map(|i| i.to_cli_string())
+                                                .collect::<Vec<_>>()
+                                                .join(", ")
+                                        )
+                                        .fg(Color::Yellow),
+                                    )
+                                    .with_color(Color::Yellow)
+                                    .with_order(50),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+                if !self_handled {
+                    if let Some(body) = ctx
+                        .associated_fn(analyzer)
+                        .unwrap()
                         .underlying(analyzer)
                         .unwrap()
                         .body
@@ -307,6 +311,11 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                         fork.underlying(self).unwrap().killed,
                         Some((_, KilledKind::Unreachable))
                     )
+                {
+                    return None;
+                }
+                if !report_config.show_nonreverts
+                    && matches!(fork.underlying(self).unwrap().killed, None)
                 {
                     return None;
                 }

@@ -1,5 +1,5 @@
 use crate::as_dot_str;
-use crate::FunctionNode;
+
 use crate::FunctionParamNode;
 
 use crate::range::Range;
@@ -93,7 +93,7 @@ pub trait AnalyzerLike: GraphLike {
     }
     fn user_types(&self) -> &HashMap<String, NodeIdx>;
     fn user_types_mut(&mut self) -> &mut HashMap<String, NodeIdx>;
-    fn parse_expr(&mut self, expr: &Self::Expr) -> NodeIdx;
+    fn parse_expr(&mut self, expr: &Self::Expr, parent: Option<NodeIdx>) -> NodeIdx;
     fn msg(&mut self) -> MsgNode;
     fn block(&mut self) -> BlockNode;
     fn entry(&self) -> NodeIdx;
@@ -155,22 +155,24 @@ pub trait GraphLike {
         use std::fs;
         use std::io::Write;
         use std::process::Command;
-        let mut dir = temp_dir();
+        let temp_dir = temp_dir();
         let file_name = "dot.dot";
-        dir.push(file_name);
+        let mut temp_path = temp_dir.clone();
+        temp_path.push(file_name);
+        let temp_svg_filename: String = format!("{}/dot.svg", &temp_dir.to_string_lossy());
 
-        let mut file = fs::File::create(dir.clone()).unwrap();
+        let mut file = fs::File::create(temp_path.clone()).unwrap();
         file.write_all(self.dot_str().as_bytes()).unwrap();
         Command::new("dot")
             .arg("-Tsvg")
-            .arg(dir)
+            .arg(temp_path)
             .arg("-o")
-            .arg("dot.svg")
+            .arg(&temp_svg_filename)
             .output()
-            .expect("failed to execute process");
+            .expect("You may need to install graphviz, check if command 'dot' is in your $PATH");
         Command::new("open")
-            .arg("dot.svg")
-            .output()
+            .arg(&temp_svg_filename)
+            .spawn()
             .expect("failed to execute process");
     }
 

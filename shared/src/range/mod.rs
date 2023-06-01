@@ -279,6 +279,23 @@ impl SolcRange {
                 })),
                 vec![],
             )),
+            Builtin::SizedArray(s, _) => Some(SolcRange::new(
+                Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
+                    len: Elem::from(Concrete::from(*s)),
+                    val: Default::default(),
+                    loc: Loc::Implicit,
+                })),
+                Elem::ConcreteDyn(Box::new(RangeDyn {
+                    minimized: None,
+                    maximized: None,
+                    len: Elem::from(Concrete::from(*s)),
+                    val: Default::default(),
+                    loc: Loc::Implicit,
+                })),
+                vec![],
+            )),
             _ => None,
         }
     }
@@ -327,7 +344,8 @@ impl SolcRange {
             RangeOp::Sub(true) => &Self::wrapping_sub_dyn,
             RangeOp::Mul(false) => &Self::mul_dyn,
             RangeOp::Mul(true) => &Self::wrapping_mul_dyn,
-            RangeOp::Div(..) => &Self::div_dyn,
+            RangeOp::Div(false) => &Self::div_dyn,
+            RangeOp::Div(true) => &Self::wrapping_mul_dyn,
             RangeOp::Shr => &Self::shr_dyn,
             RangeOp::Shl => &Self::shl_dyn,
             RangeOp::Mod => &Self::mod_dyn,
@@ -440,6 +458,14 @@ impl SolcRange {
         Self::new(self.min / elem.clone(), self.max / elem, self.exclusions)
     }
 
+    pub fn wrapping_div_dyn(self, other: ContextVarNode) -> Self {
+        Self::new(
+            self.min.wrapping_div(Elem::from(other)),
+            self.max.wrapping_div(Elem::from(other)),
+            self.exclusions,
+        )
+    }
+
     pub fn shl_dyn(self, other: ContextVarNode) -> Self {
         Self::new(
             self.min << Elem::from(other),
@@ -540,9 +566,11 @@ impl Range<Concrete> for SolcRange {
     }
 
     fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
+        println!("simplified range min");
         self.range_min().simplify_minimize(analyzer)
     }
     fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
+        println!("simplified range max");
         self.range_max().simplify_maximize(analyzer)
     }
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
@@ -676,19 +704,25 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     }
 
     fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphLike) -> bool {
-        let min_contains = matches!(
-            self.evaled_range_min(analyzer)
-                .unwrap()
-                .range_ord(&other.minimize(analyzer).unwrap()),
-            Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
-        );
+        let min_contains = match self
+            .evaled_range_min(analyzer)
+            .unwrap()
+            .range_ord(&other.minimize(analyzer).unwrap())
+        {
+            Some(std::cmp::Ordering::Less) => true,
+            Some(std::cmp::Ordering::Equal) => return true,
+            _ => false,
+        };
 
-        let max_contains = matches!(
-            self.evaled_range_max(analyzer)
-                .unwrap()
-                .range_ord(&other.maximize(analyzer).unwrap()),
-            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
-        );
+        let max_contains = match self
+            .evaled_range_max(analyzer)
+            .unwrap()
+            .range_ord(&other.maximize(analyzer).unwrap())
+        {
+            Some(std::cmp::Ordering::Greater) => true,
+            Some(std::cmp::Ordering::Equal) => return true,
+            _ => false,
+        };
 
         min_contains && max_contains
     }

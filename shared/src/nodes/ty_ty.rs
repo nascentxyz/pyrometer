@@ -70,7 +70,7 @@ impl Ty {
     ) -> Ty {
         Ty {
             loc: ty.loc,
-            ty: analyzer.parse_expr(&ty.ty),
+            ty: analyzer.parse_expr(&ty.ty, None),
             name: ty.name,
         }
     }

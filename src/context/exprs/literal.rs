@@ -32,7 +32,7 @@ pub trait Literal: AnalyzerLike + Sized {
         let int = U256::from_dec_str(integer).unwrap();
         let val = if !exponent.is_empty() {
             let exp = U256::from_dec_str(exponent).unwrap();
-            int.pow(exp)
+            int * U256::from(10).pow(exp)
         } else {
             int
         };

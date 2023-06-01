@@ -59,3 +59,27 @@ contract ExternalFuncCalls {
         require(z2 == 4);
     }
 }
+
+contract K {
+    struct L {
+        uint b;
+        uint c;
+    }
+
+    function foo() internal {
+        L memory l = L(2, 3);
+        require(l.b == 2);
+        require(l.c == 3);
+    }
+}
+
+
+contract Disambiguation {
+    function foo(address from, address to, uint256 id) public {
+        foo(from, to, id, 0);
+    }
+
+    function foo(address from, address to, uint256 id, uint num) internal {}
+
+    function foo(address by, address from, address to, uint256 id) internal {}
+}

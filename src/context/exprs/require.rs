@@ -1,10 +1,10 @@
-use crate::context::exprs::cmp::Cmp;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
     exprs::{BinOp, Variable},
     AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, Node,
 };
+use shared::range::elem_ty::RangeExpr;
 use shared::range::range_string::ToRangeString;
 
 use shared::{
@@ -34,9 +34,12 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
             Expression::More(loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
             Expression::MoreEqual(loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
             Expression::LessEqual(loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
-            Expression::Not(loc, lhs) => {
-                Expression::Equal(loc, lhs, Box::new(Expression::BoolLiteral(loc, true)))
-            }
+            // Expression::And(loc, lhs, rhs) => {
+            //     Expression::Or(loc, Box::new(self.inverse_expr(*lhs)), Box::new(self.inverse_expr(*rhs)))
+            // }
+            // Expression::Not(loc, lhs) => {
+            //     Expression::Equal(loc, lhs, Box::new(Expression::BoolLiteral(loc, true)))
+            // }
             e => Expression::Not(e.loc(), Box::new(e)),
         }
     }
@@ -280,38 +283,98 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 })
             }
             Expression::And(loc, lhs, rhs) => {
-                self.cmp(*loc, lhs, RangeOp::And, rhs, ctx)?;
+                self.parse_ctx_expr(lhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `&&` had no left hand side".to_string()))
                     };
+
                     if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
                         ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
-                    let tmp_true = Node::ContextVar(
-                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
-                            .into_expr_err(loc)?,
-                    );
-                    let node = analyzer.add_node(tmp_true);
-                    ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
-                    analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    let rhs_paths = ExprRet::Single(node);
 
-                    analyzer.handle_require_inner(
-                        ctx,
-                        loc,
-                        &lhs_paths,
-                        &rhs_paths,
-                        RangeOp::Eq,
-                        RangeOp::Neq,
-                        (RangeOp::Neq, RangeOp::Eq),
-                    )
+                    analyzer.parse_ctx_expr(rhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `&&` had no left hand side".to_string()))
+                        };
+
+                        if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+
+                        let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
+                        let tmp_true = Node::ContextVar(
+                            ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                                .into_expr_err(loc)?,
+                        );
+                        let node = analyzer.add_node(tmp_true);
+                        ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
+                        analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                        let tmp_rhs_paths = ExprRet::Single(node);
+
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &lhs_paths,
+                            &tmp_rhs_paths,
+                            RangeOp::Eq,
+                            RangeOp::Neq,
+                            (RangeOp::Neq, RangeOp::Eq),
+                        )?;
+
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &rhs_paths,
+                            &tmp_rhs_paths,
+                            RangeOp::Eq,
+                            RangeOp::Neq,
+                            (RangeOp::Neq, RangeOp::Eq),
+                        )?;
+
+
+                        // update the part's bounds
+                        let lhs_cvar = ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
+                        let underlying = lhs_cvar.underlying(analyzer).into_expr_err(loc)?;
+                        if let Some(tmp) = underlying.tmp_of {
+                            if let Some((op, inv_op, pair)) = tmp.op.require_parts() {
+                                analyzer.handle_require_inner(
+                                    ctx,
+                                    loc,
+                                    &ExprRet::Single(tmp.lhs.into()),
+                                    &ExprRet::Single(tmp.rhs.unwrap().into()),
+                                    op,
+                                    inv_op,
+                                    pair,
+                                )?;
+                            }
+                        }
+
+                        // update the part's bounds
+                        let rhs_cvar = ContextVarNode::from(rhs_paths.expect_single().into_expr_err(loc)?);
+                        let underlying = rhs_cvar.underlying(analyzer).into_expr_err(loc)?;
+                        if let Some(tmp) = underlying.tmp_of {
+                            if let Some((op, inv_op, pair)) = tmp.op.require_parts() {
+                                analyzer.handle_require_inner(
+                                    ctx,
+                                    loc,
+                                    &ExprRet::Single(tmp.lhs.into()),
+                                    &ExprRet::Single(tmp.rhs.unwrap().into()),
+                                    op,
+                                    inv_op,
+                                    pair,
+                                )?;
+                            }
+                        }
+                        Ok(())
+                    })
                 })
             }
             Expression::Or(loc, lhs, rhs) => {
-                self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx)?;
+                self.parse_ctx_expr(lhs, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(loc, "Require operation `||` had no left hand side".to_string()))
@@ -320,24 +383,67 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
-                    let tmp_true = Node::ContextVar(
-                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
-                            .into_expr_err(loc)?,
-                    );
-                    let node = analyzer.add_node(tmp_true);
-                    ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
-                    analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    let rhs_paths = ExprRet::Single(node);
-                    analyzer.handle_require_inner(
-                        ctx,
-                        loc,
-                        &lhs_paths,
-                        &rhs_paths,
-                        RangeOp::Eq,
-                        RangeOp::Neq,
-                        (RangeOp::Neq, RangeOp::Eq),
-                    )
+
+                    analyzer.parse_ctx_expr(rhs, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(loc, "Require operation `||` had no left hand side".to_string()))
+                        };
+
+                        if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+
+                        let lhs_cvar = ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
+                        let rhs_cvar = ContextVarNode::from(rhs_paths.expect_single().into_expr_err(loc)?);
+
+                        let elem = Elem::Expr(RangeExpr::new(lhs_cvar.into(), RangeOp::Or, rhs_cvar.into()));
+                        let range = SolcRange::new(elem.clone(), elem, vec![]);
+
+                        let new_lhs_underlying = ContextVar {
+                            loc: Some(loc),
+                            name: format!(
+                                "tmp{}({} {} {})",
+                                ctx.new_tmp(analyzer).into_expr_err(loc)?,
+                                lhs_cvar.name(analyzer).into_expr_err(loc)?,
+                                RangeOp::Or.to_string(),
+                                rhs_cvar.name(analyzer).into_expr_err(loc)?
+                            ),
+                            display_name: format!(
+                                "({} {} {})",
+                                lhs_cvar.display_name(analyzer).into_expr_err(loc)?,
+                                RangeOp::Or.to_string(),
+                                rhs_cvar.display_name(analyzer).into_expr_err(loc)?
+                            ),
+                            storage: None,
+                            is_tmp: true,
+                            is_symbolic: lhs_cvar.is_symbolic(analyzer).into_expr_err(loc)?
+                                || rhs_cvar.is_symbolic(analyzer).into_expr_err(loc)?,
+                            is_return: false,
+                            tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::Or, Some(rhs_cvar))),
+                            ty: VarType::BuiltIn(analyzer.builtin_or_add(Builtin::Bool).into(), Some(range))
+                        };
+                        let or_var = ContextVarNode::from(analyzer.add_node(Node::ContextVar(new_lhs_underlying)));
+                        let cnode = ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
+                        let tmp_true = Node::ContextVar(
+                            ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
+                                .into_expr_err(loc)?,
+                        );
+                        let node = analyzer.add_node(tmp_true);
+                        ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
+                        analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                        let rhs_paths = ExprRet::Single(node);
+                        analyzer.handle_require_inner(
+                            ctx,
+                            loc,
+                            &ExprRet::Single(or_var.into()),
+                            &rhs_paths,
+                            RangeOp::Eq,
+                            RangeOp::Neq,
+                            (RangeOp::Neq, RangeOp::Eq),
+                        )
+                    })
                 })
             }
             other => {
@@ -504,7 +610,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
+                // println!("is const: {lhs_is_const},[{}, {}]", new_lhs.evaled_range_min(self).unwrap().expect("REASON").to_range_string(false, self).s, new_lhs.evaled_range_max(self).unwrap().expect("REASON").to_range_string(true, self).s);
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
+                // println!("is const: {rhs_is_const}, [{}, {}]", new_rhs.evaled_range_min(self).unwrap().expect("REASON").to_range_string(false, self).s, new_rhs.evaled_range_max(self).unwrap().expect("REASON").to_range_string(true, self).s);
                 match (lhs_is_const, rhs_is_const) {
                     (true, true) => {
                         if self.const_killable(op, lhs_range, rhs_range) {
@@ -517,7 +625,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         // flip the new range around to be in terms of rhs
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
-
                         if self
                             .update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
                         {
@@ -528,6 +635,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     }
                     (false, true) => {
                         if self.update_nonconst_from_const(loc, op, new_rhs, new_lhs, lhs_range)? {
+                            tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -782,11 +890,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // mins are equivalent, add 1 instead of adding an exclusion
-                    let Some(min) = nonconst_range
-                        .evaled_range_min(self)
-                        .into_expr_err(loc)?
+                    let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
+                    let Some(min) = min
                         .maybe_concrete() else {
-                        panic!("min: {:?}, max: {:?}", nonconst_range.evaled_range_min(self), nonconst_range.evaled_range_max(self));
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(false, self).s)));
                     };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
@@ -797,11 +904,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // maxs are equivalent, subtract 1 instead of adding an exclusion
-                    let max = nonconst_range
-                        .evaled_range_max(self)
-                        .into_expr_err(loc)?
-                        .maybe_concrete()
-                        .expect("Was not concrete");
+                    let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
+
+                    let Some(max) = max.maybe_concrete() else {
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                    };
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
                     nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
@@ -828,7 +935,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let max_conc = max.maybe_concrete().expect("Was not concrete");
+                let Some(max_conc) = max.maybe_concrete() else {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                };
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
                 nonconst_var
                     .set_range_min(
@@ -870,7 +979,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let min_conc = min.maybe_concrete().expect("Was not concrete");
+
+                let Some(min_conc) = min.maybe_concrete() else {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(true, self).s)));
+                };
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
                 nonconst_var
@@ -998,14 +1110,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 let Some(max_conc) = max.maybe_concrete() else {
-                    match lhs_range.max {
-                        Elem::Expr(expr) => {
-                            let _lhs = expr.lhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            let _rhs = expr.rhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            // println!("{} != {}", lhs, rhs);
-                        }
-                        _ => println!("other"),
-                    }
                     return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
                 };
 
@@ -1158,10 +1262,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
     ) -> Result<(), ExprErr> {
         tracing::trace!("Recursing through range");
         // handle lhs
-        let inverse = tmp_construction
+        let Some(inverse) = tmp_construction
             .op
-            .inverse()
-            .expect("impossible to not invert op");
+            .inverse() else {
+            return Ok(());
+        };
 
         if !tmp_construction.lhs.is_const(self).into_expr_err(loc)? {
             tracing::trace!("handling lhs range recursion");
@@ -1306,6 +1411,28 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         (false, new_rhs)
                     }
                     RangeOp::Shr => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Eq => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Neq => {
                         let new_rhs =
                             self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
                         if matches!(new_rhs, ExprRet::CtxKilled(_)) {

@@ -98,7 +98,7 @@ impl ErrorParam {
     ) -> Self {
         ErrorParam {
             loc: param.loc,
-            ty: analyzer.parse_expr(&param.ty),
+            ty: analyzer.parse_expr(&param.ty, None),
             name: param.name,
         }
     }

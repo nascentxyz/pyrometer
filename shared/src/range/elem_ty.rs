@@ -99,11 +99,60 @@ impl RangeElem<Concrete> for Dynamic {
         }
     }
 
-    fn simplify_maximize(&self, _: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        // let cvar = ContextVarNode::from(self.idx);
+        // if cvar.is_symbolic(analyzer)? {
         Ok(Elem::Dynamic(self.clone()))
+        // }
+        // if !cvar.is_tmp(analyzer)? {
+        //     return Ok(Elem::Dynamic(self.clone()))
+        // }
+        // let cvar = cvar.underlying(analyzer)?;
+        // match &cvar.ty {
+        //     VarType::User(TypeNode::Contract(_), maybe_range)
+        //     | VarType::User(TypeNode::Enum(_), maybe_range)
+        //     | VarType::User(TypeNode::Ty(_), maybe_range)
+        //     | VarType::BuiltIn(_, maybe_range) => {
+        //         if let Some(range) = maybe_range {
+        //             range.simplified_range_max(analyzer)
+        //         } else {
+        //             Ok(Elem::Dynamic(self.clone()))
+        //         }
+        //     }
+        //     VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
+        //         val: concrete_node.underlying(analyzer)?.clone(),
+        //         loc: cvar.loc.unwrap_or(Loc::Implicit),
+        //     })),
+        //     _e => Ok(Elem::Dynamic(self.clone())),
+        // }
     }
-    fn simplify_minimize(&self, _: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+        // let cvar = ContextVarNode::from(self.idx);
+        // if cvar.is_symbolic(analyzer)? {
         Ok(Elem::Dynamic(self.clone()))
+        // }
+        // if !cvar.is_tmp(analyzer)? {
+        //     return Ok(Elem::Dynamic(self.clone()))
+        // }
+        // let cvar = cvar.underlying(analyzer)?;
+
+        // match &cvar.ty {
+        //     VarType::User(TypeNode::Contract(_), maybe_range)
+        //     | VarType::User(TypeNode::Enum(_), maybe_range)
+        //     | VarType::User(TypeNode::Ty(_), maybe_range)
+        //     | VarType::BuiltIn(_, maybe_range) => {
+        //         if let Some(range) = maybe_range {
+        //             range.simplified_range_min(analyzer)
+        //         } else {
+        //             Ok(Elem::Dynamic(self.clone()))
+        //         }
+        //     }
+        //     VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
+        //         val: concrete_node.underlying(analyzer)?.clone(),
+        //         loc: cvar.loc.unwrap_or(Loc::Implicit),
+        //     })),
+        //     _e => Ok(Elem::Dynamic(self.clone())),
+        // }
     }
 
     fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
@@ -303,6 +352,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => self_val == other_val,
             _ => match (&self.val, &other.val) {
+                (Concrete::Int(_, s), Concrete::Int(_, o)) => s == o,
                 (Concrete::DynBytes(s), Concrete::DynBytes(o)) => s == o,
                 (Concrete::String(s), Concrete::String(o)) => s == o,
                 (Concrete::DynBytes(s), Concrete::String(o)) => s == o.as_bytes(),
@@ -508,6 +558,22 @@ pub enum Elem<T> {
     Expr(RangeExpr<T>),
     /// A null range element useful in range expressions that dont have a rhs
     Null,
+}
+
+impl std::fmt::Display for Elem<Concrete> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Elem::Dynamic(Dynamic { idx, .. }) => write!(f, "idx_{}", idx.index()),
+            Elem::ConcreteDyn(..) => write!(f, "range_elem"),
+            Elem::Concrete(RangeConcrete { val, .. }) => {
+                write!(f, "{}", val.as_string())
+            }
+            Elem::Expr(RangeExpr { lhs, op, rhs, .. }) => {
+                write!(f, "({} {} {})", op.to_string(), lhs, rhs)
+            }
+            _ => write!(f, ""),
+        }
+    }
 }
 
 impl From<Concrete> for Elem<Concrete> {
@@ -913,6 +979,10 @@ impl Elem<Concrete> {
         let expr = RangeExpr::new(self, RangeOp::Mul(true), other);
         Self::Expr(expr)
     }
+    pub fn wrapping_div(self, other: Elem<Concrete>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Div(true), other);
+        Self::Expr(expr)
+    }
 
     /// Creates a logical AND of two range elements
     pub fn and(self, other: Self) -> Self {
@@ -945,7 +1015,15 @@ impl Elem<Concrete> {
 pub trait ExecOp<T> {
     /// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
     /// and right-hand-side
-    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError> {
+        self.exec(self.spread(analyzer)?, maximize)
+    }
+
+    fn exec(
+        &self,
+        parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
+        maximize: bool,
+    ) -> Result<Elem<T>, GraphError>;
     /// Cache execution
     fn cache_exec_op(
         &mut self,
@@ -953,14 +1031,32 @@ pub trait ExecOp<T> {
         analyzer: &impl GraphLike,
     ) -> Result<(), GraphError>;
 
+    fn spread(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), GraphError>;
+
+    fn simplify_spread(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), GraphError>;
+
     fn uncache_exec(&mut self);
 
-    /// Attempts to simplify an expression (i.e. just apply constant folding)
     fn simplify_exec_op(
         &self,
         maximize: bool,
         analyzer: &impl GraphLike,
     ) -> Result<Elem<T>, GraphError>;
+
+    /// Attempts to simplify an expression (i.e. just apply constant folding)
+    fn simplify_exec(
+        &self,
+        parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
+        maximize: bool,
+    ) -> Result<Elem<T>, GraphError> {
+        self.exec(parts, maximize)
+    }
 }
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
@@ -987,18 +1083,65 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         self.rhs.uncache();
     }
 
-    fn exec_op(
+    fn simplify_exec_op(
         &self,
         maximize: bool,
         analyzer: &impl GraphLike,
     ) -> Result<Elem<Concrete>, GraphError> {
+        let parts = self.simplify_spread(analyzer)?;
+        self.exec(parts, maximize)
+    }
+
+    fn spread(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<
+        (
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+        ),
+        GraphError,
+    > {
         let lhs_min = self.lhs.minimize(analyzer)?;
         let lhs_max = self.lhs.maximize(analyzer)?;
         let rhs_min = self.rhs.minimize(analyzer)?;
         let rhs_max = self.rhs.maximize(analyzer)?;
+        Ok((lhs_min, lhs_max, rhs_min, rhs_max))
+    }
 
+    fn simplify_spread(
+        &self,
+        analyzer: &impl GraphLike,
+    ) -> Result<
+        (
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+        ),
+        GraphError,
+    > {
+        let lhs_min = self.lhs.simplify_minimize(analyzer)?;
+        let lhs_max = self.lhs.simplify_maximize(analyzer)?;
+        let rhs_min = self.rhs.simplify_minimize(analyzer)?;
+        let rhs_max = self.rhs.simplify_maximize(analyzer)?;
+        Ok((lhs_min, lhs_max, rhs_min, rhs_max))
+    }
+
+    fn exec(
+        &self,
+        (lhs_min, lhs_max, rhs_min, rhs_max): (
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+        ),
+        maximize: bool,
+    ) -> Result<Elem<Concrete>, GraphError> {
         tracing::trace!(
-            "executing: {:?} {} {:?}, lhs_min: {:?}, lhs_max: {:?}, rhs_min: {:?}, rhs_max: {:?}",
+            "executing: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
             self.lhs,
             self.op.to_string(),
             self.rhs,
@@ -1021,6 +1164,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         lhs_min.range_wrapping_add(&rhs_max),
                         lhs_max.range_wrapping_add(&rhs_min),
                         lhs_max.range_wrapping_add(&rhs_max),
+                        lhs_max.range_add(&rhs_max),
+                        lhs_min.range_add(&rhs_min),
                     ];
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                     candidates.sort_by(|a, b| match a.range_ord(b) {
@@ -1208,7 +1353,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     }
                 }
             }
-            RangeOp::Div(..) => {
+            RangeOp::Div(_unchecked) => {
                 let mut candidates = vec![
                     lhs_min.range_div(&rhs_min),
                     lhs_min.range_div(&rhs_max),
@@ -1545,65 +1690,37 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 };
 
                 if maximize {
-                    // if they are constants and equal, we can stop here
-                    //   (rhs min == rhs max) == (lhs min == lhs max )
-                    if let (
-                        Some(std::cmp::Ordering::Equal),
-                        Some(std::cmp::Ordering::Equal),
-                        Some(std::cmp::Ordering::Equal),
-                    ) = (
-                        // check if lhs is constant
-                        lhs_min.range_ord(&lhs_max),
-                        // check if rhs is constant
-                        rhs_min.range_ord(&rhs_max),
-                        // check if lhs is equal to rhs
-                        lhs_min.range_ord(&rhs_min),
-                    ) {
+                    // check for any overlap
+                    let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min);
+                    let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max);
+
+                    // if lhs max is less than the rhs min, it has to be false
+                    if matches!(lhs_max_rhs_min_ord, Some(std::cmp::Ordering::Less)) {
                         return Ok(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bool(true),
+                            val: Concrete::Bool(false),
                             loc,
                         }));
                     }
 
-                    // they aren't constants, check if there is any overlap
-                    match (
-                        // check if lhs minimum is contained within the right hand side
-                        // this means the values could be equal
-                        // effectively:
-                        //   rhs min <= lhs min <= rhs max
-                        lhs_min.range_ord(&rhs_min),
-                        lhs_min.range_ord(&rhs_max),
-                    ) {
-                        (_, Some(std::cmp::Ordering::Equal))
-                        | (Some(std::cmp::Ordering::Equal), _)
-                        | (Some(std::cmp::Ordering::Greater), Some(std::cmp::Ordering::Less)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc,
-                            }))
-                        }
-                        _ => {}
+                    // if lhs min is greater than the rhs max, it has to be false
+                    if matches!(lhs_min_rhs_max_ord, Some(std::cmp::Ordering::Greater)) {
+                        return Ok(Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(false),
+                            loc,
+                        }));
                     }
 
-                    match (
-                        // check if the lhs maximum is contained within the right hand side
-                        // effectively:
-                        //   rhs min <= lhs max <= rhs max
-                        lhs_max.range_ord(&rhs_min),
-                        lhs_max.range_ord(&rhs_max),
-                    ) {
-                        (_, Some(std::cmp::Ordering::Equal))
-                        | (Some(std::cmp::Ordering::Equal), _)
-                        | (Some(std::cmp::Ordering::Greater), Some(std::cmp::Ordering::Less)) => {
-                            return Ok(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Bool(true),
-                                loc,
-                            }))
-                        }
-                        _ => {}
+                    // lhs_max >= rhs_min
+                    // lhs_min <= rhs_max
+                    // therefore its possible to set some value to true here
+                    if lhs_max_rhs_min_ord.is_some() && lhs_min_rhs_max_ord.is_some() {
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bool(true),
+                            loc,
+                        })
+                    } else {
+                        Elem::Expr(self.clone())
                     }
-
-                    Elem::Expr(self.clone())
                 } else {
                     // check if either lhs element is *not* contained by rhs
                     match (
@@ -2137,13 +2254,5 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             _ => Elem::Expr(self.clone()),
         };
         Ok(res)
-    }
-
-    fn simplify_exec_op(
-        &self,
-        _maximize: bool,
-        _analyzer: &impl GraphLike,
-    ) -> Result<Elem<Concrete>, GraphError> {
-        todo!();
     }
 }

@@ -56,9 +56,11 @@ pub trait NameSpaceFuncCaller:
                     let possible_funcs: Vec<_> = supers
                         .iter()
                         .filter_map(|con_node| {
-                            con_node.funcs(self).into_iter().find(|func_node| {
-                                func_node.name(self).unwrap().starts_with(&ident.name)
-                            })
+                            con_node
+                                .linearized_functions(self)
+                                .into_iter()
+                                .find(|(func_name, _func_node)| func_name.starts_with(&ident.name))
+                                .map(|(_, node)| node)
                         })
                         .collect();
 

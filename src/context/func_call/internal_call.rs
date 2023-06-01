@@ -2,16 +2,13 @@ use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{func_call::FuncCaller, ContextBuilder};
 use shared::context::ExprRet;
+use shared::nodes::{Builtin, Concrete, VarType};
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
     Edge, Node,
 };
-use solang_parser::pt::{
-    Expression,
-    Expression::{HexLiteral, Negate, NumberLiteral},
-    Identifier, Loc, NamedArgument,
-};
+use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
 impl<T> InternalFuncCaller for T where
     T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
@@ -145,7 +142,10 @@ pub trait InternalFuncCaller:
                 })?;
                 Ok(())
             } else {
-                todo!("Disambiguate struct construction");
+                Err(ExprErr::Todo(
+                    *loc,
+                    "Disambiguation of struct construction not currently supported".to_string(),
+                ))
             }
         } else if possible_funcs.len() == 1 {
             let func = possible_funcs[0];
@@ -187,6 +187,7 @@ pub trait InternalFuncCaller:
         tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
+        // println!("visible funcs: {:#?}", funcs.iter().map(|f| f.name(self).unwrap()).collect::<Vec<_>>());
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
@@ -229,20 +230,6 @@ pub trait InternalFuncCaller:
             })
         } else {
             // this is the annoying case due to function overloading & type inference on number literals
-            let lits: Vec<_> = input_exprs
-                .iter()
-                .map(|expr| {
-                    match expr {
-                        Negate(_, expr) => {
-                            // negative number potentially
-                            matches!(**expr, NumberLiteral(..) | HexLiteral(..))
-                        }
-                        NumberLiteral(..) | HexLiteral(..) => true,
-                        _ => false,
-                    }
-                })
-                .collect();
-
             self.parse_inputs(ctx, *loc, input_exprs)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let inputs = ctx
@@ -254,9 +241,29 @@ pub trait InternalFuncCaller:
                     ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                     return Ok(());
                 }
+                let resizeables: Vec<_> = inputs.as_flat_vec()
+                    .iter()
+                    .map(|idx| {
+                        match VarType::try_from_idx(analyzer, *idx) {
+                            Some(VarType::BuiltIn(bn, _)) => {
+                                matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
+                                // match analyzer.node(bn) {
+                                //     Node::Builtin(Builtin::Uint(s)) if s < &256 => true,
+                                //     Node::Builtin(Builtin::Int(s)) if s < &256 => true,
+                                //     Node::Builtin(Builtin::Bytes(s)) if s < &32 => true,
+                                //     _ => false
+                                // }
+                            }
+                            Some(VarType::Concrete(c)) => {
+                                matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
+                            }
+                            _ => false
+                        }
+                    })
+                    .collect();
                 if let Some(func) = analyzer.disambiguate_fn_call(
                     &ident.name,
-                    lits.clone(),
+                    resizeables,
                     &inputs,
                     &possible_funcs,
                 ) {
@@ -265,7 +272,8 @@ pub trait InternalFuncCaller:
                     Err(ExprErr::FunctionNotFound(
                         loc,
                         format!(
-                            "Could not disambiguate function, possible functions: {:#?}",
+                            "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
+                            inputs.try_as_func_input_str(analyzer),
                             possible_funcs
                                 .iter()
                                 .map(|i| i.name(analyzer).unwrap())

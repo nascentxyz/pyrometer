@@ -162,6 +162,12 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
+                tracing::trace!(
+                    "cmp: {} {} {}",
+                    lhs_cvar.display_name(self).unwrap(),
+                    op.to_string(),
+                    rhs_cvar.display_name(self).unwrap()
+                );
                 let range = {
                     let elem = Elem::Expr(RangeExpr {
                         minimized: None,
@@ -178,13 +184,19 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
+                // println!("{:?}", range.evaled_range_max(self));
+                // println!("{:?}", range.evaled_range_min(self));
 
-                tracing::trace!(
-                    "cmp: {} {} {}",
-                    lhs_cvar.name(self).into_expr_err(loc)?,
-                    op.to_string(),
-                    rhs_cvar.name(self).into_expr_err(loc)?
-                );
+                // println!(
+                //     "cmp: {} {} {}, [{}, {}], [{}, {}] ",
+                //     lhs_cvar.name(self).into_expr_err(loc)?,
+                //     op.to_string(),
+                //     rhs_cvar.name(self).into_expr_err(loc)?,
+                //     lhs_cvar.evaled_range_min(self).into_expr_err(loc)?.unwrap().to_range_string(false, self).s,
+                //     lhs_cvar.evaled_range_max(self).into_expr_err(loc)?.unwrap().to_range_string(true, self).s,
+                //     rhs_cvar.evaled_range_min(self).into_expr_err(loc)?.unwrap().to_range_string(false, self).s,
+                //     rhs_cvar.evaled_range_max(self).into_expr_err(loc)?.unwrap().to_range_string(true, self).s
+                // );
 
                 let out_var = ContextVar {
                     loc: Some(loc),
