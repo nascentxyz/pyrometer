@@ -124,6 +124,10 @@ impl ContextVarNode {
         self.ty(analyzer)?.is_dyn(analyzer)
     }
 
+    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        self.ty(analyzer)?.is_indexable(analyzer)
+    }
+
     pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
         Ok(self
             .underlying(analyzer)?

@@ -1,6 +1,7 @@
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::Builtin;
+use crate::VarType;
 use crate::{Node, NodeIdx};
 use ethers_core::types::{Address, H256, I256, U256};
 
@@ -25,6 +26,32 @@ impl ConcreteNode {
     ) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
         Ok(analyzer.add_node(Node::Concrete(c)).into())
+    }
+
+    pub fn dynamic_underlying_ty(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<VarType, GraphError> {
+        let builtin = self.underlying(analyzer)?.dynamic_underlying_ty().unwrap();
+        let bn = analyzer.builtin_or_add(builtin);
+        let v_ty = VarType::try_from_idx(analyzer, bn).unwrap();
+        Ok(v_ty)
+    }
+
+    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_dyn())
+    }
+
+    pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_sized_array())
+    }
+
+    pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
+        Ok(self.underlying(analyzer)?.maybe_array_size())
+    }
+
+    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_indexable())
     }
 }
 
@@ -126,6 +153,47 @@ impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
 }
 
 impl Concrete {
+    pub fn is_dyn(&self) -> bool {
+        matches!(
+            self,
+            Concrete::DynBytes(..) | Concrete::String(..) | Concrete::Array(..)
+        )
+    }
+
+    pub fn is_sized_array(&self) -> bool {
+        matches!(self, Concrete::DynBytes(..) | Concrete::Array(..))
+    }
+
+    pub fn dynamic_underlying_ty(&self) -> Option<Builtin> {
+        match self {
+            Concrete::DynBytes(v) => Some(Builtin::Bytes(1)),
+            Concrete::Array(v) => {
+                if let Some(inner) = v.first() {
+                    Some(inner.as_builtin())
+                } else {
+                    None
+                }
+            }
+            Concrete::String(v) => Some(Builtin::Bytes(1)),
+            Concrete::Bytes(_, _) => Some(Builtin::Bytes(1)),
+            _ => None,
+        }
+    }
+
+    pub fn maybe_array_size(&self) -> Option<U256> {
+        match self {
+            Concrete::DynBytes(v) => Some(U256::from(v.len())),
+            Concrete::Array(v) => Some(U256::from(v.len())),
+            Concrete::String(v) => Some(U256::from(v.len())),
+            Concrete::Bytes(s, _) => Some(U256::from(*s)),
+            _ => None,
+        }
+    }
+
+    pub fn is_indexable(&self) -> bool {
+        self.is_dyn() || matches!(self, Concrete::Bytes(..))
+    }
+
     /// Convert a U256 back into it's original type. This is used mostly
     /// for range calculations to improve ergonomics. Basically
     /// the EVM only operates on U256 words, so most of this should

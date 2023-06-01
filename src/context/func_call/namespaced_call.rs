@@ -4,6 +4,7 @@ use crate::context::{
     func_call::FuncCaller,
     ContextBuilder, ExprErr,
 };
+use shared::nodes::BuiltInNode;
 use shared::{
     analyzer::{AnalyzerLike, GraphLike},
     context::{ContextNode, ContextVarNode, ExprRet},
@@ -242,7 +243,10 @@ pub trait NameSpaceFuncCaller:
                         let possible_builtins: Vec<_> = analyzer.builtin_fn_inputs().iter().filter_map(|(func_name, (inputs, _))| {
                             if func_name.starts_with(&ident.name) {
                                 if let Some(input) = inputs.first() {
-                                    if input.ty == ty {
+                                    let Ok(implicitly_castable) = BuiltInNode::from(ty).implicitly_castable_to(&BuiltInNode::from(input.ty), analyzer) else {
+                                        return None
+                                    };
+                                    if implicitly_castable {
                                         Some(func_name.clone())
                                     } else {
                                         None
@@ -282,6 +286,7 @@ pub trait NameSpaceFuncCaller:
                                 analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
                             })
                         } else {
+                            // analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
                             Err(ExprErr::FunctionNotFound(
                                 loc,
                                 format!("Could not disambiguate function, possible functions: {:#?}", possible_builtins.iter().map(|i| i.name(analyzer).unwrap()).collect::<Vec<_>>())
