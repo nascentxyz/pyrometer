@@ -157,9 +157,9 @@ pub trait GraphLike {
         use std::process::Command;
         let temp_dir = temp_dir();
         let file_name = "dot.dot";
-        let mut temp_path = temp_dir;
+        let mut temp_path = temp_dir.clone();
         temp_path.push(file_name);
-        let temp_svg_filename: String = format!("{}/dot.svg", temp_path.to_str().unwrap());
+        let temp_svg_filename: String = format!("{}/dot.svg", &temp_dir.to_string_lossy());
 
         let mut file = fs::File::create(temp_path.clone()).unwrap();
         file.write_all(self.dot_str().as_bytes()).unwrap();
