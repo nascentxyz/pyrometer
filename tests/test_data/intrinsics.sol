@@ -228,13 +228,19 @@ contract Intrinsics {
 		require(min8 == 0);
 	}
 
-	function addressAttrs() public {
+	function addressAttrs(address payable x, address y) public {
 		address tester = address(100);
 		uint256 bal = tester.balance;
 		bytes memory code = tester.code;
 		bytes32 codehash = tester.codehash;
 		bool result = tester.send(1);
 		tester.transfer(1);
+		x.call("");
+		y.call("");
+		x.delegatecall("");
+		y.delegatecall("");
+		x.staticcall("");
+		y.staticcall("");
 	}
 }
 

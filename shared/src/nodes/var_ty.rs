@@ -1,5 +1,6 @@
 use crate::analyzer::Search;
 use crate::nodes::GraphError;
+
 use crate::ContractNode;
 use crate::VarType;
 use crate::{
@@ -45,7 +46,20 @@ impl VarNode {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
             tracing::trace!("Parsing variable initializer");
             let init = analyzer.parse_expr(&expr, Some(parent));
-            self.underlying_mut(analyzer)?.initializer = Some(init);
+            let underlying = self.underlying(analyzer)?.clone();
+            let mut set = false;
+            if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
+                if let Some(initer) = VarType::try_from_idx(analyzer, init) {
+                    if let Some(initer) = initer.try_cast(&ty, analyzer)? {
+                        set = true;
+                        self.underlying_mut(analyzer)?.initializer = Some(initer.ty_idx());
+                    }
+                }
+            }
+
+            if !set {
+                self.underlying_mut(analyzer)?.initializer = Some(init);
+            }
         }
         Ok(())
     }

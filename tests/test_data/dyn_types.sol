@@ -30,4 +30,12 @@ contract DynTypes {
         uint256 y = storeVar.pop();
         require(y == x);
     }
+
+    function indexInto() public returns (uint256) {
+        return storeVar[basicFunc()];
+    }
+
+    function basicFunc() public returns (uint256) {
+        return 1;
+    }
 }

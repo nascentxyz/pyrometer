@@ -79,6 +79,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         index_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
+        tracing::trace!("Indexing into array");
         self.parse_ctx_expr(index_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(index_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
@@ -97,7 +98,12 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ctx.push_expr(inner_tys, analyzer).into_expr_err(loc)?;
                     return Ok(());
                 }
-                analyzer.index_into_array_inner(ctx, loc, inner_tys, index_tys.clone())
+                analyzer.index_into_array_inner(
+                    ctx,
+                    loc,
+                    inner_tys.flatten(),
+                    index_tys.clone().flatten(),
+                )
             })
         })
     }
@@ -122,7 +128,7 @@ pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).latest_version(self);
                 let idx = self.advance_var_in_ctx(index, loc, ctx)?;
-                if !parent.is_mapping(self).into_expr_err(loc)? && parent.is_dyn(self).into_expr_err(loc)? {
+                if !parent.is_mapping(self).into_expr_err(loc)? && parent.is_indexable(self).into_expr_err(loc)? {
                     let len_var = self.tmp_length(parent, ctx, loc).latest_version(self);
                     self.handle_require_inner(
                         ctx,

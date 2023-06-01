@@ -569,9 +569,57 @@ impl VarType {
                     Ok(None)
                 }
             }
-            e => Err(GraphError::NodeConfusion(format!(
-                "Node type confusion: expected node to be Builtin but it was: {e:?}"
-            ))),
+            Self::Concrete(node) => {
+                if index.is_const(analyzer)? {
+                    let idx = index
+                        .evaled_range_min(analyzer)
+                        .unwrap()
+                        .unwrap()
+                        .concrete()
+                        .unwrap()
+                        .uint_val()
+                        .unwrap();
+                    match node.underlying(analyzer)? {
+                        Concrete::Bytes(size, val) => {
+                            if idx.low_u32() < (*size as u32) {
+                                let mut h = H256::default();
+                                h.0[0] = val.0[idx.low_u32() as usize];
+                                let ret_val = Concrete::Bytes(1, h);
+                                let node = analyzer.add_node(Node::Concrete(ret_val));
+                                return Ok(Some(node));
+                            }
+                        }
+                        Concrete::DynBytes(elems) => {
+                            if idx.low_u32() < (elems.len() as u32) {
+                                let mut h = H256::default();
+                                h.0[0] = elems[idx.low_u32() as usize];
+                                let ret_val = Concrete::Bytes(1, h);
+                                let node = analyzer.add_node(Node::Concrete(ret_val));
+                                return Ok(Some(node));
+                            }
+                        }
+                        Concrete::String(st) => {
+                            if idx.low_u32() < (st.len() as u32) {
+                                let mut h = H256::default();
+                                h.0[0] = st.as_bytes()[idx.low_u32() as usize];
+                                let ret_val = Concrete::Bytes(1, h);
+                                let node = analyzer.add_node(Node::Concrete(ret_val));
+                                return Ok(Some(node));
+                            }
+                        }
+                        Concrete::Array(elems) => {
+                            if idx.low_u32() < (elems.len() as u32) {
+                                let elem = &elems[idx.low_u32() as usize];
+                                let node = analyzer.add_node(Node::Concrete(elem.clone()));
+                                return Ok(Some(node));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(None)
+            }
+            _ => Ok(None),
         }
     }
 
@@ -585,6 +633,7 @@ impl VarType {
         } else {
             match self {
                 Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
+                Self::Concrete(node) => node.dynamic_underlying_ty(analyzer),
                 e => Err(GraphError::NodeConfusion(format!(
                     "Node type confusion: expected node to be Builtin but it was: {e:?}"
                 ))),
@@ -598,6 +647,7 @@ impl VarType {
     ) -> Result<VarType, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
+            Self::Concrete(node) => node.dynamic_underlying_ty(analyzer),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Builtin but it was: {e:?}"
             ))),
@@ -607,33 +657,38 @@ impl VarType {
     pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => Ok(node.is_mapping(analyzer)?),
-            e => Err(GraphError::NodeConfusion(format!(
-                "Node type confusion: expected node to be a Builtin but it was: {e:?}"
-            ))),
+            _ => Ok(false),
         }
     }
 
     pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
-            Self::BuiltIn(node, _) => Ok(node.is_sized_array(analyzer)?),
-            e => Err(GraphError::NodeConfusion(format!(
-                "Node type confusion: expected node to be a Builtin but it was: {e:?}"
-            ))),
+            Self::BuiltIn(node, _) => node.is_sized_array(analyzer),
+            Self::Concrete(node) => node.is_sized_array(analyzer),
+            _ => Ok(false),
         }
     }
 
     pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.maybe_array_size(analyzer),
-            e => Err(GraphError::NodeConfusion(format!(
-                "Node type confusion: expected node to be a Builtin but it was: {e:?}"
-            ))),
+            Self::Concrete(node) => node.maybe_array_size(analyzer),
+            _ => Ok(None),
         }
     }
 
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => Ok(node.is_dyn(analyzer)?),
+            Self::Concrete(node) => Ok(node.is_dyn(analyzer)?),
+            _ => Ok(false),
+        }
+    }
+
+    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => Ok(node.is_indexable(analyzer)?),
+            Self::Concrete(node) => Ok(node.is_indexable(analyzer)?),
             _ => Ok(false),
         }
     }
@@ -824,15 +879,19 @@ impl BuiltInNode {
     }
 
     pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
-        if let Builtin::SizedArray(s, _) = self.underlying(analyzer)? {
-            Ok(Some(*s))
-        } else {
-            Ok(None)
+        match self.underlying(analyzer)? {
+            Builtin::SizedArray(s, _) => Ok(Some(*s)),
+            Builtin::Bytes(s) => Ok(Some(U256::from(*s))),
+            _ => Ok(None),
         }
     }
 
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_dyn())
+    }
+
+    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_indexable())
     }
 
     pub fn zero_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
@@ -1038,12 +1097,30 @@ impl Builtin {
         matches!(self, Builtin::Int(_))
     }
 
+    pub fn is_indexable(&self) -> bool {
+        matches!(
+            self,
+            Builtin::DynamicBytes
+                | Builtin::Array(..)
+                | Builtin::SizedArray(..)
+                | Builtin::Mapping(..)
+                | Builtin::Bytes(..)
+                | Builtin::String
+        )
+    }
+
     pub fn implicitly_castable_to(&self, other: &Self) -> bool {
         use Builtin::*;
         match (self, other) {
             (Address, Address) => true,
+            (Address, AddressPayable) => true,
+            (Address, Payable) => true,
             (AddressPayable, Address) => true,
+            (AddressPayable, Payable) => true,
+            (AddressPayable, AddressPayable) => true,
             (Payable, Address) => true,
+            (Payable, AddressPayable) => true,
+            (Payable, Payable) => true,
             (Bool, Bool) => true,
             (Rational, Rational) => true,
             (DynamicBytes, DynamicBytes) => true,
