@@ -147,9 +147,10 @@ pub trait FuncCaller:
                             if param_ty.ty_eq(input_ty, self).unwrap() {
                                 true
                             } else if literals[i] {
-                                let as_concrete =
-                                    ContextVarNode::from(*input).as_concrete(self).unwrap();
-                                let possibilities = as_concrete.possible_builtins_from_ty_inf();
+                                let possibilities = ContextVarNode::from(*input)
+                                    .ty(self)
+                                    .unwrap()
+                                    .possible_builtins_from_ty_inf(self);
                                 let param_ty = param.ty(self).unwrap();
                                 match self.node(param_ty) {
                                     Node::Builtin(b) => possibilities.contains(b),

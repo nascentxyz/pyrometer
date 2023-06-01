@@ -247,6 +247,12 @@ pub trait InternalFuncCaller:
                         match VarType::try_from_idx(analyzer, *idx) {
                             Some(VarType::BuiltIn(bn, _)) => {
                                 matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
+                                // match analyzer.node(bn) {
+                                //     Node::Builtin(Builtin::Uint(s)) if s < &256 => true,
+                                //     Node::Builtin(Builtin::Int(s)) if s < &256 => true,
+                                //     Node::Builtin(Builtin::Bytes(s)) if s < &32 => true,
+                                //     _ => false
+                                // }
                             }
                             Some(VarType::Concrete(c)) => {
                                 matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
