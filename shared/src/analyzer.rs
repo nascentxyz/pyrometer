@@ -155,22 +155,24 @@ pub trait GraphLike {
         use std::fs;
         use std::io::Write;
         use std::process::Command;
-        let mut dir = temp_dir();
+        let temp_dir = temp_dir();
         let file_name = "dot.dot";
-        dir.push(file_name);
+        let mut temp_path = temp_dir;
+        temp_path.push(file_name);
+        let temp_svg_filename: String = format!("{}/dot.svg", temp_path.to_str().unwrap());
 
-        let mut file = fs::File::create(dir.clone()).unwrap();
+        let mut file = fs::File::create(temp_path.clone()).unwrap();
         file.write_all(self.dot_str().as_bytes()).unwrap();
         Command::new("dot")
             .arg("-Tsvg")
-            .arg(dir)
+            .arg(temp_path)
             .arg("-o")
-            .arg("dot.svg")
+            .arg(&temp_svg_filename)
             .output()
-            .expect("failed to execute process");
+            .expect("You may need to install graphviz, check if command 'dot' is in your $PATH");
         Command::new("open")
-            .arg("dot.svg")
-            .output()
+            .arg(&temp_svg_filename)
+            .spawn()
             .expect("failed to execute process");
     }
 
