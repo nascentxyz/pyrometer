@@ -60,9 +60,9 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             // }
         } else if (self.env_variable(ident, target_ctx)?).is_some() {
             Ok(())
-        } else if let Some(idx) = self.user_types().get(&ident.name) {
-            let const_var = if let Node::Var(_v) = self.node(*idx) {
-                VarNode::from(*idx)
+        } else if let Some(idx) = self.user_types().get(&ident.name).cloned() {
+            let const_var = if let Node::Var(_v) = self.node(idx) {
+                VarNode::from(idx)
                     .const_value(ident.loc, self)
                     .into_expr_err(ident.loc)?
             } else {
@@ -72,16 +72,16 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             let var = if let Some(con) = const_var {
                 con
             } else {
-                match self.node(*idx) {
+                match self.node(idx) {
                     Node::Var(_) | Node::Enum(_) => {
-                        match ContextVar::maybe_from_user_ty(self, ident.loc, *idx) {
+                        match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
                             Some(v) => v,
                             None => {
                                 return Err(ExprErr::VarBadType(
                                     ident.loc,
                                     format!(
                                         "Could not create context variable from user type: {:?}",
-                                        self.node(*idx)
+                                        self.node(idx)
                                     ),
                                 ))
                             }
@@ -89,7 +89,7 @@ pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     }
                     _ => {
                         return target_ctx
-                            .push_expr(ExprRet::Single(*idx), self)
+                            .push_expr(ExprRet::Single(idx), self)
                             .into_expr_err(ident.loc)
                     }
                 }

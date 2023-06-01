@@ -187,6 +187,7 @@ pub trait InternalFuncCaller:
         tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
+        // println!("visible funcs: {:#?}", funcs.iter().map(|f| f.name(self).unwrap()).collect::<Vec<_>>());
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()

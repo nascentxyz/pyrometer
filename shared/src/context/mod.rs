@@ -718,20 +718,23 @@ impl ContextNode {
             .maybe_associated_contract(analyzer))
     }
 
-    pub fn associated_source(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> NodeIdx {
+    pub fn maybe_associated_source(
+        &self,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Option<NodeIdx> {
         let context = self.underlying(analyzer).unwrap();
         if let Some(src) = context.cache.associated_source {
-            src
+            Some(src)
         } else if let Some(parent_ctx) = context.parent_ctx {
-            let src = parent_ctx.associated_source(analyzer);
+            let src = parent_ctx.maybe_associated_source(analyzer)?;
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
                 .associated_source = Some(src);
-            src
+            Some(src)
         } else {
             let func = self.associated_fn(analyzer).unwrap();
-            func.associated_source(analyzer)
+            func.maybe_associated_source(analyzer)
         }
     }
 
@@ -739,9 +742,16 @@ impl ContextNode {
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<NodeIdx, GraphError> {
-        Ok(self
+        if let Some(sup) = self
             .associated_fn(analyzer)?
-            .associated_source_unit_part(analyzer))
+            .maybe_associated_source_unit_part(analyzer)
+        {
+            Ok(sup)
+        } else {
+            Err(GraphError::NodeConfusion(
+                "Expected context to have an associated source but didnt".to_string(),
+            ))
+        }
     }
 
     /// Gets visible functions
@@ -750,7 +760,9 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
-        let source = self.associated_source(analyzer);
+        let Some(source) = self.maybe_associated_source(analyzer) else {
+            return Err(GraphError::NodeConfusion("Expected context to have an associated source but didnt".to_string()))
+        };
         if let Some(contract) = self.maybe_associated_contract(analyzer)? {
             let mut modifiers = contract.modifiers(analyzer);
             // extend with free floating functions
@@ -799,7 +811,9 @@ impl ContextNode {
                 .collect()
         } else {
             // we are in a free floating function, only look at free floating functions
-            let source = self.associated_source(analyzer);
+            let Some(source) = self.maybe_associated_source(analyzer) else {
+                return Err(GraphError::NodeConfusion("Expected context to have an associated source but didnt".to_string()));
+            };
             Ok(analyzer
                 .search_children_depth(source, &Edge::Modifier, 1, 0)
                 .into_iter()
@@ -860,7 +874,9 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Vec<FunctionNode> {
         // TODO: filter privates
-        let source = self.associated_source(analyzer);
+        let Some(source) = self.maybe_associated_source(analyzer) else {
+            return vec![]
+        };
         analyzer
             .search_children_exclude_via(
                 source,
@@ -881,7 +897,10 @@ impl ContextNode {
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Vec<StructNode> {
         // TODO: filter privates
-        let source = self.associated_source(analyzer);
+        let Some(source) = self.maybe_associated_source(analyzer) else {
+            return vec![]
+        };
+
         analyzer
             .search_children_exclude_via(source, &Edge::Struct, &[Edge::Func])
             .into_iter()

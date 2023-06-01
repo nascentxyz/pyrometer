@@ -5,6 +5,12 @@ contract Storage {
 	uint256[] public arr;
 	uint256[][] public nestedArr;
 
+	uint256[49] private __gap;
+
+	function setSizedUint(uint256 x, uint256 y) public {
+		__gap[x] = y;
+	}
+
 	function setUint(uint256 x, uint256 y) public returns (uint256) {
 		a = 100;
 		require(a == 100);

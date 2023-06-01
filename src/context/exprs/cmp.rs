@@ -162,6 +162,12 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
+                tracing::trace!(
+                    "cmp: {} {} {}",
+                    lhs_cvar.display_name(self).unwrap(),
+                    op.to_string(),
+                    rhs_cvar.display_name(self).unwrap()
+                );
                 let range = {
                     let elem = Elem::Expr(RangeExpr {
                         minimized: None,

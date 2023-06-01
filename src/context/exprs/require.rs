@@ -610,7 +610,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
 
             if let Some(rhs_range) = new_rhs.range(self).into_expr_err(loc)? {
                 let lhs_is_const = new_lhs.is_const(self).into_expr_err(loc)?;
+                // println!("is const: {lhs_is_const},[{}, {}]", new_lhs.evaled_range_min(self).unwrap().expect("REASON").to_range_string(false, self).s, new_lhs.evaled_range_max(self).unwrap().expect("REASON").to_range_string(true, self).s);
                 let rhs_is_const = new_rhs.is_const(self).into_expr_err(loc)?;
+                // println!("is const: {rhs_is_const}, [{}, {}]", new_rhs.evaled_range_min(self).unwrap().expect("REASON").to_range_string(false, self).s, new_rhs.evaled_range_max(self).unwrap().expect("REASON").to_range_string(true, self).s);
                 match (lhs_is_const, rhs_is_const) {
                     (true, true) => {
                         if self.const_killable(op, lhs_range, rhs_range) {
@@ -623,7 +625,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         // flip the new range around to be in terms of rhs
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
-
                         if self
                             .update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
                         {
@@ -889,11 +890,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // mins are equivalent, add 1 instead of adding an exclusion
-                    let Some(min) = nonconst_range
-                        .evaled_range_min(self)
-                        .into_expr_err(loc)?
+                    let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
+                    let Some(min) = min
                         .maybe_concrete() else {
-                        panic!("min: {:?}, max: {:?}", nonconst_range.evaled_range_min(self), nonconst_range.evaled_range_max(self));
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(false, self).s)));
                     };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
@@ -904,11 +904,11 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     .range_ord(&elem)
                 {
                     // maxs are equivalent, subtract 1 instead of adding an exclusion
-                    let max = nonconst_range
-                        .evaled_range_max(self)
-                        .into_expr_err(loc)?
-                        .maybe_concrete()
-                        .expect("Was not concrete");
+                    let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
+
+                    let Some(max) = max.maybe_concrete() else {
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                    };
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
                     nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
@@ -935,7 +935,9 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let max_conc = max.maybe_concrete().expect("Was not concrete");
+                let Some(max_conc) = max.maybe_concrete() else {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                };
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
                 nonconst_var
                     .set_range_min(
@@ -977,7 +979,10 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let min_conc = min.maybe_concrete().expect("Was not concrete");
+
+                let Some(min_conc) = min.maybe_concrete() else {
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(true, self).s)));
+                };
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
                 nonconst_var
@@ -1105,14 +1110,6 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                 }
 
                 let Some(max_conc) = max.maybe_concrete() else {
-                    match lhs_range.max {
-                        Elem::Expr(expr) => {
-                            let _lhs = expr.lhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            let _rhs = expr.rhs.maximize(self).into_expr_err(loc)?.to_range_string(true, self).s;
-                            // println!("{} != {}", lhs, rhs);
-                        }
-                        _ => println!("other"),
-                    }
                     return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
                 };
 
@@ -1414,6 +1411,28 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         (false, new_rhs)
                     }
                     RangeOp::Shr => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Eq => {
+                        let new_rhs =
+                            self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
+                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        let new_rhs =
+                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
+                        (false, new_rhs)
+                    }
+                    RangeOp::Neq => {
                         let new_rhs =
                             self.op(loc, rhs_cvar, tmp_construction.lhs, ctx, inverse, false)?;
                         if matches!(new_rhs, ExprRet::CtxKilled(_)) {

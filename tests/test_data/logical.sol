@@ -28,6 +28,21 @@ contract Logical {
         require(success);
     }
 
+
+    function or(address a) internal virtual {
+        assembly {
+            {
+                if iszero(or(a, 0x0)) {}
+            }
+        }
+    }
+
+    function eq(address a) public {
+        assembly {
+            if eq(0x0, a) {}
+        }
+    }
+
     
     function not() public {
         uint256 a = 100;

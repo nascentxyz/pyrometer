@@ -41,17 +41,20 @@ pub struct FinalPassItem {
     pub funcs: Vec<FunctionNode>,
     pub usings: Vec<(Using, NodeIdx)>,
     pub inherits: Vec<(ContractNode, Vec<String>)>,
+    pub vars: Vec<(VarNode, NodeIdx)>,
 }
 impl FinalPassItem {
     pub fn new(
         funcs: Vec<FunctionNode>,
         usings: Vec<(Using, NodeIdx)>,
         inherits: Vec<(ContractNode, Vec<String>)>,
+        vars: Vec<(VarNode, NodeIdx)>,
     ) -> Self {
         Self {
             funcs,
             usings,
             inherits,
+            vars,
         }
     }
 }
@@ -215,7 +218,7 @@ impl AnalyzerLike for Analyzer {
         &mut self.user_types
     }
 
-    fn parse_expr(&mut self, expr: &Expression) -> NodeIdx {
+    fn parse_expr(&mut self, expr: &Expression, parent: Option<NodeIdx>) -> NodeIdx {
         use Expression::*;
         match expr {
             Type(_loc, ty) => {
@@ -227,7 +230,7 @@ impl AnalyzerLike for Analyzer {
                         self.builtins.insert(builtin, idx);
                         idx
                     }
-                } else if let Some(idx) = self.complicated_parse(expr) {
+                } else if let Some(idx) = self.complicated_parse(expr, parent) {
                     self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
                         .unwrap_or(0.into())
                 } else {
@@ -244,7 +247,7 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             ArraySubscript(_loc, ty_expr, None) => {
-                let inner_ty = self.parse_expr(ty_expr);
+                let inner_ty = self.parse_expr(ty_expr, parent);
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                     let dyn_b = Builtin::Array(var_type);
                     if let Some(idx) = self.builtins.get(&dyn_b) {
@@ -253,6 +256,34 @@ impl AnalyzerLike for Analyzer {
                         let idx = self.add_node(Node::Builtin(dyn_b.clone()));
                         self.builtins.insert(dyn_b, idx);
                         idx
+                    }
+                } else {
+                    inner_ty
+                }
+            }
+            ArraySubscript(loc, ty_expr, Some(idx_expr)) => {
+                let inner_ty = self.parse_expr(ty_expr, parent);
+                let idx = self.parse_expr(idx_expr, parent);
+                if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
+                    let res = ConcreteNode::from(idx)
+                        .underlying(self)
+                        .into_expr_err(*loc)
+                        .cloned();
+                    if let Some(concrete) = self.add_if_err(res) {
+                        if let Some(size) = concrete.uint_val() {
+                            let dyn_b = Builtin::SizedArray(size, var_type);
+                            if let Some(idx) = self.builtins.get(&dyn_b) {
+                                *idx
+                            } else {
+                                let idx = self.add_node(Node::Builtin(dyn_b.clone()));
+                                self.builtins.insert(dyn_b, idx);
+                                idx
+                            }
+                        } else {
+                            inner_ty
+                        }
+                    } else {
+                        inner_ty
                     }
                 } else {
                     inner_ty
@@ -270,7 +301,7 @@ impl AnalyzerLike for Analyzer {
                 self.add_node(Node::Concrete(Concrete::Uint(256, val)))
             }
             _ => {
-                if let Some(idx) = self.complicated_parse(expr) {
+                if let Some(idx) = self.complicated_parse(expr, parent) {
                     self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
                         .unwrap_or(0.into())
                 } else {
@@ -282,22 +313,64 @@ impl AnalyzerLike for Analyzer {
 }
 
 impl Analyzer {
-    pub fn complicated_parse(&mut self, expr: &Expression) -> Option<ExprRet> {
-        let dummy_ctx = Context::new(
-            self.parse_fn,
-            "<parser_fn>".to_string(),
-            solang_parser::pt::Loc::Implicit,
-        );
-        let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
-        self.add_edge(ctx, self.entry(), Edge::Context(ContextEdge::Context));
-        let res = self.parse_ctx_expr(expr, ctx);
-        self.add_if_err(res);
-        let res = ctx
-            .pop_expr_latest(expr.loc(), self)
-            .into_expr_err(expr.loc());
-        let res = self.add_if_err(res);
-        res?
+    pub fn complicated_parse(
+        &mut self,
+        expr: &Expression,
+        parent: Option<NodeIdx>,
+    ) -> Option<ExprRet> {
+        tracing::trace!("Parsing required compile-time evaluation");
+
+        let ctx = if let Some(parent) = parent {
+            let pf = Function {
+                name: Some(Identifier {
+                    loc: solang_parser::pt::Loc::Implicit,
+                    name: "<parser_fn>".into(),
+                }),
+                ..Default::default()
+            };
+            let parser_fn = FunctionNode::from(self.add_node(pf));
+            self.add_edge(parser_fn, parent, Edge::Func);
+
+            let dummy_ctx = Context::new(parser_fn, "<parser_fn>".to_string(), expr.loc());
+            let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
+            self.add_edge(ctx, parser_fn, Edge::Context(ContextEdge::Context));
+            ctx
+        } else {
+            let dummy_ctx = Context::new(self.parse_fn, "<parser_fn>".to_string(), expr.loc());
+            let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
+            self.add_edge(ctx, self.entry(), Edge::Context(ContextEdge::Context));
+            ctx
+        };
+
+        let full_stmt = solang_parser::pt::Statement::Return(expr.loc(), Some(expr.clone()));
+        self.parse_ctx_statement(&full_stmt, false, Some(ctx));
+        let edges = self.add_if_err(ctx.all_edges(self).into_expr_err(expr.loc()))?;
+        if edges.len() == 1 {
+            let res = edges[0].return_nodes(self).into_expr_err(expr.loc());
+
+            let res = self.add_if_err(res);
+
+            if let Some(res) = res {
+                res.last().map(|last| ExprRet::Single(last.1.into()))
+            } else {
+                None
+            }
+        } else if edges.is_empty() {
+            let res = ctx.return_nodes(self).into_expr_err(expr.loc());
+
+            let res = self.add_if_err(res);
+
+            if let Some(res) = res {
+                res.last().map(|last| ExprRet::Single(last.1.into()))
+            } else {
+                None
+            }
+        } else {
+            self.add_expr_err(ExprErr::ParseError(expr.loc(), "Expected this to be compile-time evaluatable, but it was nondeterministic likely due to an external call via an interface".to_string()));
+            None
+        }
     }
+
     pub fn set_remappings_and_root(&mut self, remappings_path: String) {
         self.root = PathBuf::from(&remappings_path)
             .parent()
@@ -401,6 +474,11 @@ impl Analyzer {
                 .for_each(|(using, scope_node)| {
                     self.parse_using(using, *scope_node);
                 });
+            final_pass_item.vars.iter().for_each(|(var, parent)| {
+                let loc = var.underlying(self).unwrap().loc;
+                let res = var.parse_initializer(self, *parent).into_expr_err(loc);
+                let _ = self.add_if_err(res);
+            });
         });
 
         elems.into_iter().for_each(|final_pass_item| {
@@ -424,12 +502,13 @@ impl Analyzer {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
         let mut all_inherits = vec![];
+        let mut all_vars = vec![];
         source_unit
             .0
             .iter()
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
-                let (_sup, funcs, usings, inherits) = self.parse_source_unit_part(
+                let (_sup, funcs, usings, inherits, vars) = self.parse_source_unit_part(
                     source_unit_part,
                     file_no,
                     unit_part,
@@ -440,8 +519,9 @@ impl Analyzer {
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
                 all_inherits.extend(inherits);
+                all_vars.extend(vars);
             });
-        FinalPassItem::new(all_funcs, all_usings, all_inherits)
+        FinalPassItem::new(all_funcs, all_usings, all_inherits, all_vars)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -458,6 +538,7 @@ impl Analyzer {
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<(ContractNode, Vec<String>)>,
+        Vec<(VarNode, NodeIdx)>,
     ) {
         use SourceUnitPart::*;
 
@@ -467,15 +548,17 @@ impl Analyzer {
         let mut func_nodes = vec![];
         let mut usings = vec![];
         let mut inherits = vec![];
+        let mut vars = vec![];
 
         match sup {
             ContractDefinition(def) => {
-                let (node, funcs, con_usings, unhandled_inherits) =
+                let (node, funcs, con_usings, unhandled_inherits, unhandled_vars) =
                     self.parse_contract_def(def, parent, imported);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
                 usings.extend(con_usings);
                 inherits.push((node, unhandled_inherits));
+                vars.extend(unhandled_vars);
             }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(def);
@@ -490,10 +573,15 @@ impl Analyzer {
                 self.add_edge(node, sup_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let (node, maybe_func) = self.parse_var_def(def, false);
+                let (node, maybe_func, needs_final_pass) = self.parse_var_def(def, false);
                 if let Some(func) = maybe_func {
                     func_nodes.push(self.handle_func(func, None));
                 }
+
+                if needs_final_pass {
+                    vars.push((node, parent));
+                }
+
                 self.add_edge(node, sup_node, Edge::Var);
             }
             FunctionDefinition(def) => {
@@ -514,7 +602,7 @@ impl Analyzer {
                 imported.extend(self.parse_import(import, current_path, parent))
             }
         }
-        (sup_node, func_nodes, usings, inherits)
+        (sup_node, func_nodes, usings, inherits, vars)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -669,6 +757,7 @@ impl Analyzer {
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<String>,
+        Vec<(VarNode, NodeIdx)>,
     ) {
         tracing::trace!(
             "Parsing contract {}",
@@ -700,8 +789,8 @@ impl Analyzer {
             self.add_edge(*contract_node, con_node, Edge::InheritedContract);
         });
         let mut usings = vec![];
-
         let mut func_nodes = vec![];
+        let mut vars = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
             StructDefinition(def) => {
                 let node = self.parse_struct_def(def);
@@ -716,10 +805,15 @@ impl Analyzer {
                 self.add_edge(node, con_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let (node, maybe_func) = self.parse_var_def(def, true);
+                let (node, maybe_func, needs_final_pass) = self.parse_var_def(def, true);
                 if let Some(func) = maybe_func {
                     func_nodes.push(self.handle_func(func, Some(con_node)));
                 }
+
+                if needs_final_pass {
+                    vars.push((node, con_node.into()));
+                }
+
                 self.add_edge(node, con_node, Edge::Var);
             }
             FunctionDefinition(def) => {
@@ -735,7 +829,7 @@ impl Analyzer {
             Using(using) => usings.push((*using.clone(), con_node.0.into())),
             StraySemicolon(_loc) => todo!(),
         });
-        (con_node, func_nodes, usings, unhandled_inherits)
+        (con_node, func_nodes, usings, unhandled_inherits, vars)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -745,7 +839,7 @@ impl Analyzer {
             self.add_expr_err(ExprErr::Todo(using_def.loc(), "Using statements with wildcards currently unsupported".to_string()));
             return;
         };
-        let maybe_cvar_idx = self.parse_expr(using_def_ty);
+        let maybe_cvar_idx = self.parse_expr(using_def_ty, None);
         let ty_idx = match VarType::try_from_idx(self, maybe_cvar_idx) {
             Some(v_ty) => v_ty.ty_idx(),
             None => {
@@ -875,10 +969,10 @@ impl Analyzer {
 
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_struct_def(&mut self, struct_def: &StructDefinition) -> StructNode {
+        tracing::trace!("Parsing struct {:?}", struct_def.name);
         let strukt = Struct::from(struct_def.clone());
 
         let name = strukt.name.clone().expect("Struct was not named").name;
-        tracing::trace!("Parsing struct {}", name);
 
         // check if we have an unresolved type by the same name
         let strukt_node: StructNode =
@@ -982,19 +1076,22 @@ impl Analyzer {
         &mut self,
         var_def: &VariableDefinition,
         in_contract: bool,
-    ) -> (VarNode, Option<Function>) {
+    ) -> (VarNode, Option<Function>, bool) {
+        tracing::trace!("Parsing variable definition: {:?}", var_def.name);
         let var = Var::new(self, var_def.clone(), in_contract);
         let mut func = None;
         if var.is_public() {
             func = Some(Function::from(var_def.clone()));
         }
+        let needs_final_pass = var.initializer_expr.is_some();
         let var_node = VarNode::from(self.add_node(var));
         self.user_types
             .insert(var_node.name(self).unwrap(), var_node.into());
-        (var_node, func)
+        (var_node, func, needs_final_pass)
     }
 
     pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {
+        tracing::trace!("Parsing type definition");
         let ty = Ty::new(self, ty_def.clone());
         let name = ty.name.name.clone();
         let ty_node: TyNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
