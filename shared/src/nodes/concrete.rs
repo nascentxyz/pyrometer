@@ -166,15 +166,11 @@ impl Concrete {
 
     pub fn dynamic_underlying_ty(&self) -> Option<Builtin> {
         match self {
-            Concrete::DynBytes(v) => Some(Builtin::Bytes(1)),
+            Concrete::DynBytes(_v) => Some(Builtin::Bytes(1)),
             Concrete::Array(v) => {
-                if let Some(inner) = v.first() {
-                    Some(inner.as_builtin())
-                } else {
-                    None
-                }
+                v.first().map(|inner| inner.as_builtin())
             }
-            Concrete::String(v) => Some(Builtin::Bytes(1)),
+            Concrete::String(_v) => Some(Builtin::Bytes(1)),
             Concrete::Bytes(_, _) => Some(Builtin::Bytes(1)),
             _ => None,
         }

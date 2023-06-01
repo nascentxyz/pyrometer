@@ -1,6 +1,6 @@
 use crate::analyzer::Search;
 use crate::nodes::GraphError;
-use crate::ContextVarNode;
+
 use crate::ContractNode;
 use crate::VarType;
 use crate::{
