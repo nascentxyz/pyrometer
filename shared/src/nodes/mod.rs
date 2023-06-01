@@ -68,6 +68,20 @@ impl VarType {
         }
     }
 
+    pub fn possible_builtins_from_ty_inf(&self, analyzer: &impl GraphLike) -> Vec<Builtin> {
+        match self {
+            Self::BuiltIn(bn, _) => bn
+                .underlying(analyzer)
+                .unwrap()
+                .possible_builtins_from_ty_inf(),
+            Self::Concrete(c) => c
+                .underlying(analyzer)
+                .unwrap()
+                .possible_builtins_from_ty_inf(),
+            _ => vec![],
+        }
+    }
+
     pub fn ty_idx(&self) -> NodeIdx {
         match self {
             Self::User(ty_node, _) => (*ty_node).into(),
@@ -872,6 +886,35 @@ impl Builtin {
             )),
             _ => Ok(self.clone()),
         }
+    }
+
+    pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
+        let mut builtins = vec![];
+        match self {
+            Builtin::Uint(size) => {
+                let mut s = *size;
+                while s > 0 {
+                    builtins.push(Builtin::Uint(s));
+                    s -= 8;
+                }
+            }
+            Builtin::Int(size) => {
+                let mut s = *size;
+                while s > 0 {
+                    builtins.push(Builtin::Int(s));
+                    s -= 8;
+                }
+            }
+            Builtin::Bytes(size) => {
+                let mut s = *size;
+                while s > 0 {
+                    builtins.push(Builtin::Bytes(s));
+                    s -= 1;
+                }
+            }
+            _ => {}
+        }
+        builtins
     }
 
     pub fn zero_range(&self) -> Option<SolcRange> {

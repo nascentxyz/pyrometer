@@ -72,3 +72,14 @@ contract K {
         require(l.c == 3);
     }
 }
+
+
+contract Disambiguation {
+    function foo(address from, address to, uint256 id) public {
+        foo(from, to, id, 0);
+    }
+
+    function foo(address from, address to, uint256 id, uint num) internal {}
+
+    function foo(address by, address from, address to, uint256 id) internal {}
+}
