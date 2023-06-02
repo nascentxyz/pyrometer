@@ -86,20 +86,21 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
+                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 ContextVarNode::from(*lhs)
-                    .cast_from(&ContextVarNode::from(*rhs), self)
+                    .cast_from(&rhs_cvar, self)
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                
                 ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
-                ContextVarNode::from(*rhs)
-                    .cast_from(&ContextVarNode::from(*lhs), self)
-                    .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                ContextVarNode::from(*rhs)
+                    .cast_from(&lhs_cvar, self)
+                    .into_expr_err(loc)?;
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
                 ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
                     .into_expr_err(loc)?;
@@ -210,13 +211,43 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             Elem::from(Dynamic::new(rhs_cvar.latest_version(self).into())),
         ));
 
-        // TODO: change to only hit this path if !uncheck
+
+        let (cache_min, cache_max) = match op {
+            RangeOp::Add(false)
+            | RangeOp::Mul(false) => {
+                if let (Some(lhs_min), Some(rhs_min)) = (
+                    lhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
+                    rhs_cvar.evaled_range_max(self).into_expr_err(loc)?
+                ) {
+                    let cached_min = Elem::Expr(RangeExpr::<Concrete>::new(
+                        lhs_min,
+                        op,
+                        rhs_min,
+                    )).minimize(self);
+
+                    if let (Some(lhs), Some(rhs)) = (
+                        lhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
+                        rhs_cvar.evaled_range_max(self).into_expr_err(loc)?
+                    ) {
+                        let cached_max = Elem::Expr(RangeExpr::<Concrete>::new(
+                            lhs,
+                            op,
+                            rhs,
+                        )).maximize(self);
+                        (Some(cached_min), Some(cached_max))
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                }
+            }
+            _ => (None, None)
+        };
 
         // TODO: If one of lhs_cvar OR rhs_cvar are not symbolic,
         // apply the requirement on the symbolic expression side instead of
-        // ignoring the case where
-
-        // if lhs_cvar.is_symbolic(self) && new_rhs.is_symbolic(self) {
+        // just defaulting to lhs
         if !unchecked {
             match op {
                 RangeOp::Div(..) | RangeOp::Mod => {

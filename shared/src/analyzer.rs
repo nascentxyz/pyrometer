@@ -47,8 +47,8 @@ pub trait AnalyzerLike: GraphLike {
     /// Returns the configured max fork width
     fn max_width(&self) -> usize;
     fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>;
-    fn builtins(&self) -> &HashMap<Builtin, NodeIdx>;
-    fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx>;
+    fn builtins(&self) -> &BTreeMap<Builtin, NodeIdx>;
+    fn builtins_mut(&mut self) -> &mut BTreeMap<Builtin, NodeIdx>;
     fn builtin_or_add(&mut self, builtin: Builtin) -> NodeIdx {
         if let Some(idx) = self.builtins().get(&builtin) {
             *idx
@@ -144,6 +144,11 @@ pub trait GraphLike {
         self.graph_mut()
             .node_weight_mut(node.into())
             .expect("Index not in graph")
+    }
+
+    fn twice_node_mut(&mut self, node: impl Into<NodeIdx>, node2: impl Into<NodeIdx>) -> (&mut Node, &mut Node) {
+        self.graph_mut()
+            .index_twice_mut(node.into(), node2.into())
     }
 
     fn open_dot(&self)

@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::GraphError;
 use crate::analyzer::GraphLike;
@@ -27,7 +29,7 @@ pub mod elem_ty;
 pub mod range_ops;
 pub mod range_string;
 
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub struct SolcRange {
     pub min: Elem<Concrete>,
     pub min_cached: Option<Elem<Concrete>>,
@@ -128,13 +130,13 @@ impl SolcRange {
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
-                let r = Elem::ConcreteDyn(Box::new(RangeDyn {
+                let r = Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(s.len()))),
                     val,
                     loc: Loc::Implicit,
-                }));
+                })));
                 Some(SolcRange::new(r.clone(), r, vec![]))
             }
             Concrete::DynBytes(b) => {
@@ -149,13 +151,13 @@ impl SolcRange {
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
-                let r = Elem::ConcreteDyn(Box::new(RangeDyn {
+                let r = Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(b.len()))),
                     val,
                     loc: Loc::Implicit,
-                }));
+                })));
                 Some(SolcRange::new(r.clone(), r, vec![]))
             }
             _e => None,
@@ -263,37 +265,37 @@ impl SolcRange {
             | Builtin::String
             | Builtin::Array(_)
             | Builtin::Mapping(_, _) => Some(SolcRange::new(
-                Elem::ConcreteDyn(Box::new(RangeDyn {
+                Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::zero())),
                     val: Default::default(),
                     loc: Loc::Implicit,
-                })),
-                Elem::ConcreteDyn(Box::new(RangeDyn {
+                }))),
+                Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::MAX)),
                     val: Default::default(),
                     loc: Loc::Implicit,
-                })),
+                }))),
                 vec![],
             )),
             Builtin::SizedArray(s, _) => Some(SolcRange::new(
-                Elem::ConcreteDyn(Box::new(RangeDyn {
+                Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(*s)),
                     val: Default::default(),
                     loc: Loc::Implicit,
-                })),
-                Elem::ConcreteDyn(Box::new(RangeDyn {
+                }))),
+                Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(*s)),
                     val: Default::default(),
                     loc: Loc::Implicit,
-                })),
+                }))),
                 vec![],
             )),
             _ => None,

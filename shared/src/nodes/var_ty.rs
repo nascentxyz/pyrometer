@@ -49,8 +49,8 @@ impl VarNode {
             let underlying = self.underlying(analyzer)?.clone();
             let mut set = false;
             if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
-                if let Some(initer) = VarType::try_from_idx(analyzer, init) {
-                    if let Some(initer) = initer.try_cast(&ty, analyzer)? {
+                if let Some(mut initer) = VarType::try_from_idx(analyzer, init) {
+                    if initer.try_cast(&ty, analyzer)? {
                         set = true;
                         self.underlying_mut(analyzer)?.initializer = Some(initer.ty_idx());
                     }

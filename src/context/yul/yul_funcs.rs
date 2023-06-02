@@ -573,11 +573,11 @@ pub trait YulFuncCaller:
                         .into_expr_err(loc)?;
                 let mut range = SolcRange::try_from_builtin(&b).unwrap();
                 match &mut range.min {
-                    Elem::ConcreteDyn(ref mut r) => r.set_len(Elem::from(size)),
+                    Elem::ConcreteDyn(ref mut r) => r.borrow_mut().set_len(Elem::from(size)),
                     _ => unreachable!(),
                 }
                 match range.max {
-                    Elem::ConcreteDyn(ref mut r) => r.set_len(Elem::from(size)),
+                    Elem::ConcreteDyn(ref mut r) => r.borrow_mut().set_len(Elem::from(size)),
                     _ => unreachable!(),
                 }
                 var.is_return = true;

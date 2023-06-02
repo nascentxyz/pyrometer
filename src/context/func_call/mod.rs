@@ -395,17 +395,15 @@ pub trait FuncCaller:
                             None
                         };
 
+                        let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+
                         if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap())
                         {
-                            let ty = new_cvar.ty.clone();
-                            if !ty.ty_eq(&param_ty, self).unwrap() {
-                                if let Some(new_ty) = ty.try_cast(&param_ty, self).unwrap() {
-                                    new_cvar.ty = new_ty;
-                                }
+                            if !node.ty_eq_ty(&param_ty, self).unwrap() {
+                                node.cast_from_ty(param_ty, self).unwrap();
                             }
                         }
 
-                        let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
                         self.add_edge(
                             node,
                             input.latest_version(self),

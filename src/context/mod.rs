@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::context::yul::YulBuilder;
 use ethers_core::types::I256;
 
@@ -1344,7 +1346,7 @@ pub trait ContextBuilder:
                         if let Some(mut rd) = min.maybe_range_dyn() {
                             rd.val.insert(Elem::from(index), Elem::from(rhs_cvar));
                             let res = next_arr
-                                .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                                .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                                 .into_expr_err(loc);
                             let _ = self.add_if_err(res);
                         }
@@ -1352,7 +1354,7 @@ pub trait ContextBuilder:
                         if let Some(mut rd) = max.maybe_range_dyn() {
                             rd.val.insert(Elem::from(index), Elem::from(rhs_cvar));
                             let res = next_arr
-                                .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                                .set_range_max(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                                 .into_expr_err(loc);
                             let _ = self.add_if_err(res);
                         }

@@ -1,3 +1,5 @@
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::analyzer::GraphError;
 use crate::context::ContextVarNode;
 use crate::nodes::{TypeNode, VarType};
@@ -10,7 +12,7 @@ use std::collections::BTreeMap;
 use std::ops::*;
 
 /// A dynamic range element value
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Dynamic {
     /// Index of the node that is referenced
     pub idx: NodeIdx,
@@ -51,7 +53,7 @@ impl RangeElem<Concrete> for Dynamic {
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
-            return Ok(*cached);
+            return Ok((*cached).clone());
         }
 
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
@@ -76,7 +78,7 @@ impl RangeElem<Concrete> for Dynamic {
 
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
-            return Ok(*cached);
+            return Ok((*cached).clone());
         }
 
         let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
@@ -157,14 +159,14 @@ impl RangeElem<Concrete> for Dynamic {
 
     fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
         if self.maximized.is_none() {
-            self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+            self.maximized = Some(MinMaxed::Maximized(Rc::new(self.maximize(g)?)));
         }
         Ok(())
     }
 
     fn cache_minimize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
         if self.minimized.is_none() {
-            self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+            self.minimized = Some(MinMaxed::Minimized(Rc::new(self.minimize(g)?)));
         }
         Ok(())
     }
@@ -176,7 +178,7 @@ impl RangeElem<Concrete> for Dynamic {
 }
 
 /// A concrete value for a range element
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RangeDyn<T> {
     pub minimized: Option<MinMaxed<T>>,
     pub maximized: Option<MinMaxed<T>>,
@@ -238,10 +240,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
-            return Ok(*cached);
+            return Ok((*cached).clone());
         }
 
-        Ok(Elem::ConcreteDyn(Box::new(Self {
+        Ok(Elem::ConcreteDyn(Rc::new(RefCell::new(Self {
             minimized: None,
             maximized: None,
             len: self.len.maximize(analyzer)?,
@@ -253,15 +255,15 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 map
             },
             loc: self.loc,
-        })))
+        }))))
     }
 
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
-            return Ok(*cached);
+            return Ok((*cached).clone());
         }
 
-        Ok(Elem::ConcreteDyn(Box::new(Self {
+        Ok(Elem::ConcreteDyn(Rc::new(RefCell::new(Self {
             minimized: None,
             maximized: None,
             len: self.len.minimize(analyzer)?,
@@ -273,11 +275,11 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 map
             },
             loc: self.loc,
-        })))
+        }))))
     }
 
     fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::ConcreteDyn(Box::new(Self {
+        Ok(Elem::ConcreteDyn(Rc::new(RefCell::new(Self {
             minimized: None,
             maximized: None,
             len: self.len.simplify_maximize(analyzer)?,
@@ -289,10 +291,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 map
             },
             loc: self.loc,
-        })))
+        }))))
     }
     fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::ConcreteDyn(Box::new(Self {
+        Ok(Elem::ConcreteDyn(Rc::new(RefCell::new(Self {
             minimized: None,
             maximized: None,
             len: self.len.simplify_minimize(analyzer)?,
@@ -304,19 +306,19 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 map
             },
             loc: self.loc,
-        })))
+        }))))
     }
 
     fn cache_maximize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
         if self.maximized.is_none() {
-            self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+            self.maximized = Some(MinMaxed::Maximized(Rc::new(self.maximize(g)?)));
         }
         Ok(())
     }
 
     fn cache_minimize(&mut self, g: &impl GraphLike) -> Result<(), GraphError> {
         if self.minimized.is_none() {
-            self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+            self.minimized = Some(MinMaxed::Minimized(Rc::new(self.minimize(g)?)));
         }
         Ok(())
     }
@@ -423,17 +425,17 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
 
     fn maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::Concrete(self.clone()))
+        Ok(Elem::Concrete(self.to_owned()))
     }
     fn minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::Concrete(self.clone()))
+        Ok(Elem::Concrete(self.to_owned()))
     }
 
     fn simplify_maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::Concrete(self.clone()))
+        Ok(Elem::Concrete(self.to_owned()))
     }
     fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        Ok(Elem::Concrete(self.clone()))
+        Ok(Elem::Concrete(self.to_owned()))
     }
 
     fn cache_maximize(&mut self, _g: &impl GraphLike) -> Result<(), GraphError> {
@@ -446,20 +448,20 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn uncache(&mut self) {}
 }
 
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum MinMaxed<T> {
-    Minimized(Box<Elem<T>>),
-    Maximized(Box<Elem<T>>),
+    Minimized(Rc<Elem<T>>),
+    Maximized(Rc<Elem<T>>),
 }
 
 /// A range expression composed of other range [`Elem`]
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RangeExpr<T> {
     pub maximized: Option<MinMaxed<T>>,
     pub minimized: Option<MinMaxed<T>>,
-    pub lhs: Box<Elem<T>>,
+    pub lhs: Rc<RefCell<Elem<T>>>,
     pub op: RangeOp,
-    pub rhs: Box<Elem<T>>,
+    pub rhs: Rc<RefCell<Elem<T>>>,
 }
 
 impl<T> RangeExpr<T> {
@@ -468,14 +470,14 @@ impl<T> RangeExpr<T> {
         RangeExpr {
             maximized: None,
             minimized: None,
-            lhs: Box::new(lhs),
+            lhs: Rc::new(RefCell::new(lhs)),
             op,
-            rhs: Box::new(rhs),
+            rhs: Rc::new(RefCell::new(rhs)),
         }
     }
 
     pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
-        self.lhs.contains_node(node_idx) || self.rhs.contains_node(node_idx)
+        self.lhs.borrow().contains_node(node_idx) || self.rhs.borrow().contains_node(node_idx)
     }
 }
 
@@ -489,31 +491,31 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
 
     fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps = self.lhs.dependent_on();
-        deps.extend(self.rhs.dependent_on());
+        let mut deps = self.lhs.borrow().dependent_on();
+        deps.extend(self.rhs.borrow().dependent_on());
         deps
     }
 
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
-        self.lhs.update_deps(mapping);
-        self.rhs.update_deps(mapping);
+        self.lhs.borrow_mut().update_deps(mapping);
+        self.rhs.borrow_mut().update_deps(mapping);
     }
 
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
-        self.lhs.filter_recursion(node_idx, new_idx);
-        self.rhs.filter_recursion(node_idx, new_idx);
+        self.lhs.borrow_mut().filter_recursion(node_idx, new_idx);
+        self.rhs.borrow_mut().filter_recursion(node_idx, new_idx);
     }
 
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
-            Ok(*cached)
+        if let Some(MinMaxed::Maximized(cached)) = self.maximized.to_owned() {
+            Ok((*cached).clone())
         } else {
             self.exec_op(true, analyzer)
         }
     }
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
-            Ok(*cached)
+        if let Some(MinMaxed::Minimized(cached)) = self.minimized.to_owned() {
+            Ok((*cached).clone())
         } else {
             self.exec_op(false, analyzer)
         }
@@ -546,12 +548,12 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 }
 
 /// A core range element.
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum Elem<T> {
     /// A range element that is a reference to another node
     Dynamic(Dynamic),
     /// A concrete range element of type `T`. e.g.: some number like `10`
-    ConcreteDyn(Box<RangeDyn<T>>),
+    ConcreteDyn(Rc<RefCell<RangeDyn<T>>>),
     /// A concrete range element of type `T`. e.g.: some number like `10`
     Concrete(RangeConcrete<T>),
     /// A range element that is an expression composed of other range elements
@@ -559,6 +561,7 @@ pub enum Elem<T> {
     /// A null range element useful in range expressions that dont have a rhs
     Null,
 }
+
 
 impl std::fmt::Display for Elem<Concrete> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -569,7 +572,7 @@ impl std::fmt::Display for Elem<Concrete> {
                 write!(f, "{}", val.as_string())
             }
             Elem::Expr(RangeExpr { lhs, op, rhs, .. }) => {
-                write!(f, "({} {} {})", op.to_string(), lhs, rhs)
+                write!(f, "({} {} {})", op.to_string(), lhs.borrow(), rhs.borrow())
             }
             _ => write!(f, ""),
         }
@@ -603,21 +606,16 @@ impl<T> Elem<T> {
             Self::Dynamic(d) => d.idx == node_idx,
             Self::Concrete(_) => false,
             Self::Expr(expr) => expr.contains_node(node_idx),
-            Self::ConcreteDyn(d) => d.contains_node(node_idx),
+            Self::ConcreteDyn(d) => d.borrow().contains_node(node_idx),
             Self::Null => false,
         }
     }
 
-    pub fn dyn_map(&self) -> Option<&BTreeMap<Self, Self>> {
+    pub fn dyn_map(&self) -> Option<Rc<RefCell<RangeDyn<T>>>> {
         match self {
-            Self::ConcreteDyn(dyn_range) => Some(&dyn_range.val),
-            _ => None,
-        }
-    }
-
-    pub fn dyn_map_mut(&mut self) -> Option<&mut BTreeMap<Self, Self>> {
-        match self {
-            Self::ConcreteDyn(ref mut dyn_range) => Some(&mut dyn_range.val),
+            Self::ConcreteDyn(dyn_range) => {
+                Some(Rc::clone(dyn_range))
+            },
             _ => None,
         }
     }
@@ -733,7 +731,7 @@ impl Elem<Concrete> {
 
     pub fn maybe_range_dyn(&self) -> Option<RangeDyn<Concrete>> {
         match self {
-            Elem::ConcreteDyn(a) => Some(*a.clone()),
+            Elem::ConcreteDyn(a) => Some(a.borrow().clone()),
             _ => None,
         }
     }
@@ -766,7 +764,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Dynamic(d) => d.dependent_on(),
             Self::Concrete(_) => vec![],
             Self::Expr(expr) => expr.dependent_on(),
-            Self::ConcreteDyn(d) => d.dependent_on(),
+            Self::ConcreteDyn(d) => d.borrow().dependent_on(),
             Self::Null => vec![],
         }
     }
@@ -776,7 +774,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Dynamic(d) => d.update_deps(mapping),
             Self::Concrete(_) => {}
             Self::Expr(expr) => expr.update_deps(mapping),
-            Self::ConcreteDyn(d) => d.update_deps(mapping),
+            Self::ConcreteDyn(d) => d.borrow_mut().update_deps(mapping),
             Self::Null => {}
         }
     }
@@ -790,7 +788,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             }
             Self::Concrete(_) => {}
             Self::Expr(expr) => expr.filter_recursion(node_idx, new_idx),
-            Self::ConcreteDyn(d) => d.filter_recursion(node_idx, new_idx),
+            Self::ConcreteDyn(d) => d.borrow_mut().filter_recursion(node_idx, new_idx),
             Self::Null => {}
         }
     }
@@ -800,7 +798,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         let res = match self {
             Dynamic(dy) => dy.maximize(analyzer)?,
             Concrete(inner) => inner.maximize(analyzer)?,
-            ConcreteDyn(inner) => inner.maximize(analyzer)?,
+            ConcreteDyn(inner) => inner.borrow().maximize(analyzer)?,
             Expr(expr) => expr.maximize(analyzer)?,
             Null => Elem::Null,
         };
@@ -812,7 +810,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         let res = match self {
             Dynamic(dy) => dy.minimize(analyzer)?,
             Concrete(inner) => inner.minimize(analyzer)?,
-            ConcreteDyn(inner) => inner.minimize(analyzer)?,
+            ConcreteDyn(inner) => inner.borrow().minimize(analyzer)?,
             Expr(expr) => expr.minimize(analyzer)?,
             Null => Elem::Null,
         };
@@ -824,7 +822,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         let res = match self {
             Dynamic(dy) => dy.simplify_maximize(analyzer)?,
             Concrete(inner) => inner.simplify_maximize(analyzer)?,
-            ConcreteDyn(inner) => inner.simplify_maximize(analyzer)?,
+            ConcreteDyn(inner) => inner.borrow().simplify_maximize(analyzer)?,
             Expr(expr) => expr.simplify_maximize(analyzer)?,
             Null => Elem::Null,
         };
@@ -836,7 +834,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         let res = match self {
             Dynamic(dy) => dy.simplify_minimize(analyzer)?,
             Concrete(inner) => inner.simplify_minimize(analyzer)?,
-            ConcreteDyn(inner) => inner.simplify_minimize(analyzer)?,
+            ConcreteDyn(inner) => inner.borrow().simplify_minimize(analyzer)?,
             Expr(expr) => expr.simplify_minimize(analyzer)?,
             Null => Elem::Null,
         };
@@ -848,7 +846,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         match self {
             Dynamic(dy) => dy.cache_maximize(analyzer),
             Concrete(inner) => inner.cache_maximize(analyzer),
-            ConcreteDyn(inner) => inner.cache_maximize(analyzer),
+            ConcreteDyn(inner) => inner.borrow_mut().cache_maximize(analyzer),
             Expr(expr) => expr.cache_maximize(analyzer),
             Null => Ok(()),
         }
@@ -859,7 +857,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         match self {
             Dynamic(dy) => dy.cache_minimize(analyzer),
             Concrete(inner) => inner.cache_minimize(analyzer),
-            ConcreteDyn(inner) => inner.cache_minimize(analyzer),
+            ConcreteDyn(inner) => inner.borrow_mut().cache_minimize(analyzer),
             Expr(expr) => expr.cache_minimize(analyzer),
             Null => Ok(()),
         }
@@ -869,7 +867,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         match self {
             Dynamic(dy) => dy.uncache(),
             Concrete(inner) => inner.uncache(),
-            ConcreteDyn(inner) => inner.uncache(),
+            ConcreteDyn(inner) => inner.borrow_mut().uncache(),
             Expr(expr) => expr.uncache(),
             Null => {}
         }
@@ -1065,22 +1063,22 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         maximize: bool,
         analyzer: &impl GraphLike,
     ) -> Result<(), GraphError> {
-        self.lhs.cache_minimize(analyzer)?;
-        self.lhs.cache_maximize(analyzer)?;
-        self.rhs.cache_minimize(analyzer)?;
-        self.rhs.cache_maximize(analyzer)?;
+        self.lhs.borrow_mut().cache_minimize(analyzer)?;
+        self.lhs.borrow_mut().cache_maximize(analyzer)?;
+        self.rhs.borrow_mut().cache_minimize(analyzer)?;
+        self.rhs.borrow_mut().cache_maximize(analyzer)?;
         let res = self.exec_op(maximize, analyzer)?;
         if maximize {
-            self.maximized = Some(MinMaxed::Maximized(Box::new(res)));
+            self.maximized = Some(MinMaxed::Maximized(Rc::new(res)));
         } else {
-            self.minimized = Some(MinMaxed::Minimized(Box::new(res)));
+            self.minimized = Some(MinMaxed::Minimized(Rc::new(res)));
         }
         Ok(())
     }
 
     fn uncache_exec(&mut self) {
-        self.lhs.uncache();
-        self.rhs.uncache();
+        self.lhs.borrow_mut().uncache();
+        self.rhs.borrow_mut().uncache();
     }
 
     fn simplify_exec_op(
@@ -1104,10 +1102,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         ),
         GraphError,
     > {
-        let lhs_min = self.lhs.minimize(analyzer)?;
-        let lhs_max = self.lhs.maximize(analyzer)?;
-        let rhs_min = self.rhs.minimize(analyzer)?;
-        let rhs_max = self.rhs.maximize(analyzer)?;
+        let lhs_min = self.lhs.borrow().minimize(analyzer)?;
+        let lhs_max = self.lhs.borrow().maximize(analyzer)?;
+        let rhs_min = self.rhs.borrow().minimize(analyzer)?;
+        let rhs_max = self.rhs.borrow().maximize(analyzer)?;
         Ok((lhs_min, lhs_max, rhs_min, rhs_max))
     }
 
@@ -1123,10 +1121,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         ),
         GraphError,
     > {
-        let lhs_min = self.lhs.simplify_minimize(analyzer)?;
-        let lhs_max = self.lhs.simplify_maximize(analyzer)?;
-        let rhs_min = self.rhs.simplify_minimize(analyzer)?;
-        let rhs_max = self.rhs.simplify_maximize(analyzer)?;
+        let lhs_min = self.lhs.borrow().simplify_minimize(analyzer)?;
+        let lhs_max = self.lhs.borrow().simplify_maximize(analyzer)?;
+        let rhs_min = self.rhs.borrow().simplify_minimize(analyzer)?;
+        let rhs_max = self.rhs.borrow().simplify_maximize(analyzer)?;
         Ok((lhs_min, lhs_max, rhs_min, rhs_max))
     }
 
@@ -1142,9 +1140,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
     ) -> Result<Elem<Concrete>, GraphError> {
         tracing::trace!(
             "executing: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
-            self.lhs,
+            self.lhs.borrow(),
             self.op.to_string(),
-            self.rhs,
+            self.rhs.borrow(),
             lhs_min,
             lhs_max,
             rhs_min,
@@ -1174,23 +1172,23 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     });
 
                     if candidates.is_empty() {
-                        return Ok(Elem::Expr(self.clone()));
+                        return Ok(Elem::Expr(self.to_owned()));
                     }
 
                     if maximize {
-                        candidates[candidates.len() - 1].clone()
+                        candidates.remove(candidates.len() - 1)
                     } else {
-                        candidates[0].clone()
+                        candidates.remove(0)
                     }
                 } else if maximize {
                     // if we are maximizing, the largest value will always just be the the largest value + the largest value
                     lhs_max
                         .range_add(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 } else {
                     lhs_min
                         .range_add(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 }
             }
             RangeOp::Sub(unchecked) => {
@@ -1208,24 +1206,24 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     });
 
                     if candidates.is_empty() {
-                        return Ok(Elem::Expr(self.clone()));
+                        return Ok(Elem::Expr(self.to_owned()));
                     }
 
                     if maximize {
-                        candidates[candidates.len() - 1].clone()
+                        candidates.remove(candidates.len() - 1)
                     } else {
-                        candidates[0].clone()
+                        candidates.remove(0)
                     }
                 } else if maximize {
                     // if we are maximizing, the largest value will always just be the the largest value - the smallest value
                     lhs_max
                         .range_sub(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 } else {
                     // if we are minimizing, the smallest value will always be smallest value - largest value
                     lhs_min
                         .range_sub(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 }
             }
             RangeOp::Mul(unchecked) => {
@@ -1243,13 +1241,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     });
 
                     if candidates.is_empty() {
-                        return Ok(Elem::Expr(self.clone()));
+                        return Ok(Elem::Expr(self.to_owned()));
                     }
 
                     if maximize {
-                        candidates[candidates.len() - 1].clone()
+                        candidates.remove(candidates.len() - 1)
                     } else {
-                        candidates[0].clone()
+                        candidates.remove(0)
                     }
                 } else if maximize {
                     // if we are maximizing, and both mins are negative and both maxes are positive,
@@ -1260,7 +1258,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             // largest positive value
                             lhs_min
                                 .range_mul(&rhs_min)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (true, false, true, false) => {
                             // we dont know if lhs_max * rhs_min is larger or lhs_min * rhs_max is smaller
@@ -1274,30 +1272,30 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 }
                                 (None, Some(max_expr)) => max_expr,
                                 (Some(min_expr), None) => min_expr,
-                                (None, None) => Elem::Expr(self.clone()),
+                                (None, None) => Elem::Expr(self.to_owned()),
                             }
                         }
                         (_, false, _, false) => {
                             // rhs_max is positive, lhs_max is positive, guaranteed to be largest max value
                             lhs_max
                                 .range_mul(&rhs_max)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (false, false, true, true) => {
                             // since we are forced to go negative here, values closest to 0 will ensure we get the maximum
                             lhs_min
                                 .range_mul(&rhs_max)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (true, true, false, false) => {
                             // since we are forced to go negative here, values closest to 0 will ensure we get the maximum
                             lhs_max
                                 .range_mul(&rhs_min)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (true, _, true, _) => lhs_min
                             .range_mul(&rhs_min)
-                            .unwrap_or(Elem::Expr(self.clone())),
+                            .unwrap_or(Elem::Expr(self.to_owned())),
                         (false, true, _, _) | (_, _, false, true) => {
                             panic!("unsatisfiable range")
                         }
@@ -1308,14 +1306,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             // rhs_min is positive, lhs_min is positive, guaranteed to be smallest max value
                             lhs_min
                                 .range_mul(&rhs_min)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (true, true, true, true) => {
                             // all negative, will be max * max because those are closest to 0 resulting in the
                             // smallest positive value
                             lhs_max
                                 .range_mul(&rhs_max)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (true, false, true, false) => {
                             // we dont know if lhs_max * rhs_min is smaller or lhs_min * rhs_max is smaller
@@ -1329,24 +1327,24 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 }
                                 (None, Some(max_expr)) => max_expr,
                                 (Some(min_expr), None) => min_expr,
-                                (None, None) => Elem::Expr(self.clone()),
+                                (None, None) => Elem::Expr(self.to_owned()),
                             }
                         }
                         (true, _, _, false) => {
                             // rhs_max is positive, lhs_min is negative, guaranteed to be largest min value
                             lhs_min
                                 .range_mul(&rhs_max)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (_, false, _, true) => {
                             // just lhs has a positive value, most negative will be lhs_max, rhs_max
                             lhs_max
                                 .range_mul(&rhs_max)
-                                .unwrap_or(Elem::Expr(self.clone()))
+                                .unwrap_or(Elem::Expr(self.to_owned()))
                         }
                         (false, false, true, false) => lhs_max
                             .range_mul(&rhs_min)
-                            .unwrap_or(Elem::Expr(self.clone())),
+                            .unwrap_or(Elem::Expr(self.to_owned())),
                         (false, true, _, _) | (_, _, false, true) => {
                             panic!("unsatisfiable range")
                         }
@@ -1401,13 +1399,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
                 // if maximize {
                 // 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
@@ -1532,13 +1530,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
                 // if maximize {
                 // 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
@@ -1589,13 +1587,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
                 // if maximize {
                 // 	match (lhs_min_neg, lhs_max_neg, rhs_min_neg, rhs_max_neg) {
@@ -1636,44 +1634,44 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 if maximize {
                     lhs_max
                         .range_gt(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 } else {
                     lhs_min
                         .range_gt(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 }
             }
             RangeOp::Lt => {
                 if maximize {
                     lhs_min
                         .range_lt(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 } else {
                     lhs_max
                         .range_lt(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 }
             }
             RangeOp::Gte => {
                 if maximize {
                     lhs_max
                         .range_gte(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 } else {
                     lhs_min
                         .range_gte(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 }
             }
             RangeOp::Lte => {
                 if maximize {
                     lhs_min
                         .range_lte(&rhs_max)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 } else {
                     lhs_max
                         .range_lte(&rhs_min)
-                        .unwrap_or(Elem::Expr(self.clone()))
+                        .unwrap_or(Elem::Expr(self.to_owned()))
                 }
             }
             RangeOp::Eq => {
@@ -1719,7 +1717,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             loc,
                         })
                     } else {
-                        Elem::Expr(self.clone())
+                        Elem::Expr(self.to_owned())
                     }
                 } else {
                     // check if either lhs element is *not* contained by rhs
@@ -1844,7 +1842,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         _ => {}
                     }
 
-                    Elem::Expr(self.clone())
+                    Elem::Expr(self.to_owned())
                 }
             }
             RangeOp::Shl => {
@@ -1861,13 +1859,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::Shr => {
@@ -1884,13 +1882,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::And => {
@@ -1907,13 +1905,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::Or => {
@@ -1930,13 +1928,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::Not => {
@@ -1949,13 +1947,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::Cast => {
@@ -1974,13 +1972,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::Exp => {
@@ -1998,13 +1996,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::BitAnd => {
@@ -2055,13 +2053,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::BitOr => {
@@ -2112,13 +2110,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::BitXor => {
@@ -2169,13 +2167,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::BitNot => {
@@ -2218,13 +2216,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
             RangeOp::Concat => {
@@ -2242,16 +2240,16 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 });
 
                 if candidates.is_empty() {
-                    return Ok(Elem::Expr(self.clone()));
+                    return Ok(Elem::Expr(self.to_owned()));
                 }
 
                 if maximize {
-                    candidates[candidates.len() - 1].clone()
+                    candidates.remove(candidates.len() - 1)
                 } else {
-                    candidates[0].clone()
+                    candidates.remove(0)
                 }
             }
-            _ => Elem::Expr(self.clone()),
+            _ => Elem::Expr(self.to_owned()),
         };
         Ok(res)
     }

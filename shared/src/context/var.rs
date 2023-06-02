@@ -116,6 +116,10 @@ impl ContextVarNode {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
+    pub fn ty_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> Result<&'a mut VarType, GraphError> {
+        Ok(&mut self.underlying_mut(analyzer)?.ty)
+    }
+
     pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_mapping(analyzer)
     }
@@ -399,7 +403,7 @@ impl ContextVarNode {
     }
 
     pub fn cache_range(&self, analyzer: &mut impl GraphLike) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
         }
@@ -794,8 +798,12 @@ impl ContextVarNode {
         Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
     }
 
-    pub fn ty_eq(&self, other: &Self, analyzer: &mut impl GraphLike) -> Result<bool, GraphError> {
+    pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         self.ty(analyzer)?.ty_eq(other.ty(analyzer)?, analyzer)
+    }
+
+    pub fn ty_eq_ty(&self, other: &VarType, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        self.ty(analyzer)?.ty_eq(other, analyzer)
     }
 
     pub fn cast_from(
@@ -823,16 +831,24 @@ impl ContextVarNode {
         to_ty: VarType,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        let from_ty = self.ty(analyzer)?.clone();
-        if !from_ty.ty_eq(&to_ty, analyzer)? {
-            if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
-                self.underlying_mut(analyzer)?.ty = new_ty;
-            }
-            if let (Some(r), Some(r2)) = (self.range(analyzer)?, to_ty.range(analyzer)?) {
-                let min = r.min.cast(r2.min);
-                let max = r.max.cast(r2.max);
-                self.set_range_min(analyzer, min)?;
-                self.set_range_max(analyzer, max)?;
+        if !self.ty_eq_ty(&to_ty, analyzer)? {
+            let r = self.ty_mut(analyzer)?.take_range();
+
+            let mut new_ty = self.ty(analyzer)?.empty_ty();
+            new_ty.try_cast(&to_ty, analyzer)?;
+            *self.ty_mut(analyzer)? = new_ty;
+
+            match (r, to_ty.range(analyzer)?) {
+                (Some(r), Some(r2)) => {
+                    let min = r.min.cast(r2.min);
+                    let max = r.max.cast(r2.max);
+                    self.set_range_min(analyzer, min)?;
+                    self.set_range_max(analyzer, max)?;
+                }
+                (Some(r), None) => {
+                    self.ty_mut(analyzer)?.set_range(r)?;
+                }
+                _ => {}
             }
         }
 
@@ -849,12 +865,15 @@ impl ContextVarNode {
         to_ty: VarType,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        let from_ty = self.ty(analyzer)?.clone();
-        if !from_ty.ty_eq(&to_ty, analyzer)? {
-            if let Some(new_ty) = from_ty.try_literal_cast(&to_ty, analyzer)? {
-                self.underlying_mut(analyzer)?.ty = new_ty;
+        if !self.ty_eq_ty(&to_ty, analyzer)? {
+            let r = self.ty_mut(analyzer)?.take_range();
+
+            let mut new_ty = self.ty(analyzer)?.empty_ty();
+            new_ty.try_literal_cast(&to_ty, analyzer)?;
+            *self.ty_mut(analyzer)? = new_ty;
+            if let Some(r) = r {
+                self.ty_mut(analyzer)?.set_range(r)?;
             }
-            // we dont need to update the ranges because a literal by definition is concrete
         }
 
         if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer)?, to_ty) {
@@ -1135,7 +1154,7 @@ impl ContextVar {
             VarType::User(TypeNode::Contract(_), ref maybe_range)
             | VarType::User(TypeNode::Enum(_), ref maybe_range)
             | VarType::User(TypeNode::Ty(_), ref maybe_range)
-            | VarType::BuiltIn(_, ref maybe_range) => maybe_range.is_some(),
+            | VarType::BuiltIn(_, ref maybe_range) => maybe_range.is_none(),
             _ => false,
         }
     }

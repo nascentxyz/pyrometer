@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::ContextBuilder;
@@ -172,9 +174,9 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     let elem = Elem::Expr(RangeExpr {
                         minimized: None,
                         maximized: None,
-                        lhs: Box::new(Elem::from(lhs_cvar)),
+                        lhs: Rc::new(RefCell::new(Elem::from(lhs_cvar))),
                         op,
-                        rhs: Box::new(Elem::from(rhs_cvar)),
+                        rhs: Rc::new(RefCell::new(Elem::from(rhs_cvar))),
                     });
 
                     let exclusions = lhs_cvar
@@ -284,9 +286,9 @@ pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let val = Elem::Expr(RangeExpr {
                     minimized: None,
                     maximized: None,
-                    lhs: Box::new(lhs_range.range_min().into_owned()),
+                    lhs: Rc::new(RefCell::new(lhs_range.range_min().into_owned())),
                     op: RangeOp::Not,
-                    rhs: Box::new(Elem::Null),
+                    rhs: Rc::new(RefCell::new(Elem::Null)),
                 });
 
                 return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions));

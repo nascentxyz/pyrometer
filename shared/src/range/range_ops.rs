@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::range::Elem;
 use crate::range::RangeConcrete;
 use crate::range::RangeDyn;
@@ -1224,9 +1226,9 @@ impl RangeCast<Concrete> for RangeConcrete<Concrete> {
     }
 }
 
-impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
-    fn range_cast(&self, other: &Box<RangeDyn<Concrete>>) -> Option<Elem<Concrete>> {
-        match (self.val.clone(), other.val.iter().take(1).next()) {
+impl RangeCast<Concrete, Rc<RefCell<RangeDyn<Concrete>>>> for RangeConcrete<Concrete> {
+    fn range_cast(&self, other: &Rc<RefCell<RangeDyn<Concrete>>>) -> Option<Elem<Concrete>> {
+        match (self.val.clone(), other.borrow().val.iter().take(1).next()) {
             (
                 Concrete::Bytes(size, val),
                 Some((
@@ -1238,7 +1240,7 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                 )),
             )
             | (Concrete::Bytes(size, val), None) => {
-                let mut existing = other.val.clone();
+                let mut existing = other.borrow().val.clone();
                 let new = val
                     .0
                     .iter()
@@ -1252,13 +1254,13 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                Some(Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(size))),
                     val: existing,
-                    loc: other.loc,
-                })))
+                    loc: other.borrow().loc,
+                }))))
             }
             (
                 Concrete::DynBytes(val),
@@ -1271,7 +1273,7 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                 )),
             )
             | (Concrete::DynBytes(val), None) => {
-                let mut existing = other.val.clone();
+                let mut existing = other.borrow().val.clone();
                 let new = val
                     .iter()
                     .enumerate()
@@ -1284,13 +1286,13 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                Some(Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
-                    loc: other.loc,
-                })))
+                    loc: other.borrow().loc,
+                }))))
             }
             (
                 Concrete::String(val),
@@ -1303,7 +1305,7 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                 )),
             )
             | (Concrete::String(val), None) => {
-                let mut existing = other.val.clone();
+                let mut existing = other.borrow().val.clone();
                 let new = val
                     .chars()
                     .enumerate()
@@ -1316,13 +1318,13 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                Some(Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
-                    loc: other.loc,
-                })))
+                    loc: other.borrow().loc,
+                }))))
             }
             _e => None,
         }
@@ -1359,7 +1361,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     }),
                 )),
                 None,
-            ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            ) => Some(Elem::ConcreteDyn(Rc::new(RefCell::new(self.clone())))),
             (
                 Some((
                     _,
@@ -1385,7 +1387,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     }),
                 )),
                 None,
-            ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            ) => Some(Elem::ConcreteDyn(Rc::new(RefCell::new(self.clone())))),
             (
                 Some((
                     _,
@@ -1411,10 +1413,10 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     }),
                 )),
                 None,
-            ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            ) => Some(Elem::ConcreteDyn(Rc::new(RefCell::new(self.clone())))),
             (Some((_, l @ Elem::Dynamic(_))), None) => Some(l.clone()),
             (None, Some((_, r @ Elem::Dynamic(_)))) => Some(r.clone()),
-            (None, None) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            (None, None) => Some(Elem::ConcreteDyn(Rc::new(RefCell::new(self.clone())))),
             _e => None,
         }
     }
@@ -1459,9 +1461,9 @@ impl RangeCast<Concrete> for Elem<Concrete> {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_cast(b),
             (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => {
                 // super dumb type stuff here that makes it so we have to specify
-                <RangeDyn<Concrete> as RangeCast<Concrete>>::range_cast(a, b)
+                <RangeDyn<Concrete> as RangeCast<Concrete>>::range_cast(&a.borrow(), &b.borrow())
             }
-            (Elem::ConcreteDyn(a), Elem::Concrete(b)) => a.range_cast(b),
+            (Elem::ConcreteDyn(a), Elem::Concrete(b)) => a.borrow().range_cast(b),
             (Elem::Concrete(a), Elem::ConcreteDyn(b)) => a.range_cast(b),
             _e => None,
         }
@@ -1511,13 +1513,13 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                Some(Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
                     loc: other.loc,
-                })))
+                }))))
             }
             (
                 Concrete::String(val),
@@ -1545,13 +1547,13 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                Some(Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::from(val.len()))),
                     val: existing,
                     loc: other.loc,
-                })))
+                }))))
             }
             _e => None,
         }
@@ -1589,17 +1591,17 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     .collect::<BTreeMap<_, _>>();
 
                 existing.extend(other_vals);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
+                Some(Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: self.len.clone() + other.len.clone(),
                     val: existing,
                     loc: other.loc,
-                })))
+                }))))
             }
             (Some((_, l @ Elem::Dynamic(_))), None) => Some(l.clone()),
             (None, Some((_, r @ Elem::Dynamic(_)))) => Some(r.clone()),
-            (None, None) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            (None, None) => Some(Elem::ConcreteDyn(Rc::new(RefCell::new(self.clone())))),
             _e => None,
         }
     }
@@ -1609,9 +1611,9 @@ impl RangeConcat<Concrete> for Elem<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_concat(b),
-            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_concat(&**b),
+            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.borrow().range_concat(&*b.borrow()),
             (Elem::Concrete(c), Elem::ConcreteDyn(d))
-            | (Elem::ConcreteDyn(d), Elem::Concrete(c)) => d.range_concat(c),
+            | (Elem::ConcreteDyn(d), Elem::Concrete(c)) => d.borrow().range_concat(c),
             _e => None,
         }
     }

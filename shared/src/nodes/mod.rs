@@ -1,4 +1,6 @@
 //! Solidity and EVM specific representations as nodes in the graph
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike};
@@ -39,7 +41,7 @@ pub use msg::*;
 mod block;
 pub use block::*;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum VarType {
     User(TypeNode, Option<SolcRange>),
     BuiltIn(BuiltInNode, Option<SolcRange>),
@@ -68,6 +70,18 @@ impl VarType {
         }
     }
 
+    pub fn take_range(&mut self) -> Option<SolcRange> {
+        match self {
+            VarType::User(TypeNode::Enum(_), ref mut r)
+            | VarType::User(TypeNode::Contract(_), ref mut r)
+            | VarType::User(TypeNode::Ty(_), ref mut r)
+            | VarType::BuiltIn(_, ref mut r) => {
+                r.take()
+            }
+            _ => None,
+        }
+    }
+
     pub fn possible_builtins_from_ty_inf(&self, analyzer: &impl GraphLike) -> Vec<Builtin> {
         match self {
             Self::BuiltIn(bn, _) => bn
@@ -87,6 +101,14 @@ impl VarType {
             Self::User(ty_node, _) => (*ty_node).into(),
             Self::BuiltIn(bn, _) => (*bn).into(),
             Self::Concrete(c) => (*c).into(),
+        }
+    }
+
+    pub fn empty_ty(&self) -> VarType {
+        match self {
+            Self::User(ty_node, _) => Self::User(*ty_node, None),
+            Self::BuiltIn(bn, _) => Self::BuiltIn(*bn, None),
+            Self::Concrete(c) => Self::Concrete(*c),
         }
     }
 
@@ -115,6 +137,28 @@ impl VarType {
                 }
             },
             _ => Ok(self.clone()),
+        }
+    }
+
+    pub fn resolve_unresolved(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError> {
+        match self {
+            VarType::User(TypeNode::Unresolved(n), _) => match analyzer.node(*n) {
+                Node::Unresolved(ident) => Err(GraphError::NodeConfusion(format!(
+                    "Expected the type \"{}\" to be resolved by now",
+                    ident.name
+                ))),
+                _ => {
+                    if let Some(ty) = VarType::try_from_idx(analyzer, *n) {
+                        *self = ty;
+                        Ok(())
+                    } else {
+                        Err(GraphError::NodeConfusion(
+                            "Tried to type a non-typeable element".to_string(),
+                        ))
+                    }
+                }
+            },
+            _ => Ok(()),
         }
     }
 
@@ -240,36 +284,39 @@ impl VarType {
     }
 
     pub fn try_cast(
-        self,
+        &mut self,
         other: &Self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Result<Option<Self>, GraphError> {
-        match (self, other) {
-            (l, Self::User(TypeNode::Ty(ty), o_r)) => {
+        analyzer: &mut impl GraphLike,
+    ) -> Result<bool, GraphError> {
+        match (self.to_owned(), other) {
+            (mut l, Self::User(TypeNode::Ty(ty), o_r)) => {
                 let t = Self::BuiltIn(BuiltInNode::from(ty.underlying(analyzer)?.ty), o_r.clone());
                 l.try_cast(&t, analyzer)
             }
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Contract(cn), _)) => {
                 match from_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                        Ok(Some(Self::User(TypeNode::Contract(*cn), sr)))
+                        *self = Self::User(TypeNode::Contract(*cn), sr);
+                        Ok(true)
                     }
-                    _ => Ok(None),
+                    _ => Ok(false),
                 }
             }
             (Self::User(TypeNode::Contract(_cn), sr), Self::BuiltIn(to_bn, _)) => {
                 match to_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                        Ok(Some(Self::BuiltIn(*to_bn, sr)))
+                        *self = Self::BuiltIn(*to_bn, sr);
+                        Ok(true)
                     }
-                    _ => Ok(None),
+                    _ => Ok(false),
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer)? {
-                    Ok(Some(Self::BuiltIn(*to_bn, sr)))
+                    *self = Self::BuiltIn(*to_bn, sr);
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
@@ -277,9 +324,10 @@ impl VarType {
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.cast(b.clone()) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    Ok(Some(Self::Concrete(node.into())))
+                    *self = Self::Concrete(node.into());
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
             (Self::Concrete(from_c), Self::Concrete(to_c)) => {
@@ -287,45 +335,49 @@ impl VarType {
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.cast_from(to_c) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    Ok(Some(Self::Concrete(node.into())))
+                    *self = Self::Concrete(node.into());
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
-            _ => Ok(None),
+            _ => Ok(false),
         }
     }
 
     pub fn try_literal_cast(
-        self,
+        &mut self,
         other: &Self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Result<Option<Self>, GraphError> {
-        match (self, other) {
+    ) -> Result<bool, GraphError> {
+        match (self.to_owned(), other) {
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Ty(ty), _)) => {
                 if ty.underlying(analyzer)?.ty == from_bn.into() {
-                    Ok(Some(Self::User(TypeNode::Ty(*ty), sr)))
+                    *self = Self::User(TypeNode::Ty(*ty), sr);
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
             (Self::Concrete(from_c), Self::User(TypeNode::Ty(ty), _)) => {
                 let concrete_underlying = from_c.underlying(analyzer)?.clone();
                 let as_bn = analyzer.builtin_or_add(concrete_underlying.as_builtin());
                 if ty.underlying(analyzer)?.ty == as_bn {
-                    Ok(Some(Self::User(
+                    *self = Self::User(
                         TypeNode::Ty(*ty),
                         SolcRange::from(concrete_underlying),
-                    )))
+                    );
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer)? {
-                    Ok(Some(Self::BuiltIn(*to_bn, sr)))
+                    *self = Self::BuiltIn(*to_bn, sr);
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
@@ -333,9 +385,10 @@ impl VarType {
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast(b.clone()) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    Ok(Some(Self::Concrete(node.into())))
+                    *self = Self::Concrete(node.into());
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
             (Self::Concrete(from_c), Self::Concrete(to_c)) => {
@@ -343,12 +396,13 @@ impl VarType {
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast_from(to_c) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    Ok(Some(Self::Concrete(node.into())))
+                    *self = Self::Concrete(node.into());
+                    Ok(true)
                 } else {
-                    Ok(None)
+                    Ok(false)
                 }
             }
-            _ => Ok(None),
+            _ => Ok(false),
         }
     }
 
@@ -542,6 +596,7 @@ impl VarType {
                     // check if the index exists as a key
                     let min = r.range_min();
                     if let Some(map) = min.dyn_map() {
+                        let map = &map.borrow().val;
                         let name = index.name(analyzer)?;
                         let is_const = index.is_const(analyzer)?;
                         if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
@@ -911,7 +966,7 @@ impl From<BuiltInNode> for NodeIdx {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum Builtin {
     Address,
     AddressPayable,
@@ -988,23 +1043,23 @@ impl Builtin {
             Builtin::Uint(_) => SolcRange::from(Concrete::from(U256::from(0))),
             Builtin::Bytes(s) => SolcRange::from(Concrete::Bytes(*s, H256::zero())),
             Builtin::DynamicBytes | Builtin::Array(_) | Builtin::Mapping(_, _) => {
-                let zero = Elem::ConcreteDyn(Box::new(RangeDyn {
+                let zero = Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(U256::zero())),
                     val: Default::default(),
                     loc: Loc::Implicit,
-                }));
+                })));
                 Some(SolcRange::new(zero.clone(), zero, vec![]))
             }
             Builtin::SizedArray(s, _) => {
-                let sized = Elem::ConcreteDyn(Box::new(RangeDyn {
+                let sized = Elem::ConcreteDyn(Rc::new(RefCell::new(RangeDyn {
                     minimized: None,
                     maximized: None,
                     len: Elem::from(Concrete::from(*s)),
                     val: Default::default(),
                     loc: Loc::Implicit,
-                }));
+                })));
                 Some(SolcRange::new(sized.clone(), sized, vec![]))
             }
             Builtin::Rational | Builtin::Func(_, _) => None,
