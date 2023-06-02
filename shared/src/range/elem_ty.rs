@@ -578,6 +578,12 @@ impl std::fmt::Display for Elem<Concrete> {
     }
 }
 
+impl<T> From<RangeExpr<T>> for Elem<T> {
+    fn from(e: RangeExpr<T>) -> Self {
+        Elem::Expr(e)
+    }
+}
+
 impl From<Concrete> for Elem<Concrete> {
     fn from(c: Concrete) -> Self {
         Elem::Concrete(RangeConcrete {

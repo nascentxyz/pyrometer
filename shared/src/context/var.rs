@@ -1,6 +1,7 @@
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::context::GraphError;
 use crate::range::elem::RangeElem;
+use crate::range::elem_ty::RangeExpr;
 use crate::TyNode;
 
 use crate::range::elem_ty::Elem;
@@ -434,6 +435,49 @@ impl ContextVarNode {
     pub fn needs_fallback(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.needs_fallback())
     }
+
+    pub fn min_range_op(
+        &self,
+        op: RangeOp,
+        mut elem: Elem<Concrete>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        if elem.contains_node((*self).into()) {
+            if let Some(prev) = self.previous_or_inherited_version(analyzer) {
+                elem.filter_recursion((*self).into(), prev.into());
+            } else {
+                return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
+            }
+        }
+
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
+            range.min = Elem::from(RangeExpr::new(range.min, op, elem));
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
+
+    pub fn max_range_op(
+        &self,
+        op: RangeOp,
+        mut elem: Elem<Concrete>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        if elem.contains_node((*self).into()) {
+            if let Some(prev) = self.previous_or_inherited_version(analyzer) {
+                elem.filter_recursion((*self).into(), prev.into());
+            } else {
+                return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
+            }
+        }
+
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
+            range.max = Elem::from(RangeExpr::new(range.max, op, elem));
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
+
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,

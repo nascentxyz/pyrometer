@@ -644,16 +644,12 @@ pub trait Range<T> {
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
             .into_iter()
             .filter(|dep| !dep.is_const(analyzer).unwrap())
-            .map(|dep| {
+            .filter_map(|dep| {
                 let latest = dep.latest_version_in_ctx(ctx, analyzer).unwrap();
-                if latest == node {
-                    if let Some(prev) = latest.previous_version(analyzer) {
-                        (dep, prev)
-                    } else {
-                        (dep, dep)
-                    }
+                if latest != node {
+                    Some((dep, latest))
                 } else {
-                    (dep, latest)
+                    None
                 }
             })
             .collect();

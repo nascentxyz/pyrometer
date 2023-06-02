@@ -260,7 +260,9 @@ fn main() {
         .collect::<Vec<_>>();
     let _t1 = std::time::Instant::now();
     if args.contracts.is_empty() {
-        let funcs = analyzer.search_children(entry, &Edge::Func);
+        println!("here");
+        let mut funcs = analyzer.search_children(entry, &Edge::Func);
+        funcs.extend(analyzer.search_children(entry, &Edge::Modifier));
         for func in funcs.into_iter() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {
@@ -293,18 +295,19 @@ fn main() {
             .collect::<Vec<_>>()
             .iter()
             .for_each(|contract| {
-                let funcs = contract.funcs(&analyzer);
+                let mut funcs = contract.funcs(&analyzer);
+                funcs.extend(contract.modifiers(&analyzer));
                 for func in funcs.into_iter() {
                     if !args.funcs.is_empty() {
                         if args.funcs.contains(&func.name(&analyzer).unwrap()) {
-                            let ctx = func.body_ctx(&mut analyzer);
-                            let analysis = analyzer
-                                .bounds_for_all(&file_mapping, ctx, config)
-                                .as_cli_compat(&file_mapping);
-                            analysis.print_reports(&mut source_map, &analyzer);
+                            if let Some(ctx) = func.maybe_body_ctx(&mut analyzer) {
+                                let analysis = analyzer
+                                    .bounds_for_all(&file_mapping, ctx, config)
+                                    .as_cli_compat(&file_mapping);
+                                analysis.print_reports(&mut source_map, &analyzer);
+                            }
                         }
-                    } else {
-                        let ctx = func.body_ctx(&mut analyzer);
+                    } else if let Some(ctx) = func.maybe_body_ctx(&mut analyzer) {
                         let analysis = analyzer
                             .bounds_for_all(&file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);
