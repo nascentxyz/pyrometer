@@ -1,5 +1,3 @@
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::analyzer::GraphError;
 use crate::context::ContextVarNode;
 use crate::nodes::{TypeNode, VarType};
@@ -8,8 +6,10 @@ use crate::range::Range;
 use crate::range::{elem::RangeOp, *};
 use crate::{Concrete, NodeIdx};
 use solang_parser::pt::Loc;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::*;
+use std::rc::Rc;
 
 /// A dynamic range element value
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -562,7 +562,6 @@ pub enum Elem<T> {
     Null,
 }
 
-
 impl std::fmt::Display for Elem<Concrete> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -613,9 +612,7 @@ impl<T> Elem<T> {
 
     pub fn dyn_map(&self) -> Option<Rc<RefCell<RangeDyn<T>>>> {
         match self {
-            Self::ConcreteDyn(dyn_range) => {
-                Some(Rc::clone(dyn_range))
-            },
+            Self::ConcreteDyn(dyn_range) => Some(Rc::clone(dyn_range)),
             _ => None,
         }
     }

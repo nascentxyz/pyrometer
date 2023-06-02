@@ -1,9 +1,9 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::ContextBuilder;
 use shared::analyzer::GraphError;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use shared::{
     analyzer::AnalyzerLike,

@@ -146,9 +146,12 @@ pub trait GraphLike {
             .expect("Index not in graph")
     }
 
-    fn twice_node_mut(&mut self, node: impl Into<NodeIdx>, node2: impl Into<NodeIdx>) -> (&mut Node, &mut Node) {
-        self.graph_mut()
-            .index_twice_mut(node.into(), node2.into())
+    fn twice_node_mut(
+        &mut self,
+        node: impl Into<NodeIdx>,
+        node2: impl Into<NodeIdx>,
+    ) -> (&mut Node, &mut Node) {
+        self.graph_mut().index_twice_mut(node.into(), node2.into())
     }
 
     fn open_dot(&self)

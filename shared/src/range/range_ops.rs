@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::range::Elem;
 use crate::range::RangeConcrete;
 use crate::range::RangeDyn;
@@ -7,7 +5,9 @@ use crate::Concrete;
 use ethers_core::types::H256;
 use ethers_core::types::I256;
 use ethers_core::types::U256;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 pub trait RangeAdd<T, Rhs = Self> {
     /// Perform addition between two range elements

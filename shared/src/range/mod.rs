@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::GraphError;
 use crate::analyzer::GraphLike;
@@ -7,6 +5,8 @@ use crate::context::ContextNode;
 use crate::context::ContextVarNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem::RangeOp;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::range::elem_ty::Elem;
 use crate::range::elem_ty::RangeConcrete;

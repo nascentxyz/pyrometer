@@ -116,7 +116,10 @@ impl ContextVarNode {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
-    pub fn ty_mut<'a>(&self, analyzer: &'a mut impl GraphLike) -> Result<&'a mut VarType, GraphError> {
+    pub fn ty_mut<'a>(
+        &self,
+        analyzer: &'a mut impl GraphLike,
+    ) -> Result<&'a mut VarType, GraphError> {
         Ok(&mut self.underlying_mut(analyzer)?.ty)
     }
 

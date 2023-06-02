@@ -91,7 +91,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .cast_from(&rhs_cvar, self)
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                
+
                 ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
@@ -211,29 +211,21 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
             Elem::from(Dynamic::new(rhs_cvar.latest_version(self).into())),
         ));
 
-
-        let (cache_min, cache_max) = match op {
-            RangeOp::Add(false)
-            | RangeOp::Mul(false) => {
+        let (_cache_min, _cache_max) = match op {
+            RangeOp::Add(false) | RangeOp::Mul(false) => {
                 if let (Some(lhs_min), Some(rhs_min)) = (
                     lhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
-                    rhs_cvar.evaled_range_max(self).into_expr_err(loc)?
+                    rhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
                 ) {
-                    let cached_min = Elem::Expr(RangeExpr::<Concrete>::new(
-                        lhs_min,
-                        op,
-                        rhs_min,
-                    )).minimize(self);
+                    let cached_min =
+                        Elem::Expr(RangeExpr::<Concrete>::new(lhs_min, op, rhs_min)).minimize(self);
 
                     if let (Some(lhs), Some(rhs)) = (
                         lhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
-                        rhs_cvar.evaled_range_max(self).into_expr_err(loc)?
+                        rhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
                     ) {
-                        let cached_max = Elem::Expr(RangeExpr::<Concrete>::new(
-                            lhs,
-                            op,
-                            rhs,
-                        )).maximize(self);
+                        let cached_max =
+                            Elem::Expr(RangeExpr::<Concrete>::new(lhs, op, rhs)).maximize(self);
                         (Some(cached_min), Some(cached_max))
                     } else {
                         (None, None)
@@ -242,7 +234,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                     (None, None)
                 }
             }
-            _ => (None, None)
+            _ => (None, None),
         };
 
         // TODO: If one of lhs_cvar OR rhs_cvar are not symbolic,

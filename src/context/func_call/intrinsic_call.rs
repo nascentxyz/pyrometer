@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::context::func_call::FuncCaller;
 use crate::context::{
     exprs::{Array, MemberAccess, Require},
@@ -10,6 +8,8 @@ use ethers_core::types::U256;
 use shared::nodes::BuiltInNode;
 use shared::nodes::StructNode;
 use shared::nodes::TyNode;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use shared::analyzer::Search;
 use shared::analyzer::{AnalyzerLike, GraphLike};

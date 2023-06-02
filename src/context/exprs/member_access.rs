@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::context::exprs::env::Env;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
@@ -14,7 +12,9 @@ use shared::{
     range::SolcRange,
     {Edge, Node},
 };
+use std::cell::RefCell;
 use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use ethers_core::types::{I256, U256};
 
@@ -946,7 +946,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::from(len_node);
                         let res = next_arr
-                            .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                            .set_range_min(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
@@ -954,7 +954,7 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::from(len_node);
                         let res = next_arr
-                            .set_range_max(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                            .set_range_max(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
@@ -1009,7 +1009,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.len = Elem::from(new_len);
                                 let res = next_arr
-                                    .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                                    .set_range_min(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
@@ -1017,7 +1020,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.len = Elem::from(new_len);
                                 let res = next_arr
-                                    .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                                    .set_range_min(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
@@ -1065,7 +1071,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.len = Elem::from(len_node);
                                 let res = next_arr
-                                    .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                                    .set_range_min(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }
@@ -1073,7 +1082,10 @@ pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Siz
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.len = Elem::from(len_node);
                                 let res = next_arr
-                                    .set_range_max(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                                    .set_range_max(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc);
                                 let _ = self.add_if_err(res);
                             }

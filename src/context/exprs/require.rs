@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::context::exprs::IntoExprErr;
 use crate::context::ExprErr;
 use crate::{
@@ -8,6 +6,8 @@ use crate::{
 };
 use shared::range::elem_ty::RangeExpr;
 use shared::range::range_string::ToRangeString;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use shared::{
     context::*,
@@ -670,14 +670,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                            .set_range_min(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_max(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                            .set_range_max(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
                 }
@@ -698,14 +698,20 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.val.insert(Elem::from(index), Elem::from(new_rhs));
                                 next_arr
-                                    .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                                    .set_range_min(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc)?;
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.val.insert(Elem::from(index), Elem::from(new_rhs));
                                 next_arr
-                                    .set_range_max(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                                    .set_range_max(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc)?;
                             }
                         }
@@ -721,14 +727,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_min(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                            .set_range_min(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_max(self,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
+                            .set_range_max(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
                 }

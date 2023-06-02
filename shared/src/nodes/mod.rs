@@ -1,6 +1,4 @@
 //! Solidity and EVM specific representations as nodes in the graph
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::analyzer::AsDotStr;
 use crate::analyzer::GraphError;
 use crate::analyzer::{AnalyzerLike, GraphLike};
@@ -11,6 +9,8 @@ use crate::range::elem_ty::RangeDyn;
 use crate::range::Range;
 use crate::range::SolcRange;
 use crate::ContextVarNode;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use crate::Node;
 use crate::NodeIdx;
@@ -75,9 +75,7 @@ impl VarType {
             VarType::User(TypeNode::Enum(_), ref mut r)
             | VarType::User(TypeNode::Contract(_), ref mut r)
             | VarType::User(TypeNode::Ty(_), ref mut r)
-            | VarType::BuiltIn(_, ref mut r) => {
-                r.take()
-            }
+            | VarType::BuiltIn(_, ref mut r) => r.take(),
             _ => None,
         }
     }
