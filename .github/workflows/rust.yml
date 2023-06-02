@@ -22,3 +22,11 @@ jobs:
       run: cargo test --all
     - name: Lint with fmt
       run: cargo fmt --all --check
+  benchmark:
+      runs-on: ubuntu-latest
+      steps:
+      - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --all --release
+      - name: Run benches
+        run: cargo bench
