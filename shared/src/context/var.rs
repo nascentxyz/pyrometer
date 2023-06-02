@@ -831,24 +831,16 @@ impl ContextVarNode {
         to_ty: VarType,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        if !self.ty_eq_ty(&to_ty, analyzer)? {
-            let r = self.ty_mut(analyzer)?.take_range();
-
-            let mut new_ty = self.ty(analyzer)?.empty_ty();
-            new_ty.try_cast(&to_ty, analyzer)?;
-            *self.ty_mut(analyzer)? = new_ty;
-
-            match (r, to_ty.range(analyzer)?) {
-                (Some(r), Some(r2)) => {
-                    let min = r.min.cast(r2.min);
-                    let max = r.max.cast(r2.max);
-                    self.set_range_min(analyzer, min)?;
-                    self.set_range_max(analyzer, max)?;
-                }
-                (Some(r), None) => {
-                    self.ty_mut(analyzer)?.set_range(r)?;
-                }
-                _ => {}
+        let from_ty = self.ty(analyzer)?.clone();
+        if !from_ty.ty_eq(&to_ty, analyzer)? {
+            if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
+                self.underlying_mut(analyzer)?.ty = new_ty;
+            }
+            if let (Some(r), Some(r2)) = (self.range(analyzer)?, to_ty.range(analyzer)?) {
+                let min = r.min.cast(r2.min);
+                let max = r.max.cast(r2.max);
+                self.set_range_min(analyzer, min)?;
+                self.set_range_max(analyzer, max)?;
             }
         }
 
@@ -865,15 +857,12 @@ impl ContextVarNode {
         to_ty: VarType,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
     ) -> Result<(), GraphError> {
-        if !self.ty_eq_ty(&to_ty, analyzer)? {
-            let r = self.ty_mut(analyzer)?.take_range();
-
-            let mut new_ty = self.ty(analyzer)?.empty_ty();
-            new_ty.try_literal_cast(&to_ty, analyzer)?;
-            *self.ty_mut(analyzer)? = new_ty;
-            if let Some(r) = r {
-                self.ty_mut(analyzer)?.set_range(r)?;
+        let from_ty = self.ty(analyzer)?.clone();
+        if !from_ty.ty_eq(&to_ty, analyzer)? {
+            if let Some(new_ty) = from_ty.try_literal_cast(&to_ty, analyzer)? {
+                self.underlying_mut(analyzer)?.ty = new_ty;
             }
+            // we dont need to update the ranges because a literal by definition is concrete
         }
 
         if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer)?, to_ty) {

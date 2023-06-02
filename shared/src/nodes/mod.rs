@@ -284,39 +284,36 @@ impl VarType {
     }
 
     pub fn try_cast(
-        &mut self,
+        self,
         other: &Self,
-        analyzer: &mut impl GraphLike,
-    ) -> Result<bool, GraphError> {
-        match (self.to_owned(), other) {
-            (mut l, Self::User(TypeNode::Ty(ty), o_r)) => {
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<Option<Self>, GraphError> {
+        match (self, other) {
+            (l, Self::User(TypeNode::Ty(ty), o_r)) => {
                 let t = Self::BuiltIn(BuiltInNode::from(ty.underlying(analyzer)?.ty), o_r.clone());
                 l.try_cast(&t, analyzer)
             }
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Contract(cn), _)) => {
                 match from_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                        *self = Self::User(TypeNode::Contract(*cn), sr);
-                        Ok(true)
+                        Ok(Some(Self::User(TypeNode::Contract(*cn), sr)))
                     }
-                    _ => Ok(false),
+                    _ => Ok(None),
                 }
             }
             (Self::User(TypeNode::Contract(_cn), sr), Self::BuiltIn(to_bn, _)) => {
                 match to_bn.underlying(analyzer)? {
                     Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                        *self = Self::BuiltIn(*to_bn, sr);
-                        Ok(true)
+                        Ok(Some(Self::BuiltIn(*to_bn, sr)))
                     }
-                    _ => Ok(false),
+                    _ => Ok(None),
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer)? {
-                    *self = Self::BuiltIn(*to_bn, sr);
-                    Ok(true)
+                    Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
@@ -324,10 +321,9 @@ impl VarType {
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.cast(b.clone()) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    *self = Self::Concrete(node.into());
-                    Ok(true)
+                    Ok(Some(Self::Concrete(node.into())))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::Concrete(to_c)) => {
@@ -335,49 +331,45 @@ impl VarType {
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.cast_from(to_c) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    *self = Self::Concrete(node.into());
-                    Ok(true)
+                    Ok(Some(Self::Concrete(node.into())))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
-            _ => Ok(false),
+            _ => Ok(None),
         }
     }
 
     pub fn try_literal_cast(
-        &mut self,
+        self,
         other: &Self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Result<bool, GraphError> {
-        match (self.to_owned(), other) {
+    ) -> Result<Option<Self>, GraphError> {
+        match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Ty(ty), _)) => {
                 if ty.underlying(analyzer)?.ty == from_bn.into() {
-                    *self = Self::User(TypeNode::Ty(*ty), sr);
-                    Ok(true)
+                    Ok(Some(Self::User(TypeNode::Ty(*ty), sr)))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::User(TypeNode::Ty(ty), _)) => {
                 let concrete_underlying = from_c.underlying(analyzer)?.clone();
                 let as_bn = analyzer.builtin_or_add(concrete_underlying.as_builtin());
                 if ty.underlying(analyzer)?.ty == as_bn {
-                    *self = Self::User(
+                    Ok(Some(Self::User(
                         TypeNode::Ty(*ty),
                         SolcRange::from(concrete_underlying),
-                    );
-                    Ok(true)
+                    )))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
                 if from_bn.implicitly_castable_to(to_bn, analyzer)? {
-                    *self = Self::BuiltIn(*to_bn, sr);
-                    Ok(true)
+                    Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
@@ -385,10 +377,9 @@ impl VarType {
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast(b.clone()) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    *self = Self::Concrete(node.into());
-                    Ok(true)
+                    Ok(Some(Self::Concrete(node.into())))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
             (Self::Concrete(from_c), Self::Concrete(to_c)) => {
@@ -396,13 +387,12 @@ impl VarType {
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast_from(to_c) {
                     let node = analyzer.add_node(Node::Concrete(casted));
-                    *self = Self::Concrete(node.into());
-                    Ok(true)
+                    Ok(Some(Self::Concrete(node.into())))
                 } else {
-                    Ok(false)
+                    Ok(None)
                 }
             }
-            _ => Ok(false),
+            _ => Ok(None),
         }
     }
 
