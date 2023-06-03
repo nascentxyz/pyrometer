@@ -80,7 +80,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
@@ -113,7 +113,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Neq,
-                            RangeOp::Eq,
+                            RangeOp::Neq,
                             (RangeOp::Eq, RangeOp::Neq),
                         )
                     })
@@ -279,7 +279,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Neq,
+                        RangeOp::Eq,
                         (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
@@ -323,7 +323,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &lhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
@@ -333,7 +333,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &rhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
@@ -442,7 +442,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &ExprRet::Single(or_var.into()),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
@@ -471,7 +471,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Neq,
+                        RangeOp::Eq,
                         (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
