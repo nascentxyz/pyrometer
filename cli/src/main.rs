@@ -208,14 +208,15 @@ fn main() {
         sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
         SourcePath::SolidityFile(&PathBuf::from(args.path.clone()))
     } else if args.path.ends_with(".json") {
+        // optimistically assume this is a Solc Standard JSON file from the compiler
         let json_value = serde_json::from_str::<serde_json::Value>(&args.path).unwrap();
-        // sol file will be the first value in the "sources" mapping
+        // main sol source will be the first value in the "sources" mapping
         let rel_path = json_value["sources"]
             .as_object()
-            .unwrap()
+            .expect("Could not find `sources` field in JSON file")
             .keys()
             .next()
-            .unwrap()
+            .expect("Could not find any sources in JSON file")
             .clone();
         sol = json_value["sources"][&rel_path]["content"];
         let fields_path = vec![
