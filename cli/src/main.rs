@@ -5,6 +5,7 @@ use pyrometer::context::analyzers::FunctionVarsBoundAnalyzer;
 use pyrometer::{
     context::{analyzers::ReportDisplay, *},
     Analyzer,
+    SourcePath,
 };
 
 use shared::nodes::FunctionNode;
@@ -202,8 +203,30 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
-
-    let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
+    let mut sol;
+    let current_path = if args.path.ends_with(".sol") {
+        sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
+        SourcePath::SolidityFile(&PathBuf::from(args.path.clone()))
+    } else if args.path.ends_with(".json") {
+        let json_value = serde_json::from_str::<serde_json::Value>(&args.path).unwrap();
+        // sol file will be the first value in the "sources" mapping
+        let rel_path = json_value["sources"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        sol = json_value["sources"][&rel_path]["content"];
+        let fields_path = vec![
+            "sources".to_string(),
+            rel_path,
+            "content".to_string(),
+        ];
+        SourcePath::SolcJSON(&PathBuf::from(args.path.clone()), fields_path);
+    } else {
+        panic!("Unsupported file type")
+    };
 
     let mut analyzer = Analyzer {
         root: env::current_dir().unwrap(),
@@ -214,6 +237,8 @@ fn main() {
         analyzer.set_remappings_and_root(remappings);
     }
     let t0 = std::time::Instant::now();
+
+    
     let (maybe_entry, mut all_sources) =
         analyzer.parse(&sol, &PathBuf::from(args.path.clone()), true);
     let parse_time = t0.elapsed().as_millis();
