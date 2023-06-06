@@ -1,4 +1,4 @@
-use pyrometer::Analyzer;
+use pyrometer::{Analyzer, SourcePath};
 use std::path::PathBuf;
 
 use std::fs;
@@ -10,9 +10,8 @@ fn main() {
 
     let sol = fs::read_to_string(comptroller_path).expect("Could not find file");
 
-    let mut analyzer = Analyzer {
-        root: bench_contracts_root.clone(),
-        ..Default::default()
-    };
-    let (_maybe_entry, mut _all_sources) = analyzer.parse(&sol, &bench_contracts_root, true);
+
+    let mut analyzer = Analyzer::default();
+    let current_path = SourcePath::SolidityFile(comptroller_path.clone());
+    let (_maybe_entry, mut _all_sources) = analyzer.parse(&sol, &current_path, true);
 }

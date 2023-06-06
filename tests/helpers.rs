@@ -1,7 +1,7 @@
 use ariadne::sources;
 use pyrometer::context::analyzers::ReportConfig;
 use pyrometer::context::analyzers::{FunctionVarsBoundAnalyzer, ReportDisplay};
-use pyrometer::Analyzer;
+use pyrometer::{Analyzer, SourcePath};
 use shared::analyzer::Search;
 use shared::NodeIdx;
 use shared::{nodes::FunctionNode, Edge};
@@ -11,8 +11,9 @@ use std::path::PathBuf;
 
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();
+    let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
     let (maybe_entry, mut all_sources) =
-        analyzer.parse(sol, &PathBuf::from(path_str.clone()), true);
+        analyzer.parse(sol, &current_path, true);
     all_sources.push((maybe_entry, path_str.clone(), sol.to_string(), 0));
     let entry = maybe_entry.unwrap();
     no_ctx_killed(analyzer, entry, path_str, all_sources);
@@ -21,8 +22,9 @@ pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
 pub fn remapping_assert_no_ctx_killed(path_str: String, remapping_file: String, sol: &str) {
     let mut analyzer = Analyzer::default();
     analyzer.set_remappings_and_root(remapping_file);
+    let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
     let (maybe_entry, mut all_sources) =
-        analyzer.parse(sol, &PathBuf::from(path_str.clone()), true);
+        analyzer.parse(sol, &current_path, true);
     all_sources.push((maybe_entry, path_str.clone(), sol.to_string(), 0));
     let entry = maybe_entry.unwrap();
     no_ctx_killed(analyzer, entry, path_str, all_sources);
