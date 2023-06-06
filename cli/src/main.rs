@@ -1,6 +1,7 @@
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
+use pyrometer::Root;
 use pyrometer::context::analyzers::FunctionVarsBoundAnalyzer;
 use pyrometer::{
     context::{analyzers::ReportDisplay, *},
@@ -203,45 +204,35 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
-    let mut sol;
-    let current_path = if args.path.ends_with(".sol") {
-        sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
-        SourcePath::SolidityFile(&PathBuf::from(args.path.clone()))
+    let root = Root::RemappingsDirectory(env::current_dir().unwrap());
+    let mut analyzer = Analyzer {
+        root: root,
+        ..Default::default()
+    };
+
+
+    let (current_path, sol) = if args.path.ends_with(".sol") {
+        let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
+        // Remappings file only required for Solidity files
+        if args.remappings.is_some() {
+            let remappings = args.remappings.unwrap();
+            analyzer.set_remappings_and_root(remappings);
+        }
+
+        (SourcePath::SolidityFile(PathBuf::from(args.path.clone())), sol)
     } else if args.path.ends_with(".json") {
-        // optimistically assume this is a Solc Standard JSON file from the compiler
-        let json_value = serde_json::from_str::<serde_json::Value>(&args.path).unwrap();
-        // main sol source will be the first value in the "sources" mapping
-        let rel_path = json_value["sources"]
-            .as_object()
-            .expect("Could not find `sources` field in JSON file")
-            .keys()
-            .next()
-            .expect("Could not find any sources in JSON file")
-            .clone();
-        sol = json_value["sources"][&rel_path]["content"];
-        let fields_path = vec![
-            "sources".to_string(),
-            rel_path,
-            "content".to_string(),
-        ];
-        SourcePath::SolcJSON(&PathBuf::from(args.path.clone()), fields_path);
+        let json_path_buf = PathBuf::from(args.path.clone());
+        analyzer.update_with_solc_json(&json_path_buf);
+        let (current_path, sol, _, _)  = analyzer.sources.iter().next().unwrap().clone();
+        (current_path, sol)
     } else {
         panic!("Unsupported file type")
     };
 
-    let mut analyzer = Analyzer {
-        root: env::current_dir().unwrap(),
-        ..Default::default()
-    };
-    if args.remappings.is_some() {
-        let remappings = args.remappings.unwrap();
-        analyzer.set_remappings_and_root(remappings);
-    }
-    let t0 = std::time::Instant::now();
 
-    
+    let t0 = std::time::Instant::now();
     let (maybe_entry, mut all_sources) =
-        analyzer.parse(&sol, &PathBuf::from(args.path.clone()), true);
+        analyzer.parse(&sol, &current_path, true);
     let parse_time = t0.elapsed().as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");

@@ -3,6 +3,7 @@ use crate::context::exprs::IntoExprErr;
 use crate::exprs::ExprErr;
 use ariadne::Source;
 use ethers_core::types::U256;
+use serde_json::Value;
 use shared::analyzer::*;
 use shared::context::ContextNode;
 use shared::context::ExprRet;
@@ -15,7 +16,6 @@ use solang_parser::pt::Identifier;
 use solang_parser::pt::Import;
 use std::collections::BTreeMap;
 
-use std::ffi::OsString;
 use std::path::Path;
 
 use solang_parser::pt::{
@@ -35,6 +35,43 @@ pub mod context;
 // pub mod range;
 use context::*;
 pub use shared;
+
+
+/// A path to either a single solidity file or a Solc Standard JSON file
+#[derive(Debug, Clone)]
+pub enum Root {
+    /// A path to a single solidity file
+    SingleSolFile(PathBuf),
+    /// A path to a Solc Standard JSON file
+    SolcJSON(PathBuf),
+    /// A path to a directory containing a remappings file
+    RemappingsDirectory(PathBuf),
+}
+
+impl Default for Root {
+    fn default() -> Self {
+        Root::SingleSolFile(PathBuf::new())
+    }
+}
+
+/// An intermediate representation of a path to a solidity source
+/// 
+/// This is done so that any source can be fetched from the filesystem again if needed
+#[derive(Debug, Clone, Ord, PartialEq, PartialOrd, Eq)]
+pub enum SourcePath {
+    /// A path to a solidity file
+    SolidityFile(PathBuf),
+    /// A path to a Solc JSON file and the path within pointing to the solidity source
+    SolcJSON(PathBuf, String),
+}
+impl SourcePath {
+    pub fn path_to_solidity_source(&self) -> PathBuf {
+        match self {
+            SourcePath::SolidityFile(path) => path.clone(),
+            SourcePath::SolcJSON(_path_to_json, path) => path.clone().into(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct FinalPassItem {
@@ -61,12 +98,14 @@ impl FinalPassItem {
 
 #[derive(Debug, Clone)]
 pub struct Analyzer {
-    /// The root path of the contract to be analyzed
-    pub root: PathBuf,
+    /// The root of the path to either the contract or solc json file to be analyzed
+    pub root: Root,
     /// Solidity remappings - as would be passed into the solidity compiler
     pub remappings: Vec<(String, String)>,
-    /// Imported sources - the canonicalized string to the entry source element index
-    pub imported_srcs: BTreeMap<OsString, Option<NodeIdx>>,
+    /// Solidity sources - tuple of SourcePath, solidity string, file number (None until parsed), and entry node (None until parsed)
+    pub sources: Vec<(SourcePath, String, Option<usize>, Option<NodeIdx>,)>,
+    /// Imported sources - the path to the entry source element index
+    pub imported_srcs: BTreeMap<SourcePath, Option<NodeIdx>>,
     /// Since we use a staged approach to analysis, we analyze all user types first then go through and patch up any missing or unresolved
     /// parts of a contract (i.e. we parsed a struct which is used as an input to a function signature, we have to know about the struct)
     pub final_pass_items: Vec<FinalPassItem>,
@@ -105,6 +144,7 @@ impl Default for Analyzer {
         let mut a = Self {
             root: Default::default(),
             remappings: Default::default(),
+            sources: Default::default(),
             imported_srcs: Default::default(),
             final_pass_items: Default::default(),
             file_no: 0,
@@ -154,6 +194,7 @@ impl GraphLike for Analyzer {
         &self.graph
     }
 }
+
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
@@ -372,10 +413,12 @@ impl Analyzer {
     }
 
     pub fn set_remappings_and_root(&mut self, remappings_path: String) {
-        self.root = PathBuf::from(&remappings_path)
+        let parent_path_buf = PathBuf::from(&remappings_path)
             .parent()
             .unwrap()
             .to_path_buf();
+        self.root = Root::RemappingsDirectory(parent_path_buf);
+
         let remappings_file = fs::read_to_string(remappings_path)
             .map_err(|err| err.to_string())
             .expect("Remappings file not found");
@@ -387,6 +430,44 @@ impl Analyzer {
             .map(|x| x.split_once('=').expect("Invalid remapping"))
             .map(|(name, path)| (name.to_owned(), path.to_owned()))
             .collect();
+    }
+
+    pub fn update_with_solc_json(&mut self, path_to_json: &PathBuf) {
+
+        self.root = Root::SolcJSON(path_to_json.clone());
+
+        // iterate over the Solc JSON and add all the sources
+        let json_file = fs::read_to_string(path_to_json).expect("Solc JSON file not found");
+        let solc_json: Value = serde_json::from_str(&json_file).unwrap();
+        let sources = solc_json["sources"].as_object().unwrap();
+        for (name, value_obj) in sources {
+            // value_obj is a Value with a `content` field -> save the `content` field's solidity string
+            let sol_source = value_obj.as_object().unwrap()["content"].as_str().unwrap();
+            // create SourcePath with the path to the JSON and the name of the source
+            let source_path = SourcePath::SolcJSON(path_to_json.clone(), name.to_owned());
+            // Don't know the solang file no yet, so set it to None
+            let source = (source_path.clone(), sol_source.to_owned(), None, None);
+            self.sources.push(source);
+        }
+
+        // also iterate over the Solc JSON and add all the remappings
+        // settings (optional) -> remappings (optional) -> iterate over all remappings
+        let remappings = solc_json["settings"]["remappings"].as_array();
+        if let Some(remappings) = remappings {
+            // vec of strings
+            for remapping in remappings {
+                // split the remapping string into two parts
+                let remapping = remapping.as_str().unwrap();
+                let remapping = remapping.split_once('=').expect("Invalid remapping");
+                // remapping.0 is the name of the remapping
+                // remapping.1 is the path of the remapping
+                self.remappings.push((
+                    remapping.0.to_owned().to_string(),
+                    remapping.1.to_owned().to_string(),
+                ));
+            }
+        }
+
     }
 
     pub fn print_errors(
@@ -420,7 +501,7 @@ impl Analyzer {
     pub fn parse(
         &mut self,
         src: &str,
-        current_path: &Path,
+        current_path: &SourcePath,
         entry: bool,
     ) -> (
         Option<NodeIdx>,
@@ -428,6 +509,7 @@ impl Analyzer {
     ) {
         // tracing::trace!("parsing: {:?}", current_path);
         let file_no = self.file_no;
+        self.sources.push((current_path.clone(), src.to_string(), Some(file_no), None));
         let mut imported = vec![];
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
@@ -448,7 +530,7 @@ impl Analyzer {
                 (Some(parent), imported)
             }
             Err(diagnostics) => {
-                print_diagnostics_report(src, current_path, diagnostics).unwrap();
+                print_diagnostics_report(src, &current_path.path_to_solidity_source(), diagnostics).unwrap();
                 panic!("Failed to parse Solidity code for {current_path:?}.");
             }
         }
@@ -497,7 +579,7 @@ impl Analyzer {
         file_no: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-        current_path: &Path,
+        current_path: &SourcePath,
     ) -> FinalPassItem {
         let mut all_funcs = vec![];
         let mut all_usings = vec![];
@@ -532,7 +614,7 @@ impl Analyzer {
         unit_part: usize,
         parent: NodeIdx,
         imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
-        current_path: &Path,
+        current_path: &SourcePath,
     ) -> (
         NodeIdx,
         Vec<FunctionNode>,
@@ -609,32 +691,93 @@ impl Analyzer {
     pub fn parse_import(
         &mut self,
         import: &Import,
-        current_path: &Path,
+        current_path: &SourcePath,
         parent: NodeIdx,
     ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
-        match import {
+        let (import_path, remapping) = match import {
             Import::Plain(import_path, _) => {
                 tracing::trace!("parse_import, path: {:?}", import_path);
+                // find the longest remapping that the import_path starts with
                 let remapping = self
                     .remappings
                     .iter()
-                    .find(|x| import_path.string.starts_with(&x.0));
+                    .filter_map(|(name, target)| {
+                        let str_lit = &import_path.string;
+                        if str_lit.starts_with(name) {
+                            Some((name, target))
+                        } else {
+                            None
+                        }
+                    }).max_by(|(name1, _), (name2, _)| name1.len().cmp(&name2.len()));
+                (import_path, remapping)
+            },
+            Import::Rename(import_path, _elems, _) => {
+                tracing::trace!("parse_import, path: {:?}, Rename", import_path);
+                // find the longest remapping that the import_path starts with
+                let remapping = self
+                    .remappings
+                    .iter()
+                    .filter_map(|(name, target)| {
+                        let str_lit = &import_path.string;
+                        if str_lit.starts_with(name) {
+                            Some((name, target))
+                        } else {
+                            None
+                        }
+                    }).max_by(|(name1, _), (name2, _)| name1.len().cmp(&name2.len()));
+                (import_path, remapping)
+            },
+            e => todo!("import {:?}", e),
+        };
+        /*
+        Cases to handle:
+        current path SolidityFile, remapping found
+        - Root is RemappingsDirectory
+        current path SolidityFile, no remapping found
+        - Root is SingleSolFile
+        - Root is RemappingsDirectory
+        current path SolcJSON, remapping found
+        - Root is SolcJSON
+        current path SolcJSON, no remapping found
+        - Root is SolcJSON
+        */
+        let (remapped, sol) = match current_path {
+            SourcePath::SolidityFile(sol_file_path) => {
+                // check for remappings found
+                let remapped = if let Some((name, target)) = remapping {
+                    // Found matching remapping name and target, check for remapping within the root path
+                    match &self.root {
+                        Root::RemappingsDirectory(root_path) => {
 
-                let remapped = if let Some((name, path)) = remapping {
-                    self.root.join(path).join(
-                        import_path
-                            .string
-                            .replacen(name, "", 1)
-                            .trim_start_matches('/'),
-                    )
+                            let remapped_path = root_path.join(target).join(
+                                import_path
+                                    .string
+                                    .replacen(name, "", 1)
+                                    .trim_start_matches('/'),
+                            );
+                            SourcePath::SolidityFile(remapped_path)
+                        },
+                        Root::SolcJSON(_) => {panic!("Please report this as a bug, root is SolcJSON but current path is a SolidityFile w/ remapping found")},
+                        Root::SingleSolFile(_) => {panic!("Please report this as a bug, root is SingleSolFile but remappings are available")},
+                    }
                 } else {
-                    current_path
-                        .parent()
-                        .unwrap()
-                        .join(import_path.string.clone())
+                    // no remapping found, check for import within the root path
+                    match &self.root {
+                        Root::RemappingsDirectory(_) | Root::SingleSolFile(_) => {
+                            // _root_path is not used, should be equal to sol_file_path for first level imports, but different for chains of imports
+                            // should be a relative import from sol_file_path
+                            let remapped_path = sol_file_path.parent().unwrap().join(
+                                import_path
+                                    .string
+                                    .trim_start_matches('/')
+                            );
+                            SourcePath::SolidityFile(remapped_path)
+                        },
+                        Root::SolcJSON(_) => {panic!("Please report this as a bug, root is SolcJSON but current path is a SolidityFile w/ no remapping found")},
+                    }
                 };
 
-                let canonical = fs::canonicalize(&remapped)
+                let canonical = fs::canonicalize(&remapped.path_to_solidity_source())
                     .unwrap_or_else(|_| panic!(
                             "Could not find file: {remapped:?}{}",
                             if self.remappings.is_empty() {
@@ -642,14 +785,6 @@ impl Analyzer {
                             } else { "" }
                         )
                     );
-                let canonical_str_path = canonical.as_os_str();
-                if let Some(other_entry) = self.imported_srcs.get(canonical_str_path) {
-                    if let Some(o_e) = other_entry {
-                        self.add_edge(*o_e, parent, Edge::Import);
-                    }
-                    return vec![];
-                }
-
                 let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
                     panic!(
                         "Could not find file for dependency: {canonical:?}{}",
@@ -658,91 +793,108 @@ impl Analyzer {
                         } else { "" }
                     )
                 });
-                self.file_no += 1;
-                let file_no = self.file_no;
-                // breaks recursion issues
-                self.imported_srcs.insert(canonical_str_path.into(), None);
-                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
-                self.imported_srcs
-                    .insert(canonical_str_path.into(), maybe_entry);
-                if let Some(other_entry) = maybe_entry {
-                    self.add_edge(other_entry, parent, Edge::Import);
-                }
+                let canonical_source = SourcePath::SolidityFile(canonical);
+                (canonical_source, sol)
+            },
+            SourcePath::SolcJSON(_json_path, current_name) => {
+                // can use the import_path and remappings to find the import amongst self.sources
+                let (remapped, sol) = match &self.root {
+                    Root::SolcJSON(_solc_path) => {
+                        // check for remappings found
+                        if let Some((name, target)) = remapping {
+                            // First, take the import_path and remove the remapping name
+                            let import_path_str = import_path.string.replacen(name, "", 1);
+                            let remapped_path = import_path_str.trim_start_matches('/');
+                            // the source that matches should be "{target}/{remapped_path}". Create PathBuf for this
+                            let remapped_path_buf = PathBuf::from(format!("{}/{}", target, remapped_path));
+                            // look for this path in self.sources
+                            let normalized_remapped_path_buf = normalize_path(&remapped_path_buf);
+                            if let Some((confirmed_source_path, sol, _file_no, _entry)) = self.sources.iter().find(|(path, _sol, _file_no, _entry)| normalize_path(path.path_to_solidity_source()) == normalized_remapped_path_buf) {
+                                // found the path, return the source_path
+                                (confirmed_source_path.clone(), sol.clone())
+                            } else {
+                                // didn't find the path, panic
+                                panic!("Could not find file: {:#?}", remapped_path_buf);
+                            }
+                        } else {
+                            // need to find name of the file in self.sources
+                            // import will be relative to the current_name
+                            let current_path_buf = PathBuf::from(current_name);
+                            let current_name_parent = current_path_buf.parent().expect("no parent found for current file");
 
-                inner_sources.push((
-                    maybe_entry,
-                    remapped.to_str().unwrap().to_owned(),
-                    sol.to_string(),
-                    file_no,
-                ));
-                inner_sources
-            }
-            Import::Rename(import_path, _elems, _) => {
-                tracing::trace!("parse_import, path: {:?}, Rename", import_path);
-                let remapping = self
-                    .remappings
-                    .iter()
-                    .find(|x| import_path.string.starts_with(&x.0));
+                            let import_path_str = import_path.string.trim_start_matches('/');
+                            // convert to a PathBuf
+                            let import_path_buf = PathBuf::from(import_path_str);
+                            // join to the current_name_parent
+                            let joined = current_name_parent.join(import_path_buf);
+                            // look for this path in self.sources
+                            let normalized_joined = normalize_path(&joined);
 
-                let remapped = if let Some((name, path)) = remapping {
-                    self.root.join(path).join(
-                        import_path
-                            .string
-                            .replacen(name, "", 1)
-                            .trim_start_matches('/'),
-                    )
-                } else {
-                    current_path
-                        .parent()
-                        .unwrap()
-                        .join(import_path.string.clone())
+                            if let Some((confirmed_source_path, sol, _file_no, _entry)) = self.sources.iter().find(|(path, _sol, _file_no, _entry)| normalize_path(path.path_to_solidity_source()) == normalized_joined) {
+                                // found the path, return the source_path
+                                (confirmed_source_path.clone(), sol.clone())
+                            } else {
+                                // didn't find the path, panic
+                                panic!("Could not find file: {:#?}", joined);
+                            }
+                        }
+
+                    },
+                    Root::SingleSolFile(_) | Root::RemappingsDirectory(_) => {panic!("Please report this as a bug, root is SingleSolFile or RemappingsDirectory but current path is a SolcJSON")},
                 };
+                
+                (remapped, sol)
+            },
+        };
 
-                let canonical = fs::canonicalize(&remapped).unwrap_or_else(|_| panic!(
-                        "Could not find file: {remapped:?}{}",
-                        if self.remappings.is_empty() {
-                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
-                        } else { "" }
-                    )
-                );
-                let canonical_str_path = canonical.as_os_str();
-                if let Some(other_entry) = self.imported_srcs.get(canonical_str_path) {
-                    if let Some(o_e) = other_entry {
-                        self.add_edge(*o_e, parent, Edge::Import);
-                    }
-                    return vec![];
-                }
-
-                let sol = fs::read_to_string(&canonical).unwrap_or_else(|_| {
-                    panic!(
-                        "Could not find file for dependency: {canonical:?}{}",
-                        if self.remappings.is_empty() {
-                            ". It looks like you didn't pass in any remappings. Try adding the `--remappings ./path/to/remappings.txt` to the command line input"
-                        } else { "" }
-                    )
-                });
-                self.file_no += 1;
-                let file_no = self.file_no;
-
-                // breaks recursion issues
-                self.imported_srcs.insert(canonical_str_path.into(), None);
-                let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
-                self.imported_srcs
-                    .insert(canonical_str_path.into(), maybe_entry);
-                if let Some(other_entry) = maybe_entry {
-                    self.add_edge(other_entry, parent, Edge::Import);
-                }
-
-                inner_sources.push((
-                    maybe_entry,
-                    remapped.to_str().unwrap().to_owned(),
-                    sol.to_string(),
-                    file_no,
-                ));
-                inner_sources
-            }
-            e => todo!("import {:?}", e),
+        // check for entry in self.sources that has a matching SourcePath
+        if let None = self.sources.iter_mut().find(|(path, _, _, _)| path == &remapped) {
+            // if not found, add it
+            self.sources.push((remapped.clone(), sol.clone(), None, None));
         }
+        
+        if let Some(other_entry) = self.imported_srcs.get(&remapped) {
+            if let Some(o_e) = other_entry {
+                self.add_edge(*o_e, parent, Edge::Import);
+            }
+            return vec![];
+        }
+
+        self.file_no += 1;
+        let file_no = self.file_no;
+
+        let normalized_remapped = normalize_path(&remapped.path_to_solidity_source());
+        // take self.sources entry with the same path as remapped and update the file_no
+        if let Some((_, _, optional_file_no, _)) = self.sources.iter_mut().find(|(path, _, _, _)| {
+            normalize_path(path.path_to_solidity_source()) == normalized_remapped
+        }) {
+            *optional_file_no = Some(file_no);
+        }
+
+        // breaks recursion issues
+        self.imported_srcs.insert(remapped.clone(), None);
+        let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
+        
+        // take self.sources entry with the same path as remapped and update the entry node
+        if let Some((_, _, _, optional_entry)) = self.sources.iter_mut().find(|(path, _, _, _)| {
+            normalize_path(path.path_to_solidity_source()) == normalized_remapped
+        }) {
+            *optional_entry = maybe_entry;
+        }
+        
+        self.imported_srcs
+            .insert(remapped.clone(), maybe_entry);
+        if let Some(other_entry) = maybe_entry {
+            self.add_edge(other_entry, parent, Edge::Import);
+        }
+
+        inner_sources.push((
+            maybe_entry,
+            remapped.path_to_solidity_source().to_string_lossy().to_string(),
+            sol.to_string(),
+            file_no,
+        ));
+        inner_sources
     }
 
     // #[tracing::instrument(name = "parse_contract_def", skip_all, fields(name = format!("{:?}", contract_def.name)))]
@@ -1131,4 +1283,20 @@ pub fn print_diagnostics_report(
         report.finish().print((&filename, Source::from(content)))?;
     }
     Ok(())
+}
+
+fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
+    let mut normalized_path = PathBuf::new();
+
+    for component in path.as_ref().components() {
+        match component {
+            std::path::Component::CurDir => {}, // Ignore current dir component
+            std::path::Component::ParentDir => { // Handle parent dir component
+                normalized_path.pop();
+            },
+            _ => normalized_path.push(component),
+        }
+    }
+
+    normalized_path
 }
