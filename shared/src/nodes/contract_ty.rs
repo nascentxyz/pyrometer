@@ -228,7 +228,7 @@ impl Contract {
     pub fn from_w_imports(
         con: ContractDefinition,
         source: NodeIdx,
-        imports: &[(Option<NodeIdx>)],
+        imports: &[Option<NodeIdx>],
         analyzer: &impl GraphLike,
     ) -> (Contract, Vec<String>) {
         let mut inherits = vec![];

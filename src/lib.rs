@@ -500,14 +500,10 @@ impl Analyzer {
         src: &str,
         current_path: &SourcePath,
         entry: bool,
-    ) -> (
-        Option<NodeIdx>,
-        Vec<(Option<NodeIdx>, String, String, usize)>,
-    ) {
+    ) -> Option<NodeIdx> {
         // tracing::trace!("parsing: {:?}", current_path);
         let file_no = self.file_no;
         self.sources.push((current_path.clone(), src.to_string(), Some(file_no), None));
-        let mut imported = vec![];
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent = self.add_node(Node::SourceUnit(file_no));
@@ -523,7 +519,7 @@ impl Analyzer {
                     self.final_pass();
                 }
 
-                (Some(parent), imported)
+                Some(parent)
             }
             Err(diagnostics) => {
                 print_diagnostics_report(src, &current_path.path_to_solidity_source(), diagnostics).unwrap();
@@ -864,7 +860,7 @@ impl Analyzer {
             *optional_file_no = Some(file_no);
         }
 
-        let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
+        let maybe_entry = self.parse(&sol, &remapped, false);
         
         // take self.sources entry with the same path as remapped and update the entry node
         if let Some((_, _, _, optional_entry)) = self.sources.iter_mut().find(|(path, _, _, _)| {

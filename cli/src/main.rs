@@ -104,7 +104,6 @@ pub fn subscriber() {
 fn main() {
     subscriber();
     let args = Args::parse();
-    let path_str = args.path.to_string();
     let verbosity = args.verbosity;
     let config = match verbosity {
         0 => ReportConfig {
@@ -231,31 +230,26 @@ fn main() {
 
 
     let t0 = std::time::Instant::now();
-    let (maybe_entry, mut all_sources) =
+    let maybe_entry =
         analyzer.parse(&sol, &current_path, true);
     let parse_time = t0.elapsed().as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
-    all_sources.push((maybe_entry, args.path, sol, 0));
+    // use self.sources to fill a BTreeMap with the file_no and SourcePath.path_to_solidity_file
+    let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
+    let mut src_map: HashMap<String, String> = HashMap::new();
+    for (source_path, sol, o_file_no, _o_entry) in analyzer.sources.iter() {
+        if let Some(file_no) = o_file_no {
+            file_mapping.insert(*file_no, source_path.path_to_solidity_source().display().to_string());
+        }
+        src_map.insert(source_path.path_to_solidity_source().display().to_string(), sol.to_string());
+    }
+    let mut source_map = sources(src_map);
+
+    // all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
 
-    let mut file_mapping: BTreeMap<_, _> = vec![(0usize, path_str)].into_iter().collect();
-    file_mapping.extend(
-        all_sources
-            .iter()
-            .map(|(_entry, name, _src, num)| (*num, name.clone()))
-            .collect::<BTreeMap<_, _>>(),
-    );
-
-    let mut source_map = sources(
-        all_sources
-            .iter()
-            .map(|(_entry, name, src, _num)| (name.clone(), src))
-            .collect::<HashMap<_, _>>(),
-    );
-
-    // let t = petgraph::algo::toposort(&analyzer.graph, None);
     analyzer.print_errors(&file_mapping, &mut source_map);
 
     if args.open_dot {
