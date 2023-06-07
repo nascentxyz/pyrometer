@@ -516,7 +516,6 @@ impl Analyzer {
                     source_unit,
                     file_no,
                     parent,
-                    &mut imported,
                     current_path,
                 );
                 self.final_pass_items.push(final_pass_part);
@@ -575,7 +574,6 @@ impl Analyzer {
         source_unit: SourceUnit,
         file_no: usize,
         parent: NodeIdx,
-        imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &SourcePath,
     ) -> FinalPassItem {
         let mut all_funcs = vec![];
@@ -592,7 +590,6 @@ impl Analyzer {
                     file_no,
                     unit_part,
                     parent,
-                    imported,
                     current_path,
                 );
                 all_funcs.extend(funcs);
@@ -610,7 +607,7 @@ impl Analyzer {
         file_no: usize,
         unit_part: usize,
         parent: NodeIdx,
-        imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
+        // imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &SourcePath,
     ) -> (
         NodeIdx,
@@ -678,7 +675,7 @@ impl Analyzer {
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
             ImportDirective(import) => {
-                imported.extend(self.parse_import(import, current_path, parent))
+                self.parse_import(import, current_path, parent);
             }
         }
         (sup_node, func_nodes, usings, inherits, vars)
@@ -690,7 +687,7 @@ impl Analyzer {
         import: &Import,
         current_path: &SourcePath,
         parent: NodeIdx,
-    ) -> Vec<(Option<NodeIdx>, String, String, usize)> {
+    ) {
         let (import_path, remapping) = match import {
             Import::Plain(import_path, _) => {
                 tracing::trace!("parse_import, path: {:?}", import_path);
@@ -878,15 +875,8 @@ impl Analyzer {
         
         if let Some(other_entry) = maybe_entry {
             self.add_edge(other_entry, parent, Edge::Import);
-        }
+        };
 
-        inner_sources.push((
-            maybe_entry,
-            remapped.path_to_solidity_source().to_string_lossy().to_string(),
-            sol.to_string(),
-            file_no,
-        ));
-        inner_sources
     }
 
     // #[tracing::instrument(name = "parse_contract_def", skip_all, fields(name = format!("{:?}", contract_def.name)))]
