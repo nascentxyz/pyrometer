@@ -12,29 +12,25 @@ use std::path::PathBuf;
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();
     let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
-    let (maybe_entry, mut all_sources) =
+    let maybe_entry =
         analyzer.parse(sol, &current_path, true);
-    all_sources.push((maybe_entry, path_str.clone(), sol.to_string(), 0));
     let entry = maybe_entry.unwrap();
-    no_ctx_killed(analyzer, entry, path_str, all_sources);
+    no_ctx_killed(analyzer, entry);
 }
 
 pub fn remapping_assert_no_ctx_killed(path_str: String, remapping_file: String, sol: &str) {
     let mut analyzer = Analyzer::default();
     analyzer.set_remappings_and_root(remapping_file);
     let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
-    let (maybe_entry, mut all_sources) =
+    let maybe_entry =
         analyzer.parse(sol, &current_path, true);
-    all_sources.push((maybe_entry, path_str.clone(), sol.to_string(), 0));
     let entry = maybe_entry.unwrap();
-    no_ctx_killed(analyzer, entry, path_str, all_sources);
+    no_ctx_killed(analyzer, entry);
 }
 
 pub fn no_ctx_killed(
     mut analyzer: Analyzer,
     entry: NodeIdx,
-    path_str: String,
-    all_sources: Vec<(Option<NodeIdx>, String, String, usize)>,
 ) {
     assert!(
         analyzer.expr_errs.is_empty(),
@@ -53,14 +49,16 @@ pub fn no_ctx_killed(
         show_unreachables: true,
         show_nonreverts: true,
     };
-    let file_mapping: BTreeMap<_, _> = vec![(0usize, path_str)].into_iter().collect();
+    let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
+    let mut src_map: HashMap<String, String> = HashMap::new();
+    for (source_path, sol, o_file_no, _o_entry) in analyzer.sources.iter() {
+        if let Some(file_no) = o_file_no {
+            file_mapping.insert(*file_no, source_path.path_to_solidity_source().display().to_string());
+        }
+        src_map.insert(source_path.path_to_solidity_source().display().to_string(), sol.to_string());
+    }
+    let mut source_map = sources(src_map);
 
-    let mut source_map = sources(
-        all_sources
-            .iter()
-            .map(|(_entry, name, src, _num)| (name.clone(), src))
-            .collect::<HashMap<_, _>>(),
-    );
 
     let funcs = analyzer.search_children(entry, &Edge::Func);
     for func in funcs.into_iter() {
