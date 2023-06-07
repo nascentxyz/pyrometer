@@ -10,7 +10,6 @@ fn main() {
 
     let sol = fs::read_to_string(comptroller_path).expect("Could not find file");
 
-
     let mut analyzer = Analyzer::default();
     let current_path = SourcePath::SolidityFile(comptroller_path.clone());
     let _maybe_entry = analyzer.parse(&sol, &current_path, true);

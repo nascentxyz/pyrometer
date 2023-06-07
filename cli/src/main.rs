@@ -1,12 +1,11 @@
 use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
-use pyrometer::Root;
 use pyrometer::context::analyzers::FunctionVarsBoundAnalyzer;
+use pyrometer::Root;
 use pyrometer::{
     context::{analyzers::ReportDisplay, *},
-    Analyzer,
-    SourcePath,
+    Analyzer, SourcePath,
 };
 
 use shared::nodes::FunctionNode;
@@ -209,7 +208,6 @@ fn main() {
         ..Default::default()
     };
 
-
     let (current_path, sol) = if args.path.ends_with(".sol") {
         let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
         // Remappings file only required for Solidity files
@@ -218,20 +216,21 @@ fn main() {
             analyzer.set_remappings_and_root(remappings);
         }
 
-        (SourcePath::SolidityFile(PathBuf::from(args.path.clone())), sol)
+        (
+            SourcePath::SolidityFile(PathBuf::from(args.path.clone())),
+            sol,
+        )
     } else if args.path.ends_with(".json") {
         let json_path_buf = PathBuf::from(args.path.clone());
         analyzer.update_with_solc_json(&json_path_buf);
-        let (current_path, sol, _, _)  = analyzer.sources.iter().next().unwrap().clone();
+        let (current_path, sol, _, _) = analyzer.sources.iter().next().unwrap().clone();
         (current_path, sol)
     } else {
         panic!("Unsupported file type")
     };
 
-
     let t0 = std::time::Instant::now();
-    let maybe_entry =
-        analyzer.parse(&sol, &current_path, true);
+    let maybe_entry = analyzer.parse(&sol, &current_path, true);
     let parse_time = t0.elapsed().as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
@@ -241,9 +240,15 @@ fn main() {
     let mut src_map: HashMap<String, String> = HashMap::new();
     for (source_path, sol, o_file_no, _o_entry) in analyzer.sources.iter() {
         if let Some(file_no) = o_file_no {
-            file_mapping.insert(*file_no, source_path.path_to_solidity_source().display().to_string());
+            file_mapping.insert(
+                *file_no,
+                source_path.path_to_solidity_source().display().to_string(),
+            );
         }
-        src_map.insert(source_path.path_to_solidity_source().display().to_string(), sol.to_string());
+        src_map.insert(
+            source_path.path_to_solidity_source().display().to_string(),
+            sol.to_string(),
+        );
     }
     let mut source_map = sources(src_map);
 
