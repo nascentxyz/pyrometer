@@ -228,7 +228,7 @@ impl Contract {
     pub fn from_w_imports(
         con: ContractDefinition,
         source: NodeIdx,
-        imports: &[(Option<NodeIdx>, String, String, usize)],
+        imports: &[(Option<NodeIdx>)],
         analyzer: &impl GraphLike,
     ) -> (Contract, Vec<String>) {
         let mut inherits = vec![];
@@ -249,7 +249,7 @@ impl Contract {
             }
 
             if !found {
-                for entry in imports.iter().filter_map(|import| import.0) {
+                for entry in imports.iter().filter_map(|&import| import) {
                     for contract in analyzer
                         .search_children_exclude_via(entry, &Edge::Contract, &[Edge::Func])
                         .into_iter()

@@ -104,8 +104,6 @@ pub struct Analyzer {
     pub remappings: Vec<(String, String)>,
     /// Solidity sources - tuple of SourcePath, solidity string, file number (None until parsed), and entry node (None until parsed)
     pub sources: Vec<(SourcePath, String, Option<usize>, Option<NodeIdx>,)>,
-    /// Imported sources - the path to the entry source element index
-    pub imported_srcs: BTreeMap<SourcePath, Option<NodeIdx>>,
     /// Since we use a staged approach to analysis, we analyze all user types first then go through and patch up any missing or unresolved
     /// parts of a contract (i.e. we parsed a struct which is used as an input to a function signature, we have to know about the struct)
     pub final_pass_items: Vec<FinalPassItem>,
@@ -145,7 +143,6 @@ impl Default for Analyzer {
             root: Default::default(),
             remappings: Default::default(),
             sources: Default::default(),
-            imported_srcs: Default::default(),
             final_pass_items: Default::default(),
             file_no: 0,
             msg: MsgNode(0),
@@ -635,7 +632,7 @@ impl Analyzer {
         match sup {
             ContractDefinition(def) => {
                 let (node, funcs, con_usings, unhandled_inherits, unhandled_vars) =
-                    self.parse_contract_def(def, parent, imported);
+                    self.parse_contract_def(def, parent);
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
                 usings.extend(con_usings);
@@ -848,18 +845,17 @@ impl Analyzer {
         };
 
         // check for entry in self.sources that has a matching SourcePath
-        if let None = self.sources.iter_mut().find(|(path, _, _, _)| path == &remapped) {
+        let normalized_remapped = normalize_path(&remapped.path_to_solidity_source());
+        if let Some((_, _, _, optional_entry)) = self.sources.iter().find(|(path, _, _, _)| normalize_path(path.path_to_solidity_source()) == normalized_remapped) {
+            // if found, update the file_no
+            if let Some(o_e) = optional_entry {
+                self.add_edge(*o_e, parent, Edge::Import);
+            }
+        } else {
             // if not found, add it
             self.sources.push((remapped.clone(), sol.clone(), None, None));
         }
         
-        if let Some(other_entry) = self.imported_srcs.get(&remapped) {
-            if let Some(o_e) = other_entry {
-                self.add_edge(*o_e, parent, Edge::Import);
-            }
-            return vec![];
-        }
-
         self.file_no += 1;
         let file_no = self.file_no;
 
@@ -871,8 +867,6 @@ impl Analyzer {
             *optional_file_no = Some(file_no);
         }
 
-        // breaks recursion issues
-        self.imported_srcs.insert(remapped.clone(), None);
         let (maybe_entry, mut inner_sources) = self.parse(&sol, &remapped, false);
         
         // take self.sources entry with the same path as remapped and update the entry node
@@ -882,8 +876,6 @@ impl Analyzer {
             *optional_entry = maybe_entry;
         }
         
-        self.imported_srcs
-            .insert(remapped.clone(), maybe_entry);
         if let Some(other_entry) = maybe_entry {
             self.add_edge(other_entry, parent, Edge::Import);
         }
@@ -903,7 +895,6 @@ impl Analyzer {
         &mut self,
         contract_def: &ContractDefinition,
         source: NodeIdx,
-        imports: &[(Option<NodeIdx>, String, String, usize)],
     ) -> (
         ContractNode,
         Vec<FunctionNode>,
@@ -921,8 +912,15 @@ impl Analyzer {
         );
         use ContractPart::*;
 
+        let import_nodes = self.sources
+            .iter()
+            .map(|(_, _, _, maybe_node)| *maybe_node)
+            .collect::<Vec<_>>();
+        // convert vec to slice
+        let import_nodes = import_nodes.as_slice();
+
         let (contract, unhandled_inherits) =
-            Contract::from_w_imports(contract_def.clone(), source, imports, self);
+            Contract::from_w_imports(contract_def.clone(), source, import_nodes, self);
 
         let inherits = contract.inherits.clone();
         let con_name = contract.name.clone().unwrap().name;
@@ -1285,7 +1283,23 @@ pub fn print_diagnostics_report(
     Ok(())
 }
 
-fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
+/// Normalize the path by resolving the `.` and `..` components in order to do path comparison.
+/// 
+/// This is used instead of `std::fs::canonicalize()` in cases where the path is not present on the filesystem (e.g. in the case of a Solc Standard JSON)
+/// 
+/// ## Examples
+/// 
+/// ```
+/// use std::path::{Path, PathBuf};
+/// use pyrometer::normalize_path;
+/// 
+/// let path = Path::new("/src/contracts/./Main.sol");
+/// assert_eq!(normalize_path(path), PathBuf::from("/src/contracts/Main.sol"));
+/// 
+/// let path = Path::new("/src/contracts/../Main.sol");
+/// assert_eq!(normalize_path(path), PathBuf::from("/src/Main.sol"));
+/// ```
+pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
     let mut normalized_path = PathBuf::new();
 
     for component in path.as_ref().components() {
