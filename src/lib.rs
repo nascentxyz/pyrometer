@@ -155,7 +155,7 @@ impl Default for Analyzer {
             builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
             expr_errs: Default::default(),
-            max_depth: 1024,
+            max_depth: 50,
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
         };
@@ -432,7 +432,7 @@ impl Analyzer {
         self.root = Root::SolcJSON(path_to_json.clone());
 
         // iterate over the Solc JSON and add all the sources
-        let json_file = fs::read_to_string(path_to_json).expect("Solc JSON file not found");
+        let json_file = fs::read_to_string(path_to_json).expect(format!("Solc JSON file not found: {}", path_to_json.display()).as_str());
         let solc_json: Value = serde_json::from_str(&json_file).unwrap();
         let sources = solc_json["sources"].as_object().unwrap();
         for (name, value_obj) in sources {
@@ -811,25 +811,45 @@ impl Analyzer {
                                 .parent()
                                 .expect("no parent found for current file");
 
-                            let import_path_str = import_path.string.trim_start_matches('/');
+                            let import_path_str = import_path.string.as_str();
                             // convert to a PathBuf
                             let import_path_buf = PathBuf::from(import_path_str);
-                            // join to the current_name_parent
-                            let joined = current_name_parent.join(import_path_buf);
-                            // look for this path in self.sources
-                            let normalized_joined = normalize_path(&joined);
-
-                            if let Some((confirmed_source_path, sol, _file_no, _entry)) =
-                                self.sources.iter().find(|(path, _sol, _file_no, _entry)| {
-                                    normalize_path(path.path_to_solidity_source())
-                                        == normalized_joined
-                                })
-                            {
-                                // found the path, return the source_path
-                                (confirmed_source_path.clone(), sol.clone())
+                            // check if the import_path begins with an '@'
+                            if import_path_str.starts_with("@") {
+                                // if lib, look for this path in self.sources
+                                let normalized_import = normalize_path(&import_path_buf);
+                                if let Some((confirmed_source_path, sol, _file_no, _entry)) =
+                                    self.sources.iter().find(|(path, _sol, _file_no, _entry)| {
+                                        normalize_path(path.path_to_solidity_source())
+                                            == normalized_import
+                                    })
+                                {
+                                    // found the path, return the source_path
+                                    (confirmed_source_path.clone(), sol.clone())
+                                } else {
+                                    // didn't find the path, panic
+                                    panic!("Could not find file: {:#?}", normalized_import);
+                                }
                             } else {
-                                // didn't find the path, panic
-                                panic!("Could not find file: {:#?}", joined);
+                                tracing::debug!("import_path_buf is relative");
+
+                                // if relative, join to the current_name_parent
+                                let joined = current_name_parent.join(import_path_buf);
+                                // look for this path in self.sources
+                                let normalized_joined = normalize_path(&joined);
+
+                                if let Some((confirmed_source_path, sol, _file_no, _entry)) =
+                                    self.sources.iter().find(|(path, _sol, _file_no, _entry)| {
+                                        normalize_path(path.path_to_solidity_source())
+                                            == normalized_joined
+                                    })
+                                {
+                                    // found the path, return the source_path
+                                    (confirmed_source_path.clone(), sol.clone())
+                                } else {
+                                    // didn't find the path, panic
+                                    panic!("Could not find file: {:#?}", normalized_joined);
+                                }
                             }
                         }
                     }
@@ -847,7 +867,7 @@ impl Analyzer {
         if let Some((_, _, _, optional_entry)) = self.sources.iter().find(|(path, _, _, _)| {
             normalize_path(path.path_to_solidity_source()) == normalized_remapped
         }) {
-            // if found, update the file_no
+            // if found, add an edge from the parent to the entry
             if let Some(o_e) = optional_entry {
                 self.add_edge(*o_e, parent, Edge::Import);
             }
@@ -857,9 +877,7 @@ impl Analyzer {
                 .push((remapped.clone(), sol.clone(), None, None));
         }
 
-        self.file_no += 1;
-        let file_no = self.file_no;
-
+        
         let normalized_remapped = normalize_path(&remapped.path_to_solidity_source());
         // take self.sources entry with the same path as remapped and update the file_no
         if let Some((_, _, optional_file_no, _)) =
@@ -867,6 +885,12 @@ impl Analyzer {
                 normalize_path(path.path_to_solidity_source()) == normalized_remapped
             })
         {
+            if optional_file_no.is_some() {
+                // if the file_no is already set, don't recurse, just return
+                return;
+            }
+            self.file_no += 1;
+            let file_no = self.file_no;
             *optional_file_no = Some(file_no);
         }
 
