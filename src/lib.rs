@@ -432,7 +432,8 @@ impl Analyzer {
         self.root = Root::SolcJSON(path_to_json.clone());
 
         // iterate over the Solc JSON and add all the sources
-        let json_file = fs::read_to_string(path_to_json).expect(format!("Solc JSON file not found: {}", path_to_json.display()).as_str());
+        let json_file = fs::read_to_string(path_to_json)
+            .expect(format!("Solc JSON file not found: {}", path_to_json.display()).as_str());
         let solc_json: Value = serde_json::from_str(&json_file).unwrap();
         let sources = solc_json["sources"].as_object().unwrap();
         for (name, value_obj) in sources {
@@ -877,7 +878,6 @@ impl Analyzer {
                 .push((remapped.clone(), sol.clone(), None, None));
         }
 
-        
         let normalized_remapped = normalize_path(&remapped.path_to_solidity_source());
         // take self.sources entry with the same path as remapped and update the file_no
         if let Some((_, _, optional_file_no, _)) =
