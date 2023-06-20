@@ -7,3 +7,5 @@
 **/dot.dot
 **/flamegraph.svg
 **/.swp
+/.vscode
+.env

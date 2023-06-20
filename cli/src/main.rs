@@ -202,11 +202,8 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
-    let root = Root::RemappingsDirectory(env::current_dir().unwrap());
-    let mut analyzer = Analyzer {
-        root: root,
-        ..Default::default()
-    };
+    let mut analyzer = Analyzer::default();
+    analyzer.root = Root::RemappingsDirectory(env::current_dir().unwrap());
 
     let (current_path, sol) = if args.path.ends_with(".sol") {
         let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
@@ -252,7 +249,6 @@ fn main() {
     }
     let mut source_map = sources(src_map);
 
-    // all_sources.push((maybe_entry, args.path, sol, 0));
     let entry = maybe_entry.unwrap();
 
     analyzer.print_errors(&file_mapping, &mut source_map);
