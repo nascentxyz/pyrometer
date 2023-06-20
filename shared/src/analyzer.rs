@@ -184,6 +184,9 @@ pub trait GraphLike {
     ) {
         self.graph_mut()
             .add_edge(from_node.into(), to_node.into(), edge.into());
+        if petgraph::algo::is_cyclic_directed(self.graph()) {
+            panic!("Cyclic graph");
+        }
     }
 
     fn cluster_str(
@@ -325,7 +328,10 @@ pub trait GraphLike {
                     skip.insert(*node);
                     return None;
                 }
-                if !handled_nodes.lock().unwrap().contains(node) {
+                let handled_nodes_contains = {
+                    handled_nodes.lock().unwrap().contains(node)
+                };
+                if !handled_nodes_contains {
                     match self.node(*node) {
                         Node::Function(_) => {
                             cluster_num += 2;
@@ -353,7 +359,10 @@ pub trait GraphLike {
         let edges_str = edges
             .into_iter()
             .filter_map(|edge| {
-                if !handled_edges.lock().unwrap().contains(&edge) {
+                let handled_edges_contains = {
+                    handled_edges.lock().unwrap().contains(&edge)
+                };
+                if !handled_edges_contains {
                     let (from, to) = self.graph().edge_endpoints(edge).unwrap();
                     if skip.contains(&from) || skip.contains(&to) {
                         return None;
