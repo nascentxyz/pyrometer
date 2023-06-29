@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use pyrometer::Analyzer;
+use pyrometer::{Analyzer, SourcePath};
 use std::path::PathBuf;
 
 use std::env::{self};
@@ -73,9 +73,7 @@ fn bench(c: &mut Criterion) {
 /// * `path` - A `PathBuf` representing the path to the source code file.
 /// * `sol` - A string containing the Solidity source code.
 fn parse(path: &PathBuf, sol: String) {
-    let mut analyzer = Analyzer {
-        root: path.clone(),
-        ..Default::default()
-    };
-    let (_maybe_entry, mut _all_sources) = analyzer.parse(&sol, &path, true);
+    let mut analyzer = Analyzer::default();
+    let current_path = SourcePath::SolidityFile(path.clone());
+    let _maybe_entry = analyzer.parse(&sol, &current_path, true);
 }

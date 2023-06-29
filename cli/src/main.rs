@@ -2,9 +2,10 @@ use crate::analyzers::ReportConfig;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 use pyrometer::context::analyzers::FunctionVarsBoundAnalyzer;
+use pyrometer::Root;
 use pyrometer::{
     context::{analyzers::ReportDisplay, *},
-    Analyzer,
+    Analyzer, SourcePath,
 };
 
 use shared::nodes::FunctionNode;
@@ -102,7 +103,6 @@ pub fn subscriber() {
 fn main() {
     subscriber();
     let args = Args::parse();
-    let path_str = args.path.to_string();
     let verbosity = args.verbosity;
     let config = match verbosity {
         0 => ReportConfig {
@@ -202,43 +202,55 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
+    let mut analyzer = Analyzer::default();
+    analyzer.root = Root::RemappingsDirectory(env::current_dir().unwrap());
 
-    let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
+    let (current_path, sol) = if args.path.ends_with(".sol") {
+        let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
+        // Remappings file only required for Solidity files
+        if args.remappings.is_some() {
+            let remappings = args.remappings.unwrap();
+            analyzer.set_remappings_and_root(remappings);
+        }
 
-    let mut analyzer = Analyzer {
-        root: env::current_dir().unwrap(),
-        ..Default::default()
+        (
+            SourcePath::SolidityFile(PathBuf::from(args.path.clone())),
+            sol,
+        )
+    } else if args.path.ends_with(".json") {
+        let json_path_buf = PathBuf::from(args.path.clone());
+        analyzer.update_with_solc_json(&json_path_buf);
+        let (current_path, sol, _, _) = analyzer.sources.iter().next().unwrap().clone();
+        (current_path, sol)
+    } else {
+        panic!("Unsupported file type")
     };
-    if args.remappings.is_some() {
-        let remappings = args.remappings.unwrap();
-        analyzer.set_remappings_and_root(remappings);
-    }
+
     let t0 = std::time::Instant::now();
-    let (maybe_entry, mut all_sources) =
-        analyzer.parse(&sol, &PathBuf::from(args.path.clone()), true);
+    let maybe_entry = analyzer.parse(&sol, &current_path, true);
     let parse_time = t0.elapsed().as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
-    all_sources.push((maybe_entry, args.path, sol, 0));
+    // use self.sources to fill a BTreeMap with the file_no and SourcePath.path_to_solidity_file
+    let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
+    let mut src_map: HashMap<String, String> = HashMap::new();
+    for (source_path, sol, o_file_no, _o_entry) in analyzer.sources.iter() {
+        if let Some(file_no) = o_file_no {
+            file_mapping.insert(
+                *file_no,
+                source_path.path_to_solidity_source().display().to_string(),
+            );
+        }
+        src_map.insert(
+            source_path.path_to_solidity_source().display().to_string(),
+            sol.to_string(),
+        );
+    }
+    let mut source_map = sources(src_map);
+
     let entry = maybe_entry.unwrap();
 
-    let mut file_mapping: BTreeMap<_, _> = vec![(0usize, path_str)].into_iter().collect();
-    file_mapping.extend(
-        all_sources
-            .iter()
-            .map(|(_entry, name, _src, num)| (*num, name.clone()))
-            .collect::<BTreeMap<_, _>>(),
-    );
-
-    let mut source_map = sources(
-        all_sources
-            .iter()
-            .map(|(_entry, name, src, _num)| (name.clone(), src))
-            .collect::<HashMap<_, _>>(),
-    );
-
-    // let t = petgraph::algo::toposort(&analyzer.graph, None);
     analyzer.print_errors(&file_mapping, &mut source_map);
 
     if args.open_dot {
