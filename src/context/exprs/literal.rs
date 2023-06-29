@@ -111,7 +111,8 @@ pub trait Literal: AnalyzerLike + Sized {
         integer: &str,
         negative: bool,
     ) -> Result<(), ExprErr> {
-        let val = U256::from_str_radix(integer, 16).unwrap();
+        let integer: String = integer.chars().filter(|c| *c != '_').collect();
+        let val = U256::from_str_radix(&integer, 16).unwrap();
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
             let val = I256::from(-1i32) * I256::from_raw(val);
