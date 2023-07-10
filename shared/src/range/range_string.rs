@@ -59,7 +59,7 @@ impl ToRangeString for Elem<Concrete> {
                     .unwrap();
                 RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
-            Elem::ConcreteDyn(rd) => rd.def_string(analyzer),
+            Elem::ConcreteDyn(rd) => rd.borrow().def_string(analyzer),
             Elem::Expr(expr) => expr.def_string(analyzer),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
         }
@@ -73,7 +73,7 @@ impl ToRangeString for Elem<Concrete> {
                 let name = as_var.display_name(analyzer).unwrap();
                 RangeElemString::new(name, as_var.loc(analyzer).unwrap())
             }
-            Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
+            Elem::ConcreteDyn(rd) => rd.borrow().to_range_string(maximize, analyzer),
             Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
         }
@@ -204,12 +204,12 @@ impl ToRangeString for RangeDyn<Concrete> {
 
 impl ToRangeString for RangeExpr<Concrete> {
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
-        self.lhs.def_string(analyzer)
+        self.lhs.borrow().def_string(analyzer)
     }
 
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
-        let lhs_r_str = self.lhs.to_range_string(maximize, analyzer);
-        let lhs_str = match *self.lhs {
+        let lhs_r_str = self.lhs.borrow().to_range_string(maximize, analyzer);
+        let lhs_str = match *self.lhs.borrow() {
             Elem::Expr(_) => {
                 let new_str = format!("({})", lhs_r_str.s);
                 RangeElemString::new(new_str, lhs_r_str.loc)
@@ -217,9 +217,9 @@ impl ToRangeString for RangeExpr<Concrete> {
             _ => lhs_r_str,
         };
 
-        let rhs_r_str = self.rhs.to_range_string(maximize, analyzer);
+        let rhs_r_str = self.rhs.borrow().to_range_string(maximize, analyzer);
 
-        let rhs_str = match *self.rhs {
+        let rhs_str = match *self.rhs.borrow() {
             Elem::Expr(_) => {
                 let new_str = format!("({})", rhs_r_str.s);
                 RangeElemString::new(new_str, rhs_r_str.loc)
@@ -234,9 +234,9 @@ impl ToRangeString for RangeExpr<Concrete> {
             )
         } else if matches!(self.op, RangeOp::Cast | RangeOp::Concat) {
             let rhs = if maximize {
-                self.rhs.maximize(analyzer).unwrap()
+                self.rhs.borrow().maximize(analyzer).unwrap()
             } else {
-                self.rhs.minimize(analyzer).unwrap()
+                self.rhs.borrow().minimize(analyzer).unwrap()
             };
 
             match rhs {
@@ -255,9 +255,9 @@ impl ToRangeString for RangeExpr<Concrete> {
             }
         } else if matches!(self.op, RangeOp::BitNot) {
             let lhs = if maximize {
-                self.lhs.maximize(analyzer).unwrap()
+                self.lhs.borrow().maximize(analyzer).unwrap()
             } else {
-                self.lhs.minimize(analyzer).unwrap()
+                self.lhs.borrow().minimize(analyzer).unwrap()
             };
 
             match lhs {

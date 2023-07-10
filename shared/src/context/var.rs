@@ -1,6 +1,7 @@
 use crate::analyzer::{AnalyzerLike, GraphLike};
 use crate::context::GraphError;
 use crate::range::elem::RangeElem;
+use crate::range::elem_ty::RangeExpr;
 use crate::TyNode;
 
 use crate::range::elem_ty::Elem;
@@ -114,6 +115,13 @@ impl ContextVarNode {
 
     pub fn ty<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a VarType, GraphError> {
         Ok(&self.underlying(analyzer)?.ty)
+    }
+
+    pub fn ty_mut<'a>(
+        &self,
+        analyzer: &'a mut impl GraphLike,
+    ) -> Result<&'a mut VarType, GraphError> {
+        Ok(&mut self.underlying_mut(analyzer)?.ty)
     }
 
     pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -399,7 +407,7 @@ impl ContextVarNode {
     }
 
     pub fn cache_range(&self, analyzer: &mut impl GraphLike) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
         }
@@ -427,6 +435,49 @@ impl ContextVarNode {
     pub fn needs_fallback(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.needs_fallback())
     }
+
+    pub fn min_range_op(
+        &self,
+        op: RangeOp,
+        mut elem: Elem<Concrete>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        if elem.contains_node((*self).into()) {
+            if let Some(prev) = self.previous_or_inherited_version(analyzer) {
+                elem.filter_recursion((*self).into(), prev.into());
+            } else {
+                return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
+            }
+        }
+
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
+            range.min = Elem::from(RangeExpr::new(range.min, op, elem));
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
+
+    pub fn max_range_op(
+        &self,
+        op: RangeOp,
+        mut elem: Elem<Concrete>,
+        analyzer: &mut (impl GraphLike + AnalyzerLike),
+    ) -> Result<(), GraphError> {
+        if elem.contains_node((*self).into()) {
+            if let Some(prev) = self.previous_or_inherited_version(analyzer) {
+                elem.filter_recursion((*self).into(), prev.into());
+            } else {
+                return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
+            }
+        }
+
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
+            range.max = Elem::from(RangeExpr::new(range.max, op, elem));
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
+
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
@@ -794,8 +845,12 @@ impl ContextVarNode {
         Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
     }
 
-    pub fn ty_eq(&self, other: &Self, analyzer: &mut impl GraphLike) -> Result<bool, GraphError> {
+    pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         self.ty(analyzer)?.ty_eq(other.ty(analyzer)?, analyzer)
+    }
+
+    pub fn ty_eq_ty(&self, other: &VarType, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+        self.ty(analyzer)?.ty_eq(other, analyzer)
     }
 
     pub fn cast_from(
@@ -1135,7 +1190,7 @@ impl ContextVar {
             VarType::User(TypeNode::Contract(_), ref maybe_range)
             | VarType::User(TypeNode::Enum(_), ref maybe_range)
             | VarType::User(TypeNode::Ty(_), ref maybe_range)
-            | VarType::BuiltIn(_, ref maybe_range) => maybe_range.is_some(),
+            | VarType::BuiltIn(_, ref maybe_range) => maybe_range.is_none(),
             _ => false,
         }
     }

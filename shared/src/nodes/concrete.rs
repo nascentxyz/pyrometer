@@ -74,7 +74,7 @@ pub enum DynCapacity {
 }
 
 /// EVM/Solidity basic concrete types
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Concrete {
     /// An unsigned integer, in the form of (bits, value)
     Uint(u16, U256),
@@ -93,6 +93,21 @@ pub enum Concrete {
     String(String),
     /// An array of concrete values
     Array(Vec<Concrete>),
+}
+
+impl Clone for Concrete {
+    fn clone(&self) -> Concrete {
+        match self {
+            Concrete::Uint(size, val) => Concrete::Uint(*size, *val),
+            Concrete::Int(size, val) => Concrete::Int(*size, *val),
+            Concrete::Bytes(size, val) => Concrete::Bytes(*size, *val),
+            Concrete::Address(val) => Concrete::Address(*val),
+            Concrete::Bool(val) => Concrete::Bool(*val),
+            Concrete::DynBytes(inner) => Concrete::DynBytes(inner.clone()),
+            Concrete::String(inner) => Concrete::String(inner.clone()),
+            Concrete::Array(inner) => Concrete::Array(inner.clone()),
+        }
+    }
 }
 
 impl From<U256> for Concrete {

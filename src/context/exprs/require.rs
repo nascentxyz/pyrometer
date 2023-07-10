@@ -6,6 +6,8 @@ use crate::{
 };
 use shared::range::elem_ty::RangeExpr;
 use shared::range::range_string::ToRangeString;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use shared::{
     context::*,
@@ -78,7 +80,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
@@ -111,7 +113,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Neq,
-                            RangeOp::Eq,
+                            RangeOp::Neq,
                             (RangeOp::Eq, RangeOp::Neq),
                         )
                     })
@@ -277,7 +279,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Neq,
+                        RangeOp::Eq,
                         (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
@@ -321,7 +323,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &lhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
@@ -331,7 +333,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &rhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
@@ -440,7 +442,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             &ExprRet::Single(or_var.into()),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
@@ -469,7 +471,7 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Neq,
+                        RangeOp::Eq,
                         (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
@@ -668,14 +670,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .set_range_min(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .set_range_max(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
                 }
@@ -696,14 +698,20 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                             if let Some(mut rd) = min.maybe_range_dyn() {
                                 rd.val.insert(Elem::from(index), Elem::from(new_rhs));
                                 next_arr
-                                    .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                                    .set_range_min(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc)?;
                             }
 
                             if let Some(mut rd) = max.maybe_range_dyn() {
                                 rd.val.insert(Elem::from(index), Elem::from(new_rhs));
                                 next_arr
-                                    .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                                    .set_range_max(
+                                        self,
+                                        Elem::ConcreteDyn(Rc::new(RefCell::new(rd))),
+                                    )
                                     .into_expr_err(loc)?;
                             }
                         }
@@ -719,14 +727,14 @@ pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .set_range_min(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         rd.len = Elem::from(new_lhs);
                         backing_arr
-                            .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
+                            .set_range_max(self, Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                             .into_expr_err(loc)?;
                     }
                 }

@@ -81,7 +81,7 @@ pub struct Analyzer {
     /// The entry node - this is the root of the dag, all relevant things should eventually point back to this (otherwise can be discarded)
     pub entry: NodeIdx,
     /// A mapping of a solidity builtin to the index in the graph
-    pub builtins: HashMap<Builtin, NodeIdx>,
+    pub builtins: BTreeMap<Builtin, NodeIdx>,
     /// A mapping of a user type's name to the index in the graph (i.e. `struct A` would mapped `A` -> index)
     pub user_types: HashMap<String, NodeIdx>,
     /// A mapping of solidity builtin function to a [Function] struct, i.e. `ecrecover` -> `Function { name: "ecrecover", ..}`
@@ -205,10 +205,10 @@ impl AnalyzerLike for Analyzer {
         &self.builtin_fn_inputs
     }
 
-    fn builtins(&self) -> &HashMap<Builtin, NodeIdx> {
+    fn builtins(&self) -> &BTreeMap<Builtin, NodeIdx> {
         &self.builtins
     }
-    fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx> {
+    fn builtins_mut(&mut self) -> &mut BTreeMap<Builtin, NodeIdx> {
         &mut self.builtins
     }
     fn user_types(&self) -> &HashMap<String, NodeIdx> {

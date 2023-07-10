@@ -8,6 +8,8 @@ use ethers_core::types::U256;
 use shared::nodes::BuiltInNode;
 use shared::nodes::StructNode;
 use shared::nodes::TyNode;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use shared::analyzer::Search;
 use shared::analyzer::{AnalyzerLike, GraphLike};
@@ -639,13 +641,13 @@ pub trait IntrinsicFuncCaller:
 
                         if let Some(mut rd) = min.maybe_range_dyn() {
                             rd.len = Elem::from(len_cvar);
-                            arr.set_range_min(analyzer, Elem::ConcreteDyn(Box::new(rd)))
+                            arr.set_range_min(analyzer,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                                 .into_expr_err(loc)?;
                         }
 
                         if let Some(mut rd) = max.maybe_range_dyn() {
                             rd.len = Elem::from(len_cvar);
-                            arr.set_range_min(analyzer, Elem::ConcreteDyn(Box::new(rd)))
+                            arr.set_range_min(analyzer,Elem::ConcreteDyn(Rc::new(RefCell::new(rd))))
                                 .into_expr_err(loc)?;
                         }
                     }

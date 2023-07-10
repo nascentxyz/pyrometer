@@ -144,7 +144,9 @@ impl FunctionNode {
                 .map(|edge| ContextNode::from(edge.source()))
                 .take(1)
                 .next()
-                .expect("No context for function");
+                .unwrap_or_else(|| {
+                    panic!("No context for function: {}", self.name(analyzer).unwrap())
+                });
 
             self.underlying_mut(analyzer).unwrap().cache.body_ctx = Some(body_ctx);
             body_ctx
