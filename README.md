@@ -46,7 +46,7 @@ Run `pyrometer --help` for more details.
 1. `pyrometer ./myContract.sol --remappings remappings.txt`: the `--remappings` flag is generally needed otherwise you will get a crash with `file does not exist`.
 1. `pyrometer ./myContract.sol -vv`: `-vv` is generally the sweet spot in terms of verbosity
 1. `pyrometer ./myContract.sol --funcs "myFunc"`: the `--funcs` flag can help narrow the down the output to only the function you care about. You can repeat the flag as many times as you like to match more functions
-1. `pyrometer ./myContract.sol --contracts "myContract"`: the `--contracts` flag can help narrow the down the output to only the contract you care about. You can repeat the flag as many times as you like to match more functions
+1. `pyrometer ./myContract.sol --contracts "myContract"`: the `--contracts` flag can help narrow the down the output to only the contract you care about. You can repeat the flag as many times as you like to match more contracts
 
 ## What can I do with it?
 
