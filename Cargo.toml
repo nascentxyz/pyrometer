@@ -3,6 +3,7 @@ members = [
 	"crates/analyzer",
 	"crates/cli",
 	"crates/graph",
+	"crates/pyrometer",
 	"crates/queries",
 	"crates/range",
 	"crates/solc_expressions",
@@ -33,6 +34,7 @@ debug = true
 [workspace.dependencies]
 analyzer = { path = "crates/analyzer" }
 graph = { path = "crates/graph" }
+pyrometer = { path = "crates/pyrometer" }
 queries = { path = "crates/queries" }
 range = { path = "crates/range" }
 solc_expressions = { path = "crates/solc_expressions" }
@@ -42,7 +44,6 @@ tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = "0.3"
 ethers-core = "*"
 hex = "0.4.3"
-lazy_static =
 ariadne = "0.2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
