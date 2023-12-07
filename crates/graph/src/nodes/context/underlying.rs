@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The function associated with this context
@@ -10,7 +9,7 @@ pub struct Context {
     pub returning_ctx: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
-    pub ctx_deps: BTreeMap<String, ContextVarNode>,
+    pub ctx_deps: Vec<ContextVarNode>,
     /// A string that represents the path taken from the root context (i.e. `fn_entry.fork.1`)
     pub path: String,
     /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement
@@ -29,7 +28,7 @@ pub struct Context {
     /// The location in source of the context
     pub loc: Loc,
     /// The return node and the return location
-    pub ret: Vec<(Loc, ContextVarNode)>,
+    pub ret: Vec<(Loc, Option<ContextVarNode>)>,
     /// Depth tracker
     pub depth: usize,
     /// Width tracker
@@ -41,6 +40,7 @@ pub struct Context {
 
     // caching related things
     pub cache: ContextCache,
+    pub dl_solver: DLSolver,
 }
 
 impl Context {
@@ -68,6 +68,7 @@ impl Context {
             unchecked: false,
             number_of_live_edges: 0,
             cache: Default::default(),
+            dl_solver: Default::default(),
         }
     }
 
@@ -87,6 +88,12 @@ impl Context {
 
         let width =
             parent_ctx.underlying(analyzer)?.width + if fork_expr.is_some() { 1 } else { 0 };
+
+        let modifier_state = if let Some(mstate) = modifier_state {
+            Some(mstate)
+        } else {
+            parent_ctx.underlying(analyzer)?.modifier_state.clone()
+        };
 
         if analyzer.max_depth() < depth {
             return Err(GraphError::MaxStackDepthReached(format!(
@@ -195,6 +202,7 @@ impl Context {
                 associated_source: None,
                 associated_contract: None,
             },
+            dl_solver: parent_ctx.underlying(analyzer)?.dl_solver.clone(),
         })
     }
 

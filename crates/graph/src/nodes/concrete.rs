@@ -194,12 +194,16 @@ impl Concrete {
     /// be fine.
     pub fn u256_as_original(&self, uint: U256) -> Self {
         match self {
-            Concrete::Uint(size, _) => Concrete::Uint(*size, uint),
-            Concrete::Int(size, _) => Concrete::Int(*size, I256::from_raw(uint)),
+            Concrete::Uint(size, _) => Concrete::Uint(256, uint)
+                .cast(Builtin::Uint(*size))
+                .unwrap(),
+            Concrete::Int(size, _) => Concrete::Int(256, I256::from_raw(uint))
+                .cast(Builtin::Int(*size))
+                .unwrap(),
             Concrete::Bytes(size, _) => {
                 let mut h = H256::default();
                 uint.to_big_endian(h.as_mut());
-                Concrete::Bytes(*size, h)
+                Concrete::Bytes(32, h).cast(Builtin::Bytes(*size)).unwrap()
             }
             Concrete::Address(_) => {
                 let mut bytes = [0u8; 32];
@@ -313,11 +317,13 @@ impl Concrete {
                             if val < mask {
                                 Some(Concrete::Uint(size, val))
                             } else {
-                                Some(Concrete::Uint(size, mask))
+                                Some(Concrete::Uint(size, val & mask))
                             }
                         }
                     }
-                    Builtin::Int(size) => Some(Concrete::Int(size, I256::from_raw(val))),
+                    Builtin::Int(size) => {
+                        Some(Concrete::Int(size, I256::from_raw(val)))
+                    }
                     Builtin::Bytes(size) => {
                         let mask = if size == 32 {
                             U256::MAX
@@ -366,14 +372,23 @@ impl Concrete {
                             U256::from(2).pow((size - 1).into()) - 1
                         };
 
-                        let (sign, abs) = val.into_sign_and_abs();
+                        let (_sign, abs) = val.into_sign_and_abs();
+
                         if abs < mask {
                             Some(Concrete::Int(size, val))
                         } else {
-                            Some(Concrete::Int(
-                                size,
-                                I256::checked_from_sign_and_abs(sign, mask).unwrap(),
-                            ))
+                            // check if the top bit for the new value is set on the existing value
+                            // if it is, then the cast will result in a negative number
+                            let top_mask =
+                                if abs & (U256::from(1) << U256::from(size)) != U256::zero() {
+                                    // sign extension
+                                    ((U256::from(1) << U256::from(257 - size)) - U256::from(1))
+                                        << U256::from(size - 1)
+                                } else {
+                                    U256::from(0)
+                                };
+
+                            Some(Concrete::Int(size, I256::from_raw((abs & mask) | top_mask)))
                         }
                     }
                 }

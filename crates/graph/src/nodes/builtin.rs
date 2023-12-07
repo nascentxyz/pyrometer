@@ -376,4 +376,36 @@ impl Builtin {
             )),
         }
     }
+
+    pub fn basic_as_string(&self) -> String {
+        use Builtin::*;
+        match self {
+            Address => "address".to_string(),
+            AddressPayable => "address".to_string(),
+            Payable => "address".to_string(),
+            Bool => "bool".to_string(),
+            String => "string".to_string(),
+            Int(size) => format!("int{size}"),
+            Uint(size) => format!("uint{size}"),
+            Bytes(size) => format!("bytes{size}"),
+            Rational => "rational".to_string(),
+            DynamicBytes => "bytes".to_string(),
+            Array(_v_ty) => "<user type>[]".to_string(),
+            SizedArray(s, _v_ty) => format!("<user type>[{}]", s),
+            Mapping(_key_ty, _v_ty) => "mapping (<user type> => <user type>)".to_string(),
+            Func(inputs, outputs) => format!(
+                "function({}) returns ({})",
+                inputs
+                    .iter()
+                    .map(|_input| "<user type>")
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                outputs
+                    .iter()
+                    .map(|_output| "<user type>")
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
 }

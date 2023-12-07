@@ -10,7 +10,6 @@ members = [
 ]
 
 
-
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
@@ -45,6 +44,7 @@ tracing-subscriber = "0.3"
 ethers-core = "*"
 hex = "0.4.3"
 ariadne = "0.2.0"
+petgraph = "0.6.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

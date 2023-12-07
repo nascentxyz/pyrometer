@@ -7,6 +7,7 @@ use crate::FunctionNode;
 use crate::Node;
 use crate::NodeIdx;
 use crate::StructNode;
+use crate::VarNode;
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
 use std::collections::BTreeMap;
@@ -127,6 +128,26 @@ impl ContractNode {
             .collect()
     }
 
+    /// Gets all associated storage vars from the underlying node data for the [`Contract`]
+    pub fn direct_storage_vars(&self, analyzer: &(impl GraphLike + Search)) -> Vec<VarNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Var, 1, 0)
+            .into_iter()
+            .map(VarNode::from)
+            .collect()
+    }
+
+    /// Gets all associated storage vars from the underlying node data for the [`Contract`]
+    pub fn all_storage_vars(&self, analyzer: &(impl GraphLike + Search)) -> Vec<VarNode> {
+        let mut ret = self
+            .all_inherited_contracts(analyzer)
+            .iter()
+            .flat_map(|contract| contract.direct_storage_vars(analyzer))
+            .collect::<Vec<_>>();
+        ret.extend(self.direct_storage_vars(analyzer));
+        ret
+    }
+
     pub fn funcs_mapping(
         &self,
         analyzer: &(impl GraphLike + Search + AnalyzerLike),
@@ -228,7 +249,7 @@ impl Contract {
     pub fn from_w_imports(
         con: ContractDefinition,
         source: NodeIdx,
-        imports: &[(Option<NodeIdx>, String, String, usize)],
+        imports: &[Option<NodeIdx>],
         analyzer: &impl GraphLike,
     ) -> (Contract, Vec<String>) {
         let mut inherits = vec![];
@@ -249,7 +270,7 @@ impl Contract {
             }
 
             if !found {
-                for entry in imports.iter().filter_map(|import| import.0) {
+                for entry in imports.iter().filter_map(|&import| import) {
                     for contract in analyzer
                         .search_children_exclude_via(entry, &Edge::Contract, &[Edge::Func])
                         .into_iter()

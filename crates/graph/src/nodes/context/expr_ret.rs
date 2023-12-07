@@ -2,6 +2,7 @@ use crate::analyzer::AsDotStr;
 use crate::context::GraphError;
 use crate::{ContextVarNode, GraphLike, Node, NodeIdx, VarType};
 
+/// The reason a context was killed
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum KilledKind {
     Ended,
@@ -11,6 +12,7 @@ pub enum KilledKind {
 }
 
 impl KilledKind {
+    /// Returns a string explanation of the KilledKind
     pub fn analysis_str(&self) -> &str {
         use KilledKind::*;
         match self {
@@ -22,16 +24,23 @@ impl KilledKind {
     }
 }
 
+/// A representation of the evaluation of an expression
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ExprRet {
+    /// The expression resulted in a killing of the context
     CtxKilled(KilledKind),
+    /// The expression resulted in nothing
     Null,
+    /// The expression resulted in a single element
     Single(NodeIdx),
+    /// The expression resulted in a single element that was a literal
     SingleLiteral(NodeIdx),
+    /// The expression resulted in multiple elements
     Multi(Vec<ExprRet>),
 }
 
 impl ExprRet {
+    /// Converts the expression return into a debug string
     pub fn debug_str(&self, analyzer: &impl GraphLike) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
@@ -53,6 +62,7 @@ impl ExprRet {
         }
     }
 
+    /// Take one element from the expression return.
     pub fn take_one(&mut self) -> Result<Option<ExprRet>, GraphError> {
         match self {
             ExprRet::Single(..) | ExprRet::SingleLiteral(..) => {
@@ -70,6 +80,8 @@ impl ExprRet {
         }
     }
 
+    /// Checks if the expression return is a `SingleLiteral`. It returns
+    /// a list of bools that match if each is a literal
     pub fn literals_list(&self) -> Result<Vec<bool>, GraphError> {
         match self {
             ExprRet::SingleLiteral(..) => Ok(vec![true]),
@@ -88,6 +100,7 @@ impl ExprRet {
         }
     }
 
+    /// Expect the expression result to be the Single variant
     pub fn expect_single(&self) -> Result<NodeIdx, GraphError> {
         match self {
             ExprRet::Single(inner) => Ok(*inner),
@@ -99,6 +112,7 @@ impl ExprRet {
         }
     }
 
+    /// Expect the expression result to be some length
     pub fn expect_length(&self, len: usize) -> Result<(), GraphError> {
         match self {
             ExprRet::Single(_) | ExprRet::SingleLiteral(_) => {
@@ -130,6 +144,7 @@ impl ExprRet {
         }
     }
 
+    /// Return whether the expression return is a Single or SingleLiteral
     pub fn is_single(&self) -> bool {
         match self {
             ExprRet::Single(_inner) => true,
@@ -139,10 +154,12 @@ impl ExprRet {
         }
     }
 
+    /// Return whether the expression return resulted in the Context being killed
     pub fn is_killed(&self) -> bool {
         matches!(self, ExprRet::CtxKilled(_))
     }
 
+    /// Return the kind of the killed context if it was killed
     pub fn killed_kind(&self) -> Option<KilledKind> {
         match self {
             ExprRet::CtxKilled(k) => Some(*k),
@@ -151,10 +168,7 @@ impl ExprRet {
         }
     }
 
-    pub fn has_fork(&self) -> bool {
-        false
-    }
-
+    /// Check if any of the expression returns are killed
     pub fn has_killed(&self) -> bool {
         match self {
             ExprRet::CtxKilled(_) => true,
@@ -163,6 +177,7 @@ impl ExprRet {
         }
     }
 
+    /// Check if any of the expression returns are literals
     pub fn has_literal(&self) -> bool {
         match self {
             ExprRet::SingleLiteral(..) => true,
@@ -171,6 +186,7 @@ impl ExprRet {
         }
     }
 
+    /// Expect the return to be a multi, and return the inner list. Panics if not mulit
     pub fn expect_multi(self) -> Vec<ExprRet> {
         match self {
             ExprRet::Multi(inner) => inner,
@@ -178,6 +194,7 @@ impl ExprRet {
         }
     }
 
+    /// Try to convert to a solidity-like function input string, i.e. `(uint256, uint256, bytes32)`
     pub fn try_as_func_input_str(&self, analyzer: &impl GraphLike) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
@@ -204,6 +221,7 @@ impl ExprRet {
         }
     }
 
+    /// Flatten the expression returns recursively into a single list of node indices
     pub fn as_flat_vec(&self) -> Vec<NodeIdx> {
         let mut idxs = vec![];
         match self {
@@ -221,6 +239,7 @@ impl ExprRet {
         idxs
     }
 
+    /// Convert to a normal vector, does not recurse
     pub fn as_vec(&self) -> Vec<ExprRet> {
         match self {
             s @ ExprRet::Single(_) | s @ ExprRet::SingleLiteral(_) => vec![s.clone()],
@@ -231,6 +250,7 @@ impl ExprRet {
         }
     }
 
+    /// Flatten into a single ExprRet
     pub fn flatten(self) -> Self {
         match self {
             ExprRet::Single(_) | ExprRet::SingleLiteral(_) => self,

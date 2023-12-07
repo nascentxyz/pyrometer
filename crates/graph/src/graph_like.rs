@@ -6,25 +6,27 @@ pub trait AsDotStr {
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphLike {
+    /// Get a mutable reference to the graph
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize>;
+    /// Get a reference to the graph
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize>;
-
+    /// Add a node to the graph
     fn add_node(&mut self, node: impl Into<Node>) -> NodeIdx {
         self.graph_mut().add_node(node.into())
     }
-
+    /// Get a reference to a node in the graph
     fn node(&self, node: impl Into<NodeIdx>) -> &Node {
         self.graph()
             .node_weight(node.into())
             .expect("Index not in graph")
     }
-
+    /// Get a mutable reference to a node in the graph
     fn node_mut(&mut self, node: impl Into<NodeIdx>) -> &mut Node {
         self.graph_mut()
             .node_weight_mut(node.into())
             .expect("Index not in graph")
     }
-
+    /// Add an edge to the graph
     fn add_edge(
         &mut self,
         from_node: impl Into<NodeIdx>,
@@ -40,6 +42,7 @@ impl<T: GraphLike> GraphDot for T {}
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphDot: GraphLike {
+    /// Open a dot using graphviz
 	fn open_dot(&self)
     where
         Self: std::marker::Sized,
@@ -264,6 +267,7 @@ pub trait GraphDot: GraphLike {
         dot_str.join("\n")
     }
 
+    /// Construct a dot string while filtering temporary variables
     fn dot_str_no_tmps(&self) -> String
     where
         Self: std::marker::Sized,

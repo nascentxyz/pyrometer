@@ -1,5 +1,8 @@
 use crate::analyzer::Search;
 use crate::nodes::GraphError;
+use crate::ContextEdge;
+
+use crate::ContextVarNode;
 
 use crate::ContractNode;
 use crate::VarType;
@@ -142,6 +145,20 @@ impl VarNode {
             }
         }
         Ok(None)
+    }
+
+    pub fn inherited_into(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| {
+                matches!(
+                    *edge.weight(),
+                    Edge::Context(ContextEdge::InheritedStorageVariable)
+                )
+            })
+            .map(|edge| ContextVarNode::from(edge.source()))
+            .collect()
     }
 }
 
