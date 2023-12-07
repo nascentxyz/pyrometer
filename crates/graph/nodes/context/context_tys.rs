@@ -21,41 +21,6 @@ impl CallFork {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum ContextEdge {
-    // Control flow
-    Context,
-    Subcontext,
-    ContextFork,
-    ContextMerge,
-    Call,
-
-    // Context Variables
-    Variable,
-    InheritedVariable,
-
-    AttrAccess,
-    Index,
-    IndexAccess,
-    StructAccess,
-    FuncAccess,
-
-    // Variable incoming edges
-    Assign,
-    StorageAssign,
-    MemoryAssign,
-    Prev,
-
-    // Control flow
-    Return,
-    Continue,
-    InputVariable,
-    ReturnAssign(bool),
-
-    // Range analysis
-    Range,
-}
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ModifierState {
     pub num: usize,
