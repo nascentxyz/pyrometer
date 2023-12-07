@@ -1,4 +1,3 @@
-
 /// A concrete value for a range element
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeConcrete<T> {
@@ -17,8 +16,16 @@ impl From<Concrete> for RangeConcrete<Concrete> {
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     // fn simplify(&self, _analyzer: &impl GraphLike) -> Elem<Concrete> {
-    // 	Elem::Concrete(self.clone())
+    //  Elem::Concrete(self.clone())
     // }
+
+    fn flatten(
+        &self,
+        _maximize: bool,
+        _analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::Concrete(self.clone()))
+    }
 
     fn range_eq(&self, other: &Self) -> bool {
         match (self.val.into_u256(), other.val.into_u256()) {
@@ -101,10 +108,18 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(Elem::Concrete(self.clone()))
     }
 
-    fn simplify_maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_maximize(
+        &self,
+        _exclude: &mut Vec<NodeIdx>,
+        _analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
-    fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_minimize(
+        &self,
+        _exclude: &mut Vec<NodeIdx>,
+        _analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
 
@@ -116,4 +131,13 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(())
     }
     fn uncache(&mut self) {}
+
+    fn contains_op_set(
+        &self,
+        _: bool,
+        _op_set: &[RangeOp],
+        _analyzer: &impl GraphLike,
+    ) -> Result<bool, GraphError> {
+        Ok(false)
+    }
 }

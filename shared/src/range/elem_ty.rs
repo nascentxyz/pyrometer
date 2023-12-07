@@ -11,14 +11,14 @@ use std::ops::*;
 
 /// A dynamic range element value
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct Dynamic {
+pub struct Reference {
     /// Index of the node that is referenced
     pub idx: NodeIdx,
     pub minimized: Option<MinMaxed<Concrete>>,
     pub maximized: Option<MinMaxed<Concrete>>,
 }
 
-impl Dynamic {
+impl Reference {
     pub fn new(idx: NodeIdx) -> Self {
         Self {
             idx,
@@ -28,7 +28,7 @@ impl Dynamic {
     }
 }
 
-impl RangeElem<Concrete> for Dynamic {
+impl RangeElem<Concrete> for Reference {
     fn range_eq(&self, _other: &Self) -> bool {
         false
     }
@@ -63,14 +63,14 @@ impl RangeElem<Concrete> for Dynamic {
                 if let Some(range) = maybe_range {
                     range.evaled_range_max(analyzer)
                 } else {
-                    Ok(Elem::Dynamic(self.clone()))
+                    Ok(Elem::Reference(self.clone()))
                 }
             }
             VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
                 val: concrete_node.underlying(analyzer)?.clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             })),
-            _e => Ok(Elem::Dynamic(self.clone())),
+            _e => Ok(Elem::Reference(self.clone())),
         }
     }
 
@@ -88,24 +88,24 @@ impl RangeElem<Concrete> for Dynamic {
                 if let Some(range) = maybe_range {
                     range.evaled_range_min(analyzer)
                 } else {
-                    Ok(Elem::Dynamic(self.clone()))
+                    Ok(Elem::Reference(self.clone()))
                 }
             }
             VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
                 val: concrete_node.underlying(analyzer)?.clone(),
                 loc: cvar.loc.unwrap_or(Loc::Implicit),
             })),
-            _e => Ok(Elem::Dynamic(self.clone())),
+            _e => Ok(Elem::Reference(self.clone())),
         }
     }
 
     fn simplify_maximize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         // let cvar = ContextVarNode::from(self.idx);
         // if cvar.is_symbolic(analyzer)? {
-        Ok(Elem::Dynamic(self.clone()))
+        Ok(Elem::Reference(self.clone()))
         // }
         // if !cvar.is_tmp(analyzer)? {
-        //     return Ok(Elem::Dynamic(self.clone()))
+        //     return Ok(Elem::Reference(self.clone()))
         // }
         // let cvar = cvar.underlying(analyzer)?;
         // match &cvar.ty {
@@ -116,23 +116,23 @@ impl RangeElem<Concrete> for Dynamic {
         //         if let Some(range) = maybe_range {
         //             range.simplified_range_max(analyzer)
         //         } else {
-        //             Ok(Elem::Dynamic(self.clone()))
+        //             Ok(Elem::Reference(self.clone()))
         //         }
         //     }
         //     VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
         //         val: concrete_node.underlying(analyzer)?.clone(),
         //         loc: cvar.loc.unwrap_or(Loc::Implicit),
         //     })),
-        //     _e => Ok(Elem::Dynamic(self.clone())),
+        //     _e => Ok(Elem::Reference(self.clone())),
         // }
     }
     fn simplify_minimize(&self, _analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
         // let cvar = ContextVarNode::from(self.idx);
         // if cvar.is_symbolic(analyzer)? {
-        Ok(Elem::Dynamic(self.clone()))
+        Ok(Elem::Reference(self.clone()))
         // }
         // if !cvar.is_tmp(analyzer)? {
-        //     return Ok(Elem::Dynamic(self.clone()))
+        //     return Ok(Elem::Reference(self.clone()))
         // }
         // let cvar = cvar.underlying(analyzer)?;
 
@@ -144,14 +144,14 @@ impl RangeElem<Concrete> for Dynamic {
         //         if let Some(range) = maybe_range {
         //             range.simplified_range_min(analyzer)
         //         } else {
-        //             Ok(Elem::Dynamic(self.clone()))
+        //             Ok(Elem::Reference(self.clone()))
         //         }
         //     }
         //     VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete {
         //         val: concrete_node.underlying(analyzer)?.clone(),
         //         loc: cvar.loc.unwrap_or(Loc::Implicit),
         //     })),
-        //     _e => Ok(Elem::Dynamic(self.clone())),
+        //     _e => Ok(Elem::Reference(self.clone())),
         // }
     }
 
@@ -563,7 +563,7 @@ pub enum Elem<T> {
 impl std::fmt::Display for Elem<Concrete> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Elem::Dynamic(Dynamic { idx, .. }) => write!(f, "idx_{}", idx.index()),
+            Elem::Reference(Reference { idx, .. }) => write!(f, "idx_{}", idx.index()),
             Elem::ConcreteDyn(..) => write!(f, "range_elem"),
             Elem::Concrete(RangeConcrete { val, .. }) => {
                 write!(f, "{}", val.as_string())
@@ -587,13 +587,13 @@ impl From<Concrete> for Elem<Concrete> {
 
 impl From<ContextVarNode> for Elem<Concrete> {
     fn from(c: ContextVarNode) -> Self {
-        Elem::Dynamic(Dynamic::new(c.into()))
+        Elem::Reference(Dynamic::new(c.into()))
     }
 }
 
 impl From<NodeIdx> for Elem<Concrete> {
     fn from(idx: NodeIdx) -> Self {
-        Elem::Dynamic(Dynamic::new(idx))
+        Elem::Reference(Dynamic::new(idx))
     }
 }
 
@@ -666,7 +666,7 @@ impl<T> Elem<T> {
 
 impl<T> From<Dynamic> for Elem<T> {
     fn from(dy: Dynamic) -> Self {
-        Elem::Dynamic(dy)
+        Elem::Reference(dy)
     }
 }
 
@@ -679,7 +679,7 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
 impl Elem<Concrete> {
     pub fn node_idx(&self) -> Option<NodeIdx> {
         match self {
-            Self::Dynamic(Dynamic { idx, .. }) => Some(*idx),
+            Self::Dynamic(Reference { idx, .. }) => Some(*idx),
             _ => None,
         }
     }
@@ -701,7 +701,7 @@ impl Elem<Concrete> {
                 val: Concrete::Int(_, val),
                 ..
             }) if val < &I256::zero() => true,
-            Elem::Dynamic(dy) => {
+            Elem::Reference(dy) => {
                 if maximize {
                     dy.maximize(analyzer)?.is_negative(maximize, analyzer)?
                 } else {

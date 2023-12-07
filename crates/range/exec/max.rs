@@ -1,4 +1,3 @@
-
 pub trait RangeMax<T, Rhs = Self> {
     /// Take the maximum of two range elements
     fn range_max(&self, other: &Rhs) -> Option<Elem<T>>;

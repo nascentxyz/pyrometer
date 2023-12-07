@@ -91,6 +91,8 @@ impl RangeMul<Concrete> for Elem<Concrete> {
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => {
                 Some(other.clone())
             }
+            (Elem::Concrete(a), b) if a.val.into_u256() == Some(U256::from(1)) => Some(b.clone()),
+            (a, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::from(1)) => Some(a.clone()),
             _ => None,
         }
     }
@@ -102,6 +104,8 @@ impl RangeMul<Concrete> for Elem<Concrete> {
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => {
                 Some(other.clone())
             }
+            (Elem::Concrete(a), b) if a.val.into_u256() == Some(U256::from(1)) => Some(b.clone()),
+            (a, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::from(1)) => Some(a.clone()),
             _ => None,
         }
     }

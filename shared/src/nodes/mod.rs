@@ -545,7 +545,7 @@ impl VarType {
                         let name = index.name(analyzer)?;
                         let is_const = index.is_const(analyzer)?;
                         if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
-                            Elem::Dynamic(Dynamic { idx, .. }) => match analyzer.node(*idx) {
+                            Elem::Reference(Reference { idx, .. }) => match analyzer.node(*idx) {
                                 Node::ContextVar(_) => {
                                     let cvar = ContextVarNode::from(*idx);
                                     cvar.name(analyzer).unwrap() == name

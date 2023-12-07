@@ -134,16 +134,16 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
 impl RangeSub<Concrete> for Elem<Concrete> {
     fn range_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_sub(b),
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_sub(b),
             _ => None,
         }
     }
 
     fn range_wrapping_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_sub(b),
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_sub(b),
             _ => None,
         }
     }

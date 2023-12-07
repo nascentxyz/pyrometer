@@ -91,21 +91,21 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
 impl RangeAdd<Concrete> for Elem<Concrete> {
     fn range_add(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_add(b),
             (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => {
                 Some(other.clone())
             }
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_add(b),
             _ => None,
         }
     }
     fn range_wrapping_add(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_add(b),
             (Elem::Concrete(a), _) if a.val.into_u256() == Some(U256::zero()) => {
                 Some(other.clone())
             }
             (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_add(b),
             _ => None,
         }
     }

@@ -90,6 +90,25 @@ impl RangeOp {
             Shr => Some(Shl),
             Eq => Some(Neq),
             Neq => Some(Eq),
+            Lt => Some(Gt),
+            Lte => Some(Gte),
+            Gt => Some(Lt),
+            Gte => Some(Lte),
+            _ => None, // e => panic!("tried to inverse unreversable op: {:?}", e),
+        }
+    }
+
+    pub fn logical_inverse(self) -> Option<Self> {
+        use RangeOp::*;
+        match self {
+            Eq => Some(Neq),
+            Neq => Some(Eq),
+            Lt => Some(Gte),
+            Lte => Some(Gt),
+            Gt => Some(Lte),
+            Gte => Some(Lt),
+            Or => Some(And),
+            And => Some(Or),
             _ => None, // e => panic!("tried to inverse unreversable op: {:?}", e),
         }
     }
@@ -144,17 +163,30 @@ impl ToString for RangeOp {
 }
 
 pub trait RangeElem<T> {
+    /// Flattens an element into an expression or concrete based purely on inputs, calldata, storage, or environment data variables
+    fn flatten(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
     fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    /// Maximizes the element and caches the result for quicker use later
     fn cache_maximize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
     fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    /// Minimizes the element and caches the result for quicker use later
     fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    /// Uncaches the minimum and maximum
     fn uncache(&mut self);
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn simplify_maximize(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<T>, GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn simplify_minimize(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<T>, GraphError>;
     /// Checks if two range elements are equal
     fn range_eq(&self, other: &Self) -> bool;
     /// Tries to compare the ordering of two range elements
@@ -185,4 +217,11 @@ pub trait RangeElem<T> {
     /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
     /// cyclic dependency.
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx);
+
+    fn contains_op_set(
+        &self,
+        max: bool,
+        op_set: &[RangeOp],
+        analyzer: &impl GraphLike,
+    ) -> Result<bool, GraphError>;
 }

@@ -62,6 +62,12 @@ impl From<bool> for SolcRange {
     }
 }
 
+impl From<Elem<Concrete>> for SolcRange {
+    fn from(elem: Elem<Concrete>) -> Self {
+        Self::new(elem.clone(), elem, vec![])
+    }
+}
+
 impl SolcRange {
     pub fn new(min: Elem<Concrete>, max: Elem<Concrete>, exclusions: Vec<Elem<Concrete>>) -> Self {
         Self {
@@ -71,6 +77,13 @@ impl SolcRange {
             max_cached: None,
             exclusions,
         }
+    }
+
+    pub fn replace_dep(&mut self, to_replace: NodeIdx, replacement: Elem<Concrete>) {
+        self.min.replace_dep(to_replace, replacement.clone());
+        self.max.replace_dep(to_replace, replacement);
+        self.min_cached = None;
+        self.max_cached = None;
     }
 
     pub fn is_const(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
@@ -254,7 +267,7 @@ impl SolcRange {
                     vec![],
                 ))
             }
-            Builtin::ReferenceBytes
+            Builtin::DynamicBytes
             | Builtin::String
             | Builtin::Array(_)
             | Builtin::Mapping(_, _) => Some(SolcRange::new(
@@ -513,6 +526,22 @@ impl SolcRange {
         let max = self.max.neq(Elem::from(other));
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
+
+    pub fn into_flattened_range(&self, analyzer: &impl GraphLike) -> Result<Self, GraphError> {
+        // println!("----- into flattened range -----");
+        let flattened_min = self.range_min().flatten(false, analyzer)?;
+        // println!("flattened minimum: {}", flattened_min);
+        let simp_min = flattened_min.simplify_minimize(&mut vec![], analyzer)?;
+        // println!("simplified minimum: {}", simp_min);
+        // println!("----- min flattend -----");
+        let flattened_max = self.range_max().flatten(true, analyzer)?;
+        // println!("flattened maximum: {}", flattened_max);
+        let simp_max = flattened_max.simplify_maximize(&mut vec![], analyzer)?;
+        // println!("simplified maximum: {}", simp_max);
+        // println!("----- max flattend -----");
+
+        Ok(SolcRange::new(simp_min, simp_max, self.exclusions.clone()))
+    }
 }
 
 impl Range<Concrete> for SolcRange {
@@ -560,14 +589,25 @@ impl Range<Concrete> for SolcRange {
         }
     }
 
-    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
-        println!("simplified range min");
-        self.range_min().simplify_minimize(analyzer)
+    fn simplified_range_min(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Self::ElemTy, GraphError> {
+        self.range_min()
+            .flatten(false, analyzer)?
+            .simplify_minimize(exclude, analyzer)
     }
-    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError> {
-        println!("simplified range max");
-        self.range_max().simplify_maximize(analyzer)
+    fn simplified_range_max(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Self::ElemTy, GraphError> {
+        self.range_max()
+            .flatten(true, analyzer)?
+            .simplify_maximize(exclude, analyzer)
     }
+
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
         self.exclusions.clone()
     }
@@ -601,8 +641,16 @@ pub trait Range<T> {
     fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
     fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
     fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
-    fn simplified_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
-    fn simplified_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
+    fn simplified_range_min(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Self::ElemTy, GraphError>;
+    fn simplified_range_max(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Self::ElemTy, GraphError>;
     fn range_min(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
     fn range_max(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
     fn uncache_range_min(&mut self) {
@@ -629,6 +677,7 @@ pub trait Range<T> {
     fn dependent_on(&self) -> Vec<ContextVarNode> {
         let mut deps = self.range_min().dependent_on();
         deps.extend(self.range_max().dependent_on());
+        deps.dedup();
         deps
     }
 

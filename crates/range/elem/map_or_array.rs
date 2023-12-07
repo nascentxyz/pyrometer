@@ -24,7 +24,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     }
 
     fn range_ord(&self, _other: &Self) -> Option<std::cmp::Ordering> {
-        todo!()
+        None
     }
 
     fn dependent_on(&self) -> Vec<ContextVarNode> {
@@ -36,6 +36,26 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 .collect::<Vec<_>>(),
         );
         deps
+    }
+
+    fn flatten(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
+        Ok(Elem::ConcreteDyn(Box::new(Self {
+            minimized: None,
+            maximized: None,
+            len: self.len.flatten(maximize, analyzer)?,
+            val: {
+                let mut map = BTreeMap::default();
+                for (idx, val) in self.val.clone().into_iter() {
+                    map.insert(idx, val.flatten(maximize, analyzer)?);
+                }
+                map
+            },
+            loc: self.loc,
+        })))
     }
 
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
@@ -99,30 +119,38 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         })))
     }
 
-    fn simplify_maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_maximize(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
             minimized: None,
             maximized: None,
-            len: self.len.simplify_maximize(analyzer)?,
+            len: self.len.simplify_maximize(exclude, analyzer)?,
             val: {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx, val.simplify_maximize(analyzer)?);
+                    map.insert(idx, val.simplify_maximize(exclude, analyzer)?);
                 }
                 map
             },
             loc: self.loc,
         })))
     }
-    fn simplify_minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<Concrete>, GraphError> {
+    fn simplify_minimize(
+        &self,
+        exclude: &mut Vec<NodeIdx>,
+        analyzer: &impl GraphLike,
+    ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::ConcreteDyn(Box::new(Self {
             minimized: None,
             maximized: None,
-            len: self.len.simplify_minimize(analyzer)?,
+            len: self.len.simplify_minimize(exclude, analyzer)?,
             val: {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx, val.simplify_minimize(analyzer)?);
+                    map.insert(idx, val.simplify_minimize(exclude, analyzer)?);
                 }
                 map
             },
@@ -147,5 +175,15 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn uncache(&mut self) {
         self.minimized = None;
         self.maximized = None;
+    }
+
+    fn contains_op_set(
+        &self,
+        _max: bool,
+        _op_set: &[RangeOp],
+        _: &impl GraphLike,
+    ) -> Result<bool, GraphError> {
+        // TODO: reevaluate this
+        Ok(false)
     }
 }
