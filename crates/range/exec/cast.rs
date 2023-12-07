@@ -200,8 +200,8 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                 )),
                 None,
             ) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
-            (Some((_, l @ Elem::Dynamic(_))), None) => Some(l.clone()),
-            (None, Some((_, r @ Elem::Dynamic(_)))) => Some(r.clone()),
+            (Some((_, l @ Elem::Reference(_))), None) => Some(l.clone()),
+            (None, Some((_, r @ Elem::Reference(_)))) => Some(r.clone()),
             (None, None) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
             _e => None,
         }

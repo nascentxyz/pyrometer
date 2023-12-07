@@ -2,7 +2,7 @@ use crate::analyzer::GraphLike;
 use crate::context::ContextVarNode;
 use crate::range::elem::RangeElem;
 use crate::range::elem::RangeOp;
-use crate::range::elem_ty::Dynamic;
+use crate::range::elem_ty::Reference;
 use crate::range::elem_ty::RangeExpr;
 use crate::range::Elem;
 use crate::range::RangeDyn;
@@ -52,7 +52,7 @@ impl ToRangeString for Elem<Concrete> {
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
-            Elem::Dynamic(Dynamic { idx, .. }) => {
+            Elem::Reference(Reference { idx, .. }) => {
                 let cvar = ContextVarNode::from(*idx)
                     .first_version(analyzer)
                     .underlying(analyzer)
@@ -68,7 +68,7 @@ impl ToRangeString for Elem<Concrete> {
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
-            Elem::Dynamic(Dynamic { idx, .. }) => {
+            Elem::Reference(Reference { idx, .. }) => {
                 let as_var = ContextVarNode::from(*idx);
                 let name = as_var.display_name(analyzer).unwrap();
                 RangeElemString::new(name, as_var.loc(analyzer).unwrap())
