@@ -1,31 +1,24 @@
-[package]
-name = "pyrometer"
-version = "0.1.0"
-edition = "2021"
-autobenches = false # turns off autodiscovery of benchmarks in ./benches
-exclude = ["benches"] # exclude the benches directory from the build
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-petgraph = "0.6.2"
-solang-parser = { version = "0.2.4", features = ["pt-serde"] }
-ethers-core = "*"
-ariadne = "0.2.0"
-shared = { path = "./shared" }
-hex = "0.4.3"
-tracing = { version = "0.1", features = ["attributes"] }
-tracing-subscriber = "0.3"
-
-[dev-dependencies]
-criterion = { version = "0.4"} # benching
-
 [workspace]
-members = ["cli", "shared"]
+members = [
+	"crates/analyzer",
+	"crates/cli",
+	"crates/graph",
+	"crates/queries",
+	"crates/range",
+	"crates/solc_expressions",
+]
 
-# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
-[patch.crates-io]
-ariadne = {git = "https://github.com/brockelmore/ariadne"}
+
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+authors = ["Brock Elmore"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/nascentxyz/pyrometer"
+repository = "https://github.com/nascentxyz/pyrometer"
+exclude = ["benches/", "tests/"] # exclude the benches directory from the build
+
 
 [profile.release]
 debug = true
@@ -37,6 +30,32 @@ inline = true
 [profile.bench]
 debug = true
 
+[workspace.dependencies]
+analyzer = { path = "crates/analyzer" }
+graph = { path = "crates/graph" }
+queries = { path = "crates/queries" }
+range = { path = "crates/range" }
+solc_expressions = { path = "crates/solc_expressions" }
+
+solang-parser = { version = "0.2.4", features = ["pt-serde"] }
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-subscriber = "0.3"
+ethers-core = "*"
+hex = "0.4.3"
+lazy_static =
+ariadne = "0.2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# [dev-dependencies]
+# criterion = { version = "0.4"} # benching
+
+# [workspace]
+# members = ["cli", "shared"]
+
+# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
+[patch.crates-io]
+ariadne = {git = "https://github.com/brockelmore/ariadne"}
 
 ######################################
 # Benchmarks
