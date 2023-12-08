@@ -223,8 +223,13 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
                 (RangeOp::Sub(false), RangeOp::Min) => {
                     // min{x - y, z}
                     // if x <= z, then x - y will be the minimum if y >= 0
-                    if matches!(x.range_ord(&z), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Less))
-                    && matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)) {
+                    if matches!(
+                        x.range_ord(&z),
+                        Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Less)
+                    ) && matches!(
+                        y.range_ord(&zero),
+                        Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
+                    ) {
                         MaybeCollapsed::Collapsed(l)
                     } else {
                         MaybeCollapsed::Not(l, r)
@@ -234,13 +239,19 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
                     // max{x + y, z}
                     // if x >= z, then x + y will be the maximum if y >= 0
                     // or if y >= z, then x + y will be the maximum if x >= 0
-                    if (
-                        matches!(x.range_ord(&z), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater))
-                        && matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater))
-                    ) || (
-                        matches!(y.range_ord(&z), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater))
-                        && matches!(x.range_ord(&zero), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)) 
-                    ) {
+                    if (matches!(
+                        x.range_ord(&z),
+                        Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
+                    ) && matches!(
+                        y.range_ord(&zero),
+                        Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
+                    )) || (matches!(
+                        y.range_ord(&z),
+                        Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
+                    ) && matches!(
+                        x.range_ord(&zero),
+                        Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
+                    )) {
                         MaybeCollapsed::Collapsed(l)
                     } else {
                         MaybeCollapsed::Not(l, r)

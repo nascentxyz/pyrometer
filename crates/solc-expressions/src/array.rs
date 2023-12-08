@@ -165,7 +165,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             parent.display_name(self).into_expr_err(loc)?,
                             index.display_name(self).into_expr_err(loc)?
                         ),
-                        storage: parent.storage(self).into_expr_err(loc)?.clone(),
+                        storage: *parent.storage(self).into_expr_err(loc)?,
                         is_tmp: false,
                         tmp_of: None,
                         is_symbolic: true,

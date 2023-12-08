@@ -41,7 +41,7 @@ impl ReportDisplay for VarBoundAnalysis {
                         name: self.var_display_name.clone(),
                         loc: bound_change.0.clone(),
                         order: i as i32,
-                        storage: self.storage.clone(),
+                        storage: self.storage,
                         ctx: self.ctx,
                         ctx_conditionals: self.conditionals(analyzer),
                         parts,

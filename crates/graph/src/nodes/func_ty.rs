@@ -785,7 +785,7 @@ impl FunctionParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty, None),
             order,
-            storage: if let Some(s) = param.storage { Some(s.into()) } else { None },
+            storage: param.storage.map(|s| s.into()),
             name: param.name,
         }
     }
@@ -875,7 +875,7 @@ impl FunctionReturn {
         FunctionReturn {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty, None),
-            storage: if let Some(s) = param.storage { Some(s.into()) } else { None },
+            storage: param.storage.map(|s| s.into()),
             name: param.name,
         }
     }

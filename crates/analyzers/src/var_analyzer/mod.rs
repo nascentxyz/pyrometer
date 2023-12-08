@@ -7,7 +7,7 @@ use graph::{
     nodes::{ContextNode, ContextVarNode, KilledKind},
     AnalyzerBackend, GraphBackend, Range, SolcRange,
 };
-use shared::{StorageLocation, Search};
+use shared::{Search, StorageLocation};
 
 use std::collections::BTreeSet;
 
@@ -98,7 +98,7 @@ impl VarBoundAnalysis {
                 order: -1,
                 name: self.var_display_name.clone(),
                 loc: self.var_def.0.clone(),
-                storage: self.storage.clone(),
+                storage: self.storage,
                 ctx: self.ctx,
                 ctx_conditionals: self.conditionals(analyzer),
                 parts,
@@ -215,7 +215,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
                 ),
                 bound_changes: vec![],
                 report_config,
-                storage: curr.underlying(self).unwrap().storage.clone(),
+                storage: curr.underlying(self).unwrap().storage,
                 ctx_killed: ctx
                     .killed_loc(self)
                     .unwrap()

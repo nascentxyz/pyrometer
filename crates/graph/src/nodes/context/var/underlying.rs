@@ -8,7 +8,7 @@ use crate::{
 };
 
 use crate::range::elem::*;
-use shared::{StorageLocation, NodeIdx};
+use shared::{NodeIdx, StorageLocation};
 
 use solang_parser::pt::Loc;
 
@@ -479,7 +479,7 @@ impl ContextVar {
                 display_name: parent_var.name.clone()
                     + "."
                     + &field.name.expect("Field had no name").name,
-                storage: parent_var.storage.clone(),
+                storage: parent_var.storage,
                 is_tmp: false,
                 tmp_of: None,
                 is_symbolic: true,

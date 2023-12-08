@@ -3,7 +3,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
-use shared::{StorageLocation, Search};
+use shared::{Search, StorageLocation};
 
 use petgraph::Direction;
 use solang_parser::pt::Loc;
@@ -86,7 +86,10 @@ impl ContextVarNode {
     }
 
     pub fn is_controllable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        if self.is_storage_or_calldata_input(analyzer)? || self.is_msg(analyzer)? || self.is_block(analyzer)? {
+        if self.is_storage_or_calldata_input(analyzer)?
+            || self.is_msg(analyzer)?
+            || self.is_block(analyzer)?
+        {
             Ok(true)
         } else if let Some(tmp) = self.tmp_of(analyzer)? {
             let rhs_controllable = if let Some(rhs) = tmp.rhs {

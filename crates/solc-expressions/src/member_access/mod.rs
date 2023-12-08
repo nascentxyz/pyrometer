@@ -851,7 +851,7 @@ pub trait MemberAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     loc,
                     parent_name,
                     parent_display_name,
-                    parent_stor.clone(),
+                    *parent_stor,
                     &parent_ty,
                     ContextVarNode::from(*idx),
                 )

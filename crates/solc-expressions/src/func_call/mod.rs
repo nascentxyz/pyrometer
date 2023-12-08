@@ -10,7 +10,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, VarType,
 };
-use shared::{StorageLocation, NodeIdx};
+use shared::{NodeIdx, StorageLocation};
 
 use solang_parser::helpers::CodeLocation;
 use solang_parser::pt::{Expression, Loc, NamedArgument};
