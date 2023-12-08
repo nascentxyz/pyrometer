@@ -231,9 +231,22 @@ contract Cast {
         require(b == x);
     }
 
+
+    function downcast_uint_conc() public returns (uint64) {
+        uint128 y = type(uint128).max;
+        y -= type(uint32).max;
+        return uint64(y);
+    }
+
+    function downcast_int_conc() public returns (int64) {
+        int128 x = type(int128).max;
+        x -= type(int32).max;
+        return int64(x);
+    }
+
     function userInt() internal {
         int256 x = -100;
-        MyUint a = MyInt.wrap(x);
+        MyInt a = MyInt.wrap(x);
         int256 b = MyInt.unwrap(a);
         require(b == x);
     }

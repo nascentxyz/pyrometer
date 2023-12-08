@@ -19,7 +19,6 @@ contract Modifier {
         require(l == 100);
         a += 1;
         _;
-        a = 1;
         a += 1;
     }
 
@@ -35,19 +34,23 @@ contract Modifier {
         a += 1;
     }
 
+    function requireBoth() public RequireBefore RequireAfter {
+        a += 1;
+    }
+
     function input(uint256 b) public Input(b) {
         uint256 a = b;
-        require(a == 1);
+        require(a == 2);
     }
 
     function input(uint256 b, uint256 q) public Input(b) Input(q) {
         uint256 k = b;
-        require(a == 2);
+        require(a == 4);
     }
 
     function internalMod(uint256 b) internal Input(b) {
         uint256 k = b;
-        require(a == 1);
+        require(a == 2);
     }
 
     function internalModPub(uint256 b) public {
@@ -63,7 +66,7 @@ contract Modifier {
     }
 
     function inputFuncConst(uint256 x) internal Input(addOne(99)) returns (uint256) {
-        require(a == 1);
+        require(a == 2);
         return x;
     }
 

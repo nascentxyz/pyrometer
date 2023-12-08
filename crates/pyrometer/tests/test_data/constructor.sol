@@ -46,7 +46,7 @@ abstract contract H {
 
 abstract contract I is H {
     H a;
-    function liquidateBorrowInternal(H _a) internal returns (uint, uint) {
+    function liquidateBorrowInternal(H _a) internal returns (uint, uint, uint) {
         uint b = foo();
         uint b2 = _a.foo();
         uint b3 = a.foo();
@@ -54,7 +54,7 @@ abstract contract I is H {
         if (b2 != 1) {}
         if (b3 != 1) {}
 
-        return (b2, b3);
+        return (b, b2, b3);
     }
 
     function foo() public virtual override returns (uint){
