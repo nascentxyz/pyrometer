@@ -48,9 +48,6 @@ petgraph = "0.6.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# [dev-dependencies]
-# criterion = { version = "0.4"} # benching
-
 # [workspace]
 # members = ["cli", "shared"]
 

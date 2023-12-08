@@ -7,11 +7,11 @@ use graph::{
     nodes::{ContextNode, ContextVarNode, KilledKind},
     AnalyzerBackend, GraphBackend, Range, SolcRange,
 };
-use shared::Search;
+use shared::{StorageLocation, Search};
 
 use std::collections::BTreeSet;
 
-use solang_parser::pt::{CodeLocation, StorageLocation};
+use solang_parser::pt::CodeLocation;
 use std::collections::BTreeMap;
 
 mod report_display;

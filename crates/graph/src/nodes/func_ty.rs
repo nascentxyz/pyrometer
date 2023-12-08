@@ -4,14 +4,14 @@ use crate::{
     VarType,
 };
 
-use shared::{NodeIdx, Search};
+use shared::{NodeIdx, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
     helpers::CodeLocation,
     pt::{
         Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc,
-        Parameter, ParameterList, Statement, StorageLocation, Type, VariableDefinition, Visibility,
+        Parameter, ParameterList, Statement, Type, VariableDefinition, Visibility,
     },
 };
 use std::collections::BTreeMap;
@@ -785,7 +785,7 @@ impl FunctionParam {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty, None),
             order,
-            storage: param.storage,
+            storage: if let Some(s) = param.storage { Some(s.into()) } else { None },
             name: param.name,
         }
     }
@@ -875,7 +875,7 @@ impl FunctionReturn {
         FunctionReturn {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty, None),
-            storage: param.storage,
+            storage: if let Some(s) = param.storage { Some(s.into()) } else { None },
             name: param.name,
         }
     }

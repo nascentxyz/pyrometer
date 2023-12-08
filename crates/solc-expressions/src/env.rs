@@ -1,9 +1,11 @@
+
 use crate::{func_call::FuncCaller, ExprErr, IntoExprErr};
 
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
+use shared::StorageLocation;
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
@@ -72,6 +74,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.blockhash".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -93,6 +96,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.basefee".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -114,6 +118,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.chainid".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -135,6 +140,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.coinbase".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -156,6 +162,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.difficulty".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -177,6 +184,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.gaslimit".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -198,6 +206,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.number".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -219,6 +228,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.prevrandao".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -240,6 +250,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "block.timestamp".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -258,6 +269,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             var.display_name = name;
             var.is_tmp = false;
             var.is_symbolic = true;
+            var.storage = Some(StorageLocation::Block(loc));
             let cvar = self.add_node(Node::ContextVar(var));
             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -294,6 +306,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "msg.data".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -315,6 +328,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "msg.sender".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -336,6 +350,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "msg.sig".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -357,6 +372,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "msg.value".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -378,6 +394,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "tx.origin".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -399,6 +416,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         var.display_name = "tx.gasprice".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -415,6 +433,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             .into_expr_err(loc)?;
                         var.is_tmp = false;
                         var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Msg(loc));
                         let cvar = self.add_node(Node::ContextVar(var));
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -434,6 +453,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             var.display_name = name;
             var.is_tmp = false;
             var.is_symbolic = true;
+            var.storage = Some(StorageLocation::Msg(loc));
             let cvar = self.add_node(Node::ContextVar(var));
             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));

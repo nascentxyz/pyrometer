@@ -4,10 +4,10 @@ use crate::{
     AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node,
 };
 
-use shared::{NodeIdx, Search};
+use shared::{NodeIdx, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
-use solang_parser::pt::{Loc, StorageLocation};
+use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
 

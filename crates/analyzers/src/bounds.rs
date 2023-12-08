@@ -3,9 +3,9 @@ use crate::{FunctionVarsBoundAnalysis, LocSpan, LocStrSpan, ReportConfig, VarBou
 use graph::{
     nodes::ContextNode, range_string::ToRangeString, GraphBackend, Range, RangeEval, SolcRange,
 };
+use shared::StorageLocation;
 
 use ariadne::{Color, Fmt, Label, Span};
-use solang_parser::pt::StorageLocation;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub static MIN_COLOR: Color = Color::Fixed(111);
@@ -171,6 +171,8 @@ impl From<AnalysisItem> for Label<LocStrSpan> {
                     Some(StorageLocation::Memory(..)) => Color::Blue,
                     Some(StorageLocation::Storage(..)) => Color::Green,
                     Some(StorageLocation::Calldata(..)) => Color::White,
+                    Some(StorageLocation::Block(..)) => Color::Magenta,
+                    Some(StorageLocation::Msg(..)) => Color::Cyan,
                     None => Color::Cyan,
                 },
                 val.order,
@@ -185,6 +187,8 @@ impl From<AnalysisItem> for Label<LocStrSpan> {
                     Some(StorageLocation::Memory(..)) => "Memory var ",
                     Some(StorageLocation::Storage(..)) => "Storage var ",
                     Some(StorageLocation::Calldata(..)) => "Calldata var ",
+                    Some(StorageLocation::Block(..)) => "Block var ",
+                    Some(StorageLocation::Msg(..)) => "Msg var ",
                     None => "",
                 },
                 val.name,

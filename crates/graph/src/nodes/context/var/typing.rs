@@ -3,10 +3,10 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
-use shared::Search;
+use shared::{StorageLocation, Search};
 
 use petgraph::Direction;
-use solang_parser::pt::{Loc, StorageLocation};
+use solang_parser::pt::Loc;
 
 impl ContextVarNode {
     pub fn ty<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a VarType, GraphError> {
@@ -66,6 +66,8 @@ impl ContextVarNode {
 
         Ok((global_first.is_storage(analyzer)?
             || global_first.is_calldata_input(analyzer)
+            || global_first.is_msg(analyzer)?
+            || global_first.is_block(analyzer)?
             || (
                 // if its a function input, and we are evaluating the function
                 // as a standalone (i.e. its internal, but we are treating it like its external)
@@ -84,7 +86,7 @@ impl ContextVarNode {
     }
 
     pub fn is_controllable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        if self.is_storage_or_calldata_input(analyzer)? {
+        if self.is_storage_or_calldata_input(analyzer)? || self.is_msg(analyzer)? || self.is_block(analyzer)? {
             Ok(true)
         } else if let Some(tmp) = self.tmp_of(analyzer)? {
             let rhs_controllable = if let Some(rhs) = tmp.rhs {
@@ -105,6 +107,20 @@ impl ContextVarNode {
             .graph()
             .edges_directed(global_first.0.into(), Direction::Outgoing)
             .any(|edge| Edge::Context(ContextEdge::CalldataVariable) == *edge.weight())
+    }
+
+    pub fn is_msg(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(matches!(
+            self.underlying(analyzer)?.storage,
+            Some(StorageLocation::Msg(..))
+        ))
+    }
+
+    pub fn is_block(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(matches!(
+            self.underlying(analyzer)?.storage,
+            Some(StorageLocation::Block(..))
+        ))
     }
 
     pub fn is_func_input(&self, analyzer: &impl GraphBackend) -> bool {

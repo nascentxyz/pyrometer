@@ -50,13 +50,13 @@ impl RangeExpr<Concrete> {
             if SINGLETON_EQ_OPS.contains(&self.op) {
                 let mut new_self = self.clone();
                 new_self.uncache();
-                new_self.op = new_self.op.logical_inverse().unwrap();
+                new_self.op = new_self.op.logical_inverse()?;
                 Some(new_self)
             } else {
                 // non-singleton, i.e. AND or OR
                 let mut new_self = self.clone();
                 new_self.uncache();
-                new_self.op = new_self.op.inverse().unwrap();
+                new_self.op = new_self.op.inverse()?;
                 if let Some(new_lhs) = new_self.inverse_if_boolean() {
                     *new_self.lhs = Elem::Expr(new_lhs);
                 }
@@ -220,6 +220,32 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
             let y = expr.rhs;
             let z = c;
             match (expr.op, op) {
+                (RangeOp::Sub(false), RangeOp::Min) => {
+                    // min{x - y, z}
+                    // if x <= z, then x - y will be the minimum if y >= 0
+                    if matches!(x.range_ord(&z), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Less))
+                    && matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)) {
+                        MaybeCollapsed::Collapsed(l)
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                }
+                (RangeOp::Add(false), RangeOp::Max) => {
+                    // max{x + y, z}
+                    // if x >= z, then x + y will be the maximum if y >= 0
+                    // or if y >= z, then x + y will be the maximum if x >= 0
+                    if (
+                        matches!(x.range_ord(&z), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater))
+                        && matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater))
+                    ) || (
+                        matches!(y.range_ord(&z), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater))
+                        && matches!(x.range_ord(&zero), Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)) 
+                    ) {
+                        MaybeCollapsed::Collapsed(l)
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                }
                 (RangeOp::Eq, RangeOp::Eq) => {
                     // ((x == y) == z)
                     // can skip if x and z eq

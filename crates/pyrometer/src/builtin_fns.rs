@@ -1,7 +1,7 @@
 use graph::nodes::{Builtin, Function, FunctionParam, FunctionReturn};
-use shared::{AnalyzerLike, GraphLike};
+use shared::{AnalyzerLike, GraphLike, StorageLocation};
 
-use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};
+use solang_parser::pt::{FunctionAttribute, Identifier, Loc, Visibility};
 
 use std::collections::HashMap;
 

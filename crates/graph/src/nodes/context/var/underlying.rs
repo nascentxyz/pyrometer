@@ -8,9 +8,9 @@ use crate::{
 };
 
 use crate::range::elem::*;
-use shared::NodeIdx;
+use shared::{StorageLocation, NodeIdx};
 
-use solang_parser::pt::{Loc, StorageLocation};
+use solang_parser::pt::Loc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextVar {

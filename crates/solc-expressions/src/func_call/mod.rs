@@ -10,10 +10,10 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, VarType,
 };
-use shared::NodeIdx;
+use shared::{StorageLocation, NodeIdx};
 
 use solang_parser::helpers::CodeLocation;
-use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
+use solang_parser::pt::{Expression, Loc, NamedArgument};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;

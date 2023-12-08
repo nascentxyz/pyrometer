@@ -8,9 +8,10 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
+use shared::StorageLocation;
 
 use ethers_core::types::U256;
-use solang_parser::pt::{Expression, Loc, StorageLocation, YulExpression, YulFunctionCall};
+use solang_parser::pt::{Expression, Loc, YulExpression, YulFunctionCall};
 
 use std::cell::RefCell;
 use std::rc::Rc;
