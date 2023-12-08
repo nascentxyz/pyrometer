@@ -1,7 +1,10 @@
-use crate::Builtin;
-use crate::{Function, FunctionParam, FunctionReturn};
-use shared::analyzer::{AnalyzerLike, GraphLike};
+use graph::nodes::{
+    Builtin, Function, FunctionParam, FunctionReturn
+};
+use shared::{AnalyzerLike, GraphLike};
+
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};
+
 use std::collections::HashMap;
 
 macro_rules! builtin_fn {
@@ -324,7 +327,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
 }
 
 pub fn builtin_fns_inputs(
-    analyzer: &mut (impl GraphLike + AnalyzerLike),
+    analyzer: &mut (impl GraphLike + AnalyzerLike<Builtin = graph::nodes::Builtin>),
 ) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
         ("wrap", vec![], vec![]),

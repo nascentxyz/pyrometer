@@ -12,6 +12,8 @@ pub trait AnalyzerLike: GraphLike {
     /// Type of the `block` node
     type BlockNode;
 
+    /// Type of a function
+    type Function;
     /// Type of a function input parameter
     type FunctionParam;
     /// Type of a function return paramter
@@ -20,8 +22,7 @@ pub trait AnalyzerLike: GraphLike {
     /// Type of a builtin
     type Builtin;
 
-    /// Type of a function
-    type Function;
+    
 
     /// Gets the builtin functions map
     fn builtin_fns(&self) -> &HashMap<String, Self::Function>;
