@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+analyzers.workspace = true
+shared.workspace = true
 pyrometer.workspace = true
 graph.workspace = true
 # queries.workspace = true
@@ -14,6 +16,7 @@ ariadne.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 petgraph.workspace = true
+ethers-core.workspace = true
 
 
 clap = { version = "4.1.4", features = ["derive"] }
