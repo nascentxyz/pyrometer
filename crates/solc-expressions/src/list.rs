@@ -1,16 +1,15 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::ContextBuilder;
-use crate::context::ExprErr;
-use shared::{analyzer::AnalyzerLike, context::*, nodes::*, Edge, Node};
-use solang_parser::pt::Expression;
+use crate::{ContextBuilder, IntoExprErr, ExprErr};
 
-use solang_parser::pt::{Parameter, ParameterList};
+use graph::{
+    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{ContextNode, ContextVar, ExprRet, }
+};
 
-use solang_parser::pt::Loc;
+use solang_parser::pt::{Parameter, ParameterList, Loc, Expression};
 
-impl<T> List for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+impl<T> List for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 
-pub trait List: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn list(&mut self, ctx: ContextNode, loc: Loc, params: &ParameterList) -> Result<(), ExprErr> {
         params.iter().try_for_each(|(loc, input)| {

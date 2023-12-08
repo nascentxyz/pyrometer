@@ -1,30 +1,21 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::ExprErr;
-use crate::{
-    exprs::{BinOp, Variable},
-    AnalyzerLike, Concrete, ConcreteNode, ContextBuilder, Node,
-};
-use shared::range::elem_ty::RangeExpr;
-use shared::range::range_string::ToRangeString;
+use crate::{ContextBuilder, BinOp, Variable, IntoExprErr, ExprErr};
 
-use shared::{
-    context::*,
-    nodes::{BuiltInNode, Builtin, VarType},
-    range::{
-        elem::{RangeElem, RangeOp},
-        elem_ty::{Elem, RangeConcrete},
-        Range, RangeEval, SolcRange,
-    },
-    Edge,
+use graph::{
+    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{BuiltInNode, Builtin, ConcreteNode, ContextNode, ContextVarNode, ContextVar, TmpConstruction, Concrete, KilledKind, ExprRet, },
+    elem::*, Range, RangeEval, SolcRange, range_string::ToRangeString,
 };
-use solang_parser::helpers::CodeLocation;
 
 use ethers_core::types::I256;
-use solang_parser::pt::{Expression, Loc};
+use solang_parser::{
+    helpers::CodeLocation,
+    pt::{Expression, Loc},
+};
+
 use std::cmp::Ordering;
 
-impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerLike {}
-pub trait Require: AnalyzerLike + Variable + BinOp + Sized {
+impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerBackend {}
+pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Inverts a comparator expression
     fn inverse_expr(&self, expr: Expression) -> Expression {
         match expr {

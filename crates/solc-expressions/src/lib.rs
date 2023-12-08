@@ -1,10 +1,10 @@
-use shared::analyzer::GraphError;
 use solang_parser::pt::Loc;
 
 mod array;
 mod bin_op;
 mod cmp;
 mod cond_op;
+mod context_builder;
 mod env;
 mod func_call;
 mod list;
@@ -19,6 +19,7 @@ pub use array::*;
 pub use bin_op::*;
 pub use cmp::*;
 pub use cond_op::*;
+pub use context_builder::*;
 pub use func_call::*;
 pub use env::*;
 pub use list::*;
@@ -42,7 +43,7 @@ pub trait IntoExprErr<T> {
     fn into_expr_err(self, loc: Loc) -> Result<T, ExprErr>;
 }
 
-impl<T> IntoExprErr<T> for Result<T, GraphError> {
+impl<T> IntoExprErr<T> for Result<T, graph::GraphError> {
     fn into_expr_err(self, loc: Loc) -> Result<T, ExprErr> {
         match self {
             Ok(v) => Ok(v),
@@ -75,12 +76,12 @@ pub enum ExprErr {
     IntrinsicNamedArgs(Loc, String),
     InvalidFunctionInput(Loc, String),
     TakeFromFork(Loc, String),
-    GraphError(Loc, GraphError),
+    GraphError(Loc, graph::GraphError),
     Unresolved(Loc, String),
 }
 
 impl ExprErr {
-    pub fn from_graph_err(loc: Loc, graph_err: GraphError) -> Self {
+    pub fn from_graph_err(loc: Loc, graph_err: graph::GraphError) -> Self {
         Self::GraphError(loc, graph_err)
     }
 }
@@ -138,17 +139,17 @@ impl ExprErr {
             InvalidFunctionInput(_, msg, ..) => msg,
             TakeFromFork(_, msg, ..) => msg,
             Unresolved(_, msg, ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::MaxStackWidthReached(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(msg), ..) => {
+            GraphError(_loc, graph::GraphError::NodeConfusion(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::MaxStackDepthReached(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::MaxStackWidthReached(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::ChildRedefinition(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::DetachedVariable(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::VariableUpdateInOldContext(msg), ..) => {
                 msg
             }
-            GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::StackLengthMismatch(msg), ..) => msg,
-            GraphError(_loc, shared::analyzer::GraphError::UnbreakableRecursion(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::ExpectedSingle(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::StackLengthMismatch(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::UnbreakableRecursion(msg), ..) => msg,
         }
     }
 
@@ -176,15 +177,15 @@ impl ExprErr {
             IntrinsicNamedArgs(..) => "Arguments in calls to intrinsic functions cannot be named",
             InvalidFunctionInput(..) => "Arguments to this function call do not match required types",
             TakeFromFork(..) => "IR Error: Tried to take from an child context that ended up forking",
-            GraphError(_loc, shared::analyzer::GraphError::NodeConfusion(_), ..) => "Graph IR Error: Node type confusion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
-            GraphError(_loc, shared::analyzer::GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
-            GraphError(_loc, shared::analyzer::GraphError::MaxStackWidthReached(_), ..) => "TODO: Max fork width reached - Need to widen variables and remove contexts",
-            GraphError(_loc, shared::analyzer::GraphError::ChildRedefinition(_), ..) => "Graph IR Error: Child redefintion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
-            GraphError(_loc, shared::analyzer::GraphError::DetachedVariable(_), ..) => "Graph IR Error: Detached Variable. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
-            GraphError(_loc, shared::analyzer::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
-            GraphError(_loc, shared::analyzer::GraphError::ExpectedSingle(_), ..) => "Graph IR Error: Expecting single expression return, got multiple. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
-            GraphError(_loc, shared::analyzer::GraphError::StackLengthMismatch(_), ..) => "Graph IR Error: Expected a particular number of elements on the context stack but found a different amount. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
-            GraphError(_loc, shared::analyzer::GraphError::UnbreakableRecursion(_), ..) => "Graph IR Error: Unbreakable recursion in variable range. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::NodeConfusion(_), ..) => "Graph IR Error: Node type confusion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
+            GraphError(_loc, graph::GraphError::MaxStackWidthReached(_), ..) => "TODO: Max fork width reached - Need to widen variables and remove contexts",
+            GraphError(_loc, graph::GraphError::ChildRedefinition(_), ..) => "Graph IR Error: Child redefintion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::DetachedVariable(_), ..) => "Graph IR Error: Detached Variable. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::VariableUpdateInOldContext(_), ..) => "Graph IR Error: Variable update in an old context. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::ExpectedSingle(_), ..) => "Graph IR Error: Expecting single expression return, got multiple. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::StackLengthMismatch(_), ..) => "Graph IR Error: Expected a particular number of elements on the context stack but found a different amount. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::UnbreakableRecursion(_), ..) => "Graph IR Error: Unbreakable recursion in variable range. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
         }
     }
 }

@@ -13,6 +13,9 @@ repository.workspace = true
 [dependencies]
 analyzers.workspace = true
 graph.workspace = true
+shared.workspace = true
+
+petgraph.workspace = true
 solang-parser.workspace = true
 ethers-core.workspace = true
 hex.workspace = true

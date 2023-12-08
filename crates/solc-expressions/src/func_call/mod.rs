@@ -1,25 +1,22 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::func_call::{
-    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
+use crate::{
+    ContextBuilder, IntoExprErr, ExprErr,
     namespaced_call::NameSpaceFuncCaller,
+    internal_call::InternalFuncCaller,
+    intrinsic_call::IntrinsicFuncCaller
 };
-use crate::context::ContextBuilder;
-use crate::context::ExprErr;
+
+use graph::{
+    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{FunctionNode, ModifierState, FunctionParamNode, FunctionReturnNode, CallFork, Context, ContextNode, ContextVarNode, ContextVar, ExprRet, },
+    Range,
+};
+use shared::NodeIdx;
+
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use shared::analyzer::GraphLike;
-use shared::context::ExprRet;
-use shared::context::*;
 use solang_parser::helpers::CodeLocation;
 use std::collections::BTreeMap;
-
-use shared::range::Range;
 use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
-
-use crate::VarType;
-
-use shared::{analyzer::AnalyzerLike, nodes::*, Edge, Node, NodeIdx};
 
 pub mod internal_call;
 pub mod intrinsic_call;
@@ -27,11 +24,11 @@ pub mod modifier;
 pub mod namespaced_call;
 
 impl<T> FuncCaller for T where
-    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
 }
 pub trait FuncCaller:
-    GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized
+    GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
     #[tracing::instrument(level = "trace", skip_all)]
     fn named_fn_call_expr(
@@ -71,7 +68,10 @@ pub trait FuncCaller:
                 self.parse_ctx_expr(func_expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoLhs(loc, "Function call to nonexistent function".to_string()))
+                        return Err(ExprErr::NoLhs(
+                            loc,
+                            "Function call to nonexistent function".to_string(),
+                        ));
                     };
                     if matches!(ret, ExprRet::CtxKilled(_)) {
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
@@ -184,30 +184,34 @@ pub trait FuncCaller:
             Rc::new(RefCell::new(false))
         };
 
-        inputs
-            .iter()
-            .try_for_each(|input| {
-                self.parse_ctx_expr(input, ctx)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
-                    };
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    if *append.borrow() {
-                        ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
-                    } else {
-                        *append.borrow_mut() = true;
-                        ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
-                    }
-                })
-            })?;
+        inputs.iter().try_for_each(|input| {
+            self.parse_ctx_expr(input, ctx)?;
+            self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoLhs(
+                        loc,
+                        "Inputs did not have left hand sides".to_string(),
+                    ));
+                };
+                if matches!(ret, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                    return Ok(());
+                }
+                if *append.borrow() {
+                    ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
+                } else {
+                    *append.borrow_mut() = true;
+                    ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
+                }
+            })
+        })?;
         if !inputs.is_empty() {
             self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, "Inputs did not have left hand sides".to_string()));
+                    return Err(ExprErr::NoLhs(
+                        loc,
+                        "Inputs did not have left hand sides".to_string(),
+                    ));
                 };
                 ctx.push_expr(ret, analyzer).into_expr_err(loc)
             })
@@ -730,31 +734,43 @@ pub trait FuncCaller:
                             })?;
                         rets = callee_ctx.underlying(self).unwrap().ret.clone();
                     }
-                    let ret = rets
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, (_, node))| {
-                            let tmp_ret = node
-                                .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
-                                .unwrap();
-                            tmp_ret.underlying_mut(self).into_expr_err(loc)?.is_return = true;
-                            tmp_ret
-                                .underlying_mut(self)
-                                .into_expr_err(loc)?
-                                .display_name =
-                                format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
-                            ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
-                            self.add_edge(
-                                tmp_ret,
-                                ret_subctx,
-                                Edge::Context(ContextEdge::Variable),
-                            );
-                            Ok(ExprRet::Single(tmp_ret.into()))
-                        })
-                        .collect::<Result<_, ExprErr>>()?;
-                    ret_subctx
-                        .push_expr(ExprRet::Multi(ret), self)
-                        .into_expr_err(loc)?;
+
+                    let handle_rets = rets.iter().all(|(_, node)| node.is_some());
+                    if handle_rets {
+                        let ret = rets
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, (_, node))| {
+                                let tmp_ret = node
+                                    .unwrap()
+                                    .as_tmp(
+                                        callee_ctx.underlying(self).unwrap().loc,
+                                        ret_subctx,
+                                        self,
+                                    )
+                                    .unwrap();
+                                tmp_ret.underlying_mut(self).into_expr_err(loc)?.is_return = true;
+                                tmp_ret
+                                    .underlying_mut(self)
+                                    .into_expr_err(loc)?
+                                    .display_name = format!(
+                                    "{}.{}",
+                                    callee_ctx.associated_fn_name(self).unwrap(),
+                                    i
+                                );
+                                ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
+                                self.add_edge(
+                                    tmp_ret,
+                                    ret_subctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
+                                Ok(ExprRet::Single(tmp_ret.into()))
+                            })
+                            .collect::<Result<_, ExprErr>>()?;
+                        ret_subctx
+                            .push_expr(ExprRet::Multi(ret), self)
+                            .into_expr_err(loc)?;
+                    }
                     Ok(())
                 } else {
                     let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
@@ -791,16 +807,20 @@ pub trait FuncCaller:
                             })?;
                         rets = callee_ctx.underlying(self).unwrap().ret.clone();
                     }
-                    callee_ctx
-                        .push_expr(
-                            ExprRet::Multi(
-                                rets.iter()
-                                    .map(|(_, node)| ExprRet::Single((*node).into()))
-                                    .collect(),
-                            ),
-                            self,
-                        )
-                        .into_expr_err(loc)
+                    if rets.iter().all(|(_, node)| node.is_some()) {
+                        callee_ctx
+                            .push_expr(
+                                ExprRet::Multi(
+                                    rets.iter()
+                                        .map(|(_, node)| ExprRet::Single((node.unwrap()).into()))
+                                        .collect(),
+                                ),
+                                self,
+                            )
+                            .into_expr_err(loc)
+                    } else {
+                        Ok(())
+                    }
                 }
             }
         }
@@ -833,8 +853,12 @@ pub trait FuncCaller:
             let input_paths = if input_exprs.is_empty() {
                 ExprRet::Multi(vec![])
             } else {
-                let Some(input_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoRhs(loc, format!("No inputs to modifier, expected: {}", input_exprs.len())))
+                let Some(input_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                else {
+                    return Err(ExprErr::NoRhs(
+                        loc,
+                        format!("No inputs to modifier, expected: {}", input_exprs.len()),
+                    ));
                 };
 
                 if matches!(input_paths, ExprRet::CtxKilled(_)) {
@@ -862,12 +886,6 @@ pub trait FuncCaller:
         ctx: ContextNode,
         modifier_state: ModifierState,
     ) -> Result<(), ExprErr> {
-        tracing::trace!(
-            "resuming from modifier: {}",
-            ctx.associated_fn_name(self)
-                .into_expr_err(modifier_state.loc)?
-        );
-
         let mods = modifier_state.parent_fn.modifiers(self);
         self.apply_to_edges(ctx, modifier_state.loc, &|analyzer, ctx, loc| {
             if modifier_state.num + 1 < mods.len() {
@@ -944,7 +962,7 @@ pub trait FuncCaller:
                 )?;
 
                 fn inherit_return_from_call(
-                    analyzer: &mut (impl GraphLike + AnalyzerLike),
+                    analyzer: &mut (impl GraphBackend + AnalyzerBackend),
                     loc: Loc,
                     ctx: ContextNode,
                 ) -> Result<(), ExprErr> {
@@ -1129,11 +1147,16 @@ pub trait FuncCaller:
                                 self.parse_ctx_expr(expr, callee_ctx)?;
                                 let f: Vec<String> =
                                     self.take_from_edge(ctx, expr.loc(), &|analyzer, ctx, loc| {
-                                        let ret = ctx
-                                            .pop_expr_latest(loc, analyzer)
-                                            .into_expr_err(loc)?
-                                            .unwrap();
-                                        Ok(ret.try_as_func_input_str(analyzer))
+                                        if let Some(ret) =
+                                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                        {
+                                            Ok(ret.try_as_func_input_str(analyzer))
+                                        } else {
+                                            Err(ExprErr::ParseError(
+                                                loc,
+                                                "Bad modifier parse".to_string(),
+                                            ))
+                                        }
                                     })?;
 
                                 ctx.delete_child(self).into_expr_err(expr.loc())?;

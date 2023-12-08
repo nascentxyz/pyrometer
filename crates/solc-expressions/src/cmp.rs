@@ -1,25 +1,16 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::ExprErr;
-use crate::ContextBuilder;
-use shared::analyzer::GraphError;
+use crate::{ContextBuilder, IntoExprErr, ExprErr};
 
-use shared::{
-    analyzer::AnalyzerLike,
-    context::*,
-    nodes::*,
-    range::{
-        elem::{RangeElem, RangeOp},
-        elem_ty::{Elem, RangeConcrete, RangeExpr},
-        Range, SolcRange,
-    },
-    Node,
+use graph::{
+    AnalyzerBackend, Node, VarType, GraphError,
+    nodes::{BuiltInNode, Builtin, ContextNode, ContextVarNode, ContextVar, TmpConstruction, Concrete, ExprRet, },
+    elem::*, Range, SolcRange
 };
 
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;
 
-impl<T> Cmp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait Cmp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+impl<T> Cmp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn not(&mut self, loc: Loc, lhs_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         self.parse_ctx_expr(lhs_expr, ctx)?;

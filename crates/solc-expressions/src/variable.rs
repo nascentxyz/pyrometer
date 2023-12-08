@@ -1,15 +1,15 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::ExprErr;
-use crate::context::{exprs::env::Env, ContextBuilder};
-use shared::nodes::VarNode;
-use shared::{analyzer::AnalyzerLike, context::*, Edge, Node};
-use solang_parser::pt::Expression;
+use crate::{ContextBuilder, env::Env, IntoExprErr, ExprErr};
 
-use solang_parser::pt::Identifier;
+use graph::{
+    AnalyzerBackend, Edge, Node, ContextEdge,
+    nodes::{VarNode, ContextNode, ContextVar, ExprRet, }
+};
 
-impl<T> Variable for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
+use solang_parser::pt::{Identifier, Expression};
 
-pub trait Variable: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+impl<T> Variable for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn variable(
         &mut self,

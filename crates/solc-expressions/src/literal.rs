@@ -1,26 +1,19 @@
-use crate::context::exprs::IntoExprErr;
-use crate::ExprErr;
-use ethers_core::types::H256;
-use ethers_core::types::I256;
-use shared::context::ExprRet;
-use shared::nodes::Builtin;
-use shared::range::elem_ty::Elem;
-use shared::{
-    analyzer::AnalyzerLike,
-    context::*,
-    nodes::{Concrete, ConcreteNode},
-    Edge, Node,
-};
-use solang_parser::pt::HexLiteral;
-use solang_parser::pt::Identifier;
+use crate::{IntoExprErr, ExprErr};
 
-use ethers_core::types::{Address, U256};
-use solang_parser::pt::Loc;
+use graph::{
+    AnalyzerBackend, Edge, Node, ContextEdge,
+    nodes::{Builtin, ConcreteNode, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
+    elem::*,
+};
+
+use ethers_core::types::{H256, I256, U256, Address};
+use solang_parser::pt::{Identifier, HexLiteral, Loc};
+
 use std::str::FromStr;
 
-impl<T> Literal for T where T: AnalyzerLike + Sized {}
+impl<T> Literal for T where T: AnalyzerBackend + Sized {}
 
-pub trait Literal: AnalyzerLike + Sized {
+pub trait Literal: AnalyzerBackend + Sized {
     fn number_literal(
         &mut self,
         ctx: ContextNode,

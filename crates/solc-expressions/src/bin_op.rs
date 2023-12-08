@@ -1,26 +1,16 @@
-use crate::context::exprs::require::Require;
-use crate::context::exprs::IntoExprErr;
-use crate::context::{ContextBuilder, ExprErr};
-use ethers_core::types::{I256, U256};
+use crate::{ContextBuilder, IntoExprErr, ExprErr, require::Require};
 
-use shared::range::elem::RangeElem;
-use shared::range::elem_ty::RangeExpr;
-use shared::{
-    analyzer::AnalyzerLike,
-    context::*,
-    nodes::{BuiltInNode, Builtin, Concrete, VarType},
-    range::{
-        elem::RangeOp,
-        elem_ty::{Dynamic, Elem},
-        Range, RangeEval, SolcRange,
-    },
-    Edge, Node,
+use graph::{
+    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{BuiltInNode, Builtin, ContextNode, ContextVarNode, ContextVar, TmpConstruction, Concrete, KilledKind, ExprRet, },
+    elem::*, Range, RangeEval, SolcRange
 };
 
+use ethers_core::types::{I256, U256};
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> BinOp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+impl<T> BinOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Evaluate and execute a binary operation expression
     #[tracing::instrument(level = "trace", skip_all)]
     fn op_expr(
@@ -205,9 +195,9 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
         let mut new_rhs = rhs_cvar.latest_version(self);
 
         let expr = Elem::Expr(RangeExpr::<Concrete>::new(
-            Elem::from(Dynamic::new(lhs_cvar.latest_version(self).into())),
+            Elem::from(Reference::new(lhs_cvar.latest_version(self).into())),
             op,
-            Elem::from(Dynamic::new(rhs_cvar.latest_version(self).into())),
+            Elem::from(Reference::new(rhs_cvar.latest_version(self).into())),
         ));
 
         // TODO: change to only hit this path if !uncheck
@@ -303,7 +293,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         } else {
                             // the new min is max(1, rhs.min)
                             let min = Elem::max(
-                                Elem::from(Dynamic::new(new_rhs.into())),
+                                Elem::from(Reference::new(new_rhs.into())),
                                 // tmp_rhs
                                 //     .range_min(self)
                                 //     .into_expr_err(loc)?
@@ -311,7 +301,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 //         panic!("No range minimum: {:?}", tmp_rhs.underlying(self))
                                 //     }),
                                 Elem::from(Concrete::from(U256::from(1))).cast(
-                                    Elem::from(Dynamic::new(tmp_rhs.into())), // .range_min(self)
+                                    Elem::from(Reference::new(tmp_rhs.into())), // .range_min(self)
                                                                               // .into_expr_err(loc)?
                                                                               // .expect("No range minimum?"),
                                 ),
@@ -359,7 +349,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         }
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
-                            Elem::from(Dynamic::new(lhs_cvar.into())),
+                            Elem::from(Reference::new(lhs_cvar.into())),
                             // .range_min(self)
                             // .into_expr_err(loc)?
                             // .unwrap_or_else(|| {
@@ -411,7 +401,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         // the new max is min(lhs.max, (2**256 - rhs.min))
                         let max = Elem::min(
-                            Elem::from(Dynamic::new(lhs_cvar.into())),
+                            Elem::from(Reference::new(lhs_cvar.into())),
                             // .range_max(self)
                             // .into_expr_err(loc)?
                             // .expect("No range max?"),
@@ -498,7 +488,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
                         let max = Elem::min(
-                            Elem::from(Dynamic::new(lhs_cvar.into())),
+                            Elem::from(Reference::new(lhs_cvar.into())),
                             // .range_max(self)
                             // .into_expr_err(loc)?
                             // .expect("No range max?"),
@@ -593,7 +583,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
-                            Elem::from(Dynamic::new(rhs_cvar.into())),
+                            Elem::from(Reference::new(rhs_cvar.into())),
                             // .range_min(self)
                             // .into_expr_err(loc)?
                             // .expect("No range minimum?"),
@@ -772,7 +762,7 @@ pub trait BinOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
                 };
 
                 let expr = Elem::Expr(RangeExpr::<Concrete>::new(
-                    Elem::from(Dynamic::new(lhs_cvar.latest_version(self).into())),
+                    Elem::from(Reference::new(lhs_cvar.latest_version(self).into())),
                     RangeOp::BitNot,
                     Elem::Null,
                 ));

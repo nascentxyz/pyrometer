@@ -1,25 +1,20 @@
-use crate::context::exprs::env::Env;
-use crate::context::exprs::IntoExprErr;
-use crate::context::ExprErr;
-use crate::{context::exprs::variable::Variable, ContextBuilder, NodeIdx};
-use petgraph::{visit::EdgeRef, Direction};
-use shared::range::elem_ty::Elem;
-use shared::range::Range;
-use shared::{
-    analyzer::AnalyzerLike,
-    context::*,
-    nodes::*,
-    range::SolcRange,
-    {Edge, Node},
+use crate::{ContextBuilder, Variable, Env, IntoExprErr, ExprErr};
+
+use graph::{
+    AnalyzerBackend, Edge, Node, VarType, ContextEdge, TypeNode,
+    nodes::{BuiltInNode, Builtin, FunctionNode, StructNode, EnumNode, TyNode, ContractNode, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
+    elem::*, Range, SolcRange
 };
-use std::collections::BTreeSet;
+use shared::NodeIdx;
 
 use ethers_core::types::{I256, U256};
-
+use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-impl<T> MemberAccess for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait MemberAccess: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+use std::collections::BTreeSet;
+
+impl<T> MemberAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait MemberAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn visible_member_funcs(
         &mut self,
         ctx: ContextNode,

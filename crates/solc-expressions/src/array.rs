@@ -1,15 +1,21 @@
-use crate::context::ExprErr;
-use crate::context::IntoExprErr;
 use crate::{
-    context::exprs::{member_access::MemberAccess, require::Require},
-    Builtin, ContextBuilder, Edge, Node, VarType,
+    ContextBuilder, IntoExprErr,
+    ExprErr, member_access::MemberAccess, require::Require,
 };
-use shared::{analyzer::AnalyzerLike, context::*, range::elem::RangeOp};
-use solang_parser::helpers::CodeLocation;
-use solang_parser::pt::{Expression, Loc};
 
-impl<T> Array for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait Array: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+use graph::{
+    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{Builtin, ContextVar, ContextVarNode, ContextNode, ExprRet},
+    elem::RangeOp
+};
+
+use solang_parser::{
+    helpers::CodeLocation,
+    pt::{Expression, Loc},
+};
+
+impl<T> Array for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
     #[tracing::instrument(level = "trace", skip_all)]
     fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {

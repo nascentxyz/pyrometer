@@ -1493,6 +1493,8 @@ dependencies = [
  "ethers-core",
  "graph",
  "hex",
+ "petgraph",
+ "shared",
  "solang-parser",
  "tracing",
  "tracing-subscriber",

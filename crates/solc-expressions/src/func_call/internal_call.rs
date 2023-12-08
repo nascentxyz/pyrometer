@@ -1,21 +1,20 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::ExprErr;
-use crate::{func_call::FuncCaller, ContextBuilder};
-use shared::context::ExprRet;
-use shared::nodes::{Builtin, Concrete, VarType};
-use shared::{
-    analyzer::{AnalyzerLike, GraphLike},
-    context::{ContextEdge, ContextNode, ContextVar, ContextVarNode},
-    Edge, Node,
+use crate::{
+    ContextBuilder, IntoExprErr, ExprErr, FuncCaller
 };
+
+use graph::{
+    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{Builtin, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
+};
+
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
 impl<T> InternalFuncCaller for T where
-    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
 }
 pub trait InternalFuncCaller:
-    AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
     #[tracing::instrument(level = "trace", skip_all)]
     fn call_internal_named_func(
@@ -121,8 +120,10 @@ pub trait InternalFuncCaller:
                         .expect("No field in struct in struct construction");
                     self.parse_ctx_expr(&input.expr, ctx)?;
                     self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(assignment) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
+                        let Some(assignment) =
+                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        else {
+                            return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
                         };
 
                         if matches!(assignment, ExprRet::CtxKilled(_)) {

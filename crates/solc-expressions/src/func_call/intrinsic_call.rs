@@ -1,37 +1,25 @@
-use crate::context::func_call::FuncCaller;
-use crate::context::{
-    exprs::{Array, MemberAccess, Require},
-    ContextBuilder,
+use crate::{
+    ContextBuilder, IntoExprErr, ExprErr, FuncCaller,
+    require::Require, array::Array,
+    member_access::MemberAccess,
 };
-use crate::context::{ExprErr, IntoExprErr};
+
+use graph::{
+    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge,
+    nodes::{TyNode, StructNode, BuiltInNode, Builtin, Context, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
+    elem::*, Range, SolcRange
+};
+use shared::{Search, NodeIdx};
+
 use ethers_core::types::U256;
-use shared::nodes::BuiltInNode;
-use shared::nodes::StructNode;
-use shared::nodes::TyNode;
-
-use shared::analyzer::Search;
-use shared::analyzer::{AnalyzerLike, GraphLike};
-use shared::nodes::Concrete;
-
-use shared::{
-    context::*,
-    nodes::{Builtin, VarType},
-    range::{
-        elem::RangeOp,
-        elem_ty::{Elem, RangeExpr},
-        Range, SolcRange,
-    },
-    Edge, Node, NodeIdx,
-};
-
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> IntrinsicFuncCaller for T where
-    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike + Search
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + Search
 {
 }
 pub trait IntrinsicFuncCaller:
-    AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike + Search
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + Search
 {
     /// Calls an intrinsic/builtin function call (casts, require, etc.)
     #[tracing::instrument(level = "trace", skip_all)]
@@ -53,7 +41,7 @@ pub trait IntrinsicFuncCaller:
                                 ctx: ContextNode,
                                 loc: &Loc,
                                 ret: ExprRet,
-                                analyzer: &mut impl AnalyzerLike,
+                                analyzer: &mut impl AnalyzerBackend,
                             ) -> Result<(), ExprErr> {
                                 match ret {
                                     ExprRet::Single(expect_builtin) => {
@@ -115,8 +103,14 @@ pub trait IntrinsicFuncCaller:
                             }
                             self.parse_ctx_expr(&input_exprs[1], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
+                                let Some(ret) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "abi.decode was not given the types for decoding"
+                                            .to_string(),
+                                    ));
                                 };
                                 if matches!(ret, ExprRet::CtxKilled(_)) {
                                     ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
@@ -142,6 +136,8 @@ pub trait IntrinsicFuncCaller:
                             Ok(())
                         }
                         "delegatecall" | "staticcall" | "call" => {
+                            // TODO: Check if we have the code for the address
+                            // if we dont, model it as a unrestricted call that can make other calls
                             ctx.pop_expr_latest(*loc, self).into_expr_err(*loc)?;
                             // TODO: try to be smarter based on the address input
                             let booln = self.builtin_or_add(Builtin::Bool);
@@ -201,8 +197,13 @@ pub trait IntrinsicFuncCaller:
                             assert!(input_exprs.len() == 2);
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoLhs(loc, "array[].push(..) was not an array to push to".to_string()))
+                                let Some(array) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoLhs(
+                                        loc,
+                                        "array[].push(..) was not an array to push to".to_string(),
+                                    ));
                                 };
                                 if matches!(array, ExprRet::CtxKilled(_)) {
                                     ctx.push_expr(array, analyzer).into_expr_err(loc)?;
@@ -210,8 +211,14 @@ pub trait IntrinsicFuncCaller:
                                 }
                                 analyzer.parse_ctx_expr(&input_exprs[1], ctx)?;
                                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                    let Some(new_elem) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                        return Err(ExprErr::NoRhs(loc, "array[].push(..) was not given an element to push".to_string()))
+                                    let Some(new_elem) =
+                                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                    else {
+                                        return Err(ExprErr::NoRhs(
+                                            loc,
+                                            "array[].push(..) was not given an element to push"
+                                                .to_string(),
+                                        ));
                                     };
 
                                     if matches!(new_elem, ExprRet::CtxKilled(_)) {
@@ -224,7 +231,8 @@ pub trait IntrinsicFuncCaller:
                                     // get length
                                     let len = analyzer.tmp_length(arr, ctx, loc);
 
-                                    let len_as_idx = len.as_tmp(loc, ctx, analyzer).into_expr_err(loc)?;
+                                    let len_as_idx =
+                                        len.as_tmp(loc, ctx, analyzer).into_expr_err(loc)?;
                                     // set length as index
                                     analyzer.index_into_array_inner(
                                         ctx,
@@ -232,7 +240,10 @@ pub trait IntrinsicFuncCaller:
                                         ExprRet::Single(arr.latest_version(analyzer).into()),
                                         ExprRet::Single(len_as_idx.latest_version(analyzer).into()),
                                     )?;
-                                    let index = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?.unwrap();
+                                    let index = ctx
+                                        .pop_expr_latest(loc, analyzer)
+                                        .into_expr_err(loc)?
+                                        .unwrap();
                                     if matches!(index, ExprRet::CtxKilled(_)) {
                                         ctx.push_expr(index, analyzer).into_expr_err(loc)?;
                                         return Ok(());
@@ -246,8 +257,13 @@ pub trait IntrinsicFuncCaller:
                             assert!(input_exprs.len() == 1);
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoLhs(loc, "array[].pop() was not an array to pop from".to_string()))
+                                let Some(array) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoLhs(
+                                        loc,
+                                        "array[].pop() was not an array to pop from".to_string(),
+                                    ));
                                 };
                                 if matches!(array, ExprRet::CtxKilled(_)) {
                                     ctx.push_expr(array, analyzer).into_expr_err(loc)?;
@@ -260,13 +276,28 @@ pub trait IntrinsicFuncCaller:
 
                                 // get length
                                 analyzer.match_length(ctx, loc, array, false)?;
-                                let Some(len) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoLhs(loc, "array[].pop() was not an array to pop from".to_string()))
+                                let Some(len) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoLhs(
+                                        loc,
+                                        "array[].pop() was not an array to pop from".to_string(),
+                                    ));
                                 };
                                 let len = len.expect_single().into_expr_err(loc)?;
                                 let next_len = analyzer.advance_var_in_ctx(len.into(), loc, ctx)?;
-                                next_len.set_range_min(analyzer, Elem::from(len) - Elem::from(Concrete::from(U256::from(1)))).into_expr_err(loc)?;
-                                next_len.set_range_max(analyzer, Elem::from(len) - Elem::from(Concrete::from(U256::from(1)))).into_expr_err(loc)?;
+                                next_len
+                                    .set_range_min(
+                                        analyzer,
+                                        Elem::from(len) - Elem::from(Concrete::from(U256::from(1))),
+                                    )
+                                    .into_expr_err(loc)?;
+                                next_len
+                                    .set_range_max(
+                                        analyzer,
+                                        Elem::from(len) - Elem::from(Concrete::from(U256::from(1))),
+                                    )
+                                    .into_expr_err(loc)?;
 
                                 // set length as index
                                 analyzer.index_into_array_inner(
@@ -281,8 +312,14 @@ pub trait IntrinsicFuncCaller:
                         "keccak256" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(_input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
+                                let Some(_input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "abi.decode was not given the types for decoding"
+                                            .to_string(),
+                                    ));
                                 };
                                 let var = ContextVar::new_from_builtin(
                                     loc,
@@ -291,15 +328,22 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                                ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
                         "sha256" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
+                                let Some(input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "abi.decode was not given the types for decoding"
+                                            .to_string(),
+                                    ));
                                 };
                                 if matches!(input, ExprRet::CtxKilled(_)) {
                                     ctx.push_expr(input, analyzer).into_expr_err(loc)?;
@@ -312,15 +356,22 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                                ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
                         "ripemd160" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "abi.decode was not given the types for decoding".to_string()))
+                                let Some(input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "abi.decode was not given the types for decoding"
+                                            .to_string(),
+                                    ));
                                 };
                                 if matches!(input, ExprRet::CtxKilled(_)) {
                                     ctx.push_expr(input, analyzer).into_expr_err(loc)?;
@@ -333,15 +384,22 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                                ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
                         "blockhash" => {
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "blockhash function was not provided a block number".to_string()))
+                                let Some(input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "blockhash function was not provided a block number"
+                                            .to_string(),
+                                    ));
                                 };
                                 if matches!(input, ExprRet::CtxKilled(_)) {
                                     ctx.push_expr(input, analyzer).into_expr_err(loc)?;
@@ -354,7 +412,8 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
-                                ctx.push_expr(ExprRet::Single(cvar), analyzer).into_expr_err(loc)?;
+                                ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
@@ -375,32 +434,43 @@ pub trait IntrinsicFuncCaller:
 
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                                 let cctx = Context::new_subctx(
-                                        ctx,
-                                        None,
-                                        loc,
-                                        None,
-                                        Some(func_idx.into()),
-                                        true,
-                                        analyzer,
-                                        None,
-                                    )
-                                    .into_expr_err(loc)?;
-                                let call_ctx = analyzer.add_node(Node::Context(
-                                    cctx
-                                ));
+                                    ctx,
+                                    None,
+                                    loc,
+                                    None,
+                                    Some(func_idx.into()),
+                                    true,
+                                    analyzer,
+                                    None,
+                                )
+                                .into_expr_err(loc)?;
+                                let call_ctx = analyzer.add_node(Node::Context(cctx));
                                 ctx.set_child_call(call_ctx.into(), analyzer)
                                     .into_expr_err(loc)?;
                                 let call_node = analyzer.add_node(Node::FunctionCall);
-                                analyzer.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
-                                analyzer.add_edge(call_node, ctx, Edge::Context(ContextEdge::Subcontext));
+                                analyzer.add_edge(
+                                    call_node,
+                                    func_idx,
+                                    Edge::Context(ContextEdge::Call),
+                                );
+                                analyzer.add_edge(
+                                    call_node,
+                                    ctx,
+                                    Edge::Context(ContextEdge::Subcontext),
+                                );
                                 analyzer.add_edge(
                                     call_ctx,
                                     call_node,
                                     Edge::Context(ContextEdge::Subcontext),
                                 );
 
-                                let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "ecrecover did not receive inputs".to_string()))
+                                let Some(input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "ecrecover did not receive inputs".to_string(),
+                                    ));
                                 };
 
                                 if matches!(input, ExprRet::CtxKilled(_)) {
@@ -410,15 +480,17 @@ pub trait IntrinsicFuncCaller:
 
                                 let mut inner_vals = vec![];
                                 match input {
-                                    ExprRet::Single(var)
-                                    | ExprRet::SingleLiteral(var) => {
+                                    ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
                                         inner_vals.push(
-                                            ContextVarNode::from(var).display_name(analyzer).unwrap(),
+                                            ContextVarNode::from(var)
+                                                .display_name(analyzer)
+                                                .unwrap(),
                                         );
                                     }
                                     _ => inner_vals.push("<unknown>".to_string()),
                                 }
-                                let inner_name = inner_vals.into_iter().collect::<Vec<_>>().join(", ");
+                                let inner_name =
+                                    inner_vals.into_iter().collect::<Vec<_>>().join(", ");
                                 let mut var = ContextVar::new_from_builtin(
                                     loc,
                                     analyzer.builtin_or_add(Builtin::Address).into(),
@@ -430,34 +502,47 @@ pub trait IntrinsicFuncCaller:
                                 var.is_return = true;
                                 let cvar = analyzer.add_node(Node::ContextVar(var));
                                 ctx.add_var(cvar.into(), analyzer).into_expr_err(loc)?;
-                                analyzer.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Variable));
-                                analyzer.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Return));
+                                analyzer.add_edge(
+                                    cvar,
+                                    call_ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
+                                analyzer.add_edge(
+                                    cvar,
+                                    call_ctx,
+                                    Edge::Context(ContextEdge::Return),
+                                );
                                 ContextNode::from(call_ctx)
                                     .add_return_node(loc, cvar.into(), analyzer)
                                     .into_expr_err(loc)?;
 
                                 let rctx = Context::new_subctx(
-                                        call_ctx.into(),
-                                        Some(ctx),
-                                        loc,
-                                        None,
-                                        None,
-                                        true,
-                                        analyzer,
-                                        None,
-                                    )
-                                    .into_expr_err(loc)?;
-                                let ret_ctx = analyzer.add_node(Node::Context(
-                                    rctx
-                                ));
+                                    call_ctx.into(),
+                                    Some(ctx),
+                                    loc,
+                                    None,
+                                    None,
+                                    true,
+                                    analyzer,
+                                    None,
+                                )
+                                .into_expr_err(loc)?;
+                                let ret_ctx = analyzer.add_node(Node::Context(rctx));
                                 ContextNode::from(call_ctx)
                                     .set_child_call(ret_ctx.into(), analyzer)
                                     .into_expr_err(loc)?;
-                                analyzer.add_edge(ret_ctx, call_ctx, Edge::Context(ContextEdge::Continue));
+                                analyzer.add_edge(
+                                    ret_ctx,
+                                    call_ctx,
+                                    Edge::Context(ContextEdge::Continue),
+                                );
 
                                 let tmp_ret = ContextVarNode::from(cvar)
                                     .as_tmp(
-                                        ContextNode::from(call_ctx).underlying(analyzer).unwrap().loc,
+                                        ContextNode::from(call_ctx)
+                                            .underlying(analyzer)
+                                            .unwrap()
+                                            .loc,
                                         ret_ctx.into(),
                                         analyzer,
                                     )
@@ -466,9 +551,15 @@ pub trait IntrinsicFuncCaller:
                                 tmp_ret.underlying_mut(analyzer).unwrap().display_name =
                                     format!("ecrecover({}).return", inner_name);
                                 ctx.add_var(tmp_ret, analyzer).into_expr_err(loc)?;
-                                analyzer.add_edge(tmp_ret, ret_ctx, Edge::Context(ContextEdge::Variable));
+                                analyzer.add_edge(
+                                    tmp_ret,
+                                    ret_ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
 
-                                ContextNode::from(ret_ctx).push_expr(ExprRet::Single(tmp_ret.into()), analyzer).into_expr_err(loc)?;
+                                ContextNode::from(ret_ctx)
+                                    .push_expr(ExprRet::Single(tmp_ret.into()), analyzer)
+                                    .into_expr_err(loc)?;
                                 Ok(())
                             })
                         }
@@ -514,8 +605,13 @@ pub trait IntrinsicFuncCaller:
 
                             self.parse_inputs(ctx, *loc, input_exprs)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "ecrecover did not receive inputs".to_string()))
+                                let Some(input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "ecrecover did not receive inputs".to_string(),
+                                    ));
                                 };
                                 input.expect_length(2).into_expr_err(loc)?;
                                 let ret = input.as_vec();
@@ -528,10 +624,16 @@ pub trait IntrinsicFuncCaller:
                                 )
                                 .into_expr_err(loc)?;
                                 let to_be_wrapped = ret[1].expect_single().into_expr_err(loc)?;
-                                let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                                let cvar =
+                                    ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
                                 let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
-                                let expr = Elem::Expr(RangeExpr::new(Elem::from(to_be_wrapped), RangeOp::Cast, Elem::from(cvar)));
-                                next.set_range_min(analyzer, expr.clone()).into_expr_err(loc)?;
+                                let expr = Elem::Expr(RangeExpr::new(
+                                    Elem::from(to_be_wrapped),
+                                    RangeOp::Cast,
+                                    Elem::from(cvar),
+                                ));
+                                next.set_range_min(analyzer, expr.clone())
+                                    .into_expr_err(loc)?;
                                 next.set_range_max(analyzer, expr).into_expr_err(loc)?;
                                 ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
                                     .into_expr_err(loc)
@@ -540,32 +642,55 @@ pub trait IntrinsicFuncCaller:
                         "unwrap" => {
                             self.parse_inputs(ctx, *loc, input_exprs)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                                    return Err(ExprErr::NoRhs(loc, "ecrecover did not receive inputs".to_string()))
+                                let Some(input) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "ecrecover did not receive inputs".to_string(),
+                                    ));
                                 };
                                 input.expect_length(2).into_expr_err(loc)?;
                                 let ret = input.as_vec();
                                 let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
                                 let mut var = ContextVar::new_from_builtin(
                                     loc,
-                                    BuiltInNode::from(TyNode::from(wrapping_ty).underlying(analyzer).into_expr_err(loc)?.ty),
+                                    BuiltInNode::from(
+                                        TyNode::from(wrapping_ty)
+                                            .underlying(analyzer)
+                                            .into_expr_err(loc)?
+                                            .ty,
+                                    ),
                                     analyzer,
                                 )
                                 .into_expr_err(loc)?;
                                 let to_be_unwrapped = ret[1].expect_single().into_expr_err(loc)?;
-                                var.display_name = format!("{}.unwrap({})",
-                                    TyNode::from(wrapping_ty).name(analyzer).into_expr_err(loc)?,
-                                    ContextVarNode::from(to_be_unwrapped).display_name(analyzer).into_expr_err(loc)?
+                                var.display_name = format!(
+                                    "{}.unwrap({})",
+                                    TyNode::from(wrapping_ty)
+                                        .name(analyzer)
+                                        .into_expr_err(loc)?,
+                                    ContextVarNode::from(to_be_unwrapped)
+                                        .display_name(analyzer)
+                                        .into_expr_err(loc)?
                                 );
 
-                                let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                                let cvar =
+                                    ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
                                 let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
-                                let expr = Elem::Expr(RangeExpr::new(Elem::from(to_be_unwrapped), RangeOp::Cast, Elem::from(cvar)));
-                                next.set_range_min(analyzer, expr.clone()).into_expr_err(loc)?;
+                                let expr = Elem::Expr(RangeExpr::new(
+                                    Elem::from(to_be_unwrapped),
+                                    RangeOp::Cast,
+                                    Elem::from(cvar),
+                                ));
+                                next.set_range_min(analyzer, expr.clone())
+                                    .into_expr_err(loc)?;
                                 next.set_range_max(analyzer, expr).into_expr_err(loc)?;
 
-                                cvar.set_range_min(analyzer, Elem::from(to_be_unwrapped)).into_expr_err(loc)?;
-                                cvar.set_range_max(analyzer, Elem::from(to_be_unwrapped)).into_expr_err(loc)?;
+                                cvar.set_range_min(analyzer, Elem::from(to_be_unwrapped))
+                                    .into_expr_err(loc)?;
+                                cvar.set_range_max(analyzer, Elem::from(to_be_unwrapped))
+                                    .into_expr_err(loc)?;
                                 ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
                                     .into_expr_err(loc)
                             })
@@ -583,8 +708,9 @@ pub trait IntrinsicFuncCaller:
                 // create a new list
                 self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(len_var) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
+                    let Some(len_var) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                    else {
+                        return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
                     };
 
                     if matches!(len_var, ExprRet::CtxKilled(_)) {
@@ -661,7 +787,7 @@ pub trait IntrinsicFuncCaller:
                 fn cast_match(
                     ctx: ContextNode,
                     loc: Loc,
-                    analyzer: &mut (impl GraphLike + AnalyzerLike),
+                    analyzer: &mut (impl GraphBackend + AnalyzerBackend),
                     ty: &Builtin,
                     ret: ExprRet,
                     func_idx: NodeIdx,
@@ -685,14 +811,36 @@ pub trait IntrinsicFuncCaller:
                             {
                                 let curr_range =
                                     SolcRange::try_from_builtin(ty).expect("No default range");
-                                let min = r
+                                let mut min = r
                                     .range_min()
                                     .into_owned()
                                     .cast(curr_range.range_min().into_owned());
-                                let max = r
+
+                                min.cache_minimize(analyzer).into_expr_err(loc)?;
+                                let mut max = r
                                     .range_max()
                                     .into_owned()
                                     .cast(curr_range.range_max().into_owned());
+
+                                max.cache_maximize(analyzer).into_expr_err(loc)?;
+
+                                let existing_max =
+                                    r.evaled_range_max(analyzer).into_expr_err(loc)?;
+                                // Check if the max value has changed once the cast is applied.
+                                // If it hasnt, then the cast had no effect and we should adjust the naming
+                                // to not muddle the CLI
+                                if let Some(std::cmp::Ordering::Equal) = max
+                                    .maximize(analyzer)
+                                    .into_expr_err(loc)?
+                                    .range_ord(&existing_max)
+                                {
+                                    // its a noop, reflect that in the naming
+                                    new_var.underlying_mut(analyzer).unwrap().display_name =
+                                        ContextVarNode::from(cvar)
+                                            .display_name(analyzer)
+                                            .into_expr_err(loc)?;
+                                }
+
                                 new_var.set_range_min(analyzer, min).into_expr_err(loc)?;
                                 new_var.set_range_max(analyzer, max).into_expr_err(loc)?;
                                 // cast the range exclusions - TODO: verify this is correct
@@ -719,7 +867,7 @@ pub trait IntrinsicFuncCaller:
                 self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
+                        return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
                     };
 
                     if matches!(ret, ExprRet::CtxKilled(_)) {
@@ -745,22 +893,22 @@ pub trait IntrinsicFuncCaller:
                 Ok(())
             }
             Node::Contract(_) => {
-                if input_exprs.len() != 1 {
-                    return Err(ExprErr::InvalidFunctionInput(
-                        *loc,
-                        "Invalid number of inputs to a contract instantiation".to_string(),
-                    ));
+                if !input_exprs.is_empty() {
+                    self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 }
-
-                self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()))
-                    };
-
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
+                    if !input_exprs.is_empty() {
+                        let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        else {
+                            return Err(ExprErr::NoRhs(
+                                loc,
+                                "Contract creation failed".to_string(),
+                            ));
+                        };
+                        if matches!(ret, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
                     }
 
                     let var = match ContextVar::maybe_from_user_ty(analyzer, loc, func_idx) {
@@ -775,15 +923,15 @@ pub trait IntrinsicFuncCaller:
                             ))
                         }
                     };
-                    let idx = ret.expect_single().into_expr_err(loc)?;
+                    // let idx = ret.expect_single().into_expr_err(loc)?;
                     let contract_cvar =
                         ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
-                    contract_cvar
-                        .set_range_min(analyzer, Elem::from(idx))
-                        .into_expr_err(loc)?;
-                    contract_cvar
-                        .set_range_max(analyzer, Elem::from(idx))
-                        .into_expr_err(loc)?;
+                    // contract_cvar
+                    //     .set_range_min(analyzer, Elem::from(idx))
+                    //     .into_expr_err(loc)?;
+                    // contract_cvar
+                    //     .set_range_max(analyzer, Elem::from(idx))
+                    //     .into_expr_err(loc)?;
                     ctx.push_expr(ExprRet::Single(contract_cvar.into()), analyzer)
                         .into_expr_err(loc)
                 })
@@ -832,8 +980,12 @@ pub trait IntrinsicFuncCaller:
 
                 self.parse_inputs(ctx, *loc, input_exprs)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Struct Function call failed".to_string()))
+                    let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                    else {
+                        return Err(ExprErr::NoRhs(
+                            loc,
+                            "Struct Function call failed".to_string(),
+                        ));
                     };
 
                     let inputs = inputs.as_vec();
@@ -895,7 +1047,7 @@ pub trait IntrinsicFuncCaller:
 
         self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
             let Some(inputs) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()))
+                return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()));
             };
             if matches!(inputs, ExprRet::CtxKilled(_)) {
                 ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;

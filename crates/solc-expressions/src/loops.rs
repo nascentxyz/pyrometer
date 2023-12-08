@@ -1,16 +1,14 @@
-use crate::context::exprs::IntoExprErr;
-use crate::ExprErr;
-use solang_parser::pt::Loc;
-use solang_parser::pt::Statement;
+use crate::{ContextBuilder, IntoExprErr, ExprErr};
 
-use crate::context::ContextBuilder;
-use shared::analyzer::GraphLike;
-use shared::context::*;
-use shared::{analyzer::AnalyzerLike, Node};
-use solang_parser::pt::Expression;
+use graph::{
+    GraphBackend, AnalyzerBackend, Node,
+    nodes::{Context, ContextNode, },
+};
 
-impl<T> Looper for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike {}
-pub trait Looper: GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+use solang_parser::pt::{Loc, Expression, Statement};
+
+impl<T> Looper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend {}
+pub trait Looper: GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn for_loop(
         &mut self,

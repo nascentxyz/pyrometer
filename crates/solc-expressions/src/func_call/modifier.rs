@@ -1,21 +1,20 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::func_call::FuncCaller;
+use crate::{
+    IntoExprErr, ExprErr, FuncCaller
+};
 
-use crate::context::ExprErr;
-
-use shared::analyzer::GraphLike;
-use shared::context::*;
+use graph::{
+    GraphBackend, AnalyzerBackend,
+    nodes::{FunctionNode, ContextNode, ExprRet, }
+};
 
 use solang_parser::pt::{Expression, Loc};
 
-use shared::{analyzer::AnalyzerLike, nodes::*};
-
 impl<T> ModifierCaller for T where
-    T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized + GraphLike
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
 }
 pub trait ModifierCaller:
-    GraphLike + AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized
+    GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
     fn handle_modifiers(
         &mut self,

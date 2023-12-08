@@ -12,7 +12,14 @@ pub trait GraphBackend: GraphLike<
     Node = Node,
 
 > {}
-pub trait AnalyzerBackend: AnalyzerLike<Builtin = Builtin> + GraphBackend {}
+pub trait AnalyzerBackend: AnalyzerLike<
+    Builtin = Builtin,
+    MsgNode = MsgNode,
+    BlockNode = BlockNode,
+    FunctionParam = FunctionParam,
+    FunctionReturn = FunctionReturn,
+    Function = Function
+> + GraphBackend {}
 
 pub trait AsDotStr {
     fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String;

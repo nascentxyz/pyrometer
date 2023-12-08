@@ -1,26 +1,21 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::yul::YulBuilder;
-use crate::context::ContextBuilder;
-use crate::context::ExprErr;
-use crate::Concrete;
-use crate::ConcreteNode;
-use crate::{exprs::Require, AnalyzerLike};
+use crate::{YulBuilder, ContextBuilder, IntoExprErr, ExprErr, require::Require};
+
+use graph::{
+    AnalyzerBackend, Edge, Node, ContextEdge,
+    nodes::{ConcreteNode, Context, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
+    elem::*
+};
+use shared::NodeIdx;
+
 use ethers_core::types::U256;
-use shared::context::ExprRet;
-use shared::range::elem::RangeOp;
-use shared::{context::*, Edge, Node, NodeIdx};
-use solang_parser::pt::Identifier;
-use solang_parser::pt::YulBlock;
-use solang_parser::pt::YulFunctionCall;
-use solang_parser::pt::YulSwitchOptions;
+use solang_parser::pt::{
+    Identifier, YulBlock, YulFunctionCall, YulSwitchOptions, CodeLocation,
+    Expression, Loc, YulExpression, YulStatement
+};
 
-use solang_parser::pt::CodeLocation;
-use solang_parser::pt::{Expression, Loc};
-use solang_parser::pt::{YulExpression, YulStatement};
-
-impl<T> YulCondOp for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require + Sized
+impl<T> YulCondOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
 {}
-pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Require + Sized {
+pub trait YulCondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn yul_cond_op_stmt(
         &mut self,
@@ -56,7 +51,10 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             analyzer.parse_ctx_yul_expr(if_expr, true_subctx)?;
             analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, "True conditional had no lhs".to_string()));
+                    return Err(ExprErr::NoLhs(
+                        loc,
+                        "True conditional had no lhs".to_string(),
+                    ));
                 };
 
                 if matches!(ret, ExprRet::CtxKilled(_)) {
@@ -79,7 +77,10 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
             analyzer.parse_ctx_yul_expr(if_expr, false_subctx)?;
             analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, "False conditional had no lhs".to_string()));
+                    return Err(ExprErr::NoLhs(
+                        loc,
+                        "False conditional had no lhs".to_string(),
+                    ));
                 };
 
                 if matches!(ret, ExprRet::CtxKilled(_)) {
@@ -100,20 +101,14 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let tctx = Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
-                        .into_expr_err(loc)?;
-            let true_subctx = ContextNode::from(
-                analyzer.add_node(Node::Context(
-                    tctx
-                )),
-            );
-            let fctx = Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
-                        .into_expr_err(loc)?;
-            let false_subctx = ContextNode::from(
-                analyzer.add_node(Node::Context(
-                    fctx
-                )),
-            );
+            let tctx =
+                Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+            let fctx =
+                Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+                    .into_expr_err(loc)?;
+            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);
@@ -129,13 +124,16 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                 Edge::Context(ContextEdge::Subcontext),
             );
 
-
             let if_expr_loc = if_else_chain.if_expr.loc();
             analyzer.apply_to_edges(true_subctx, if_expr_loc, &|analyzer, ctx, loc| {
                 analyzer.parse_ctx_yul_expr(&if_else_chain.if_expr, true_subctx)?;
                 analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                    let Some(true_vars) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "Yul switch statement was missing a case discriminator".to_string()))
+                    let Some(true_vars) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                    else {
+                        return Err(ExprErr::NoRhs(
+                            loc,
+                            "Yul switch statement was missing a case discriminator".to_string(),
+                        ));
                     };
 
                     if matches!(true_vars, ExprRet::CtxKilled(_)) {
@@ -149,7 +147,6 @@ pub trait YulCondOp: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Requir
                     })
                 })
             })?;
-
 
             if let Some(next) = &if_else_chain.next {
                 match next {
@@ -329,11 +326,17 @@ impl IfElseChain {
             child = Some(chain_part.into());
         });
         let Some(child) = child else {
-            return Err(ExprErr::NoRhs(loc, "No cases or default found for switch statement".to_string()))
+            return Err(ExprErr::NoRhs(
+                loc,
+                "No cases or default found for switch statement".to_string(),
+            ));
         };
 
         let Some(iec) = IfElseChain::from_child(child) else {
-            return Err(ExprErr::NoRhs(loc, "No cases or default found for switch statement".to_string()))
+            return Err(ExprErr::NoRhs(
+                loc,
+                "No cases or default found for switch statement".to_string(),
+            ));
         };
         Ok(iec)
     }

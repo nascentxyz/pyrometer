@@ -1,20 +1,14 @@
-use crate::context::exprs::IntoExprErr;
-use crate::context::func_call::FuncCaller;
-use crate::context::ExprErr;
-use crate::{context::ContextNode, AnalyzerLike};
-use shared::context::ExprRet;
-use shared::context::{ContextEdge, ContextVar};
-use shared::nodes::Builtin;
-use shared::nodes::Concrete;
-use shared::Edge;
-use shared::Node;
-use solang_parser::pt::Expression;
-use solang_parser::pt::Loc;
+use crate::{func_call::FuncCaller, IntoExprErr, ExprErr};
 
-use solang_parser::pt::Identifier;
+use graph::{
+    AnalyzerBackend, Edge, Node, ContextEdge,
+    nodes::{Builtin, ContextNode, ContextVar, Concrete, ExprRet, }
+};
 
-impl<T> Env for T where T: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait Env: AnalyzerLike<Expr = Expression, ExprErr = ExprErr> + Sized {
+use solang_parser::pt::{Loc, Expression, Identifier};
+
+impl<T> Env for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn env_variable(
         &mut self,
         ident: &Identifier,
