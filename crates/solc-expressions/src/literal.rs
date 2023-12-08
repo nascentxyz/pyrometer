@@ -1,13 +1,13 @@
-use crate::{IntoExprErr, ExprErr};
+use crate::{ExprErr, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, ContextEdge,
-    nodes::{Builtin, ConcreteNode, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
     elem::*,
+    nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
-use ethers_core::types::{H256, I256, U256, Address};
-use solang_parser::pt::{Identifier, HexLiteral, Loc};
+use ethers_core::types::{Address, H256, I256, U256};
+use solang_parser::pt::{HexLiteral, Identifier, Loc};
 
 use std::str::FromStr;
 

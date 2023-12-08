@@ -1,6 +1,7 @@
 use crate::{
-    GraphBackend, GraphError, nodes::{Concrete, ContextVarNode},
-    range::elem::{RangeElem, RangeOp, Elem}
+    nodes::{Concrete, ContextVarNode},
+    range::elem::{Elem, RangeElem, RangeOp},
+    GraphBackend, GraphError,
 };
 
 use shared::NodeIdx;

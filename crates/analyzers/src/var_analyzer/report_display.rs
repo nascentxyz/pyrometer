@@ -1,16 +1,11 @@
 use crate::{
-    LocStrSpan,
-    ReportKind,
-    ReportDisplay,
-    VarBoundAnalysis,
-    bounds::{range_parts, AnalysisItem}
+    bounds::{range_parts, AnalysisItem},
+    LocStrSpan, ReportDisplay, ReportKind, VarBoundAnalysis,
 };
 
-use graph::{
-    GraphBackend,
-};
+use graph::GraphBackend;
 
-use ariadne::{Color, Config, Fmt, Label, Report, Span, Cache};
+use ariadne::{Cache, Color, Config, Fmt, Label, Report, Span};
 
 impl ReportDisplay for VarBoundAnalysis {
     fn report_kind(&self) -> ReportKind {

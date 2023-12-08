@@ -1,17 +1,19 @@
-use crate::{ContextBuilder, Cmp, Env, YulBuilder, BinOp, IntoExprErr, ExprErr};
+use crate::{BinOp, Cmp, ContextBuilder, Env, ExprErr, IntoExprErr, YulBuilder};
 
 use graph::{
-    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{Builtin, ConcreteNode, ContextNode, ContextVarNode, ContextVar, Concrete, KilledKind, ExprRet, },
-    elem::*, SolcRange
+    elem::*,
+    nodes::{
+        Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        KilledKind,
+    },
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
 
 use ethers_core::types::U256;
-use solang_parser::pt::{YulExpression, YulFunctionCall, Expression, Loc, StorageLocation};
+use solang_parser::pt::{Expression, Loc, StorageLocation, YulExpression, YulFunctionCall};
 
 use std::cell::RefCell;
 use std::rc::Rc;
-
 
 impl<T> YulFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend

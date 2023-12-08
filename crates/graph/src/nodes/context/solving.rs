@@ -1,9 +1,12 @@
 use crate::{
-    solvers::{SolverAtom, Atomize, dl::{SolveStatus, DLSolver}},
+    as_dot_str,
+    nodes::{ContextNode, ContextVarNode},
     range::{elem::RangeOp, RangeEval},
-    nodes::{ContextVarNode, ContextNode},
-    Node, GraphError, GraphBackend, AnalyzerBackend, AsDotStr,
-    as_dot_str
+    solvers::{
+        dl::{DLSolver, SolveStatus},
+        Atomize, SolverAtom,
+    },
+    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
 
 use shared::NodeIdx;
@@ -13,8 +16,8 @@ use petgraph::dot::Dot;
 use std::collections::BTreeMap;
 
 impl ContextNode {
-	/// Use a Difference Logic solver to see if it is unreachable
-	pub fn unreachable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    /// Use a Difference Logic solver to see if it is unreachable
+    pub fn unreachable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let mut solver = self.dl_solver(analyzer)?.clone();
         match solver.solve_partial(analyzer)? {
             SolveStatus::Unsat => Ok(true),
@@ -55,12 +58,18 @@ impl ContextNode {
     }
 
     /// Get the difference logic solver associated with this context
-    pub fn dl_solver<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a DLSolver, GraphError> {
+    pub fn dl_solver<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a DLSolver, GraphError> {
         Ok(&self.underlying(analyzer)?.dl_solver)
     }
 
     /// Returns a map of variable dependencies for this context
-    pub fn ctx_deps(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+    pub fn ctx_deps(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         Ok(self.underlying(analyzer)?.ctx_deps.clone())
     }
 
@@ -89,7 +98,7 @@ impl ContextNode {
         Ok(())
     }
 
-        /// Creates a DAG of the context dependencies and opens it with graphviz
+    /// Creates a DAG of the context dependencies and opens it with graphviz
     pub fn deps_dag(&self, g: &impl GraphBackend) -> Result<(), GraphError> {
         let deps = self.ctx_deps(g)?;
         // #[derive(Debug, Copy, Clone)]

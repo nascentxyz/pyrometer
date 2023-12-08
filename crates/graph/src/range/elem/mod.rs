@@ -1,17 +1,16 @@
 mod concrete;
 mod elem_enum;
+mod elem_trait;
 mod expr;
 mod map_or_array;
 mod reference;
-mod elem_trait;
 
 pub use concrete::*;
 pub use elem_enum::*;
+pub use elem_trait::*;
 pub use expr::*;
 pub use map_or_array::*;
 pub use reference::*;
-pub use elem_trait::*;
-
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum MinMaxed<T> {

@@ -1,4 +1,4 @@
-use crate::{AnalyzerBackend, GraphBackend, Node, GraphError, nodes::Builtin, VarType};
+use crate::{nodes::Builtin, AnalyzerBackend, GraphBackend, GraphError, Node, VarType};
 use shared::NodeIdx;
 
 use ethers_core::types::{Address, H256, I256, U256};
@@ -9,7 +9,10 @@ pub struct ConcreteNode(pub usize);
 
 impl ConcreteNode {
     /// Gets the underlying node data for the [`Concrete`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Concrete, GraphError> {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Concrete, GraphError> {
         match analyzer.node(*self) {
             Node::Concrete(c) => Ok(c),
             e => Err(GraphError::NodeConfusion(format!(
@@ -49,7 +52,10 @@ impl ConcreteNode {
     }
 
     /// Returns the size of the array size if it is an array-like concrete
-    pub fn maybe_array_size(&self, analyzer: &impl GraphBackend) -> Result<Option<U256>, GraphError> {
+    pub fn maybe_array_size(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<U256>, GraphError> {
         Ok(self.underlying(analyzer)?.maybe_array_size())
     }
 
@@ -327,9 +333,7 @@ impl Concrete {
                             }
                         }
                     }
-                    Builtin::Int(size) => {
-                        Some(Concrete::Int(size, I256::from_raw(val)))
-                    }
+                    Builtin::Int(size) => Some(Concrete::Int(size, I256::from_raw(val))),
                     Builtin::Bytes(size) => {
                         let mask = if size == 32 {
                             U256::MAX

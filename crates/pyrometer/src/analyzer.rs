@@ -1,24 +1,28 @@
 use crate::builtin_fns;
 
 use analyzers::LocStrSpan;
-use solc_expressions::{ContextBuilder,IntoExprErr, ExprErr};
-use graph::{Edge, Node, nodes::*, VarType, ContextEdge};
-use shared::{Search, GraphLike, AnalyzerLike, NodeIdx};
+use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
+use shared::{AnalyzerLike, GraphLike, NodeIdx, Search};
+use solc_expressions::{ContextBuilder, ExprErr, IntoExprErr};
 
+use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
+use petgraph::{graph::*, Directed};
+use serde_json::Value;
 use solang_parser::{
     diagnostics::Diagnostic,
     helpers::CodeLocation,
     pt::{
         ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
-        FunctionDefinition, FunctionTy, SourceUnit, SourceUnitPart, StructDefinition, TypeDefinition,
-        Using, UsingList, VariableDefinition, Identifier, Import,
-    }
+        FunctionDefinition, FunctionTy, Identifier, Import, SourceUnit, SourceUnitPart,
+        StructDefinition, TypeDefinition, Using, UsingList, VariableDefinition,
+    },
 };
-use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span, Source};
-use petgraph::{graph::*, Directed};
-use serde_json::Value;
 
-use std::{path::{PathBuf, Path}, collections::{BTreeMap, HashMap}, fs};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs,
+    path::{Path, PathBuf},
+};
 
 /// A path to either a single solidity file or a Solc Standard JSON file
 #[derive(Debug, Clone)]

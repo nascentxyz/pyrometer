@@ -1,7 +1,7 @@
 mod node;
 mod ranging;
-mod underlying;
 mod typing;
+mod underlying;
 mod versioning;
 
 pub use node::*;

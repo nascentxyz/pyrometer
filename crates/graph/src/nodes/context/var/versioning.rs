@@ -1,15 +1,14 @@
 use crate::{
-    GraphBackend, GraphError, Edge, ContextEdge, 
-    nodes::{ContextVarNode, ContextNode},
+    nodes::{ContextNode, ContextVarNode},
+    ContextEdge, Edge, GraphBackend, GraphError,
 };
 
 use shared::NodeIdx;
 
 use petgraph::{visit::EdgeRef, Direction};
 
-
 impl ContextVarNode {
-	pub fn latest_version(&self, analyzer: &impl GraphBackend) -> Self {
+    pub fn latest_version(&self, analyzer: &impl GraphBackend) -> Self {
         let mut latest = *self;
         while let Some(next) = latest.next_version(analyzer) {
             latest = next;
@@ -194,4 +193,3 @@ impl ContextVarNode {
         }
     }
 }
-

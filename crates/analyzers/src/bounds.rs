@@ -1,9 +1,7 @@
-use crate::{LocSpan, LocStrSpan, ReportConfig, VarBoundAnalysis, FunctionVarsBoundAnalysis};
+use crate::{FunctionVarsBoundAnalysis, LocSpan, LocStrSpan, ReportConfig, VarBoundAnalysis};
 
 use graph::{
-    GraphBackend, Range, RangeEval, SolcRange,
-    range_string::ToRangeString,
-    nodes::ContextNode,
+    nodes::ContextNode, range_string::ToRangeString, GraphBackend, Range, RangeEval, SolcRange,
 };
 
 use ariadne::{Color, Fmt, Label, Span};
@@ -106,7 +104,10 @@ impl OrderedAnalysis {
         Self { analyses }
     }
 
-    pub fn from_func_analysis(fvba: FunctionVarsBoundAnalysis, analyzer: &impl GraphBackend) -> Self {
+    pub fn from_func_analysis(
+        fvba: FunctionVarsBoundAnalysis,
+        analyzer: &impl GraphBackend,
+    ) -> Self {
         let mut analyses = Self::default();
         fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
             bas.iter().for_each(|ba| {

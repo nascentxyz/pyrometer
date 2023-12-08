@@ -1,7 +1,7 @@
 pub mod bounds;
 
-use graph::{GraphBackend, AnalyzerBackend};
 use ariadne::{Cache, Label, Report, ReportKind, Span};
+use graph::{AnalyzerBackend, GraphBackend};
 use shared::Search;
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;

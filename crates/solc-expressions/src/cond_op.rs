@@ -1,15 +1,16 @@
-use crate::{ContextBuilder, IntoExprErr, ExprErr, require::Require};
+use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, ContextEdge,
-    nodes::{Context, ContextNode, }
+    nodes::{Context, ContextNode},
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::NodeIdx;
 
 use solang_parser::pt::CodeLocation;
 use solang_parser::pt::{Expression, Loc, Statement};
 
-impl<T> CondOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized {}
+impl<T> CondOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
+{}
 pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn cond_op_stmt(

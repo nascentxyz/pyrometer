@@ -1,13 +1,13 @@
 use crate::{
-    AnalyzerBackend, GraphBackend, GraphError, Edge, ContextEdge, 
-    nodes::{ContextNode, StructNode, ContractNode, FunctionNode},
+    nodes::{ContextNode, ContractNode, FunctionNode, StructNode},
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError,
 };
 
 use shared::{NodeIdx, Search};
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 impl ContextNode {
-	/// Gets the associated contract for the function for the context
+    /// Gets the associated contract for the function for the context
     pub fn associated_contract(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),

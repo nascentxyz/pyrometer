@@ -1,15 +1,14 @@
-use crate::Heirarchical;
 use crate::AnalyzerLike;
+use crate::Heirarchical;
 
-use std::{
-    sync::{Arc, Mutex},
-    collections::BTreeSet
-};
 use petgraph::{
+    graph::{EdgeIndex, Graph, NodeIndex},
     Directed,
-    graph::{Graph, EdgeIndex, NodeIndex}
 };
-
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+};
 
 pub type NodeIdx = NodeIndex<usize>;
 pub type EdgeIdx = EdgeIndex<usize>;
@@ -53,10 +52,10 @@ pub trait GraphLike {
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphDot: GraphLike {
     /// Open a dot using graphviz
-	fn open_dot(&self)
+    fn open_dot(&self)
     where
         Self: std::marker::Sized,
-        Self: AnalyzerLike
+        Self: AnalyzerLike,
     {
         use std::env::temp_dir;
         use std::fs;
@@ -83,7 +82,7 @@ pub trait GraphDot: GraphLike {
             .expect("failed to execute process");
     }
 
-	/// Creates a subgraph for visually identifying contexts and subcontexts
+    /// Creates a subgraph for visually identifying contexts and subcontexts
     fn cluster_str(
         &self,
         node: NodeIdx,

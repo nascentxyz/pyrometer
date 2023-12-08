@@ -1,13 +1,16 @@
 use crate::{
-    GraphBackend, GraphError, nodes::{Concrete, ContextVarNode},
-    range::{elem::{RangeElem, RangeOp, Elem, MinMaxed}, exec_traits::*}
+    nodes::{Concrete, ContextVarNode},
+    range::{
+        elem::{Elem, MinMaxed, RangeElem, RangeOp},
+        exec_traits::*,
+    },
+    GraphBackend, GraphError,
 };
 
-use shared::{NodeIdx};
 use ethers_core::types::U256;
+use shared::NodeIdx;
 
 use std::collections::BTreeMap;
-
 
 pub static SINGLETON_EQ_OPS: &[RangeOp] = &[
     RangeOp::Eq,
@@ -30,7 +33,6 @@ pub static EQ_OPS: &[RangeOp] = &[
 ];
 
 pub static FLIP_INEQ_OPS: &[RangeOp] = &[RangeOp::Lt, RangeOp::Lte, RangeOp::Gt, RangeOp::Gte];
-
 
 /// A range expression composed of other range [`Elem`]
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -202,7 +204,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
     }
 }
-
 
 enum MaybeCollapsed {
     Collapsed(Elem<Concrete>),

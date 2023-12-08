@@ -1,10 +1,8 @@
-use crate::{
-    IntoExprErr, ExprErr, FuncCaller
-};
+use crate::{ExprErr, FuncCaller, IntoExprErr};
 
 use graph::{
-    GraphBackend, AnalyzerBackend,
-    nodes::{FunctionNode, ContextNode, ExprRet, }
+    nodes::{ContextNode, ExprRet, FunctionNode},
+    AnalyzerBackend, GraphBackend,
 };
 
 use solang_parser::pt::{Expression, Loc};

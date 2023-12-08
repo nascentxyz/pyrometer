@@ -20,8 +20,8 @@ pub use bin_op::*;
 pub use cmp::*;
 pub use cond_op::*;
 pub use context_builder::*;
-pub use func_call::*;
 pub use env::*;
+pub use func_call::*;
 pub use list::*;
 pub use literal::*;
 pub use loops::*;
@@ -144,9 +144,7 @@ impl ExprErr {
             GraphError(_loc, graph::GraphError::MaxStackWidthReached(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::ChildRedefinition(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::DetachedVariable(msg), ..) => msg,
-            GraphError(_loc, graph::GraphError::VariableUpdateInOldContext(msg), ..) => {
-                msg
-            }
+            GraphError(_loc, graph::GraphError::VariableUpdateInOldContext(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::ExpectedSingle(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::StackLengthMismatch(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::UnbreakableRecursion(msg), ..) => msg,

@@ -1,10 +1,10 @@
-use crate::{AnalyzerBackend, GraphBackend, SolcRange, VarType, Node, GraphError, nodes::Concrete};
+use crate::{nodes::Concrete, AnalyzerBackend, GraphBackend, GraphError, Node, SolcRange, VarType};
 
-use shared::NodeIdx;
 use crate::range::elem::*;
+use shared::NodeIdx;
 
-use solang_parser::pt::{Type, Expression, Loc};
-use ethers_core::types::{Address, H256, U256, I256};
+use ethers_core::types::{Address, H256, I256, U256};
+use solang_parser::pt::{Expression, Loc, Type};
 
 /// A builtin node
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -12,7 +12,10 @@ pub struct BuiltInNode(pub usize);
 
 impl BuiltInNode {
     /// Gets the underlying builtin from the graph
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Builtin, GraphError> {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Builtin, GraphError> {
         match analyzer.node(*self) {
             Node::Builtin(b) => Ok(b),
             e => Err(GraphError::NodeConfusion(format!(
@@ -85,7 +88,10 @@ impl BuiltInNode {
     }
 
     /// Returns whether the builtin is a sized array or bytes
-    pub fn maybe_array_size(&self, analyzer: &impl GraphBackend) -> Result<Option<U256>, GraphError> {
+    pub fn maybe_array_size(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<U256>, GraphError> {
         match self.underlying(analyzer)? {
             Builtin::SizedArray(s, _) => Ok(Some(*s)),
             Builtin::Bytes(s) => Ok(Some(U256::from(*s))),
@@ -104,7 +110,10 @@ impl BuiltInNode {
     }
 
     /// Returns the zero range for this builtin type, i.e. uint256 -> [0, 0]
-    pub fn zero_range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
+    pub fn zero_range(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<SolcRange>, GraphError> {
         Ok(self.underlying(analyzer)?.zero_range())
     }
 }
@@ -174,7 +183,7 @@ impl Builtin {
         }
     }
 
-    /// Possible types that this type could have been had a literal been parsed differently - i.e. a `1` 
+    /// Possible types that this type could have been had a literal been parsed differently - i.e. a `1`
     /// could be uint8 to uint256.
     pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
         let mut builtins = vec![];

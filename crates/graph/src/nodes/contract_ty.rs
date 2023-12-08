@@ -1,4 +1,7 @@
-use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, Edge, nodes::{StructNode, FunctionNode, VarNode}};
+use crate::{
+    nodes::{FunctionNode, StructNode, VarNode},
+    AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node,
+};
 use shared::{NodeIdx, Search};
 
 use petgraph::{visit::EdgeRef, Direction};
@@ -27,7 +30,10 @@ impl AsDotStr for ContractNode {
 
 impl ContractNode {
     /// Gets the underlying node data for the [`Contract`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Contract, GraphError> {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Contract, GraphError> {
         match analyzer.node(*self) {
             Node::Contract(contract) => Ok(contract),
             e => Err(GraphError::NodeConfusion(format!(
@@ -45,7 +51,11 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) {
+    pub fn inherit(
+        &self,
+        inherits: Vec<String>,
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+    ) {
         let src = self.associated_source(analyzer);
         let all_contracts = analyzer.search_children_include_via(
             src,

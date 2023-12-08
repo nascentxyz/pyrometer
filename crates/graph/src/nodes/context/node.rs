@@ -1,7 +1,6 @@
 use crate::{
-    AsDotStr, AnalyzerBackend,
-    nodes::{ FunctionParamNode, ContextVarNode, Context, FunctionNode, KilledKind },
-    GraphError, Node, GraphBackend
+    nodes::{Context, ContextVarNode, FunctionNode, FunctionParamNode, KilledKind},
+    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
 
 use shared::NodeIdx;
@@ -62,7 +61,10 @@ impl ContextNode {
     }
 
     /// Gets an immutable reference to the underlying context in the graph
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Context, GraphError> {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Context, GraphError> {
         match analyzer.node(*self) {
             Node::Context(c) => Ok(c),
             e => Err(GraphError::NodeConfusion(format!(

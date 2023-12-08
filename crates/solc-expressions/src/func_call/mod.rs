@@ -1,22 +1,22 @@
 use crate::{
-    ContextBuilder, IntoExprErr, ExprErr,
-    namespaced_call::NameSpaceFuncCaller,
-    internal_call::InternalFuncCaller,
-    intrinsic_call::IntrinsicFuncCaller
+    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
+    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExprErr, IntoExprErr,
 };
 
 use graph::{
-    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{FunctionNode, ModifierState, FunctionParamNode, FunctionReturnNode, CallFork, Context, ContextNode, ContextVarNode, ContextVar, ExprRet, },
-    Range,
+    nodes::{
+        CallFork, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
+        FunctionParamNode, FunctionReturnNode, ModifierState,
+    },
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, VarType,
 };
 use shared::NodeIdx;
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use solang_parser::helpers::CodeLocation;
-use std::collections::BTreeMap;
 use solang_parser::pt::{Expression, Loc, NamedArgument, StorageLocation};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::rc::Rc;
 
 pub mod internal_call;
 pub mod intrinsic_call;

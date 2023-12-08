@@ -1,11 +1,11 @@
-use crate::{func_call::FuncCaller, IntoExprErr, ExprErr};
+use crate::{func_call::FuncCaller, ExprErr, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, ContextEdge,
-    nodes::{Builtin, ContextNode, ContextVar, Concrete, ExprRet, }
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
-use solang_parser::pt::{Loc, Expression, Identifier};
+use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> Env for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {

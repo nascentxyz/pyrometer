@@ -22,8 +22,6 @@ pub trait AnalyzerLike: GraphLike {
     /// Type of a builtin
     type Builtin;
 
-    
-
     /// Gets the builtin functions map
     fn builtin_fns(&self) -> &HashMap<String, Self::Function>;
     /// Mutably gets the builtin functions map
@@ -43,10 +41,12 @@ pub trait AnalyzerLike: GraphLike {
     fn add_expr_err(&mut self, err: Self::ExprErr);
     fn expr_errs(&self) -> Vec<Self::ExprErr>;
 
-    fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<Self::FunctionParam>, Vec<Self::FunctionReturn>)>;
+    fn builtin_fn_inputs(
+        &self,
+    ) -> &HashMap<String, (Vec<Self::FunctionParam>, Vec<Self::FunctionReturn>)>;
     fn builtins(&self) -> &HashMap<Self::Builtin, NodeIdx>;
     fn builtins_mut(&mut self) -> &mut HashMap<Self::Builtin, NodeIdx>;
-    
+
     fn builtin_or_add(&mut self, builtin: Self::Builtin) -> NodeIdx;
     //  {
     //     if let Some(idx) = self.builtins().get(&builtin) {
@@ -90,7 +90,6 @@ pub trait AnalyzerLike: GraphLike {
     //         None
     //     }
     // }
-
 
     fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T> {
         match err {

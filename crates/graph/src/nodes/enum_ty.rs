@@ -1,4 +1,4 @@
-use crate::{AsDotStr, GraphBackend, SolcRange, GraphError, Node, nodes::Concrete};
+use crate::{nodes::Concrete, AsDotStr, GraphBackend, GraphError, Node, SolcRange};
 
 use shared::NodeIdx;
 

@@ -1,18 +1,28 @@
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::{NodeIdx, GraphLike};
-use petgraph::{visit::EdgeRef, graph::*, Direction};
+use crate::{GraphLike, NodeIdx};
+use petgraph::{graph::*, visit::EdgeRef, Direction};
 
 pub trait Heirarchical {
     fn heirarchical_num(&self) -> usize;
 }
 
-impl<T> Search for T where T: GraphLike, <T as GraphLike>::Edge: Ord + PartialEq + Heirarchical + Copy {}
+impl<T> Search for T
+where
+    T: GraphLike,
+    <T as GraphLike>::Edge: Ord + PartialEq + Heirarchical + Copy,
+{
+}
 /// A trait for searching through a graph
 pub trait Search: GraphLike
-    where <Self as GraphLike>::Edge: PartialEq + Heirarchical + Copy
+where
+    <Self as GraphLike>::Edge: PartialEq + Heirarchical + Copy,
 {
-    fn search_for_ancestor(&self, start: NodeIdx, edge_ty: &<Self as GraphLike>::Edge) -> Option<NodeIdx> {
+    fn search_for_ancestor(
+        &self,
+        start: NodeIdx,
+        edge_ty: &<Self as GraphLike>::Edge,
+    ) -> Option<NodeIdx> {
         tracing::trace!("searching for ancestor");
         let edges = self.graph().edges_directed(start, Direction::Outgoing);
         if let Some(edge) = edges.clone().find(|edge| edge.weight() == edge_ty) {
@@ -26,7 +36,11 @@ pub trait Search: GraphLike
         }
     }
 
-    fn search_for_ancestor_multi(&self, start: NodeIdx, edge_tys: &[<Self as GraphLike>::Edge]) -> Option<NodeIdx> {
+    fn search_for_ancestor_multi(
+        &self,
+        start: NodeIdx,
+        edge_tys: &[<Self as GraphLike>::Edge],
+    ) -> Option<NodeIdx> {
         tracing::trace!("searching for ancestor_multi");
         let edges = self.graph().edges_directed(start, Direction::Outgoing);
         if let Some(edge) = edges.clone().find(|edge| edge_tys.contains(edge.weight())) {
@@ -40,7 +54,11 @@ pub trait Search: GraphLike
         }
     }
 
-    fn search_children_same_heirarchy(&self, start: NodeIdx, edge_ty: &<Self as GraphLike>::Edge) -> BTreeSet<NodeIdx> {
+    fn search_children_same_heirarchy(
+        &self,
+        start: NodeIdx,
+        edge_ty: &<Self as GraphLike>::Edge,
+    ) -> BTreeSet<NodeIdx> {
         tracing::trace!("search_children_same_heirarchy");
         let num = edge_ty.heirarchical_num();
         let edges = self
@@ -71,7 +89,11 @@ pub trait Search: GraphLike
     /// i.e.: a -my_edge-> b -other_edge-> c -my_edge-> d
     ///
     /// This function would build a set { b, d } if we are looking for `my_edge` and start at a.
-    fn search_children(&self, start: NodeIdx, edge_ty: &<Self as GraphLike>::Edge) -> BTreeSet<NodeIdx> {
+    fn search_children(
+        &self,
+        start: NodeIdx,
+        edge_ty: &<Self as GraphLike>::Edge,
+    ) -> BTreeSet<NodeIdx> {
         tracing::trace!("search_children");
         let mut seen = Default::default();
         self.search_children_prevent_cycle(start, edge_ty, &mut seen)
@@ -428,7 +450,15 @@ pub trait Search: GraphLike
     fn edges_for_nodes(
         &self,
         nodes: &BTreeSet<NodeIdx>,
-    ) -> BTreeSet<(NodeIdx, NodeIdx, <Self as GraphLike>::Edge, EdgeIndex<usize>)> where <Self as GraphLike>::Edge: Ord {
+    ) -> BTreeSet<(
+        NodeIdx,
+        NodeIdx,
+        <Self as GraphLike>::Edge,
+        EdgeIndex<usize>,
+    )>
+    where
+        <Self as GraphLike>::Edge: Ord,
+    {
         tracing::trace!("children_edges");
 
         nodes
@@ -437,7 +467,12 @@ pub trait Search: GraphLike
                 self.graph()
                     .edges_directed(*node, Direction::Incoming)
                     .map(|edge| (edge.source(), edge.target(), *edge.weight(), edge.id()))
-                    .collect::<BTreeSet<(NodeIdx, NodeIdx, <Self as GraphLike>::Edge, EdgeIndex<usize>)>>()
+                    .collect::<BTreeSet<(
+                        NodeIdx,
+                        NodeIdx,
+                        <Self as GraphLike>::Edge,
+                        EdgeIndex<usize>,
+                    )>>()
             })
             .collect()
     }
@@ -446,7 +481,15 @@ pub trait Search: GraphLike
     fn children_edges(
         &self,
         start: NodeIdx,
-    ) -> BTreeSet<(NodeIdx, NodeIdx, <Self as GraphLike>::Edge, EdgeIndex<usize>)> where <Self as GraphLike>::Edge: Ord {
+    ) -> BTreeSet<(
+        NodeIdx,
+        NodeIdx,
+        <Self as GraphLike>::Edge,
+        EdgeIndex<usize>,
+    )>
+    where
+        <Self as GraphLike>::Edge: Ord,
+    {
         tracing::trace!("children_edges");
         let mut seen = Default::default();
         self.children_edges_prevent_cycle(start, &mut seen)
@@ -456,7 +499,15 @@ pub trait Search: GraphLike
         &self,
         start: NodeIdx,
         seen: &mut BTreeSet<NodeIdx>,
-    ) -> BTreeSet<(NodeIdx, NodeIdx, <Self as GraphLike>::Edge, EdgeIndex<usize>)> where <Self as GraphLike>::Edge: Ord {
+    ) -> BTreeSet<(
+        NodeIdx,
+        NodeIdx,
+        <Self as GraphLike>::Edge,
+        EdgeIndex<usize>,
+    )>
+    where
+        <Self as GraphLike>::Edge: Ord,
+    {
         if seen.contains(&start) {
             return Default::default();
         } else {
@@ -464,7 +515,12 @@ pub trait Search: GraphLike
         }
 
         let edges = self.graph().edges_directed(start, Direction::Incoming);
-        let mut this_children_edges: BTreeSet<(NodeIdx, NodeIdx, <Self as GraphLike>::Edge, EdgeIndex<usize>)> = edges
+        let mut this_children_edges: BTreeSet<(
+            NodeIdx,
+            NodeIdx,
+            <Self as GraphLike>::Edge,
+            EdgeIndex<usize>,
+        )> = edges
             .clone()
             .map(|edge| (edge.source(), edge.target(), *edge.weight(), edge.id()))
             .collect();
@@ -472,7 +528,12 @@ pub trait Search: GraphLike
         this_children_edges.extend(
             edges
                 .flat_map(|edge| self.children_edges_prevent_cycle(edge.source(), seen))
-                .collect::<BTreeSet<(NodeIdx, NodeIdx, <Self as GraphLike>::Edge, EdgeIndex<usize>)>>(),
+                .collect::<BTreeSet<(
+                    NodeIdx,
+                    NodeIdx,
+                    <Self as GraphLike>::Edge,
+                    EdgeIndex<usize>,
+                )>>(),
         );
         this_children_edges
     }

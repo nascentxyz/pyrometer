@@ -1,4 +1,8 @@
-use crate::{AnalyzerBackend, GraphBackend, AsDotStr, SolcRange, Edge, VarType, GraphError, Node, ContextEdge, nodes::{ContextNode, ContractNode}};
+use crate::{
+    nodes::{ContextNode, ContractNode},
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, SolcRange,
+    VarType,
+};
 
 use shared::{NodeIdx, Search};
 
@@ -6,9 +10,8 @@ use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
     helpers::CodeLocation,
     pt::{
-        ParameterList, Statement, Type, VariableDefinition,
-        Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier,
-        Loc, Parameter, StorageLocation, Visibility,
+        Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc,
+        Parameter, ParameterList, Statement, StorageLocation, Type, VariableDefinition, Visibility,
     },
 };
 use std::collections::BTreeMap;
@@ -16,7 +19,10 @@ use std::collections::BTreeMap;
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionNode(pub usize);
 impl FunctionNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Function, GraphError> {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Function, GraphError> {
         match analyzer.node(*self) {
             Node::Function(func) => Ok(func),
             e => Err(GraphError::NodeConfusion(format!(
@@ -39,7 +45,10 @@ impl FunctionNode {
     }
 
     /// Gets an ordered list of modifiers for a given function
-    pub fn modifiers(&self, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) -> Vec<FunctionNode> {
+    pub fn modifiers(
+        &self,
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+    ) -> Vec<FunctionNode> {
         if let Some(mods) = &self.underlying(analyzer).unwrap().cache.modifiers {
             mods.values().copied().collect()
         } else {
@@ -249,7 +258,10 @@ impl FunctionNode {
         }
     }
 
-    pub fn associated_source(&self, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) -> NodeIdx {
+    pub fn associated_source(
+        &self,
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+    ) -> NodeIdx {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
             src
         } else {

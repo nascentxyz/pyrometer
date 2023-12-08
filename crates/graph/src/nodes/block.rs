@@ -1,4 +1,4 @@
-use crate::{GraphBackend, AsDotStr, Node, GraphError};
+use crate::{AsDotStr, GraphBackend, GraphError, Node};
 use shared::NodeIdx;
 
 use ethers_core::types::{Address, H256, U256};

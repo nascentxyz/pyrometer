@@ -1,16 +1,18 @@
 use crate::{
-    AnalyzerBackend, GraphBackend, AsDotStr,
-    range::{elem::{Elem, Reference, RangeElem}, Range, SolcRange},
-    GraphError, Node,
     nodes::{
-        ContextVarNode, FunctionNode, TyNode, BuiltInNode,
-        ConcreteNode, Builtin, Concrete, StructNode, EnumNode, ContractNode
-    }
+        BuiltInNode, Builtin, Concrete, ConcreteNode, ContextVarNode, ContractNode, EnumNode,
+        FunctionNode, StructNode, TyNode,
+    },
+    range::{
+        elem::{Elem, RangeElem, Reference},
+        Range, SolcRange,
+    },
+    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
 
 use shared::NodeIdx;
 
-use ethers_core::types::{Address, U256, H256};
+use ethers_core::types::{Address, H256, U256};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum VarType {
@@ -496,8 +498,9 @@ impl VarType {
                         let Concrete::Bytes(_, val) = min.val else {
                             return Ok(None);
                         };
-                        let Some(idx) = index.evaled_range_min(analyzer)?.unwrap().maybe_concrete() else {
-                            return Ok(None)
+                        let Some(idx) = index.evaled_range_min(analyzer)?.unwrap().maybe_concrete()
+                        else {
+                            return Ok(None);
                         };
                         let Concrete::Uint(_, idx) = idx.val else {
                             return Ok(None);
@@ -642,7 +645,10 @@ impl VarType {
         }
     }
 
-    pub fn maybe_array_size(&self, analyzer: &impl GraphBackend) -> Result<Option<U256>, GraphError> {
+    pub fn maybe_array_size(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<U256>, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.maybe_array_size(analyzer),
             Self::Concrete(node) => node.maybe_array_size(analyzer),

@@ -1,14 +1,13 @@
 use crate::{
-    GraphBackend, AsDotStr,
-    GraphError, Node, ContextEdge, Edge,
-    nodes::{VarNode, ContextNode, ContextVar, TmpConstruction},
-    range::{Range, range_string::ToRangeString, elem::RangeElem},
+    nodes::{ContextNode, ContextVar, TmpConstruction, VarNode},
+    range::{elem::RangeElem, range_string::ToRangeString, Range},
+    AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node,
 };
 
 use shared::{NodeIdx, Search};
 
 use petgraph::{visit::EdgeRef, Direction};
-use solang_parser::pt::{StorageLocation, Loc};
+use solang_parser::pt::{Loc, StorageLocation};
 
 use std::collections::BTreeMap;
 
@@ -88,7 +87,6 @@ impl ContextVarNode {
     ) -> Result<&'a Option<StorageLocation>, GraphError> {
         Ok(&self.underlying(analyzer)?.storage)
     }
-    
 
     pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self
@@ -193,7 +191,10 @@ impl ContextVarNode {
         return_assignments
     }
 
-    pub fn tmp_of(&self, analyzer: &impl GraphBackend) -> Result<Option<TmpConstruction>, GraphError> {
+    pub fn tmp_of(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<TmpConstruction>, GraphError> {
         Ok(self.underlying(analyzer)?.tmp_of())
     }
 
@@ -247,7 +248,6 @@ impl ContextVarNode {
             .map(|edge| ContextVarNode::from(edge.source()))
             .collect()
     }
-
 
     pub fn dependent_on(
         &self,

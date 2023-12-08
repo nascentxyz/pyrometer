@@ -1,25 +1,24 @@
-use crate::{VarType, nodes::*};
+use crate::{nodes::*, VarType};
 
-use shared::{ NodeIdx, AnalyzerLike, GraphLike, Heirarchical};
+use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx};
 
 use lazy_static::lazy_static;
 use solang_parser::pt::Identifier;
 
 use std::collections::HashMap;
 
-pub trait GraphBackend: GraphLike<
-    Edge = Edge,
-    Node = Node,
-
-> {}
-pub trait AnalyzerBackend: AnalyzerLike<
-    Builtin = Builtin,
-    MsgNode = MsgNode,
-    BlockNode = BlockNode,
-    FunctionParam = FunctionParam,
-    FunctionReturn = FunctionReturn,
-    Function = Function
-> + GraphBackend {}
+pub trait GraphBackend: GraphLike<Edge = Edge, Node = Node> {}
+pub trait AnalyzerBackend:
+    AnalyzerLike<
+        Builtin = Builtin,
+        MsgNode = MsgNode,
+        BlockNode = BlockNode,
+        FunctionParam = FunctionParam,
+        FunctionReturn = FunctionReturn,
+        Function = Function,
+    > + GraphBackend
+{
+}
 
 pub trait AsDotStr {
     fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String;
@@ -373,4 +372,3 @@ pub enum ContextEdge {
     /// Unused
     Range,
 }
-

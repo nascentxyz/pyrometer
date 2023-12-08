@@ -1,9 +1,12 @@
-use crate::{ContextBuilder, IntoExprErr, ExprErr, require::Require};
+use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{BuiltInNode, Builtin, ContextNode, ContextVarNode, ContextVar, TmpConstruction, Concrete, KilledKind, ExprRet, },
-    elem::*, Range, RangeEval, SolcRange
+    elem::*,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        KilledKind, TmpConstruction,
+    },
+    AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 
 use ethers_core::types::{I256, U256};
@@ -302,8 +305,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 //     }),
                                 Elem::from(Concrete::from(U256::from(1))).cast(
                                     Elem::from(Reference::new(tmp_rhs.into())), // .range_min(self)
-                                                                              // .into_expr_err(loc)?
-                                                                              // .expect("No range minimum?"),
+                                                                                // .into_expr_err(loc)?
+                                                                                // .expect("No range minimum?"),
                                 ),
                             );
 

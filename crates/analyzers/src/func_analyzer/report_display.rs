@@ -1,15 +1,8 @@
-use crate::{
-    LocStrSpan,
-    ReportKind,
-    FunctionVarsBoundAnalysis,
-    ReportDisplay
-};
+use crate::{FunctionVarsBoundAnalysis, LocStrSpan, ReportDisplay, ReportKind};
 
-use graph::{
-    GraphBackend,
-};
+use graph::GraphBackend;
 
-use ariadne::{Color, Config, Fmt, Label, Report, Span, Cache};
+use ariadne::{Cache, Color, Config, Fmt, Label, Report, Span};
 
 use std::collections::BTreeMap;
 

@@ -1,7 +1,7 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 
-use ethers_core::types::{I256};
+use ethers_core::types::I256;
 
 impl RangeMod<Concrete> for RangeConcrete<Concrete> {
     fn range_mod(&self, other: &Self) -> Option<Elem<Concrete>> {

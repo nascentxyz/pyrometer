@@ -1,27 +1,24 @@
-
-use shared::GraphDot;
-use analyzers::{
-    ReportDisplay, FunctionVarsBoundAnalyzer, ReportConfig
-};
+use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
-    Edge, Range,
-    nodes::{ContractNode, FunctionNode, Concrete}, 
     elem::{Elem, RangeElem},
-    solvers::{SolcSolver, AtomicSolveStatus, BruteBinSearchSolver},
+    nodes::{Concrete, ContractNode, FunctionNode},
+    solvers::{AtomicSolveStatus, BruteBinSearchSolver, SolcSolver},
+    Edge, Range,
 };
-use pyrometer::{Root, SourcePath, Analyzer};
-use shared::{Search};
+use pyrometer::{Analyzer, Root, SourcePath};
+use shared::GraphDot;
+use shared::Search;
 
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
-use tracing_subscriber::prelude::*;
 use ethers_core::types::I256;
+use tracing_subscriber::prelude::*;
 
 use std::{
     collections::{BTreeMap, HashMap},
-    path::PathBuf,
     env::{self},
-    fs
+    fs,
+    path::PathBuf,
 };
 
 #[derive(Parser, Debug)]
@@ -279,46 +276,46 @@ fn main() {
 
     // TODO: clean this up to actually run on all contracts
     // if args.swq {
-        // println!("Creating SWQ graph for {} contracts", all_contracts.len());
-        // let mut cond_graph: Option<ConditionGraph> = None;
-        // for i in 0..all_contracts.len() {
-        //     match (&mut cond_graph, analyzer.func_query(all_contracts[i])) {
-        //         (Some(ref mut existing), Some(new)) => {
-        //             existing.append_graph(new);
-        //         }
-        //         (None, Some(new)) => {
-        //             cond_graph = Some(new);
-        //         }
-        //         _ => {}
-        //     }
-        // }
+    // println!("Creating SWQ graph for {} contracts", all_contracts.len());
+    // let mut cond_graph: Option<ConditionGraph> = None;
+    // for i in 0..all_contracts.len() {
+    //     match (&mut cond_graph, analyzer.func_query(all_contracts[i])) {
+    //         (Some(ref mut existing), Some(new)) => {
+    //             existing.append_graph(new);
+    //         }
+    //         (None, Some(new)) => {
+    //             cond_graph = Some(new);
+    //         }
+    //         _ => {}
+    //     }
+    // }
 
-        // if let Some(graph) = cond_graph {
-        //     println!("{}", graph.dot_str());
-        //     graph.open_dot();
-        // } else {
-        //     println!("no graph");
-        // }
+    // if let Some(graph) = cond_graph {
+    //     println!("{}", graph.dot_str());
+    //     graph.open_dot();
+    // } else {
+    //     println!("no graph");
+    // }
     // } else if args.swq_mermaid {
-        // println!("Creating SWQ graph for {} contracts", all_contracts.len());
-        // let mut cond_graph: Option<ConditionGraph> = None;
-        // for i in 0..all_contracts.len() {
-        //     match (&mut cond_graph, analyzer.func_query(all_contracts[i])) {
-        //         (Some(ref mut existing), Some(new)) => {
-        //             existing.append_graph(new);
-        //         }
-        //         (None, Some(new)) => {
-        //             cond_graph = Some(new);
-        //         }
-        //         _ => {}
-        //     }
-        // }
+    // println!("Creating SWQ graph for {} contracts", all_contracts.len());
+    // let mut cond_graph: Option<ConditionGraph> = None;
+    // for i in 0..all_contracts.len() {
+    //     match (&mut cond_graph, analyzer.func_query(all_contracts[i])) {
+    //         (Some(ref mut existing), Some(new)) => {
+    //             existing.append_graph(new);
+    //         }
+    //         (None, Some(new)) => {
+    //             cond_graph = Some(new);
+    //         }
+    //         _ => {}
+    //     }
+    // }
 
-        // if let Some(graph) = cond_graph {
-        //     println!("{}", graph.mermaid_str());
-        // } else {
-        //     println!("no graph");
-        // }
+    // if let Some(graph) = cond_graph {
+    //     println!("{}", graph.mermaid_str());
+    // } else {
+    //     println!("no graph");
+    // }
     // } else {
     let _t1 = std::time::Instant::now();
     if args.contracts.is_empty() {

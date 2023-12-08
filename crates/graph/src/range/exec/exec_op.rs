@@ -1,8 +1,12 @@
-use crate::{GraphBackend, GraphError, nodes::Concrete, range::{elem::*, exec_traits::*}};
+use crate::{
+    nodes::Concrete,
+    range::{elem::*, exec_traits::*},
+    GraphBackend, GraphError,
+};
 
 use shared::NodeIdx;
 
-use ethers_core::types::{ I256, U256 };
+use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {

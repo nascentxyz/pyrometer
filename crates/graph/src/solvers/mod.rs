@@ -1,6 +1,6 @@
-pub mod dl;
 mod atoms;
 mod brute;
+pub mod dl;
 
-pub use brute::*;
 pub use atoms::*;
+pub use brute::*;

@@ -1,11 +1,11 @@
+use analyzers::FunctionVarsBoundAnalyzer;
 use analyzers::ReportConfig;
 use analyzers::ReportDisplay;
-use analyzers::FunctionVarsBoundAnalyzer;
-use shared::Search;
 use ariadne::sources;
+use graph::{nodes::FunctionNode, Edge};
 use pyrometer::{Analyzer, SourcePath};
 use shared::NodeIdx;
-use graph::{nodes::FunctionNode, Edge};
+use shared::Search;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;

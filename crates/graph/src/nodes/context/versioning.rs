@@ -1,13 +1,13 @@
 use crate::{
-	AnalyzerBackend, GraphBackend, Node, GraphError,
-	nodes::{ContextNode, CallFork, KilledKind, FunctionNode}
+    nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
+    AnalyzerBackend, GraphBackend, GraphError, Node,
 };
 
 use solang_parser::pt::Loc;
 
 impl ContextNode {
-	/// Query whether this context has a parent
-	pub fn has_parent(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    /// Query whether this context has a parent
+    pub fn has_parent(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.parent_ctx.is_some())
     }
 
@@ -27,7 +27,7 @@ impl ContextNode {
         }
     }
 
-	/// Gets the subcontexts of this context
+    /// Gets the subcontexts of this context
     pub fn subcontexts(&self, analyzer: &impl GraphBackend) -> Vec<ContextNode> {
         let underlying = self.underlying(analyzer).unwrap();
         match underlying.child {
@@ -75,7 +75,7 @@ impl ContextNode {
             .collect())
     }
 
-     /// Returns tail contexts associated with the context
+    /// Returns tail contexts associated with the context
     pub fn live_edges(&self, analyzer: &impl GraphBackend) -> Result<Vec<Self>, GraphError> {
         if let Some(child) = self.underlying(analyzer)?.child {
             let mut lineage = vec![];
@@ -391,7 +391,10 @@ impl ContextNode {
     }
 
     /// Gets parent list
-    pub fn parent_list(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextNode>, GraphError> {
+    pub fn parent_list(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextNode>, GraphError> {
         let context = self.underlying(analyzer)?;
         let mut parents = vec![];
         if let Some(parent_ctx) = context.parent_ctx {

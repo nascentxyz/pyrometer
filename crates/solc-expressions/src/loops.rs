@@ -1,14 +1,19 @@
-use crate::{ContextBuilder, IntoExprErr, ExprErr};
+use crate::{ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    GraphBackend, AnalyzerBackend, Node,
-    nodes::{Context, ContextNode, },
+    nodes::{Context, ContextNode},
+    AnalyzerBackend, GraphBackend, Node,
 };
 
-use solang_parser::pt::{Loc, Expression, Statement};
+use solang_parser::pt::{Expression, Loc, Statement};
 
-impl<T> Looper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend {}
-pub trait Looper: GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+impl<T> Looper for T where
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
+{
+}
+pub trait Looper:
+    GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
     #[tracing::instrument(level = "trace", skip_all)]
     fn for_loop(
         &mut self,

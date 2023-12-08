@@ -1,13 +1,16 @@
 use crate::{
-    AnalyzerBackend, GraphBackend, GraphError, VarType, Node, SolcRange, TypeNode,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVarNode, ContractNode,
+        EnumNode, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode, TyNode,
+    },
     range::Range,
-    nodes::{ContextVarNode, ContextNode, Concrete, Builtin, ContractNode, FunctionNode, FunctionParam, FunctionReturn, BuiltInNode, EnumNode, Field, TyNode, StructNode, ConcreteNode},
+    AnalyzerBackend, GraphBackend, GraphError, Node, SolcRange, TypeNode, VarType,
 };
 
 use crate::range::elem::*;
 use shared::NodeIdx;
 
-use solang_parser::pt::{StorageLocation, Loc};
+use solang_parser::pt::{Loc, StorageLocation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextVar {
@@ -576,7 +579,10 @@ impl ContextVar {
         }
     }
 
-    pub fn maybe_new_from_func_ret(analyzer: &impl GraphBackend, ret: FunctionReturn) -> Option<Self> {
+    pub fn maybe_new_from_func_ret(
+        analyzer: &impl GraphBackend,
+        ret: FunctionReturn,
+    ) -> Option<Self> {
         if let Some(name) = ret.name {
             if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
                 Some(ContextVar {

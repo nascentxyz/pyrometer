@@ -1,26 +1,21 @@
 use crate::Analyzer;
 
-use shared::{GraphDot, NodeIdx, GraphLike, Search};
 use graph::{
-    ContextEdge, AnalyzerBackend, as_dot_str, AsDotStr, GraphBackend, Node, Edge,
-    nodes::ContextNode,
+    as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
+    Node,
 };
+use shared::{GraphDot, GraphLike, NodeIdx, Search};
 
-use petgraph::{
-    Direction, Graph, Directed,
-    graph::EdgeIndex,
-    dot::Dot,
-    visit::EdgeRef,
-};
+use petgraph::{dot::Dot, graph::EdgeIndex, visit::EdgeRef, Directed, Direction, Graph};
 
 use std::{
     collections::BTreeSet,
-    sync::{Mutex, Arc},
+    sync::{Arc, Mutex},
 };
 
 impl GraphLike for Analyzer {
-	type Node = Node;
-	type Edge = Edge;
+    type Node = Node;
+    type Edge = Edge;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
         &mut self.graph
     }
@@ -557,8 +552,6 @@ flowchart BT
         dot_str.push(edges_str);
         dot_str.join("\n")
     }
-
-
 }
 
 struct G<'a> {

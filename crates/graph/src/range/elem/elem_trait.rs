@@ -1,4 +1,8 @@
-use crate::{GraphBackend, nodes::ContextVarNode, range::elem::{RangeExpr, RangeOp, Elem}};
+use crate::{
+    nodes::ContextVarNode,
+    range::elem::{Elem, RangeExpr, RangeOp},
+    GraphBackend,
+};
 
 use shared::NodeIdx;
 
@@ -7,7 +11,11 @@ use std::collections::BTreeMap;
 pub trait RangeElem<T> {
     type GraphError;
     /// Flattens an element into an expression or concrete based purely on inputs, calldata, storage, or environment data variables
-    fn flatten(&self, maximize: bool, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
+    fn flatten(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Elem<T>, Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
     /// Maximizes the element and caches the result for quicker use later

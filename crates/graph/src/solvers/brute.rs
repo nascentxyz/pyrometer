@@ -1,9 +1,11 @@
 use crate::{
-    GraphBackend, AnalyzerBackend, GraphError,
-    SolcRange, Range, RangeEval,
-    elem::{RangeElem, Elem},
-    nodes::{ContextVarNode, Concrete, VarNode},
-    solvers::{dl::{SolveStatus, DLSolver}, Atomize, SolverAtom},
+    elem::{Elem, RangeElem},
+    nodes::{Concrete, ContextVarNode, VarNode},
+    solvers::{
+        dl::{DLSolver, SolveStatus},
+        Atomize, SolverAtom,
+    },
+    AnalyzerBackend, GraphBackend, GraphError, Range, RangeEval, SolcRange,
 };
 
 use ethers_core::types::U256;

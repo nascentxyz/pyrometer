@@ -1,9 +1,9 @@
-use solang_parser::pt::Loc;
 use crate::{
-    GraphBackend, GraphError,
     nodes::{Concrete, ContextVarNode},
-    range::elem::{RangeElem, RangeOp, Reference, RangeDyn, RangeConcrete, RangeExpr},
+    range::elem::{RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference},
+    GraphBackend, GraphError,
 };
+use solang_parser::pt::Loc;
 
 use shared::NodeIdx;
 
@@ -11,18 +11,7 @@ use ethers_core::types::I256;
 
 use std::{
     collections::BTreeMap,
-    ops::{
-        Add,
-        Sub,
-        Mul,
-        Div,
-        Shl,
-        Shr,
-        Rem,
-        BitAnd,
-        BitOr,
-        BitXor,
-    }
+    ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Rem, Shl, Shr, Sub},
 };
 
 /// A core range element.

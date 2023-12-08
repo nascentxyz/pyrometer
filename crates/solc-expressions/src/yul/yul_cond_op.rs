@@ -1,21 +1,25 @@
-use crate::{YulBuilder, ContextBuilder, IntoExprErr, ExprErr, require::Require};
+use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr, YulBuilder};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, ContextEdge,
-    nodes::{ConcreteNode, Context, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
-    elem::*
+    elem::*,
+    nodes::{Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::NodeIdx;
 
 use ethers_core::types::U256;
 use solang_parser::pt::{
-    Identifier, YulBlock, YulFunctionCall, YulSwitchOptions, CodeLocation,
-    Expression, Loc, YulExpression, YulStatement
+    CodeLocation, Expression, Identifier, Loc, YulBlock, YulExpression, YulFunctionCall,
+    YulStatement, YulSwitchOptions,
 };
 
-impl<T> YulCondOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
-{}
-pub trait YulCondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized {
+impl<T> YulCondOp for T where
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
+{
+}
+pub trait YulCondOp:
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
+{
     #[tracing::instrument(level = "trace", skip_all)]
     fn yul_cond_op_stmt(
         &mut self,

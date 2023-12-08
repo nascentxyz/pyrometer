@@ -1,6 +1,5 @@
-use crate::{GraphBackend, AsDotStr, GraphError, Node, VarType, nodes::context::ContextVarNode,};
+use crate::{nodes::context::ContextVarNode, AsDotStr, GraphBackend, GraphError, Node, VarType};
 use shared::NodeIdx;
-
 
 /// The reason a context was killed
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]

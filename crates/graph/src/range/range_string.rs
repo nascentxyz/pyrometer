@@ -1,7 +1,7 @@
 use crate::{
-    GraphBackend,
     nodes::{Concrete, ContextVarNode},
     range::elem::*,
+    GraphBackend,
 };
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
@@ -41,7 +41,6 @@ pub trait ToRangeString {
     /// Converts a range to a human string
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString;
 }
-
 
 impl ToRangeString for Elem<Concrete> {
     fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {

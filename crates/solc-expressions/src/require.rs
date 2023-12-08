@@ -1,9 +1,13 @@
-use crate::{ContextBuilder, BinOp, Variable, IntoExprErr, ExprErr};
+use crate::{BinOp, ContextBuilder, ExprErr, IntoExprErr, Variable};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{BuiltInNode, Builtin, ConcreteNode, ContextNode, ContextVarNode, ContextVar, TmpConstruction, Concrete, KilledKind, ExprRet, },
-    elem::*, Range, RangeEval, SolcRange, range_string::ToRangeString,
+    elem::*,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode,
+        ExprRet, KilledKind, TmpConstruction,
+    },
+    range_string::ToRangeString,
+    AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 
 use ethers_core::types::I256;

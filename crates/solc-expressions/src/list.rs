@@ -1,11 +1,11 @@
-use crate::{ContextBuilder, IntoExprErr, ExprErr};
+use crate::{ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{ContextNode, ContextVar, ExprRet, }
+    nodes::{ContextNode, ContextVar, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 
-use solang_parser::pt::{Parameter, ParameterList, Loc, Expression};
+use solang_parser::pt::{Expression, Loc, Parameter, ParameterList};
 
 impl<T> List for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 

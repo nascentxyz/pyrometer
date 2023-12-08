@@ -1,6 +1,6 @@
 use crate::{
-	AnalyzerBackend, GraphBackend, Node, Edge, GraphError, ContextEdge,
-	nodes::{ContextVarNode, ContextNode, ExprRet},
+    nodes::{ContextNode, ContextVarNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node,
 };
 
 use solang_parser::pt::Loc;
@@ -8,8 +8,8 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 impl ContextNode {
-	/// Add a variable to this context
-	pub fn add_var(
+    /// Add a variable to this context
+    pub fn add_var(
         &self,
         var: ContextVarNode,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
@@ -20,7 +20,7 @@ impl ContextNode {
         Ok(())
     }
 
-	/// Gets a variable by name in the context
+    /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl GraphBackend, name: &str) -> Option<ContextVarNode> {
         self.underlying(analyzer)
             .unwrap()
@@ -46,7 +46,10 @@ impl ContextNode {
     }
 
     /// Gets all variables associated with a context
-    pub fn vars<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a BTreeMap<String, ContextVarNode> {
+    pub fn vars<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> &'a BTreeMap<String, ContextVarNode> {
         &self.underlying(analyzer).unwrap().cache.vars
     }
 
@@ -248,7 +251,10 @@ impl ContextNode {
     }
 
     /// Gets local vars that were assigned from an external function return
-    pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+    pub fn vars_assigned_from_ext_fn_ret(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)
             .iter()
             .flat_map(|(_name, var)| var.ext_return_assignments(analyzer))

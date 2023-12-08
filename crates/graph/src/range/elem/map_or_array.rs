@@ -1,4 +1,8 @@
-use crate::{GraphBackend, GraphError, nodes::{ContextVarNode, Concrete}, range::elem::{RangeElem, RangeOp, MinMaxed, Elem}};
+use crate::{
+    nodes::{Concrete, ContextVarNode},
+    range::elem::{Elem, MinMaxed, RangeElem, RangeOp},
+    GraphBackend, GraphError,
+};
 
 use shared::NodeIdx;
 
@@ -33,11 +37,9 @@ impl<T> RangeDyn<T> {
     }
 }
 
-
-
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
-    
+
     fn range_eq(&self, _other: &Self) -> bool {
         false
     }

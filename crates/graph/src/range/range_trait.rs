@@ -1,15 +1,21 @@
-use crate::{GraphBackend, range::elem::RangeElem};
+use crate::{range::elem::RangeElem, GraphBackend};
 use shared::NodeIdx;
 
 pub trait Range<T> {
-	type GraphError;
+    type GraphError;
     type ElemTy: RangeElem<T> + Clone;
     /// Evaluate both the minimum and the maximum - cache along the way
     fn cache_eval(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Evaluate the range minimum
-    fn evaled_range_min(&self, analyzer: &impl GraphBackend) -> Result<Self::ElemTy, Self::GraphError>;
+    fn evaled_range_min(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Self::ElemTy, Self::GraphError>;
     /// Evaluate the range maximum
-    fn evaled_range_max(&self, analyzer: &impl GraphBackend) -> Result<Self::ElemTy, Self::GraphError>;
+    fn evaled_range_max(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Self::ElemTy, Self::GraphError>;
     /// Simplify the minimum, leaving references in place
     fn simplified_range_min(
         &self,
@@ -42,7 +48,7 @@ pub trait Range<T> {
     fn range_exclusions(&self) -> Vec<Self::ElemTy>
     where
         Self: std::marker::Sized;
-	/// Set the range minimum
+    /// Set the range minimum
     fn set_range_min(&mut self, new: Self::ElemTy);
     /// Set the range maximum
     fn set_range_max(&mut self, new: Self::ElemTy);

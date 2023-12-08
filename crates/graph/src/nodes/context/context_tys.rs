@@ -1,4 +1,4 @@
-use crate::nodes::{ContextNode, ContextVarNode, FunctionNode, ContractNode};
+use crate::nodes::{ContextNode, ContextVarNode, ContractNode, FunctionNode};
 use shared::NodeIdx;
 
 use solang_parser::pt::Loc;

@@ -1,9 +1,12 @@
-use crate::{ContextBuilder, IntoExprErr, ExprErr};
+use crate::{ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Node, VarType, GraphError,
-    nodes::{BuiltInNode, Builtin, ContextNode, ContextVarNode, ContextVar, TmpConstruction, Concrete, ExprRet, },
-    elem::*, Range, SolcRange
+    elem::*,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        TmpConstruction,
+    },
+    AnalyzerBackend, GraphError, Node, Range, SolcRange, VarType,
 };
 
 use solang_parser::pt::{Expression, Loc};

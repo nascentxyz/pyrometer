@@ -1,19 +1,11 @@
 use crate::{
-    GraphBackend,
     nodes::{Concrete, ContextVarNode},
     range::{
-        elem::{
-            RangeElem,
-            RangeOp,
-            Elem,
-            RangeExpr,
-            Reference
-        },
-        range_string::{ToRangeString, RangeElemString},
+        elem::{Elem, RangeElem, RangeExpr, RangeOp, Reference},
+        range_string::{RangeElemString, ToRangeString},
     },
+    GraphBackend,
 };
-
-
 
 use ethers_core::types::U256;
 use std::collections::BTreeMap;
@@ -270,7 +262,10 @@ impl Atomize for Elem<Concrete> {
                                 };
                                 AtomOrPart::Atom(atom)
                             }
-                            (Elem::Reference(Reference { .. }), Elem::Reference(Reference { .. })) => {
+                            (
+                                Elem::Reference(Reference { .. }),
+                                Elem::Reference(Reference { .. }),
+                            ) => {
                                 let ty = if DL_OPS.contains(&expr.op) {
                                     OpType::DL
                                 } else if CONST_OPS.contains(&expr.op) {
@@ -329,7 +324,7 @@ impl Atomize for Elem<Concrete> {
         use Elem::*;
 
         match self {
-            Reference(_) => None,     //{ println!("was dyn"); None},
+            Reference(_) => None,   //{ println!("was dyn"); None},
             Null => None,           //{ println!("was null"); None},
             Concrete(_c) => None,   //{ println!("was conc: {}", c.val.as_human_string()); None },
             ConcreteDyn(_) => None, //{ println!("was concDyn"); None},

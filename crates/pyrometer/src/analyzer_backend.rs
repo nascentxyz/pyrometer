@@ -1,29 +1,21 @@
 use crate::Analyzer;
 
 use graph::{
-	AnalyzerBackend, Node, Edge, VarType,
-	nodes::{
-        Concrete,
-        FunctionParamNode,
-        ConcreteNode,
-		MsgNode,
-		BlockNode,
-		FunctionParam,
-		FunctionReturn,
-		Builtin,
-		Function,
-	}
+    nodes::{
+        BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionParam, FunctionParamNode,
+        FunctionReturn, MsgNode,
+    },
+    AnalyzerBackend, Edge, Node, VarType,
 };
-use shared::{AnalyzerLike, NodeIdx, GraphLike};
-use solc_expressions::{IntoExprErr, ExprErr};
+use shared::{AnalyzerLike, GraphLike, NodeIdx};
+use solc_expressions::{ExprErr, IntoExprErr};
 
 use ethers_core::types::U256;
-use solang_parser::{pt::Expression, helpers::CodeLocation};
+use solang_parser::{helpers::CodeLocation, pt::Expression};
 
 use std::collections::HashMap;
 
 impl AnalyzerBackend for Analyzer {}
-
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
@@ -35,7 +27,6 @@ impl AnalyzerLike for Analyzer {
     type FunctionParam = FunctionParam;
     type FunctionReturn = FunctionReturn;
     type Builtin = Builtin;
-
 
     fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx> {
         &self.builtin_fn_nodes

@@ -1,8 +1,11 @@
-use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, nodes::{Concrete, Builtin, ContextNode, ContextVar}};
+use crate::{
+    nodes::{Builtin, Concrete, ContextNode, ContextVar},
+    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+};
 
 use shared::NodeIdx;
 
-use ethers_core::types::{U256, Address};
+use ethers_core::types::{Address, U256};
 use solang_parser::pt::Loc;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

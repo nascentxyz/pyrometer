@@ -1,23 +1,17 @@
 use crate::{
-    GraphBackend, GraphError,
     nodes::{Concrete, ContextVarNode},
     range::elem::*,
     solvers::{AtomOrPart, Atomize, OpType, SolverAtom},
+    GraphBackend, GraphError,
 };
 
-use ethers_core::types::{U256, I256};
+use ethers_core::types::{I256, U256};
 use itertools::Itertools;
 use petgraph::{
-    stable_graph::StableGraph,
     graph::NodeIndex,
-    visit::{
-        EdgeRef,
-        IntoNodeIdentifiers,
-        NodeIndexable,
-        VisitMap,
-        Visitable,
-    },
-    Directed
+    stable_graph::StableGraph,
+    visit::{EdgeRef, IntoNodeIdentifiers, NodeIndexable, VisitMap, Visitable},
+    Directed,
 };
 
 use std::collections::BTreeMap;
@@ -203,7 +197,10 @@ impl DLSolver {
         self.normalized_constraints.values().cloned().collect()
     }
 
-    pub fn solve_partial(&mut self, analyzer: &impl GraphBackend) -> Result<SolveStatus, GraphError> {
+    pub fn solve_partial(
+        &mut self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<SolveStatus, GraphError> {
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on();

@@ -1,4 +1,7 @@
-use crate::{AsDotStr, AnalyzerBackend, GraphBackend, Node, Edge, VarType, ContextEdge, nodes::{ContextVar, ContractNode, ContextVarNode}, GraphError};
+use crate::{
+    nodes::{ContextVar, ContextVarNode, ContractNode},
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
+};
 
 use shared::{NodeIdx, Search};
 
@@ -75,7 +78,10 @@ impl VarNode {
             .map(ContractNode::from)
     }
 
-    pub fn maybe_associated_source_unit_part(&self, analyzer: &impl GraphBackend) -> Option<NodeIdx> {
+    pub fn maybe_associated_source_unit_part(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Option<NodeIdx> {
         if let Some(con) = self.maybe_associated_contract(analyzer) {
             Some(con.associated_source_unit_part(analyzer))
         } else {
@@ -95,7 +101,10 @@ impl VarNode {
         }
     }
 
-    pub fn maybe_associated_source(&self, analyzer: &(impl GraphBackend + Search)) -> Option<NodeIdx> {
+    pub fn maybe_associated_source(
+        &self,
+        analyzer: &(impl GraphBackend + Search),
+    ) -> Option<NodeIdx> {
         let sup = self.maybe_associated_source_unit_part(analyzer)?;
         analyzer.search_for_ancestor(sup, &Edge::Part)
     }

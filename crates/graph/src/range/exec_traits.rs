@@ -1,14 +1,16 @@
-use crate::{GraphBackend, range::elem::Elem};
+use crate::{range::elem::Elem, GraphBackend};
 use shared::NodeIdx;
-
-
 
 /// For execution of operations to be performed on range expressions
 pub trait ExecOp<T> {
     type GraphError;
     /// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
     /// and right-hand-side
-    fn exec_op(&self, maximize: bool, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError> {
+    fn exec_op(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Elem<T>, Self::GraphError> {
         self.exec(self.spread(analyzer)?, maximize)
     }
 

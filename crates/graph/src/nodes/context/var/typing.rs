@@ -1,19 +1,19 @@
 use crate::{
-    AnalyzerBackend, GraphBackend, GraphError, VarType, Node, Edge, ContextEdge, 
-    nodes::{ContextVarNode, ContextNode, Concrete, Builtin},
+    nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
 use shared::Search;
 
 use petgraph::Direction;
-use solang_parser::pt::{StorageLocation, Loc};
+use solang_parser::pt::{Loc, StorageLocation};
 
 impl ContextVarNode {
-	pub fn ty<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a VarType, GraphError> {
+    pub fn ty<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a VarType, GraphError> {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
-	pub fn is_mapping(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn is_mapping(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_mapping(analyzer)
     }
 
@@ -145,7 +145,11 @@ impl ContextVarNode {
         Ok(false)
     }
 
-    pub fn is_return_node_in_any(&self, ctxs: &[ContextNode], analyzer: &impl GraphBackend) -> bool {
+    pub fn is_return_node_in_any(
+        &self,
+        ctxs: &[ContextNode],
+        analyzer: &impl GraphBackend,
+    ) -> bool {
         ctxs.iter().any(|ctx| {
             ctx.underlying(analyzer)
                 .unwrap()
@@ -223,7 +227,11 @@ impl ContextVarNode {
         Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
     }
 
-    pub fn ty_eq(&self, other: &Self, analyzer: &mut impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn ty_eq(
+        &self,
+        other: &Self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         self.ty(analyzer)?.ty_eq(other.ty(analyzer)?, analyzer)
     }
 

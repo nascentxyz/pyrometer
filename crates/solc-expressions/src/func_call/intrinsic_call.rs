@@ -1,15 +1,17 @@
 use crate::{
-    ContextBuilder, IntoExprErr, ExprErr, FuncCaller,
-    require::Require, array::Array,
-    member_access::MemberAccess,
+    array::Array, member_access::MemberAccess, require::Require, ContextBuilder, ExprErr,
+    FuncCaller, IntoExprErr,
 };
 
 use graph::{
-    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{TyNode, StructNode, BuiltInNode, Builtin, Context, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
-    elem::*, Range, SolcRange
+    elem::*,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        StructNode, TyNode,
+    },
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, SolcRange, VarType,
 };
-use shared::{Search, NodeIdx};
+use shared::{NodeIdx, Search};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};

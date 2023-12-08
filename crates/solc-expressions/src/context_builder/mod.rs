@@ -1,19 +1,22 @@
 use crate::{
-    yul::YulBuilder, func_call::FuncCaller, loops::Looper, ExprParser, IntoExprErr, ExprErr
+    func_call::FuncCaller, loops::Looper, yul::YulBuilder, ExprErr, ExprParser, IntoExprErr,
 };
 
 use graph::{
-    GraphBackend, AnalyzerBackend, Edge, Node, VarType, ContextEdge, GraphError,
-    nodes::{FunctionReturnNode, FunctionParamNode, Context, KilledKind, Builtin, FunctionNode, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
-    elem::*, Range
+    elem::*,
+    nodes::{
+        Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
+        FunctionParamNode, FunctionReturnNode, KilledKind,
+    },
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, Range, VarType,
 };
 use shared::NodeIdx;
 
 use ethers_core::types::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
-    pt::{VariableDeclaration, YulStatement, Expression, Loc, Statement},
-    helpers::CodeLocation
+    helpers::CodeLocation,
+    pt::{Expression, Loc, Statement, VariableDeclaration, YulStatement},
 };
 
 impl<T> ContextBuilder for T where
@@ -987,7 +990,8 @@ pub trait ContextBuilder:
                 fn delete_match(
                     ctx: ContextNode,
                     loc: &Loc,
-                    analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>),
+                    analyzer: &mut (impl GraphBackend
+                              + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>),
                     ret: ExprRet,
                 ) {
                     match ret {

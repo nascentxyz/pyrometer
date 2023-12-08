@@ -1,15 +1,13 @@
 use crate::{
-    GraphError, AnalyzerBackend,
-    solvers::dl::DLSolver,
     nodes::{
-        ExprRet, KilledKind, ContextCache,
-        FunctionNode, ContextVarNode, ContextNode, CallFork,
+        CallFork, ContextCache, ContextNode, ContextVarNode, ExprRet, FunctionNode, KilledKind,
         ModifierState,
-    }
+    },
+    solvers::dl::DLSolver,
+    AnalyzerBackend, GraphError,
 };
 
 use solang_parser::pt::Loc;
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {

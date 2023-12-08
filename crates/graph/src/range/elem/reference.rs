@@ -1,4 +1,11 @@
-use crate::{GraphBackend, GraphError, nodes::{ContextVarNode, Concrete}, TypeNode, VarType, range::{Range, elem::{RangeElem, RangeConcrete, RangeOp, MinMaxed, Elem}}};
+use crate::{
+    nodes::{Concrete, ContextVarNode},
+    range::{
+        elem::{Elem, MinMaxed, RangeConcrete, RangeElem, RangeOp},
+        Range,
+    },
+    GraphBackend, GraphError, TypeNode, VarType,
+};
 
 use shared::NodeIdx;
 

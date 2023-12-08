@@ -1,13 +1,11 @@
 use crate::{
-    FuncCaller,
-    ContextBuilder, IntoExprErr, ExprErr,
-    member_access::MemberAccess,
-    intrinsic_call::IntrinsicFuncCaller
+    intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr,
+    FuncCaller, IntoExprErr,
 };
 
 use graph::{
+    nodes::{BuiltInNode, ContextNode, ContextVarNode, ExprRet, FunctionNode},
     AnalyzerBackend, GraphBackend, Node,
-    nodes::{BuiltInNode, FunctionNode, ContextNode, ContextVarNode, ExprRet, }
 };
 
 use shared::NodeIdx;

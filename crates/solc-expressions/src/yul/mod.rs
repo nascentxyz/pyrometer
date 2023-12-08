@@ -1,8 +1,8 @@
-use crate::{ContextBuilder, ExprParser, IntoExprErr, ExprErr};
+use crate::{ContextBuilder, ExprErr, ExprParser, IntoExprErr};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, VarType, ContextEdge,
-    nodes::{Builtin, Context, ContextNode, ContextVarNode, ContextVar, ExprRet, },
+    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 
 use solang_parser::{

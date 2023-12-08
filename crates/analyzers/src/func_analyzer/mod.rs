@@ -1,19 +1,18 @@
 use crate::{
-    bounds::range_parts,
-    VarBoundAnalysis, VarBoundAnalyzer, LocStrSpan, ReportConfig,
-    ReportKind, ReportDisplay,
+    bounds::range_parts, LocStrSpan, ReportConfig, ReportDisplay, ReportKind, VarBoundAnalysis,
+    VarBoundAnalyzer,
 };
 
 use graph::{
-    GraphBackend, AnalyzerBackend,
     nodes::{ContextNode, KilledKind},
     range_string::ToRangeString,
-    solvers::{SolverAtom, Atomize}
+    solvers::{Atomize, SolverAtom},
+    AnalyzerBackend, GraphBackend,
 };
 use shared::Search;
 
 use ariadne::{Color, Config, Fmt, Label, Report, Span};
-use solang_parser::pt::{CodeLocation};
+use solang_parser::pt::CodeLocation;
 use std::collections::{BTreeMap, BTreeSet};
 
 mod report_display;

@@ -1,11 +1,11 @@
 use crate::{
     bounds::{range_parts, AnalysisItem, RangePart},
-    LocStrSpan, ReportConfig
+    LocStrSpan, ReportConfig,
 };
 
 use graph::{
-    GraphBackend, AnalyzerBackend, Range, SolcRange,
-    nodes::{ContextVarNode, ContextNode, KilledKind},
+    nodes::{ContextNode, ContextVarNode, KilledKind},
+    AnalyzerBackend, GraphBackend, Range, SolcRange,
 };
 use shared::Search;
 
@@ -15,7 +15,6 @@ use solang_parser::pt::{CodeLocation, StorageLocation};
 use std::collections::BTreeMap;
 
 mod report_display;
-pub use report_display::*;
 
 #[derive(PartialOrd, Eq, PartialEq, Ord, Clone, Debug)]
 pub struct CtxSwitch {

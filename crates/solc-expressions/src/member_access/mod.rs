@@ -1,9 +1,12 @@
-use crate::{ContextBuilder, Variable, Env, IntoExprErr, ExprErr};
+use crate::{ContextBuilder, Env, ExprErr, IntoExprErr, Variable};
 
 use graph::{
-    AnalyzerBackend, Edge, Node, VarType, ContextEdge, TypeNode,
-    nodes::{BuiltInNode, Builtin, FunctionNode, StructNode, EnumNode, TyNode, ContractNode, ContextNode, ContextVarNode, ContextVar, Concrete, ExprRet, },
-    elem::*, Range, SolcRange
+    elem::*,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode,
+        EnumNode, ExprRet, FunctionNode, StructNode, TyNode,
+    },
+    AnalyzerBackend, ContextEdge, Edge, Node, Range, SolcRange, TypeNode, VarType,
 };
 use shared::NodeIdx;
 

@@ -1,6 +1,4 @@
-use graph::nodes::{
-    Builtin, Function, FunctionParam, FunctionReturn
-};
+use graph::nodes::{Builtin, Function, FunctionParam, FunctionReturn};
 use shared::{AnalyzerLike, GraphLike};
 
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, StorageLocation, Visibility};

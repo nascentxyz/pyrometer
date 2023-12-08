@@ -1,4 +1,4 @@
-use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, Edge, VarType};
+use crate::{AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node, VarType};
 
 use shared::NodeIdx;
 
@@ -9,7 +9,10 @@ use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableD
 pub struct StructNode(pub usize);
 
 impl StructNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Struct, GraphError> {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Struct, GraphError> {
         match analyzer.node(*self) {
             Node::Struct(st) => Ok(st),
             e => Err(GraphError::NodeConfusion(format!(
@@ -42,7 +45,11 @@ impl StructNode {
         fields
     }
 
-    pub fn find_field(&self, analyzer: &impl GraphBackend, ident: &Identifier) -> Option<FieldNode> {
+    pub fn find_field(
+        &self,
+        analyzer: &impl GraphBackend,
+        ident: &Identifier,
+    ) -> Option<FieldNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)

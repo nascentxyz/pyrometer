@@ -1,17 +1,17 @@
 use crate::{
-	GraphError, GraphBackend, AnalyzerBackend,
-	nodes::{ContextNode, FunctionNode}
+    nodes::{ContextNode, FunctionNode},
+    AnalyzerBackend, GraphBackend, GraphError,
 };
 
 impl ContextNode {
-	/// Returns whether this context is killed or returned
+    /// Returns whether this context is killed or returned
     pub fn killed_or_ret(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
         Ok(underlying.killed.is_some()
             || (!underlying.ret.is_empty() && underlying.modifier_state.is_none()))
     }
 
-	/// Returns whether the context is killed
+    /// Returns whether the context is killed
     pub fn is_returned(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(!self.underlying(analyzer)?.ret.is_empty())
     }
@@ -27,8 +27,8 @@ impl ContextNode {
         Ok(underlying.child.is_some() || underlying.killed.is_some() || !underlying.ret.is_empty())
     }
 
-	/// Check if this context is in an external function call
-	pub fn is_ext_fn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    /// Check if this context is in an external function call
+    pub fn is_ext_fn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.ext_fn_call.is_some())
     }
 

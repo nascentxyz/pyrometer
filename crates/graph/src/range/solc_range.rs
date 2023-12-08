@@ -1,7 +1,7 @@
 use crate::{
+    nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
+    range::{elem::*, range_string::*, Range, RangeEval},
     AsDotStr, GraphBackend, GraphError,
-    nodes::{ContextVarNode, ContextNode, Builtin, Concrete},
-    range::{RangeEval, Range, elem::*, range_string::*}
 };
 
 use shared::NodeIdx;
@@ -68,7 +68,12 @@ impl SolcRange {
     }
 
     /// Update a particular context variable with the latest version
-    pub fn update_deps(&mut self, node: ContextVarNode, ctx: ContextNode, analyzer: &impl GraphBackend) {
+    pub fn update_deps(
+        &mut self,
+        node: ContextVarNode,
+        ctx: ContextNode,
+        analyzer: &impl GraphBackend,
+    ) {
         let deps = self.dependent_on();
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
             .into_iter()

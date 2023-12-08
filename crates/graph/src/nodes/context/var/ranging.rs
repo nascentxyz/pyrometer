@@ -1,7 +1,7 @@
 use crate::{
-    AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
-    nodes::{ContextVarNode, ContextNode, Concrete},
+    nodes::{Concrete, ContextNode, ContextVarNode},
     range::{range_string::ToRangeString, Range},
+    AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
 };
 
 use crate::range::elem::*;
@@ -9,7 +9,7 @@ use crate::range::elem::*;
 use solang_parser::pt::Loc;
 
 impl ContextVarNode {
-	#[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn update_deps(
         &mut self,
         ctx: ContextNode,
