@@ -1,7 +1,9 @@
+/// A builtin node
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct BuiltInNode(pub usize);
 
 impl BuiltInNode {
+    /// Gets the underlying builtin from the graph
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Builtin, GraphError> {
         match analyzer.node(*self) {
             Node::Builtin(b) => Ok(b),
@@ -11,11 +13,13 @@ impl BuiltInNode {
         }
     }
 
+    /// Gets the size of the builtin
     pub fn num_size(&self, analyzer: &impl GraphLike) -> Result<Option<u16>, GraphError> {
         let underlying = self.underlying(analyzer)?;
         Ok(underlying.num_size())
     }
 
+    /// Checks if this builtin is implicitly castable to another builtin
     pub fn implicitly_castable_to(
         &self,
         other: &Self,
@@ -26,6 +30,7 @@ impl BuiltInNode {
             .implicitly_castable_to(other.underlying(analyzer)?))
     }
 
+    /// Gets the maximum size version of this builtin, i.e. uint16 -> uint256
     pub fn max_size(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -34,6 +39,7 @@ impl BuiltInNode {
         Ok(analyzer.builtin_or_add(m).into())
     }
 
+    /// Gets the underlying type of the dynamic builtin backing it. i.e. uint256[] -> uint256
     pub fn dynamic_underlying_ty(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -57,10 +63,12 @@ impl BuiltInNode {
         }
     }
 
+    /// Returns whether the builtin is a mapping
     pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(matches!(self.underlying(analyzer)?, Builtin::Mapping(_, _)))
     }
 
+    /// Returns whether the builtin is a sized array
     pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?,
@@ -68,6 +76,7 @@ impl BuiltInNode {
         ))
     }
 
+    /// Returns whether the builtin is a sized array or bytes
     pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
         match self.underlying(analyzer)? {
             Builtin::SizedArray(s, _) => Ok(Some(*s)),
@@ -76,14 +85,17 @@ impl BuiltInNode {
         }
     }
 
+    /// Returns whether the builtin is a dynamic type
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_dyn())
     }
 
+    /// Returns whether the builtin is indexable
     pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_indexable())
     }
 
+    /// Returns the zero range for this builtin type, i.e. uint256 -> [0, 0]
     pub fn zero_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
         Ok(self.underlying(analyzer)?.zero_range())
     }
@@ -101,25 +113,42 @@ impl From<BuiltInNode> for NodeIdx {
     }
 }
 
+/// A fundamental builtin type
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum Builtin {
+    /// An address
     Address,
+    /// A payable address
     AddressPayable,
+    /// A payable address, differentiated in Solang so we differentiate
     Payable,
+    /// A boolean
     Bool,
+    /// A string - TODO: we should represent this as bytes internally
     String,
+    /// A signed integer that has a size
     Int(u16),
+    /// An unsigned integer that has a size
     Uint(u16),
+    /// A bytes that has a size, i.e. bytes8
     Bytes(u8),
+    /// A rational. Rarely used in practice
     Rational,
+    /// A byte array, i.e. bytes
     DynamicBytes,
+    /// An array that has an internal type, i.e. uint256[]
     Array(VarType),
+    /// An array that has an internal type and is sized, i.e. uint256[5]
     SizedArray(U256, VarType),
+    /// A mapping, i.e. `mapping (address => uint)`
     Mapping(VarType, VarType),
+    /// A function pointer that takes a vector of types and returns a vector of types
     Func(Vec<VarType>, Vec<VarType>),
 }
 
 impl Builtin {
+    /// Resolves the `VarType` in dynamic builtins due to parse order - i.e. we could
+    /// `mapping (uint => MyType)`, we may not have parsed `MyType`, so we now try to resolve it
     pub fn unresolved_as_resolved(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -137,6 +166,8 @@ impl Builtin {
         }
     }
 
+    /// Possible types that this type could have been had a literal been parsed differently - i.e. a `1` 
+    /// could be uint8 to uint256.
     pub fn possible_builtins_from_ty_inf(&self) -> Vec<Builtin> {
         let mut builtins = vec![];
         match self {
@@ -166,6 +197,7 @@ impl Builtin {
         builtins
     }
 
+    /// Construct a [`SolcRange`] that is zero
     pub fn zero_range(&self) -> Option<SolcRange> {
         match self {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
@@ -200,6 +232,8 @@ impl Builtin {
             Builtin::Rational | Builtin::Func(_, _) => None,
         }
     }
+
+    /// Try to convert from a [`Type`] to a Builtin
     pub fn try_from_ty(
         ty: Type,
         analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
@@ -257,6 +291,7 @@ impl Builtin {
         }
     }
 
+    /// Returns whether the builtin is dynamic
     pub fn is_dyn(&self) -> bool {
         matches!(
             self,
@@ -268,6 +303,7 @@ impl Builtin {
         )
     }
 
+    /// Returns whether the builtin requires input to perform an operation on (like addition)
     pub fn requires_input(&self) -> bool {
         matches!(
             self,
@@ -275,6 +311,7 @@ impl Builtin {
         )
     }
 
+    /// Returns the size of the integer if it is an integer (signed or unsigned)
     pub fn num_size(&self) -> Option<u16> {
         match self {
             Builtin::Uint(size) => Some(*size),
@@ -283,10 +320,12 @@ impl Builtin {
         }
     }
 
+    /// Returns whether the builtin is a signed integer
     pub fn is_int(&self) -> bool {
         matches!(self, Builtin::Int(_))
     }
 
+    /// Returns whether the builtin is indexable (bytes, array[], array[5], mapping(..), bytes32, string)
     pub fn is_indexable(&self) -> bool {
         matches!(
             self,
@@ -299,6 +338,7 @@ impl Builtin {
         )
     }
 
+    /// Checks if self is implicitly castable to another builtin
     pub fn implicitly_castable_to(&self, other: &Self) -> bool {
         use Builtin::*;
         match (self, other) {
@@ -322,6 +362,7 @@ impl Builtin {
         }
     }
 
+    /// Returns the max size version of this builtin
     pub fn max_size(&self) -> Self {
         use Builtin::*;
         match self {
@@ -332,6 +373,7 @@ impl Builtin {
         }
     }
 
+    /// Converts the builtin to a string
     pub fn as_string(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
         use Builtin::*;
         match self {
@@ -377,6 +419,7 @@ impl Builtin {
         }
     }
 
+    /// Converts the builtin to a string if it is not dynamic
     pub fn basic_as_string(&self) -> String {
         use Builtin::*;
         match self {

@@ -20,6 +20,7 @@ impl ConcreteNode {
         }
     }
 
+    /// Creates a version of this concrete that is max size
     pub fn max_size(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -28,6 +29,7 @@ impl ConcreteNode {
         Ok(analyzer.add_node(Node::Concrete(c)).into())
     }
 
+    /// Gets the internal type of the dynamic that backs this. Panics if this is not a dynamic concrete
     pub fn dynamic_underlying_ty(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -38,18 +40,22 @@ impl ConcreteNode {
         Ok(v_ty)
     }
 
+    /// Returns whether this is a dynamic concrete
     pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_dyn())
     }
 
+    /// Returns whether this is a concrete sized array
     pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_sized_array())
     }
 
+    /// Returns the size of the array size if it is an array-like concrete
     pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
         Ok(self.underlying(analyzer)?.maybe_array_size())
     }
 
+    /// Returns whether this concrete is indexable
     pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_indexable())
     }
@@ -65,12 +71,6 @@ impl From<ConcreteNode> for NodeIdx {
     fn from(val: ConcreteNode) -> Self {
         val.0.into()
     }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub enum DynCapacity {
-    Cap(U256),
-    Unlimited,
 }
 
 /// EVM/Solidity basic concrete types
@@ -153,6 +153,7 @@ impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
 }
 
 impl Concrete {
+    /// Returns whether this concrete is a dynamic type
     pub fn is_dyn(&self) -> bool {
         matches!(
             self,
@@ -160,10 +161,12 @@ impl Concrete {
         )
     }
 
+    /// Returns whether this concrete is a sized array
     pub fn is_sized_array(&self) -> bool {
         matches!(self, Concrete::DynBytes(..) | Concrete::Array(..))
     }
 
+    /// Returns the internal type of this dynamic concrete
     pub fn dynamic_underlying_ty(&self) -> Option<Builtin> {
         match self {
             Concrete::DynBytes(_v) => Some(Builtin::Bytes(1)),
@@ -174,6 +177,7 @@ impl Concrete {
         }
     }
 
+    /// Returns the length of the array if it is an array
     pub fn maybe_array_size(&self) -> Option<U256> {
         match self {
             Concrete::DynBytes(v) => Some(U256::from(v.len())),
@@ -184,6 +188,7 @@ impl Concrete {
         }
     }
 
+    /// Returns whether this concrete is indexable
     pub fn is_indexable(&self) -> bool {
         self.is_dyn() || matches!(self, Concrete::Bytes(..))
     }
@@ -254,10 +259,12 @@ impl Concrete {
         }
     }
 
+    /// Returns whether this concrete is an unsigned integer
     pub fn is_int(&self) -> bool {
         matches!(self, Concrete::Int(_, _))
     }
 
+    /// Performs a literal cast to another type
     pub fn literal_cast(self, builtin: Builtin) -> Option<Self> {
         match self {
             Concrete::Uint(_, val) => match builtin {
@@ -283,6 +290,7 @@ impl Concrete {
         }
     }
 
+    /// Concatenate two concretes together
     pub fn concat(self, other: &Self) -> Option<Self> {
         match (self, other) {
             (Concrete::String(a), Concrete::String(b)) => Some(Concrete::from(format!("{a}{b}"))),
@@ -572,6 +580,7 @@ impl Concrete {
         }
     }
 
+    /// Returns this concrete as a max-sized version
     pub fn max_size(&self) -> Self {
         match self {
             Concrete::Uint(_, val) => Concrete::Uint(256, *val),

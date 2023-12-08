@@ -6,6 +6,7 @@ impl ContextNode {
         Ok(self.underlying(analyzer)?.parent_ctx.is_some())
     }
 
+    /// Gets the first ancestor of this context
     pub fn first_ancestor(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -104,6 +105,7 @@ impl ContextNode {
         }
     }
 
+    /// Gets all reverted descendents
     pub fn reverted_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
         if let Some(child) = self.underlying(analyzer)?.child {
             let mut lineage = vec![];
@@ -138,6 +140,7 @@ impl ContextNode {
         }
     }
 
+    /// Gets all successful descendents
     pub fn successful_edges(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
         if let Some(child) = self.underlying(analyzer)?.child {
             let mut lineage = vec![];
@@ -172,6 +175,7 @@ impl ContextNode {
         }
     }
 
+    /// Returns the current number of live edges
     pub fn number_of_live_edges(&self, analyzer: &impl GraphLike) -> Result<usize, GraphError> {
         Ok(self.underlying(analyzer)?.number_of_live_edges)
     }
@@ -211,6 +215,7 @@ impl ContextNode {
         }
     }
 
+    /// Gets all descendents recursively
     pub fn descendents(&self, analyzer: &impl GraphLike) -> Result<Vec<CallFork>, GraphError> {
         if let Some(child) = self.underlying(analyzer)?.child {
             let mut descendents = vec![child];
@@ -288,6 +293,7 @@ impl ContextNode {
         }
     }
 
+    /// Removes the child of this context
     pub fn delete_child(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -390,6 +396,7 @@ impl ContextNode {
         Ok(parents)
     }
 
+    /// Gets all calls recursively
     pub fn recursive_calls(
         &self,
         analyzer: &impl GraphLike,

@@ -55,10 +55,12 @@ impl ContextNode {
         }
     }
 
+    /// Returns whether this context *currently* uses unchecked math
     pub fn unchecked(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.unchecked)
     }
 
+    /// Sets the context to use unchecked math
     pub fn set_unchecked(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -67,6 +69,7 @@ impl ContextNode {
         Ok(())
     }
 
+    /// Sets the context to use checked math
     pub fn unset_unchecked(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),

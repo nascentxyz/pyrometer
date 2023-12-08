@@ -22,6 +22,7 @@ impl ContextNode {
             .maybe_associated_contract(analyzer))
     }
 
+    /// Tries to get the associated source for the context
     pub fn maybe_associated_source(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),
@@ -42,6 +43,7 @@ impl ContextNode {
         }
     }
 
+    /// Tries to get the associated source unit part for the context
     pub fn associated_source_unit_part(
         &self,
         analyzer: &mut (impl GraphLike + AnalyzerLike),

@@ -5,9 +5,13 @@ use crate::{ContextVarNode, GraphLike, Node, NodeIdx, VarType};
 /// The reason a context was killed
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum KilledKind {
+    /// Execution ended here successfully
     Ended,
+    /// Unsatisifiable bounds, therefore dead code
     Unreachable,
+    /// Execution guaranteed to revert here!
     Revert,
+    /// Unexpected parse error. This is likely a bug or invalid solidity. See the `errors` section of the CLI output or rerun with `--debug` for more information
     ParseError,
 }
 

@@ -33,13 +33,17 @@ pub struct Context {
     pub depth: usize,
     /// Width tracker
     pub width: usize,
+    /// A temporary stack of ExprRets for this context
     pub tmp_expr: Vec<Option<ExprRet>>,
+    /// The stack of ExprRets for this context
     pub expr_ret_stack: Vec<ExprRet>,
+    /// Whether the context currently uses unchecked math
     pub unchecked: bool,
+    /// The number of live edges
     pub number_of_live_edges: usize,
-
-    // caching related things
+    /// Caching related things
     pub cache: ContextCache,
+    /// A difference logic solver used for determining reachability
     pub dl_solver: DLSolver,
 }
 

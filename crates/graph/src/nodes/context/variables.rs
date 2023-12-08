@@ -23,6 +23,7 @@ impl ContextNode {
             .copied()
     }
 
+    /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found
     pub fn var_by_name_or_recurse(
         &self,
         analyzer: &impl GraphLike,
@@ -71,6 +72,7 @@ impl ContextNode {
         Ok(ret)
     }
 
+    /// Push an expression return into the temporary stack
     pub fn push_tmp_expr(
         &self,
         expr_ret: ExprRet,
@@ -81,6 +83,8 @@ impl ContextNode {
         Ok(())
     }
 
+    /// Append a new expression return to an expression return
+    /// currently in the temporary stack
     pub fn append_tmp_expr(
         &self,
         expr_ret: ExprRet,
@@ -120,6 +124,7 @@ impl ContextNode {
         Ok(())
     }
 
+    /// Pops a from the temporary ExprRet stack
     pub fn pop_tmp_expr(
         &self,
         loc: Loc,
@@ -133,6 +138,7 @@ impl ContextNode {
         }
     }
 
+    /// Pushes an ExprRet to the stack
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn push_expr(
         &self,
@@ -154,6 +160,7 @@ impl ContextNode {
         Ok(())
     }
 
+    /// May move the inner variables of an ExprRet from an old context to this context
     pub fn maybe_move_expr(
         &self,
         expr: ExprRet,
@@ -177,6 +184,7 @@ impl ContextNode {
         }
     }
 
+    /// May move the variable from an old context to this context
     pub fn maybe_move_var(
         &self,
         var: ContextVarNode,
@@ -204,25 +212,7 @@ impl ContextNode {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    pub fn pop_expr(
-        &self,
-        _loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
-    ) -> Result<Option<ExprRet>, GraphError> {
-        tracing::trace!("popping var from: {}", self.path(analyzer));
-        let underlying_mut = self.underlying_mut(analyzer)?;
-
-        let new: Vec<ExprRet> = Vec::with_capacity(5);
-
-        let old = std::mem::replace(&mut underlying_mut.expr_ret_stack, new);
-        if old.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(ExprRet::Multi(old)))
-        }
-    }
-
+    /// Pop the latest expression return off the stack
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn pop_expr_latest(
         &self,
@@ -242,6 +232,7 @@ impl ContextNode {
         }
     }
 
+    /// Gets local vars that were assigned from a function return
     pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)
             .iter()
@@ -249,6 +240,7 @@ impl ContextNode {
             .collect()
     }
 
+    /// Gets local vars that were assigned from an external function return
     pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)
             .iter()
