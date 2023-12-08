@@ -11,10 +11,11 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-analyzer.workspace = true
+analyzers.workspace = true
 graph.workspace = true
 range.workspace = true
-solc_expressions.workspace = true
+solc-expressions.workspace = true
+
 solang-parser.workspace = true
 ethers-core.workspace = true
 ariadne.workspace = true

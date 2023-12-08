@@ -6,18 +6,22 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+pyrometer.workspace = true
+graph.workspace = true
+# queries.workspace = true
+
+ariadne.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+petgraph.workspace = true
+
+
 clap = { version = "4.1.4", features = ["derive"] }
-pyrometer = { path = "../" }
-shared = { path = "../shared" }
-ariadne = "0.2.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["registry", "env-filter", "fmt"] }
-petgraph = "0.6.2"
 
-[[bin]]
-name = "pyrometer"
-path = "src/main.rs"
+# [[bin]]
+# name = "pyrometer"
+# path = "src/main.rs"
 
 
-[profile.release]
-debug = true
+# [profile.release]
+# debug = true

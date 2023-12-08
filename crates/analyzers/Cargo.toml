@@ -1,6 +1,6 @@
 [package]
-name = "range"
-description = "Pyrometer's trait and generics based representation of a range"
+name = "analyzers"
+description = "Pyrometer's builtin analyzers"
 
 version.workspace = true
 edition.workspace = true
@@ -11,9 +11,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-shared.workspace = true
+graph.workspace = true
+range.workspace = true
+
 solang-parser.workspace = true
-ethers-core.workspace = true
-hex.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
+ariadne.workspace = true

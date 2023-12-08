@@ -12,9 +12,6 @@ use lazy_static::lazy_static;
 use petgraph::graph::*;
 use solang_parser::pt::Identifier;
 
-pub type NodeIdx = NodeIndex<usize>;
-pub type EdgeIdx = EdgeIndex<usize>;
-
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum GraphError {
     /// The analyzer thought the node was suppose to be one type, but it was a different one

@@ -1,6 +1,6 @@
 [package]
-name = "range"
-description = "Pyrometer's representation of a range"
+name = "graph"
+description = "Pyrometer's internal graph"
 
 version.workspace = true
 edition.workspace = true
@@ -11,9 +11,11 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-petgraph.workspace = true
+shared.workspace = true
 range.workspace = true
 solang-parser.workspace = true
+
+petgraph.workspace = true
 ethers-core.workspace = true
 hex.workspace = true
 tracing.workspace = true

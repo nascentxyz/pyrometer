@@ -1,6 +1,3 @@
-
-
-
 use std::collections::BTreeMap;
 
 mod concrete;
@@ -8,6 +5,12 @@ mod elem_enum;
 mod expr;
 mod map_or_array;
 mod reference;
+
+pub use concrete::*;
+pub use elem_enum::*;
+pub use expr::*;
+pub use map_or_array::*;
+pub use reference::*;
 
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -94,6 +97,7 @@ impl RangeOp {
         }
     }
 
+    /// Gets the logical inverse of a boolean operation
     pub fn logical_inverse(self) -> Option<Self> {
         use RangeOp::*;
         match self {
@@ -196,7 +200,7 @@ pub trait RangeElem<T> {
     }
     /// Traverses the range expression and finds all nodes that are dynamically pointed to
     /// and returns it in a vector.
-    fn dependent_on(&self) -> Vec<ContextVarNode>;
+    fn dependent_on(&self) -> Vec<NodeIdx>;
     /// Traverses the range expression and updates stale pointers from older versions
     /// of a variable to a newer version.
     ///
@@ -204,7 +208,7 @@ pub trait RangeElem<T> {
     /// without the `require` statement, `z`'s max is `2**256 - 1`, but with
     /// the introduction of the `require` statement, we do a little backtracking
     /// and can update `z`'s max to be `200`.
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>);
+    fn update_deps(&mut self, mapping: &BTreeMap<NodeIdx, NodeIdx>);
     /// Attempts to replace range elements that form a cyclic dependency by replacing
     /// it with a new node. Ideally no cyclic dependencies occur in ranges as of now
     /// but in theory it can make sense.

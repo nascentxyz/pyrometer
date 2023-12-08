@@ -1,12 +1,13 @@
 [workspace]
 members = [
-	"crates/analyzer",
+	"crates/analyzers",
 	"crates/cli",
 	"crates/graph",
 	"crates/pyrometer",
 	"crates/queries",
 	"crates/range",
-	"crates/solc_expressions",
+	"crates/shared",
+	"crates/solc-expressions",
 ]
 
 
@@ -17,8 +18,8 @@ authors = ["Brock Elmore"]
 license = "MIT OR Apache-2.0"
 homepage = "https://github.com/nascentxyz/pyrometer"
 repository = "https://github.com/nascentxyz/pyrometer"
-exclude = ["benches/", "tests/"] # exclude the benches directory from the build
-
+exclude = ["benches/", "tests/", "examples/"] # exclude the benches directory from the build
+rust-version = "1.74"
 
 [profile.release]
 debug = true
@@ -31,12 +32,13 @@ inline = true
 debug = true
 
 [workspace.dependencies]
-analyzer = { path = "crates/analyzer" }
+analyzers = { path = "crates/analyzers" }
 graph = { path = "crates/graph" }
 pyrometer = { path = "crates/pyrometer" }
 queries = { path = "crates/queries" }
 range = { path = "crates/range" }
-solc_expressions = { path = "crates/solc_expressions" }
+shared = { path = "crates/shared" }
+solc-expressions = { path = "crates/solc-expressions" }
 
 solang-parser = { version = "0.2.4", features = ["pt-serde"] }
 tracing = { version = "0.1", features = ["attributes"] }
@@ -58,13 +60,10 @@ petgraph = "0.6.2"
 [patch.crates-io]
 ariadne = {git = "https://github.com/brockelmore/ariadne"}
 
-######################################
-# Benchmarks
-######################################
-[[example]]
-name = "parse"
-path = "examples/parse.rs"
+# ######################################
+# # Benchmarks
+# ######################################
 
-[[bench]]
-name = "parse"
-harness = false
+# [[bench]]
+# name = "parse"
+# harness = false
