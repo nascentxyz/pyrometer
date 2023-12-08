@@ -1,4 +1,5 @@
-
+use crate::elem::{RangeOp, Elem, MinMaxed};
+use shared::NodeIdx;
 
 /// A range expression composed of other range [`Elem`]
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]

@@ -1,4 +1,9 @@
+use crate::{
+    GraphError, SolcRange, 
+    nodes::{ContextVarNode, ContextNode},
+};
 
+use shared::{AnalyzerLike, GraphLike};
 
 impl ContextVarNode {
 	#[tracing::instrument(level = "trace", skip_all)]

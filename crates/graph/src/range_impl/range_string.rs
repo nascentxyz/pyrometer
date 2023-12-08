@@ -1,5 +1,11 @@
+use crate::nodes::{Concrete, ContextVarNode};
 
+use range::{elem::*, range_string::*};
+use shared::GraphLike;
 
+use solang_parser::pt::Loc;
+
+use std::collections::BTreeMap;
 
 impl ToRangeString for Elem<Concrete> {
     fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {

@@ -1,8 +1,14 @@
+use shared::NodeIdx;
+use shared::GraphLike;
+
+use crate::elem::Elem;
+
 /// For execution of operations to be performed on range expressions
 pub trait ExecOp<T> {
+    type GraphError;
     /// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
     /// and right-hand-side
-    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError> {
+    fn exec_op(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, Self::GraphError> {
         self.exec(self.spread(analyzer)?, maximize)
     }
 
@@ -10,24 +16,24 @@ pub trait ExecOp<T> {
         &self,
         parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
         maximize: bool,
-    ) -> Result<Elem<T>, GraphError>;
+    ) -> Result<Elem<T>, Self::GraphError>;
     /// Cache execution
     fn cache_exec_op(
         &mut self,
         maximize: bool,
         analyzer: &impl GraphLike,
-    ) -> Result<(), GraphError>;
+    ) -> Result<(), Self::GraphError>;
 
     fn spread(
         &self,
         analyzer: &impl GraphLike,
-    ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), GraphError>;
+    ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), Self::GraphError>;
 
     fn simplify_spread(
         &self,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphLike,
-    ) -> Result<((Elem<T>, Elem<T>, Elem<T>, Elem<T>), bool), GraphError>;
+    ) -> Result<((Elem<T>, Elem<T>, Elem<T>, Elem<T>), bool), Self::GraphError>;
 
     fn uncache_exec(&mut self);
 
@@ -36,14 +42,14 @@ pub trait ExecOp<T> {
         maximize: bool,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphLike,
-    ) -> Result<Elem<T>, GraphError>;
+    ) -> Result<Elem<T>, Self::GraphError>;
 
     /// Attempts to simplify an expression (i.e. just apply constant folding)
     fn simplify_exec(
         &self,
         parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
         maximize: bool,
-    ) -> Result<Elem<T>, GraphError> {
+    ) -> Result<Elem<T>, Self::GraphError> {
         self.exec(parts, maximize)
     }
 }

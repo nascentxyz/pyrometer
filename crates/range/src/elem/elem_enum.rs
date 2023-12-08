@@ -1,3 +1,22 @@
+use crate::elem::{RangeOp, Reference, RangeDyn, RangeConcrete, RangeExpr};
+use shared::NodeIdx;
+
+use std::{
+    collections::BTreeMap,
+    ops::{
+        Add,
+        Sub,
+        Mul,
+        Div,
+        Shl,
+        Shr,
+        Rem,
+        BitAnd,
+        BitOr,
+        BitXor,
+    }
+};
+
 /// A core range element.
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Elem<T> {
@@ -88,8 +107,8 @@ impl<T> Elem<T> {
     }
 }
 
-impl<T> From<Reference> for Elem<T> {
-    fn from(dy: Reference) -> Self {
+impl<T> From<Reference<T>> for Elem<T> {
+    fn from(dy: Reference<T>) -> Self {
         Elem::Reference(dy)
     }
 }

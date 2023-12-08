@@ -1,3 +1,10 @@
+use crate::elem::{Elem, MinMaxed };
+use shared::NodeIdx;
+
+use solang_parser::pt::Loc;
+
+use std::collections::BTreeMap;
+
 /// A concrete value for a range element
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeDyn<T> {

@@ -1,9 +1,9 @@
 use petgraph::stable_graph::StableGraph;
 
-use crate::analyzer::GraphError;
-use crate::range::elem::RangeElem;
-use crate::range::elem::RangeOp;
-use crate::range::elem_ty::Elem;
+use crate::GraphError;
+use range::elem::RangeElem;
+use range::elem::;
+use range::elem_ty::Elem;
 use crate::solvers::AtomOrPart;
 use crate::solvers::Atomize;
 use crate::solvers::OpType;

@@ -1,4 +1,5 @@
-
+use crate::GraphError;
+use shared::{AnalyzerLike, GraphLike};
 
 impl ContextNode {
 	/// Use a Difference Logic solver to see if it is unreachable

@@ -1456,6 +1456,7 @@ version = "0.2.0"
 dependencies = [
  "ethers-core",
  "hex",
+ "petgraph",
  "solang-parser",
  "tracing",
  "tracing-subscriber",

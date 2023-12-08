@@ -1,4 +1,5 @@
-
+use crate::GraphError;
+use shared::{AnalyzerLike, GraphLike};
 
 impl ContextNode {
 	/// Gets the associated contract for the function for the context

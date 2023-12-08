@@ -1,3 +1,9 @@
+use crate::nodes::{ContextNode, ContextVarNode, FunctionNode, ContractNode};
+use shared::NodeIdx;
+
+use solang_parser::pt::Loc;
+
+use std::collections::BTreeMap;
 
 /// An enum that denotes either a call or a fork of a context
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]

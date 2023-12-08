@@ -1,32 +1,32 @@
-mod elem;
-mod exec;
-mod solc_range;
-mod range_string;
+use crate::elem::RangeElem;
+use shared::{ NodeIdx, GraphLike };
 
-pub use elem::*;
-pub use exec::*;
-pub use range_string::*;
+pub mod elem;
+pub mod exec;
+pub mod range_string;
+
 
 pub trait Range<T> {
+	type GraphError;
     type ElemTy: RangeElem<T> + Clone;
     /// Evaluate both the minimum and the maximum - cache along the way
-    fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn cache_eval(&mut self, analyzer: &impl GraphLike) -> Result<(), Self::GraphError>;
     /// Evaluate the range minimum
-    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
+    fn evaled_range_min(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, Self::GraphError>;
     /// Evaluate the range maximum
-    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, GraphError>;
+    fn evaled_range_max(&self, analyzer: &impl GraphLike) -> Result<Self::ElemTy, Self::GraphError>;
     /// Simplify the minimum, leaving references in place
     fn simplified_range_min(
         &self,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphLike,
-    ) -> Result<Self::ElemTy, GraphError>;
+    ) -> Result<Self::ElemTy, Self::GraphError>;
     /// Simplify the maximum, leaving references in place
     fn simplified_range_max(
         &self,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphLike,
-    ) -> Result<Self::ElemTy, GraphError>;
+    ) -> Result<Self::ElemTy, Self::GraphError>;
     /// Return the range minimum
     fn range_min(&self) -> std::borrow::Cow<'_, Self::ElemTy>;
     /// Return the range maximum

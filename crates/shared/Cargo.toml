@@ -11,6 +11,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+petgraph.workspace = true
 solang-parser.workspace = true
 ethers-core.workspace = true
 hex.workspace = true

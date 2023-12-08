@@ -1,3 +1,6 @@
+use crate::elem::MinMaxed;
+use shared::NodeIdx;
+
 /// A dynamic range element value
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Reference<T> {

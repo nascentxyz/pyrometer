@@ -1,3 +1,5 @@
+use shared::NodeIdx;
+use shared::GraphLike;
 use std::collections::BTreeMap;
 
 mod concrete;
@@ -163,16 +165,17 @@ impl ToString for RangeOp {
 }
 
 pub trait RangeElem<T> {
+    type GraphError;
     /// Flattens an element into an expression or concrete based purely on inputs, calldata, storage, or environment data variables
-    fn flatten(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn flatten(&self, maximize: bool, analyzer: &impl GraphLike) -> Result<Elem<T>, Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
-    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn maximize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, Self::GraphError>;
     /// Maximizes the element and caches the result for quicker use later
-    fn cache_maximize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn cache_maximize(&mut self, analyzer: &impl GraphLike) -> Result<(), Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
-    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, GraphError>;
+    fn minimize(&self, analyzer: &impl GraphLike) -> Result<Elem<T>, Self::GraphError>;
     /// Minimizes the element and caches the result for quicker use later
-    fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), GraphError>;
+    fn cache_minimize(&mut self, analyzer: &impl GraphLike) -> Result<(), Self::GraphError>;
     /// Uncaches the minimum and maximum
     fn uncache(&mut self);
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
@@ -180,13 +183,13 @@ pub trait RangeElem<T> {
         &self,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphLike,
-    ) -> Result<Elem<T>, GraphError>;
+    ) -> Result<Elem<T>, Self::GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_minimize(
         &self,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphLike,
-    ) -> Result<Elem<T>, GraphError>;
+    ) -> Result<Elem<T>, Self::GraphError>;
     /// Checks if two range elements are equal
     fn range_eq(&self, other: &Self) -> bool;
     /// Tries to compare the ordering of two range elements
@@ -223,5 +226,5 @@ pub trait RangeElem<T> {
         max: bool,
         op_set: &[RangeOp],
         analyzer: &impl GraphLike,
-    ) -> Result<bool, GraphError>;
+    ) -> Result<bool, Self::GraphError>;
 }

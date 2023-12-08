@@ -1,4 +1,12 @@
+use crate::{
+	Node, Edge, GraphError, ContextEdge,
+	nodes::{ContextVarNode, ContextNode, ExprRet},
+};
+use shared::{AnalyzerLike, GraphLike};
 
+use solang_parser::pt::Loc;
+
+use std::collections::BTreeMap;
 
 impl ContextNode {
 	/// Add a variable to this context
