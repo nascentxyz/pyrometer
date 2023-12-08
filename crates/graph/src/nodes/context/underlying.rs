@@ -1,12 +1,12 @@
 use crate::{
-    GraphError,
+    GraphError, AnalyzerBackend,
     solvers::dl::DLSolver,
     nodes::{
         ExprRet, KilledKind, ContextCache,
-        FunctionNode, ContextVarNode, ContextNode
+        FunctionNode, ContextVarNode, ContextNode, CallFork,
+        ModifierState,
     }
 };
-use shared::AnalyzerLike;
 
 use solang_parser::pt::Loc;
 
@@ -97,7 +97,7 @@ impl Context {
         fork_expr: Option<&str>,
         fn_call: Option<FunctionNode>,
         fn_ext: bool,
-        analyzer: &mut impl AnalyzerLike,
+        analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
     ) -> Result<Self, GraphError> {
         let mut depth =

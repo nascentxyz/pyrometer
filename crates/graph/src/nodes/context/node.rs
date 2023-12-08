@@ -1,9 +1,10 @@
 use crate::{
+    AsDotStr, AnalyzerBackend,
     nodes::{ FunctionParamNode, ContextVarNode, Context, FunctionNode, KilledKind },
-    GraphError, Node
+    GraphError, Node, GraphBackend
 };
 
-use shared::{AsDotStr, NodeIdx, AnalyzerLike, GraphLike};
+use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
@@ -13,7 +14,7 @@ use std::collections::BTreeMap;
 pub struct ContextNode(pub usize);
 
 impl AsDotStr for ContextNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         format!("Context {{ {} }}", self.path(analyzer))
     }
 }
@@ -23,7 +24,7 @@ impl ContextNode {
         &self,
         _func: FunctionNode,
         _mapping: &BTreeMap<ContextVarNode, FunctionParamNode>,
-        _analyzer: &mut (impl GraphLike + AnalyzerLike),
+        _analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) {
         todo!("Joining not supported yet");
     }
@@ -31,26 +32,26 @@ impl ContextNode {
     /// Gets the total context width
     pub fn total_width(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<usize, GraphError> {
         self.first_ancestor(analyzer)?
             .number_of_live_edges(analyzer)
     }
 
     /// Gets the total context depth
-    pub fn depth(&self, analyzer: &impl GraphLike) -> usize {
+    pub fn depth(&self, analyzer: &impl GraphBackend) -> usize {
         self.underlying(analyzer).unwrap().depth
     }
 
     /// The path of the underlying context
-    pub fn path(&self, analyzer: &impl GraphLike) -> String {
+    pub fn path(&self, analyzer: &impl GraphBackend) -> String {
         self.underlying(analyzer).unwrap().path.clone()
     }
 
     /// Gets a mutable reference to the underlying context in the graph
     pub fn underlying_mut<'a>(
         &self,
-        analyzer: &'a mut (impl GraphLike + AnalyzerLike),
+        analyzer: &'a mut (impl GraphBackend<Node = Node> + AnalyzerBackend),
     ) -> Result<&'a mut Context, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Context(c) => Ok(c),
@@ -61,7 +62,7 @@ impl ContextNode {
     }
 
     /// Gets an immutable reference to the underlying context in the graph
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Context, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Context, GraphError> {
         match analyzer.node(*self) {
             Node::Context(c) => Ok(c),
             e => Err(GraphError::NodeConfusion(format!(
@@ -73,7 +74,7 @@ impl ContextNode {
     /// Returns an option to where the context was killed
     pub fn killed_loc(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<(Loc, KilledKind)>, GraphError> {
         Ok(self.underlying(analyzer)?.killed)
     }
@@ -83,7 +84,7 @@ impl ContextNode {
         &self,
         ret_stmt_loc: Loc,
         ret: ContextVarNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?
             .ret
@@ -96,7 +97,7 @@ impl ContextNode {
     pub fn add_empty_return(
         &self,
         ret_stmt_loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?
             .ret
@@ -108,7 +109,7 @@ impl ContextNode {
     /// Propogate that this context has ended up the context graph
     pub fn propogate_end(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let underlying = &mut self.underlying_mut(analyzer)?;
         let curr_live = underlying.number_of_live_edges;
@@ -124,7 +125,7 @@ impl ContextNode {
     /// Gets the return nodes for this context
     pub fn return_nodes(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Vec<(Loc, ContextVarNode)>, GraphError> {
         let rets = &self.underlying(analyzer)?.ret.clone();
         let all_good = rets.iter().all(|(_, node)| node.is_some());

@@ -1,11 +1,7 @@
-use crate::analyzer::AsDotStr;
-use crate::analyzer::{AnalyzerLike, GraphLike};
-use crate::nodes::GraphError;
-use crate::Edge;
+use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, Edge, VarType};
 
-use crate::Node;
-use crate::NodeIdx;
-use crate::VarType;
+use shared::NodeIdx;
+
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableDeclaration};
 
@@ -13,7 +9,7 @@ use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableD
 pub struct StructNode(pub usize);
 
 impl StructNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Struct, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Struct, GraphError> {
         match analyzer.node(*self) {
             Node::Struct(st) => Ok(st),
             e => Err(GraphError::NodeConfusion(format!(
@@ -22,11 +18,11 @@ impl StructNode {
         }
     }
 
-    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+    pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self.underlying(analyzer)?.loc)
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .name
@@ -35,7 +31,7 @@ impl StructNode {
             .to_string())
     }
 
-    pub fn fields(&self, analyzer: &impl GraphLike) -> Vec<FieldNode> {
+    pub fn fields(&self, analyzer: &impl GraphBackend) -> Vec<FieldNode> {
         let mut fields: Vec<_> = analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -46,7 +42,7 @@ impl StructNode {
         fields
     }
 
-    pub fn find_field(&self, analyzer: &impl GraphLike, ident: &Identifier) -> Option<FieldNode> {
+    pub fn find_field(&self, analyzer: &impl GraphBackend, ident: &Identifier) -> Option<FieldNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -57,7 +53,7 @@ impl StructNode {
 }
 
 impl AsDotStr for StructNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "struct {} {{ {} }}",
@@ -121,7 +117,7 @@ impl From<StructDefinition> for Struct {
 pub struct FieldNode(pub usize);
 
 impl FieldNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Field, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Field, GraphError> {
         match analyzer.node(*self) {
             Node::Field(field) => Ok(field),
             e => Err(GraphError::NodeConfusion(format!(
@@ -130,7 +126,7 @@ impl FieldNode {
         }
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .name
@@ -141,7 +137,7 @@ impl FieldNode {
 }
 
 impl AsDotStr for FieldNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
@@ -186,7 +182,7 @@ impl From<Field> for Node {
 
 impl Field {
     pub fn new(
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         var_def: VariableDeclaration,
     ) -> Field {
         let ty_idx = analyzer.parse_expr(&var_def.ty, None);

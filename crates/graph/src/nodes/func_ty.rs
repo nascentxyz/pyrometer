@@ -1,31 +1,22 @@
-use crate::analyzer::AsDotStr;
-use crate::analyzer::GraphError;
-use crate::analyzer::Search;
-use crate::context::{ContextEdge, ContextNode};
-use crate::nodes::ContractNode;
-use crate::range::SolcRange;
-use crate::Edge;
-use crate::VarType;
-use crate::{
-    analyzer::{AnalyzerLike, GraphLike},
-    Node, NodeIdx,
-};
+use crate::{AnalyzerBackend, GraphBackend, AsDotStr, SolcRange, Edge, VarType, GraphError, Node, ContextEdge, nodes::{ContextNode, ContractNode}};
+
+use shared::{NodeIdx, Search};
+
 use petgraph::{visit::EdgeRef, Direction};
-use solang_parser::helpers::CodeLocation;
-use solang_parser::pt::ParameterList;
-use solang_parser::pt::Statement;
-use solang_parser::pt::Type;
-use solang_parser::pt::VariableDefinition;
-use solang_parser::pt::{
-    Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc,
-    Parameter, StorageLocation, Visibility,
+use solang_parser::{
+    helpers::CodeLocation,
+    pt::{
+        ParameterList, Statement, Type, VariableDefinition,
+        Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier,
+        Loc, Parameter, StorageLocation, Visibility,
+    },
 };
 use std::collections::BTreeMap;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionNode(pub usize);
 impl FunctionNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Function, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Function, GraphError> {
         match analyzer.node(*self) {
             Node::Function(func) => Ok(func),
             e => Err(GraphError::NodeConfusion(format!(
@@ -34,7 +25,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn body_loc(&self, analyzer: &impl GraphLike) -> Result<Option<Loc>, GraphError> {
+    pub fn body_loc(&self, analyzer: &impl GraphBackend) -> Result<Option<Loc>, GraphError> {
         if let Some(body_stmt) = &self.underlying(analyzer)?.body {
             Ok(Some(body_stmt.loc()))
         } else {
@@ -42,13 +33,13 @@ impl FunctionNode {
         }
     }
 
-    pub fn definition_loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+    pub fn definition_loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         let underlying = &self.underlying(analyzer)?;
         Ok(underlying.loc)
     }
 
     /// Gets an ordered list of modifiers for a given function
-    pub fn modifiers(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> Vec<FunctionNode> {
+    pub fn modifiers(&self, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) -> Vec<FunctionNode> {
         if let Some(mods) = &self.underlying(analyzer).unwrap().cache.modifiers {
             mods.values().copied().collect()
         } else {
@@ -68,14 +59,14 @@ impl FunctionNode {
         }
     }
 
-    pub fn modifiers_set(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn modifiers_set(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.modifiers_set)
     }
 
     pub fn modifier_input_vars(
         &self,
         mod_num: usize,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Vec<Expression>, GraphError> {
         let modifiers = self.underlying(analyzer)?.modifiers_as_base();
         if let Some(modifier) = modifiers.get(mod_num) {
@@ -91,7 +82,7 @@ impl FunctionNode {
 
     pub fn underlying_mut<'a>(
         &self,
-        analyzer: &'a mut (impl GraphLike + AnalyzerLike),
+        analyzer: &'a mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<&'a mut Function, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Function(func) => Ok(func),
@@ -101,7 +92,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         match self.underlying(analyzer)?.ty {
             FunctionTy::Constructor => Ok(format!(
                 "constructor({})",
@@ -124,7 +115,7 @@ impl FunctionNode {
 
     pub fn loc_specified_name(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<String, GraphError> {
         if let Some(con) = self.maybe_associated_contract(analyzer) {
             Ok(format!("{}.{}", con.name(analyzer)?, self.name(analyzer)?))
@@ -133,7 +124,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn body_ctx(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> ContextNode {
+    pub fn body_ctx(&self, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) -> ContextNode {
         if let Some(body_ctx) = self.underlying(analyzer).unwrap().cache.body_ctx {
             body_ctx
         } else {
@@ -153,7 +144,7 @@ impl FunctionNode {
 
     pub fn maybe_body_ctx(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Option<ContextNode> {
         if let Some(body_ctx) = self.underlying(analyzer).unwrap().cache.body_ctx {
             Some(body_ctx)
@@ -175,7 +166,7 @@ impl FunctionNode {
 
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Option<ContractNode> {
         if let Some(maybe_contract) = self
             .underlying(analyzer)
@@ -217,7 +208,7 @@ impl FunctionNode {
 
     pub fn maybe_associated_source_unit_part(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Option<NodeIdx> {
         if let Some(sup) = self
             .underlying(analyzer)
@@ -258,7 +249,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn associated_source(&self, analyzer: &mut (impl GraphLike + AnalyzerLike)) -> NodeIdx {
+    pub fn associated_source(&self, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) -> NodeIdx {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
             src
         } else {
@@ -278,7 +269,7 @@ impl FunctionNode {
 
     pub fn maybe_associated_source(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Option<NodeIdx> {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
             Some(src)
@@ -293,7 +284,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn params(&self, analyzer: &impl GraphLike) -> Vec<FunctionParamNode> {
+    pub fn params(&self, analyzer: &impl GraphBackend) -> Vec<FunctionParamNode> {
         if let Some(params) = &self.underlying(analyzer).unwrap().cache.params {
             params.to_vec()
         } else {
@@ -315,7 +306,7 @@ impl FunctionNode {
 
     pub fn set_params_and_ret(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
     ) -> Result<(), GraphError> {
         let underlying = self.underlying(analyzer)?.clone();
         let mut params_strs = vec![];
@@ -365,7 +356,7 @@ impl FunctionNode {
 
     pub fn returns<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> impl Iterator<Item = FunctionReturnNode> + 'a {
         analyzer
             .graph()
@@ -374,7 +365,7 @@ impl FunctionNode {
             .map(|edge| FunctionReturnNode::from(edge.source()))
     }
 
-    pub fn is_public_or_ext(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_public_or_ext(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.attributes.iter().any(|attr| {
             matches!(
                 attr,
@@ -387,7 +378,7 @@ impl FunctionNode {
     pub fn get_overriding(
         &self,
         other: &Self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Self, GraphError> {
         let self_attrs = &self.underlying(analyzer)?.attributes;
         let other_attrs = &other.underlying(analyzer)?.attributes;
@@ -422,7 +413,7 @@ impl FunctionNode {
 }
 
 impl AsDotStr for FunctionNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let inputs = self
             .params(analyzer)
             .iter()
@@ -670,7 +661,7 @@ impl From<VariableDefinition> for Function {
 pub struct FunctionParamNode(pub usize);
 
 impl AsDotStr for FunctionParamNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).unwrap().ty)
             .expect("Non-typeable as type");
         format!(
@@ -693,7 +684,7 @@ impl AsDotStr for FunctionParamNode {
 impl FunctionParamNode {
     pub fn underlying<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> Result<&'a FunctionParam, GraphError> {
         match analyzer.node(*self) {
             Node::FunctionParam(param) => Ok(param),
@@ -703,7 +694,7 @@ impl FunctionParamNode {
         }
     }
 
-    pub fn name(&self, analyzer: &'_ impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &'_ impl GraphBackend) -> Result<String, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .name
@@ -712,7 +703,7 @@ impl FunctionParamNode {
             .name)
     }
 
-    pub fn maybe_name(&self, analyzer: &impl GraphLike) -> Result<Option<String>, GraphError> {
+    pub fn maybe_name(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
         if let Some(ident) = self.underlying(analyzer)?.name.clone() {
             Ok(Some(ident.name))
         } else {
@@ -720,7 +711,7 @@ impl FunctionParamNode {
         }
     }
 
-    pub fn range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
+    pub fn range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
         let ty_node = self.underlying(analyzer)?.ty;
         if let Some(var_ty) = VarType::try_from_idx(analyzer, ty_node) {
             Ok(var_ty.range(analyzer)?)
@@ -729,18 +720,18 @@ impl FunctionParamNode {
         }
     }
 
-    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+    pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self.underlying(analyzer)?.loc)
     }
 
-    pub fn ty_str(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn ty_str(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer)?.ty).ok_or(
             GraphError::NodeConfusion("Non-typeable as type".to_string()),
         )?;
         Ok(var_ty.as_dot_str(analyzer))
     }
 
-    pub fn ty(&self, analyzer: &impl GraphLike) -> Result<NodeIdx, GraphError> {
+    pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<NodeIdx, GraphError> {
         Ok(self.underlying(analyzer)?.ty)
     }
 }
@@ -774,7 +765,7 @@ impl From<FunctionParam> for Node {
 
 impl FunctionParam {
     pub fn new(
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         param: Parameter,
         order: usize,
     ) -> Self {
@@ -792,7 +783,7 @@ impl FunctionParam {
 pub struct FunctionReturnNode(pub usize);
 
 impl AsDotStr for FunctionReturnNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).unwrap().ty)
             .expect("Non-typeable as type");
         format!(
@@ -815,7 +806,7 @@ impl AsDotStr for FunctionReturnNode {
 impl FunctionReturnNode {
     pub fn underlying<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> Result<&'a FunctionReturn, GraphError> {
         match analyzer.node(*self) {
             Node::FunctionReturn(ret) => Ok(ret),
@@ -825,7 +816,7 @@ impl FunctionReturnNode {
         }
     }
 
-    pub fn maybe_name(&self, analyzer: &impl GraphLike) -> Result<Option<String>, GraphError> {
+    pub fn maybe_name(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
         if let Some(ident) = self.underlying(analyzer)?.name.clone() {
             Ok(Some(ident.name))
         } else {
@@ -833,7 +824,7 @@ impl FunctionReturnNode {
         }
     }
 
-    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+    pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self.underlying(analyzer)?.loc)
     }
 }
@@ -866,7 +857,7 @@ pub struct FunctionReturn {
 
 impl FunctionReturn {
     pub fn new(
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         param: Parameter,
     ) -> Self {
         FunctionReturn {

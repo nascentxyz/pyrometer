@@ -1,28 +1,38 @@
+use crate::{
+    AnalyzerBackend, GraphBackend, GraphError, VarType, Node, Edge, ContextEdge, 
+    nodes::{ContextVarNode, ContextNode, Concrete, Builtin},
+};
+
+use shared::Search;
+
+use petgraph::Direction;
+use solang_parser::pt::{StorageLocation, Loc};
+
 impl ContextVarNode {
-	pub fn ty<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a VarType, GraphError> {
+	pub fn ty<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a VarType, GraphError> {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
-	pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+	pub fn is_mapping(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_mapping(analyzer)
     }
 
-    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_dyn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_dyn(analyzer)
     }
 
-    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_indexable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_indexable(analyzer)
     }
 
-    pub fn is_storage(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_storage(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?.storage,
             Some(StorageLocation::Storage(..))
         ))
     }
 
-    pub fn is_return_assignment(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_return_assignment(&self, analyzer: &impl GraphBackend) -> bool {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -32,7 +42,7 @@ impl ContextVarNode {
             })
     }
 
-    pub fn is_ext_return_assignment(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_ext_return_assignment(&self, analyzer: &impl GraphBackend) -> bool {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -41,7 +51,7 @@ impl ContextVarNode {
 
     pub fn is_storage_or_calldata_input(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<bool, GraphError> {
         let global_first = self.global_first_version(analyzer);
         Ok(global_first.is_storage(analyzer)? || global_first.is_calldata_input(analyzer))
@@ -49,7 +59,7 @@ impl ContextVarNode {
 
     pub fn is_independent_and_storage_or_calldata(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<bool, GraphError> {
         let global_first = self.global_first_version(analyzer);
         let is_independent = self.is_independent(analyzer)?;
@@ -69,11 +79,11 @@ impl ContextVarNode {
             && is_independent)
     }
 
-    pub fn is_independent(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_independent(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.dependent_on(analyzer, false)?.is_empty() && self.tmp_of(analyzer)?.is_none())
     }
 
-    pub fn is_controllable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_controllable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         if self.is_storage_or_calldata_input(analyzer)? {
             Ok(true)
         } else if let Some(tmp) = self.tmp_of(analyzer)? {
@@ -89,7 +99,7 @@ impl ContextVarNode {
         }
     }
 
-    pub fn is_calldata_input(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_calldata_input(&self, analyzer: &impl GraphBackend) -> bool {
         let global_first = self.global_first_version(analyzer);
         analyzer
             .graph()
@@ -97,7 +107,7 @@ impl ContextVarNode {
             .any(|edge| Edge::Context(ContextEdge::CalldataVariable) == *edge.weight())
     }
 
-    pub fn is_func_input(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_func_input(&self, analyzer: &impl GraphBackend) -> bool {
         let first = self.first_version(analyzer);
         analyzer
             .graph()
@@ -108,21 +118,21 @@ impl ContextVarNode {
             })
     }
 
-    pub fn is_const(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_const(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
         underlying.ty.is_const(analyzer)
     }
 
-    pub fn is_symbolic(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_symbolic(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_symbolic)
     }
 
-    pub fn is_tmp(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_tmp(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
         Ok(underlying.is_tmp())
     }
 
-    pub fn is_return_node(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_return_node(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         if let Some(ctx) = self.maybe_ctx(analyzer) {
             return Ok(ctx.underlying(analyzer)?.ret.iter().any(|(_, node)| {
                 if let Some(node) = node {
@@ -135,7 +145,7 @@ impl ContextVarNode {
         Ok(false)
     }
 
-    pub fn is_return_node_in_any(&self, ctxs: &[ContextNode], analyzer: &impl GraphLike) -> bool {
+    pub fn is_return_node_in_any(&self, ctxs: &[ContextNode], analyzer: &impl GraphBackend) -> bool {
         ctxs.iter().any(|ctx| {
             ctx.underlying(analyzer)
                 .unwrap()
@@ -151,7 +161,7 @@ impl ContextVarNode {
         })
     }
 
-    pub fn is_len_var(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_len_var(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.name(analyzer)?.ends_with(".length")
             && analyzer
                 .search_for_ancestor(
@@ -161,7 +171,7 @@ impl ContextVarNode {
                 .is_some())
     }
 
-    pub fn is_array_index_access(&self, analyzer: &impl GraphLike) -> bool {
+    pub fn is_array_index_access(&self, analyzer: &impl GraphBackend) -> bool {
         analyzer
             .search_for_ancestor(
                 self.first_version(analyzer).into(),
@@ -170,11 +180,11 @@ impl ContextVarNode {
             .is_some()
     }
 
-    pub fn is_concrete(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_concrete(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(self.ty(analyzer)?, VarType::Concrete(_)))
     }
 
-    pub fn as_concrete(&self, analyzer: &impl GraphLike) -> Result<Concrete, GraphError> {
+    pub fn as_concrete(&self, analyzer: &impl GraphBackend) -> Result<Concrete, GraphError> {
         match &self.ty(analyzer)? {
             VarType::Concrete(c) => Ok(c.underlying(analyzer)?.clone()),
             e => Err(GraphError::NodeConfusion(format!(
@@ -188,7 +198,7 @@ impl ContextVarNode {
         loc: Loc,
         ctx: ContextNode,
         cast_ty: Builtin,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let new_underlying = self
             .underlying(analyzer)?
@@ -204,7 +214,7 @@ impl ContextVarNode {
         &self,
         loc: Loc,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let new_underlying = self
             .underlying(analyzer)?
@@ -213,14 +223,14 @@ impl ContextVarNode {
         Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
     }
 
-    pub fn ty_eq(&self, other: &Self, analyzer: &mut impl GraphLike) -> Result<bool, GraphError> {
+    pub fn ty_eq(&self, other: &Self, analyzer: &mut impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.ty_eq(other.ty(analyzer)?, analyzer)
     }
 
     pub fn cast_from(
         &self,
         other: &Self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let to_ty = other.ty(analyzer)?.clone();
         self.cast_from_ty(to_ty, analyzer)?;
@@ -230,7 +240,7 @@ impl ContextVarNode {
     pub fn literal_cast_from(
         &self,
         other: &Self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let to_ty = other.ty(analyzer)?.clone();
         self.literal_cast_from_ty(to_ty, analyzer)?;
@@ -240,7 +250,7 @@ impl ContextVarNode {
     pub fn cast_from_ty(
         &self,
         to_ty: VarType,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         if !from_ty.ty_eq(&to_ty, analyzer)? {
@@ -266,7 +276,7 @@ impl ContextVarNode {
     pub fn literal_cast_from_ty(
         &self,
         to_ty: VarType,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         if !from_ty.ty_eq(&to_ty, analyzer)? {
@@ -286,14 +296,14 @@ impl ContextVarNode {
 
     pub fn try_increase_size(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         self.cast_from_ty(from_ty.max_size(analyzer)?, analyzer)?;
         Ok(())
     }
 
-    pub fn is_int(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_int(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_int(analyzer)
     }
 }

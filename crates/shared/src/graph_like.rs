@@ -1,3 +1,4 @@
+use crate::Heirarchical;
 use crate::AnalyzerLike;
 
 use std::{
@@ -13,14 +14,10 @@ use petgraph::{
 pub type NodeIdx = NodeIndex<usize>;
 pub type EdgeIdx = EdgeIndex<usize>;
 
-pub trait AsDotStr {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String;
-}
-
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphLike {
     type Node;
-    type Edge;
+    type Edge: Ord + PartialEq + Heirarchical + Copy;
     /// Get a mutable reference to the graph
     fn graph_mut(&mut self) -> &mut Graph<Self::Node, Self::Edge, Directed, usize>;
     /// Get a reference to the graph
@@ -359,7 +356,7 @@ struct G<'a, Node, Edge> {
     pub graph: &'a Graph<Node, Edge, Directed, usize>,
 }
 
-impl<Node, Edge> GraphLike for G<'_, Node, Edge> {
+impl<Node, Edge: Ord + PartialEq + Heirarchical + Copy> GraphLike for G<'_, Node, Edge> {
     type Node = Node;
     type Edge = Edge;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {

@@ -1,13 +1,14 @@
-use crate::analyzers::range_parts;
-use crate::analyzers::AnalysisItem;
-use crate::analyzers::RangePart;
-use crate::analyzers::{LocStrSpan, ReportConfig};
-use shared::analyzer::GraphLike;
-use shared::{
-    analyzer::{AnalyzerLike, Search},
-    context::*,
-    range::{Range, SolcRange},
+use crate::{
+    bounds::{range_parts, AnalysisItem, RangePart},
+    LocStrSpan, ReportConfig
 };
+
+use graph::{
+    GraphBackend, AnalyzerBackend, Range, SolcRange,
+    nodes::{ContextVarNode, ContextNode, KilledKind},
+};
+use shared::Search;
+
 use std::collections::BTreeSet;
 
 use solang_parser::pt::{CodeLocation, StorageLocation};
@@ -66,10 +67,10 @@ impl Default for VarBoundAnalysis {
 }
 
 impl VarBoundAnalysis {
-    pub fn conditionals(&self, analyzer: &impl GraphLike) -> Vec<(String, Vec<RangePart>)> {
+    pub fn conditionals(&self, analyzer: &impl GraphBackend) -> Vec<(String, Vec<RangePart>)> {
         let deps = self.ctx.ctx_deps(analyzer).unwrap();
         let deps = deps
-            .values()
+            .iter()
             .map(|var| (var.display_name(analyzer).unwrap(), var))
             .collect::<BTreeMap<_, _>>();
         // create the bound strings
@@ -84,7 +85,7 @@ impl VarBoundAnalysis {
     }
 
     /// Creates an [AnalysisItem] if there is a initial bound for a variable
-    pub fn init_item(&self, analyzer: &impl GraphLike) -> Option<AnalysisItem> {
+    pub fn init_item(&self, analyzer: &impl GraphBackend) -> Option<AnalysisItem> {
         let mut parts = vec![];
         let mut unsat = false;
         if let Some(init_range) = &self.var_def.1 {
@@ -108,8 +109,8 @@ impl VarBoundAnalysis {
     }
 }
 
-impl<T> VarBoundAnalyzer for T where T: Search + AnalyzerLike + Sized {}
-pub trait VarBoundAnalyzer: Search + AnalyzerLike + Sized {
+impl<T> VarBoundAnalyzer for T where T: Search + AnalyzerBackend + Sized {}
+pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
     /// Given a lineage of a context (first element being the youngest, last element being the oldest),
     /// generate a bound analysis for a variable throughout the lineage
     fn bounds_for_var_in_family_tree(

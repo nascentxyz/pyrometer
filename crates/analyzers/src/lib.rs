@@ -1,10 +1,8 @@
 pub mod bounds;
 
-use crate::AnalyzerLike;
-use crate::GraphLike;
+use graph::{GraphBackend, AnalyzerBackend};
 use ariadne::{Cache, Label, Report, ReportKind, Span};
-use bounds::*;
-use shared::analyzer::Search;
+use shared::Search;
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
@@ -14,11 +12,11 @@ mod var_analyzer;
 pub use var_analyzer::*;
 
 pub trait ContextAnalyzer:
-    AnalyzerLike + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
+    AnalyzerBackend + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 impl<T> ContextAnalyzer for T where
-    T: AnalyzerLike + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
+    T: AnalyzerBackend + Search + VarBoundAnalyzer + FunctionVarsBoundAnalyzer
 {
 }
 
@@ -168,9 +166,9 @@ impl Default for ReportConfig {
 
 pub trait ReportDisplay {
     fn report_kind(&self) -> ReportKind;
-    fn msg(&self, analyzer: &impl GraphLike) -> String;
-    fn labels(&self, analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>>;
-    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>>;
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike);
-    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphLike);
+    fn msg(&self, analyzer: &impl GraphBackend) -> String;
+    fn labels(&self, analyzer: &impl GraphBackend) -> Vec<Label<LocStrSpan>>;
+    fn reports(&self, analyzer: &impl GraphBackend) -> Vec<Report<LocStrSpan>>;
+    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphBackend);
+    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphBackend);
 }

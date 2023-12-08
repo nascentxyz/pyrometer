@@ -1,16 +1,22 @@
-use crate::graph::GraphLike;
-use crate::context::ContextVarNode;
+use crate::{VarType, nodes::*};
+
+use shared::{ NodeIdx, AnalyzerLike, GraphLike, Heirarchical};
+
+use lazy_static::lazy_static;
+use solang_parser::pt::Identifier;
+
 use std::collections::HashMap;
 
-use crate::analyzer::AsDotStr;
-use crate::context::ContextNode;
-use crate::{
-    context::{Context, ContextEdge, ContextVar},
-    nodes::*,
-};
-use lazy_static::lazy_static;
-use petgraph::graph::*;
-use solang_parser::pt::Identifier;
+pub trait GraphBackend: GraphLike<
+    Edge = Edge,
+    Node = Node,
+
+> {}
+pub trait AnalyzerBackend: AnalyzerLike<Builtin = Builtin> + GraphBackend {}
+
+pub trait AsDotStr {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String;
+}
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum GraphError {
@@ -86,7 +92,7 @@ pub enum Node {
     Block(Block),
 }
 
-pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphLike) -> String {
+pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphBackend) -> String {
     use crate::Node::*;
     match analyzer.node(idx) {
         Context(_) => ContextNode::from(idx).as_dot_str(analyzer),
@@ -252,8 +258,8 @@ pub enum Edge {
     BuiltinFunction,
 }
 
-impl Edge {
-    pub fn heirarchical_num(&self) -> usize {
+impl Heirarchical for Edge {
+    fn heirarchical_num(&self) -> usize {
         use crate::Edge::*;
         match self {
             Source => 0,

@@ -1,11 +1,16 @@
-use crate::GraphError;
-use shared::{AnalyzerLike, GraphLike};
+use crate::{
+    AnalyzerBackend, GraphBackend, GraphError, Edge, ContextEdge, 
+    nodes::{ContextNode, StructNode, ContractNode, FunctionNode},
+};
+
+use shared::{NodeIdx, Search};
+use std::collections::{BTreeSet, BTreeMap};
 
 impl ContextNode {
 	/// Gets the associated contract for the function for the context
     pub fn associated_contract(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<ContractNode, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -16,7 +21,7 @@ impl ContextNode {
     /// Tries to get the associated function for the context
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Option<ContractNode>, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -26,7 +31,7 @@ impl ContextNode {
     /// Tries to get the associated source for the context
     pub fn maybe_associated_source(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Option<NodeIdx> {
         let context = self.underlying(analyzer).unwrap();
         if let Some(src) = context.cache.associated_source {
@@ -47,7 +52,7 @@ impl ContextNode {
     /// Tries to get the associated source unit part for the context
     pub fn associated_source_unit_part(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<NodeIdx, GraphError> {
         if let Some(sup) = self
             .associated_fn(analyzer)?
@@ -64,7 +69,7 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_modifiers(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         let Some(source) = self.maybe_associated_source(analyzer) else {
@@ -136,7 +141,7 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_funcs(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         if let Some(vis) = &self.underlying(analyzer)?.cache.visible_funcs {
@@ -182,7 +187,7 @@ impl ContextNode {
     /// Gets all visible functions
     pub fn source_funcs(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
     ) -> Vec<FunctionNode> {
         // TODO: filter privates
         let Some(source) = self.maybe_associated_source(analyzer) else {
@@ -205,7 +210,7 @@ impl ContextNode {
     /// Gets all visible structs
     pub fn visible_structs(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
     ) -> Vec<StructNode> {
         // TODO: filter privates
         let Some(source) = self.maybe_associated_source(analyzer) else {
@@ -220,7 +225,7 @@ impl ContextNode {
     }
 
     /// Gets the associated function for the context
-    pub fn associated_fn(&self, analyzer: &impl GraphLike) -> Result<FunctionNode, GraphError> {
+    pub fn associated_fn(&self, analyzer: &impl GraphBackend) -> Result<FunctionNode, GraphError> {
         let underlying = self.underlying(analyzer)?;
         if let Some(fn_call) = underlying.fn_call {
             Ok(fn_call)
@@ -232,7 +237,7 @@ impl ContextNode {
     }
 
     /// Gets the associated function name for the context
-    pub fn associated_fn_name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn associated_fn_name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         self.associated_fn(analyzer)?.name(analyzer)
     }
 }

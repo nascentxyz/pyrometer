@@ -1,8 +1,6 @@
-use crate::analyzer::GraphError;
-use crate::analyzer::{AnalyzerLike, GraphLike};
-use crate::Builtin;
-use crate::VarType;
-use crate::{Node, NodeIdx};
+use crate::{AnalyzerBackend, GraphBackend, Node, GraphError, nodes::Builtin, VarType};
+use shared::NodeIdx;
+
 use ethers_core::types::{Address, H256, I256, U256};
 
 /// An index in the graph that references a [`Concrete`] node
@@ -11,7 +9,7 @@ pub struct ConcreteNode(pub usize);
 
 impl ConcreteNode {
     /// Gets the underlying node data for the [`Concrete`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Concrete, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Concrete, GraphError> {
         match analyzer.node(*self) {
             Node::Concrete(c) => Ok(c),
             e => Err(GraphError::NodeConfusion(format!(
@@ -23,7 +21,7 @@ impl ConcreteNode {
     /// Creates a version of this concrete that is max size
     pub fn max_size(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
         Ok(analyzer.add_node(Node::Concrete(c)).into())
@@ -32,7 +30,7 @@ impl ConcreteNode {
     /// Gets the internal type of the dynamic that backs this. Panics if this is not a dynamic concrete
     pub fn dynamic_underlying_ty(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<VarType, GraphError> {
         let builtin = self.underlying(analyzer)?.dynamic_underlying_ty().unwrap();
         let bn = analyzer.builtin_or_add(builtin);
@@ -41,22 +39,22 @@ impl ConcreteNode {
     }
 
     /// Returns whether this is a dynamic concrete
-    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_dyn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_dyn())
     }
 
     /// Returns whether this is a concrete sized array
-    pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_sized_array(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_sized_array())
     }
 
     /// Returns the size of the array size if it is an array-like concrete
-    pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
+    pub fn maybe_array_size(&self, analyzer: &impl GraphBackend) -> Result<Option<U256>, GraphError> {
         Ok(self.underlying(analyzer)?.maybe_array_size())
     }
 
     /// Returns whether this concrete is indexable
-    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_indexable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_indexable())
     }
 }

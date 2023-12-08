@@ -1,12 +1,7 @@
-use crate::analyzer::AsDotStr;
-use crate::analyzer::GraphError;
-use crate::analyzer::GraphLike;
+use crate::{GraphBackend, AsDotStr, Node, GraphError};
+use shared::NodeIdx;
 
-use crate::Node;
-use crate::NodeIdx;
-use ethers_core::types::Address;
-use ethers_core::types::H256;
-use ethers_core::types::U256;
+use ethers_core::types::{Address, H256, U256};
 
 /// An index in the graph that references a Block node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -14,7 +9,7 @@ pub struct BlockNode(pub usize);
 
 impl BlockNode {
     /// Gets the underlying node data for the block environment
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Block, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Block, GraphError> {
         match analyzer.node(*self) {
             Node::Block(st) => Ok(st),
             e => Err(GraphError::NodeConfusion(format!(
@@ -25,7 +20,7 @@ impl BlockNode {
 }
 
 impl AsDotStr for BlockNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         format!("block {{ {:?} }}", self.underlying(analyzer).unwrap())
     }
 }

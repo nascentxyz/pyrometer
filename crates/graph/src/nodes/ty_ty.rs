@@ -1,15 +1,13 @@
-use crate::analyzer::AsDotStr;
-use crate::analyzer::{AnalyzerLike, GraphLike};
-use crate::nodes::GraphError;
-use crate::Node;
-use crate::NodeIdx;
-use crate::VarType;
+use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, VarType};
+
+use shared::NodeIdx;
+
 use solang_parser::pt::{Expression, Identifier, Loc, TypeDefinition};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct TyNode(pub usize);
 impl TyNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Ty, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Ty, GraphError> {
         match analyzer.node(*self) {
             Node::Ty(ty) => Ok(ty),
             e => Err(GraphError::NodeConfusion(format!(
@@ -18,7 +16,7 @@ impl TyNode {
         }
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self.underlying(analyzer)?.name.to_string())
     }
 }
@@ -36,7 +34,7 @@ impl From<NodeIdx> for TyNode {
 }
 
 impl AsDotStr for TyNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
@@ -65,7 +63,7 @@ impl From<Ty> for Node {
 
 impl Ty {
     pub fn new(
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         ty: TypeDefinition,
     ) -> Ty {
         Ty {

@@ -1,3 +1,14 @@
+use crate::{
+    AnalyzerBackend, GraphBackend, GraphError, VarType, Node, SolcRange, TypeNode,
+    range::Range,
+    nodes::{ContextVarNode, ContextNode, Concrete, Builtin, ContractNode, FunctionNode, FunctionParam, FunctionReturn, BuiltInNode, EnumNode, Field, TyNode, StructNode, ConcreteNode},
+};
+
+use crate::range::elem::*;
+use shared::NodeIdx;
+
+use solang_parser::pt::{StorageLocation, Loc};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextVar {
     pub loc: Option<Loc>,
@@ -48,7 +59,7 @@ impl ContextVar {
         loc: Loc,
         ctx: ContextNode,
         concrete_node: ConcreteNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let name = format!(
             "tmp_{}({})",
@@ -73,7 +84,7 @@ impl ContextVar {
         loc: Loc,
         ctx: ContextNode,
         cast_ty: Builtin,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
@@ -92,7 +103,7 @@ impl ContextVar {
         &self,
         loc: Loc,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
@@ -105,7 +116,7 @@ impl ContextVar {
     pub fn new_from_contract(
         loc: Loc,
         contract_node: ContractNode,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
@@ -127,7 +138,7 @@ impl ContextVar {
         loc: Loc,
         struct_node: StructNode,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
@@ -150,7 +161,7 @@ impl ContextVar {
         loc: Loc,
         ty_node: TyNode,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
@@ -172,7 +183,7 @@ impl ContextVar {
     pub fn new_from_builtin(
         loc: Loc,
         bn_node: BuiltInNode,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
@@ -189,7 +200,7 @@ impl ContextVar {
 
     pub fn fallback_range(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<SolcRange>, GraphError> {
         match &self.ty {
             VarType::User(TypeNode::Contract(_), ref maybe_range) => {
@@ -390,7 +401,7 @@ impl ContextVar {
     }
 
     pub fn maybe_from_user_ty(
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         loc: Loc,
         node_idx: NodeIdx,
     ) -> Option<Self> {
@@ -451,7 +462,7 @@ impl ContextVar {
     }
 
     pub fn maybe_new_from_field(
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         loc: Loc,
         parent_var: &ContextVar,
         field: Field,
@@ -478,7 +489,7 @@ impl ContextVar {
     }
 
     pub fn new_from_enum_variant(
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         ctx: ContextNode,
         loc: Loc,
         enum_node: EnumNode,
@@ -502,7 +513,7 @@ impl ContextVar {
     }
 
     pub fn new_from_index(
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         loc: Loc,
         parent_name: String,
         parent_display_name: String,
@@ -524,7 +535,7 @@ impl ContextVar {
     }
 
     pub fn new_from_func(
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         func: FunctionNode,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
@@ -541,7 +552,7 @@ impl ContextVar {
     }
 
     pub fn maybe_new_from_func_param(
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         param: FunctionParam,
     ) -> Option<Self> {
         if let Some(name) = param.name {
@@ -565,7 +576,7 @@ impl ContextVar {
         }
     }
 
-    pub fn maybe_new_from_func_ret(analyzer: &impl GraphLike, ret: FunctionReturn) -> Option<Self> {
+    pub fn maybe_new_from_func_ret(analyzer: &impl GraphBackend, ret: FunctionReturn) -> Option<Self> {
         if let Some(name) = ret.name {
             if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
                 Some(ContextVar {
@@ -589,7 +600,7 @@ impl ContextVar {
 
     pub fn new_from_func_ret(
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         ret: FunctionReturn,
     ) -> Result<Option<Self>, GraphError> {
         let (is_tmp, name) = if let Some(name) = ret.name {

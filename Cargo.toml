@@ -5,7 +5,6 @@ members = [
 	"crates/graph",
 	"crates/pyrometer",
 	"crates/queries",
-	"crates/range",
 	"crates/shared",
 	"crates/solc-expressions",
 ]
@@ -36,7 +35,6 @@ analyzers = { path = "crates/analyzers" }
 graph = { path = "crates/graph" }
 pyrometer = { path = "crates/pyrometer" }
 queries = { path = "crates/queries" }
-range = { path = "crates/range" }
 shared = { path = "crates/shared" }
 solc-expressions = { path = "crates/solc-expressions" }
 

@@ -1,26 +1,25 @@
-use petgraph::stable_graph::StableGraph;
+use crate::{
+    GraphBackend, GraphError,
+    nodes::{Concrete, ContextVarNode},
+    range::elem::*,
+    solvers::{AtomOrPart, Atomize, OpType, SolverAtom},
+};
 
-use crate::GraphError;
-use range::elem::RangeElem;
-use range::elem::;
-use range::elem_ty::Elem;
-use crate::solvers::AtomOrPart;
-use crate::solvers::Atomize;
-use crate::solvers::OpType;
-use crate::solvers::SolverAtom;
-use crate::Concrete;
-use crate::ContextVarNode;
-use crate::GraphLike;
-use ethers_core::types::I256;
-use ethers_core::types::U256;
+use ethers_core::types::{U256, I256};
 use itertools::Itertools;
-use petgraph::graph::NodeIndex;
-use petgraph::visit::EdgeRef;
-use petgraph::visit::IntoNodeIdentifiers;
-use petgraph::visit::NodeIndexable;
-use petgraph::visit::VisitMap;
-use petgraph::visit::Visitable;
-use petgraph::Directed;
+use petgraph::{
+    stable_graph::StableGraph,
+    graph::NodeIndex,
+    visit::{
+        EdgeRef,
+        IntoNodeIdentifiers,
+        NodeIndexable,
+        VisitMap,
+        Visitable,
+    },
+    Directed
+};
+
 use std::collections::BTreeMap;
 
 pub type DLGraph = StableGraph<AtomOrPart, AtomOrPart, Directed, usize>;
@@ -204,7 +203,7 @@ impl DLSolver {
         self.normalized_constraints.values().cloned().collect()
     }
 
-    pub fn solve_partial(&mut self, analyzer: &impl GraphLike) -> Result<SolveStatus, GraphError> {
+    pub fn solve_partial(&mut self, analyzer: &impl GraphBackend) -> Result<SolveStatus, GraphError> {
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on();
@@ -364,7 +363,7 @@ impl DLSolver {
     pub fn dl_solve(
         &mut self,
         normalized_constraints: Vec<SolverAtom>,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<DLSolveResult, GraphError> {
         let mut added_atoms = vec![];
         let mut added_deps = vec![];
@@ -833,7 +832,7 @@ impl DLSolver {
 pub fn find_negative_cycle(
     g: &DLGraph,
     source: NodeIndex<usize>,
-    analyzer: &impl GraphLike,
+    analyzer: &impl GraphBackend,
 ) -> Option<Vec<NodeIndex<usize>>> {
     let ix = |i| g.to_index(i);
     let mut path = Vec::<NodeIndex<usize>>::new();
@@ -907,7 +906,7 @@ pub fn find_negative_cycle(
 fn bellman_ford_initialize_relax(
     g: &DLGraph,
     source: NodeIndex<usize>,
-    analyzer: &impl GraphLike,
+    analyzer: &impl GraphBackend,
 ) -> (Vec<Elem<Concrete>>, Vec<Option<NodeIndex<usize>>>) {
     // Step 1: initialize graph
     let mut predecessor = vec![None; g.node_bound()];

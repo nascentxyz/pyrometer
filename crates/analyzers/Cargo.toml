@@ -12,7 +12,7 @@ repository.workspace = true
 
 [dependencies]
 graph.workspace = true
-range.workspace = true
+shared.workspace = true
 
 solang-parser.workspace = true
 ariadne.workspace = true

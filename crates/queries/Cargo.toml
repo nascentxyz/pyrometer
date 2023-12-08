@@ -13,7 +13,6 @@ repository.workspace = true
 [dependencies]
 analyzers.workspace = true
 graph.workspace = true
-range.workspace = true
 solc-expressions.workspace = true
 
 solang-parser.workspace = true

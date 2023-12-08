@@ -1,13 +1,9 @@
-use crate::analyzers::FunctionVarsBoundAnalysis;
-use crate::analyzers::VarBoundAnalysis;
+use crate::{LocSpan, LocStrSpan, ReportConfig, VarBoundAnalysis, FunctionVarsBoundAnalysis};
 
-use crate::analyzers::LocSpan;
-use crate::analyzers::{LocStrSpan, ReportConfig};
-
-use shared::analyzer::GraphLike;
-use shared::{
-    context::*,
-    range::{range_string::*, Range, RangeEval, SolcRange},
+use graph::{
+    GraphBackend, Range, RangeEval, SolcRange,
+    range_string::ToRangeString,
+    nodes::ContextNode,
 };
 
 use ariadne::{Color, Fmt, Label, Span};
@@ -77,7 +73,7 @@ pub struct OrderedAnalysis {
 }
 
 impl OrderedAnalysis {
-    pub fn from_bound_analysis(ba: VarBoundAnalysis, analyzer: &impl GraphLike) -> Self {
+    pub fn from_bound_analysis(ba: VarBoundAnalysis, analyzer: &impl GraphBackend) -> Self {
         let mut analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>> = Default::default();
         if let Some(init) = ba.init_item(analyzer) {
             let source: usize = *LocSpan(init.loc.1).source();
@@ -110,7 +106,7 @@ impl OrderedAnalysis {
         Self { analyses }
     }
 
-    pub fn from_func_analysis(fvba: FunctionVarsBoundAnalysis, analyzer: &impl GraphLike) -> Self {
+    pub fn from_func_analysis(fvba: FunctionVarsBoundAnalysis, analyzer: &impl GraphBackend) -> Self {
         let mut analyses = Self::default();
         fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
             bas.iter().for_each(|ba| {
@@ -164,39 +160,39 @@ impl RangePart {
     }
 }
 
-impl Into<Label<LocStrSpan>> for AnalysisItem {
-    fn into(self) -> ariadne::Label<LocStrSpan> {
-        let (color, order, priority) = if self.init {
-            (Color::Magenta, self.order, -1)
+impl From<AnalysisItem> for Label<LocStrSpan> {
+    fn from(val: AnalysisItem) -> Self {
+        let (color, order, priority) = if val.init {
+            (Color::Magenta, val.order, -1)
         } else {
             (
-                match self.storage {
+                match val.storage {
                     Some(StorageLocation::Memory(..)) => Color::Blue,
                     Some(StorageLocation::Storage(..)) => Color::Green,
                     Some(StorageLocation::Calldata(..)) => Color::White,
                     None => Color::Cyan,
                 },
-                self.order,
+                val.order,
                 0,
             )
         };
 
-        Label::new(self.loc)
+        Label::new(val.loc)
             .with_message(format!(
                 "{}\"{}\"{}{}",
-                match self.storage {
+                match val.storage {
                     Some(StorageLocation::Memory(..)) => "Memory var ",
                     Some(StorageLocation::Storage(..)) => "Storage var ",
                     Some(StorageLocation::Calldata(..)) => "Calldata var ",
                     None => "",
                 },
-                self.name,
-                self.parts
+                val.name,
+                val.parts
                     .into_iter()
                     .map(|part| part.to_cli_string())
                     .collect::<Vec<_>>()
                     .join(" "),
-                if self.unsat {
+                if val.unsat {
                     " - unsatisfiable range, unreachable".fg(Color::Red)
                 } else {
                     "".fg(Color::Red)
@@ -252,7 +248,7 @@ impl ToString for RangePart {
 
 /// Creates an Vec<[RangePart]> from a range based on the current [ReportConfig]
 pub fn range_parts(
-    analyzer: &impl GraphLike,
+    analyzer: &impl GraphBackend,
     report_config: &ReportConfig,
     range: &SolcRange,
 ) -> (Vec<RangePart>, bool) {
@@ -264,8 +260,9 @@ pub fn range_parts(
             .to_range_string(false, analyzer)
             .s
     } else if report_config.simplify_bounds {
+        let mut exclude = vec![];
         range
-            .simplified_range_min(analyzer)
+            .simplified_range_min(&mut exclude, analyzer)
             .unwrap()
             .to_range_string(false, analyzer)
             .s
@@ -279,8 +276,9 @@ pub fn range_parts(
             .to_range_string(true, analyzer)
             .s
     } else if report_config.simplify_bounds {
+        let mut exclude = vec![];
         range
-            .simplified_range_max(analyzer)
+            .simplified_range_max(&mut exclude, analyzer)
             .unwrap()
             .to_range_string(true, analyzer)
             .s

@@ -1,8 +1,7 @@
 use crate::{
-	Node, Edge, GraphError, ContextEdge,
+	AnalyzerBackend, GraphBackend, Node, Edge, GraphError, ContextEdge,
 	nodes::{ContextVarNode, ContextNode, ExprRet},
 };
-use shared::{AnalyzerLike, GraphLike};
 
 use solang_parser::pt::Loc;
 
@@ -13,7 +12,7 @@ impl ContextNode {
 	pub fn add_var(
         &self,
         var: ContextVarNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let name = var.name(analyzer)?;
         let vars = &mut self.underlying_mut(analyzer)?.cache.vars;
@@ -22,7 +21,7 @@ impl ContextNode {
     }
 
 	/// Gets a variable by name in the context
-    pub fn var_by_name(&self, analyzer: &impl GraphLike, name: &str) -> Option<ContextVarNode> {
+    pub fn var_by_name(&self, analyzer: &impl GraphBackend, name: &str) -> Option<ContextVarNode> {
         self.underlying(analyzer)
             .unwrap()
             .cache
@@ -34,7 +33,7 @@ impl ContextNode {
     /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found
     pub fn var_by_name_or_recurse(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         if let Some(var) = self.var_by_name(analyzer, name) {
@@ -47,14 +46,14 @@ impl ContextNode {
     }
 
     /// Gets all variables associated with a context
-    pub fn vars<'a>(&self, analyzer: &'a impl GraphLike) -> &'a BTreeMap<String, ContextVarNode> {
+    pub fn vars<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a BTreeMap<String, ContextVarNode> {
         &self.underlying(analyzer).unwrap().cache.vars
     }
 
     /// Gets all variables associated with a context
     pub fn local_vars<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> &'a BTreeMap<String, ContextVarNode> {
         self.vars(analyzer)
     }
@@ -62,7 +61,7 @@ impl ContextNode {
     /// Gets the latest version of a variable associated with a context
     pub fn latest_var_by_name(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         name: &str,
     ) -> Option<ContextVarNode> {
         self.var_by_name(analyzer, name)
@@ -72,7 +71,7 @@ impl ContextNode {
     /// Reads the current temporary counter and increments the counter
     pub fn new_tmp(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<usize, GraphError> {
         let context = self.underlying_mut(analyzer)?;
         let ret = context.tmp_var_ctr;
@@ -84,7 +83,7 @@ impl ContextNode {
     pub fn push_tmp_expr(
         &self,
         expr_ret: ExprRet,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         underlying_mut.tmp_expr.push(Some(expr_ret));
@@ -96,7 +95,7 @@ impl ContextNode {
     pub fn append_tmp_expr(
         &self,
         expr_ret: ExprRet,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         match underlying_mut.tmp_expr.pop() {
@@ -136,7 +135,7 @@ impl ContextNode {
     pub fn pop_tmp_expr(
         &self,
         loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         if let Some(Some(expr)) = underlying_mut.tmp_expr.pop() {
@@ -151,7 +150,7 @@ impl ContextNode {
     pub fn push_expr(
         &self,
         expr_ret: ExprRet,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "pushing: {}, existing: {:?}, path: {}",
@@ -173,7 +172,7 @@ impl ContextNode {
         &self,
         expr: ExprRet,
         loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<ExprRet, GraphError> {
         match expr {
             ExprRet::SingleLiteral(var) => Ok(ExprRet::SingleLiteral(
@@ -197,7 +196,7 @@ impl ContextNode {
         &self,
         var: ContextVarNode,
         loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<ContextVarNode, GraphError> {
         if let Some(ctx) = var.maybe_ctx(analyzer) {
             if ctx != *self {
@@ -225,7 +224,7 @@ impl ContextNode {
     pub fn pop_expr_latest(
         &self,
         loc: Loc,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
@@ -241,7 +240,7 @@ impl ContextNode {
     }
 
     /// Gets local vars that were assigned from a function return
-    pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
+    pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)
             .iter()
             .flat_map(|(_name, var)| var.return_assignments(analyzer))
@@ -249,7 +248,7 @@ impl ContextNode {
     }
 
     /// Gets local vars that were assigned from an external function return
-    pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
+    pub fn vars_assigned_from_ext_fn_ret(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)
             .iter()
             .flat_map(|(_name, var)| var.ext_return_assignments(analyzer))

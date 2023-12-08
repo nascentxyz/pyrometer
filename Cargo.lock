@@ -17,7 +17,7 @@ version = "0.2.0"
 dependencies = [
  "ariadne",
  "graph",
- "range",
+ "shared",
  "solang-parser",
 ]
 
@@ -589,9 +589,9 @@ version = "0.2.0"
 dependencies = [
  "ethers-core",
  "hex",
+ "itertools",
  "lazy_static",
  "petgraph",
- "range",
  "shared",
  "solang-parser",
  "tracing",
@@ -1139,7 +1139,6 @@ dependencies = [
  "ariadne",
  "ethers-core",
  "graph",
- "range",
  "solang-parser",
  "solc-expressions",
  "tracing",
@@ -1154,7 +1153,6 @@ dependencies = [
  "ariadne",
  "ethers-core",
  "graph",
- "range",
  "solang-parser",
  "solc-expressions",
  "tracing",
@@ -1213,18 +1211,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d25bf25ec5ae4a3f1b92f929810509a2f53d7dca2f50b794ff57e3face536c8f"
 dependencies = [
  "rand_core",
-]
-
-[[package]]
-name = "range"
-version = "0.2.0"
-dependencies = [
- "ethers-core",
- "hex",
- "shared",
- "solang-parser",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

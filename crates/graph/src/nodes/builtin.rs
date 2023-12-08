@@ -1,10 +1,18 @@
+use crate::{AnalyzerBackend, GraphBackend, SolcRange, VarType, Node, GraphError, nodes::Concrete};
+
+use shared::NodeIdx;
+use crate::range::elem::*;
+
+use solang_parser::pt::{Type, Expression, Loc};
+use ethers_core::types::{Address, H256, U256, I256};
+
 /// A builtin node
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct BuiltInNode(pub usize);
 
 impl BuiltInNode {
     /// Gets the underlying builtin from the graph
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Builtin, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Builtin, GraphError> {
         match analyzer.node(*self) {
             Node::Builtin(b) => Ok(b),
             e => Err(GraphError::NodeConfusion(format!(
@@ -14,7 +22,7 @@ impl BuiltInNode {
     }
 
     /// Gets the size of the builtin
-    pub fn num_size(&self, analyzer: &impl GraphLike) -> Result<Option<u16>, GraphError> {
+    pub fn num_size(&self, analyzer: &impl GraphBackend) -> Result<Option<u16>, GraphError> {
         let underlying = self.underlying(analyzer)?;
         Ok(underlying.num_size())
     }
@@ -23,7 +31,7 @@ impl BuiltInNode {
     pub fn implicitly_castable_to(
         &self,
         other: &Self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<bool, GraphError> {
         Ok(self
             .underlying(analyzer)?
@@ -33,7 +41,7 @@ impl BuiltInNode {
     /// Gets the maximum size version of this builtin, i.e. uint16 -> uint256
     pub fn max_size(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         let m = self.underlying(analyzer)?.max_size();
         Ok(analyzer.builtin_or_add(m).into())
@@ -42,7 +50,7 @@ impl BuiltInNode {
     /// Gets the underlying type of the dynamic builtin backing it. i.e. uint256[] -> uint256
     pub fn dynamic_underlying_ty(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<VarType, GraphError> {
         match self.underlying(analyzer)? {
             Builtin::Array(v_ty) | Builtin::SizedArray(_, v_ty) => {
@@ -64,12 +72,12 @@ impl BuiltInNode {
     }
 
     /// Returns whether the builtin is a mapping
-    pub fn is_mapping(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_mapping(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(self.underlying(analyzer)?, Builtin::Mapping(_, _)))
     }
 
     /// Returns whether the builtin is a sized array
-    pub fn is_sized_array(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_sized_array(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?,
             Builtin::SizedArray(_, _)
@@ -77,7 +85,7 @@ impl BuiltInNode {
     }
 
     /// Returns whether the builtin is a sized array or bytes
-    pub fn maybe_array_size(&self, analyzer: &impl GraphLike) -> Result<Option<U256>, GraphError> {
+    pub fn maybe_array_size(&self, analyzer: &impl GraphBackend) -> Result<Option<U256>, GraphError> {
         match self.underlying(analyzer)? {
             Builtin::SizedArray(s, _) => Ok(Some(*s)),
             Builtin::Bytes(s) => Ok(Some(U256::from(*s))),
@@ -86,17 +94,17 @@ impl BuiltInNode {
     }
 
     /// Returns whether the builtin is a dynamic type
-    pub fn is_dyn(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_dyn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_dyn())
     }
 
     /// Returns whether the builtin is indexable
-    pub fn is_indexable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn is_indexable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_indexable())
     }
 
     /// Returns the zero range for this builtin type, i.e. uint256 -> [0, 0]
-    pub fn zero_range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
+    pub fn zero_range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
         Ok(self.underlying(analyzer)?.zero_range())
     }
 }
@@ -151,7 +159,7 @@ impl Builtin {
     /// `mapping (uint => MyType)`, we may not have parsed `MyType`, so we now try to resolve it
     pub fn unresolved_as_resolved(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<Self, GraphError> {
         match self {
             Builtin::Array(n) => Ok(Builtin::Array(n.unresolved_as_resolved(analyzer)?)),
@@ -236,7 +244,7 @@ impl Builtin {
     /// Try to convert from a [`Type`] to a Builtin
     pub fn try_from_ty(
         ty: Type,
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
     ) -> Option<Builtin> {
         use Type::*;
         match ty {
@@ -374,7 +382,7 @@ impl Builtin {
     }
 
     /// Converts the builtin to a string
-    pub fn as_string(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn as_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         use Builtin::*;
         match self {
             Address => Ok("address".to_string()),

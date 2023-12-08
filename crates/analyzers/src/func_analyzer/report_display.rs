@@ -1,7 +1,16 @@
-use crate::analyzers::func_analyzer::*;
-use crate::analyzers::{LocStrSpan, ReportDisplay};
-use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Span};
-use shared::analyzer::GraphLike;
+use crate::{
+    LocStrSpan,
+    ReportKind,
+    FunctionVarsBoundAnalysis,
+    ReportDisplay
+};
+
+use graph::{
+    GraphBackend,
+};
+
+use ariadne::{Color, Config, Fmt, Label, Report, Span, Cache};
+
 use std::collections::BTreeMap;
 
 pub struct CLIFunctionVarsBoundAnalysis<'a> {
@@ -25,7 +34,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &impl GraphLike) -> String {
+    fn msg(&self, analyzer: &impl GraphBackend) -> String {
         format!(
             "Bounds for function: {}",
             format!(
@@ -39,11 +48,11 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         )
     }
 
-    fn labels(&self, _analyzer: &impl GraphLike) -> Vec<Label<LocStrSpan>> {
+    fn labels(&self, _analyzer: &impl GraphBackend) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &impl GraphLike) -> Vec<Report<LocStrSpan>> {
+    fn reports(&self, analyzer: &impl GraphBackend) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             self.func_var_bound_analysis.ctx_loc.source(),
@@ -76,14 +85,14 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         reports
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
+    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphBackend) {
         let reports = &self.reports(analyzer);
         for report in reports.iter() {
             report.print(&mut src).unwrap();
         }
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphLike) {
+    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphBackend) {
         let reports = &self.reports(analyzer);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();

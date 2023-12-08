@@ -1,15 +1,9 @@
-use crate::analyzer::GraphError;
-use crate::analyzer::Search;
-use crate::analyzer::{AnalyzerLike, GraphLike};
-use crate::AsDotStr;
-use crate::Edge;
-use crate::FunctionNode;
-use crate::Node;
-use crate::NodeIdx;
-use crate::StructNode;
-use crate::VarNode;
+use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, Edge, nodes::{StructNode, FunctionNode, VarNode}};
+use shared::{NodeIdx, Search};
+
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
+
 use std::collections::BTreeMap;
 
 /// An index in the graph that references a [`Contract`] node
@@ -17,7 +11,7 @@ use std::collections::BTreeMap;
 pub struct ContractNode(pub usize);
 
 impl AsDotStr for ContractNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
@@ -33,7 +27,7 @@ impl AsDotStr for ContractNode {
 
 impl ContractNode {
     /// Gets the underlying node data for the [`Contract`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Contract, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Contract, GraphError> {
         match analyzer.node(*self) {
             Node::Contract(contract) => Ok(contract),
             e => Err(GraphError::NodeConfusion(format!(
@@ -42,7 +36,7 @@ impl ContractNode {
         }
     }
 
-    pub fn super_contracts(&self, analyzer: &impl GraphLike) -> Vec<ContractNode> {
+    pub fn super_contracts(&self, analyzer: &impl GraphBackend) -> Vec<ContractNode> {
         analyzer
             .graph()
             .edges_directed((*self).into(), Direction::Incoming)
@@ -51,7 +45,7 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphLike + AnalyzerLike)) {
+    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) {
         let src = self.associated_source(analyzer);
         let all_contracts = analyzer.search_children_include_via(
             src,
@@ -80,11 +74,11 @@ impl ContractNode {
         });
     }
 
-    pub fn direct_inherited_contracts(&self, analyzer: &impl GraphLike) -> Vec<ContractNode> {
+    pub fn direct_inherited_contracts(&self, analyzer: &impl GraphBackend) -> Vec<ContractNode> {
         self.underlying(analyzer).unwrap().inherits.clone()
     }
 
-    pub fn all_inherited_contracts(&self, analyzer: &impl GraphLike) -> Vec<ContractNode> {
+    pub fn all_inherited_contracts(&self, analyzer: &impl GraphBackend) -> Vec<ContractNode> {
         let mut inherits = self.direct_inherited_contracts(analyzer);
         inherits.extend(
             inherits
@@ -96,7 +90,7 @@ impl ContractNode {
     }
 
     /// Gets the name from the underlying node data for the [`Contract`]
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .name
@@ -106,7 +100,7 @@ impl ContractNode {
     }
 
     /// Tries to Get the name from the underlying node data for the [`Contract`]
-    pub fn maybe_name(&self, analyzer: &impl GraphLike) -> Result<Option<String>, GraphError> {
+    pub fn maybe_name(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
         if let Some(ident) = self.underlying(analyzer)?.name.clone() {
             Ok(Some(ident.name))
         } else {
@@ -115,12 +109,12 @@ impl ContractNode {
     }
 
     /// Gets the sourcecode location from the underlying node data for the [`Contract`]
-    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+    pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self.underlying(analyzer)?.loc)
     }
 
     /// Gets all associated functions from the underlying node data for the [`Contract`]
-    pub fn funcs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+    pub fn funcs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<FunctionNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
             .into_iter()
@@ -129,7 +123,7 @@ impl ContractNode {
     }
 
     /// Gets all associated storage vars from the underlying node data for the [`Contract`]
-    pub fn direct_storage_vars(&self, analyzer: &(impl GraphLike + Search)) -> Vec<VarNode> {
+    pub fn direct_storage_vars(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<VarNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Var, 1, 0)
             .into_iter()
@@ -138,7 +132,7 @@ impl ContractNode {
     }
 
     /// Gets all associated storage vars from the underlying node data for the [`Contract`]
-    pub fn all_storage_vars(&self, analyzer: &(impl GraphLike + Search)) -> Vec<VarNode> {
+    pub fn all_storage_vars(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<VarNode> {
         let mut ret = self
             .all_inherited_contracts(analyzer)
             .iter()
@@ -150,7 +144,7 @@ impl ContractNode {
 
     pub fn funcs_mapping(
         &self,
-        analyzer: &(impl GraphLike + Search + AnalyzerLike),
+        analyzer: &(impl GraphBackend + Search + AnalyzerBackend),
     ) -> BTreeMap<String, FunctionNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
@@ -164,7 +158,7 @@ impl ContractNode {
 
     pub fn linearized_functions(
         &self,
-        analyzer: &(impl GraphLike + Search + AnalyzerLike),
+        analyzer: &(impl GraphBackend + Search + AnalyzerBackend),
     ) -> BTreeMap<String, FunctionNode> {
         let mut mapping = self.funcs_mapping(analyzer);
         self.direct_inherited_contracts(analyzer)
@@ -182,7 +176,7 @@ impl ContractNode {
         mapping
     }
 
-    pub fn structs(&self, analyzer: &(impl GraphLike + Search)) -> Vec<StructNode> {
+    pub fn structs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<StructNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Struct, 1, 0)
             .into_iter()
@@ -191,7 +185,7 @@ impl ContractNode {
     }
 
     /// Gets all associated modifiers from the underlying node data for the [`Contract`]
-    pub fn modifiers(&self, analyzer: &(impl GraphLike + Search)) -> Vec<FunctionNode> {
+    pub fn modifiers(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<FunctionNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Modifier, 1, 0)
             .into_iter()
@@ -199,13 +193,13 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn associated_source_unit_part(&self, analyzer: &(impl GraphLike + Search)) -> NodeIdx {
+    pub fn associated_source_unit_part(&self, analyzer: &(impl GraphBackend + Search)) -> NodeIdx {
         analyzer
             .search_for_ancestor(self.0.into(), &Edge::Contract)
             .expect("detached contract")
     }
 
-    pub fn associated_source(&self, analyzer: &(impl GraphLike + Search)) -> NodeIdx {
+    pub fn associated_source(&self, analyzer: &(impl GraphBackend + Search)) -> NodeIdx {
         let sup = self.associated_source_unit_part(analyzer);
         analyzer
             .search_for_ancestor(sup, &Edge::Part)
@@ -250,7 +244,7 @@ impl Contract {
         con: ContractDefinition,
         source: NodeIdx,
         imports: &[Option<NodeIdx>],
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> (Contract, Vec<String>) {
         let mut inherits = vec![];
         let mut unhandled_inherits = vec![];

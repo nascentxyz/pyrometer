@@ -1,8 +1,22 @@
+use crate::{
+    GraphBackend, AsDotStr,
+    GraphError, Node, ContextEdge, Edge,
+    nodes::{VarNode, ContextNode, ContextVar, TmpConstruction},
+    range::{Range, range_string::ToRangeString, elem::RangeElem},
+};
+
+use shared::{NodeIdx, Search};
+
+use petgraph::{visit::EdgeRef, Direction};
+use solang_parser::pt::{StorageLocation, Loc};
+
+use std::collections::BTreeMap;
+
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ContextVarNode(pub usize);
 
 impl AsDotStr for ContextVarNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
 
         let range_str = if let Some(r) = underlying.ty.ref_range(analyzer).unwrap() {
@@ -46,7 +60,7 @@ impl From<NodeIdx> for ContextVarNode {
 impl ContextVarNode {
     pub fn underlying<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> Result<&'a ContextVar, GraphError> {
         match analyzer.node(*self) {
             Node::ContextVar(c) => Ok(c),
@@ -58,7 +72,7 @@ impl ContextVarNode {
 
     pub fn underlying_mut<'a>(
         &self,
-        analyzer: &'a mut impl GraphLike,
+        analyzer: &'a mut impl GraphBackend,
     ) -> Result<&'a mut ContextVar, GraphError> {
         match analyzer.node_mut(*self) {
             Node::ContextVar(c) => Ok(c),
@@ -70,20 +84,20 @@ impl ContextVarNode {
 
     pub fn storage<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> Result<&'a Option<StorageLocation>, GraphError> {
         Ok(&self.underlying(analyzer)?.storage)
     }
     
 
-    pub fn loc(&self, analyzer: &impl GraphLike) -> Result<Loc, GraphError> {
+    pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .loc
             .expect("No loc for ContextVar"))
     }
 
-    pub fn ctx(&self, analyzer: &impl GraphLike) -> ContextNode {
+    pub fn ctx(&self, analyzer: &impl GraphBackend) -> ContextNode {
         ContextNode::from(
             analyzer
                 .search_for_ancestor(self.0.into(), &Edge::Context(ContextEdge::Variable))
@@ -94,7 +108,7 @@ impl ContextVarNode {
         )
     }
 
-    pub fn maybe_ctx(&self, analyzer: &impl GraphLike) -> Option<ContextNode> {
+    pub fn maybe_ctx(&self, analyzer: &impl GraphBackend) -> Option<ContextNode> {
         let first = self.first_version(analyzer);
         analyzer
             .graph()
@@ -105,7 +119,7 @@ impl ContextVarNode {
             .next()
     }
 
-    pub fn maybe_storage_var(&self, analyzer: &impl GraphLike) -> Option<VarNode> {
+    pub fn maybe_storage_var(&self, analyzer: &impl GraphBackend) -> Option<VarNode> {
         Some(
             analyzer
                 .graph()
@@ -118,11 +132,11 @@ impl ContextVarNode {
         )
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self.underlying(analyzer)?.name.clone())
     }
 
-    pub fn as_controllable_name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn as_controllable_name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         if let Some(ref_range) = self.ref_range(analyzer)? {
             let mut exclude = vec![];
             let min_name = ref_range
@@ -146,11 +160,11 @@ impl ContextVarNode {
         }
     }
 
-    pub fn display_name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn display_name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self.underlying(analyzer)?.display_name.clone())
     }
 
-    pub fn return_assignments(&self, analyzer: &impl GraphLike) -> Vec<Self> {
+    pub fn return_assignments(&self, analyzer: &impl GraphBackend) -> Vec<Self> {
         let latest = self.latest_version(analyzer);
         let mut earlier = latest;
         let mut return_assignments = vec![];
@@ -163,7 +177,7 @@ impl ContextVarNode {
         return_assignments
     }
 
-    pub fn ext_return_assignments(&self, analyzer: &impl GraphLike) -> Vec<Self> {
+    pub fn ext_return_assignments(&self, analyzer: &impl GraphBackend) -> Vec<Self> {
         let latest = self.latest_version(analyzer);
         let mut earlier = latest;
         let mut return_assignments = vec![];
@@ -179,13 +193,13 @@ impl ContextVarNode {
         return_assignments
     }
 
-    pub fn tmp_of(&self, analyzer: &impl GraphLike) -> Result<Option<TmpConstruction>, GraphError> {
+    pub fn tmp_of(&self, analyzer: &impl GraphBackend) -> Result<Option<TmpConstruction>, GraphError> {
         Ok(self.underlying(analyzer)?.tmp_of())
     }
 
     pub fn len_var_to_array(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         if self.name(analyzer)?.ends_with(".length") {
             if let Some(arr) = analyzer.search_for_ancestor(
@@ -201,7 +215,7 @@ impl ContextVarNode {
         }
     }
 
-    pub fn index_to_array(&self, analyzer: &impl GraphLike) -> Option<ContextVarNode> {
+    pub fn index_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let arr = analyzer
             .graph()
             .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
@@ -212,7 +226,7 @@ impl ContextVarNode {
         Some(ContextVarNode::from(arr).latest_version(analyzer))
     }
 
-    pub fn index_access_to_index(&self, analyzer: &impl GraphLike) -> Option<ContextVarNode> {
+    pub fn index_access_to_index(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let index = analyzer.find_child_exclude_via(
             self.first_version(analyzer).into(),
             &Edge::Context(ContextEdge::Index),
@@ -222,7 +236,7 @@ impl ContextVarNode {
         Some(ContextVarNode::from(index))
     }
 
-    pub fn index_or_attr_access(&self, analyzer: &impl GraphLike) -> Vec<Self> {
+    pub fn index_or_attr_access(&self, analyzer: &impl GraphBackend) -> Vec<Self> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -237,7 +251,7 @@ impl ContextVarNode {
 
     pub fn dependent_on(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         return_self: bool,
     ) -> Result<Vec<Self>, GraphError> {
         let underlying = self.underlying(analyzer)?;
@@ -256,7 +270,7 @@ impl ContextVarNode {
 
     pub fn graph_dependent_on(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<BTreeMap<Self, TmpConstruction>, GraphError> {
         let underlying = self.underlying(analyzer)?;
         let mut tree = BTreeMap::default();

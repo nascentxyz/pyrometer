@@ -1,20 +1,20 @@
-use crate::analyzers::range_parts;
-use crate::analyzers::VarBoundAnalysis;
-use crate::analyzers::VarBoundAnalyzer;
-
-use crate::analyzers::{LocStrSpan, ReportConfig, ReportDisplay};
-use ariadne::ReportKind;
-use std::collections::BTreeSet;
-
-use shared::analyzer::GraphLike;
-use shared::{
-    analyzer::{AnalyzerLike, Search},
-    context::*,
+use crate::{
+    bounds::range_parts,
+    VarBoundAnalysis, VarBoundAnalyzer, LocStrSpan, ReportConfig,
+    ReportKind, ReportDisplay,
 };
 
+use graph::{
+    GraphBackend, AnalyzerBackend,
+    nodes::{ContextNode, KilledKind},
+    range_string::ToRangeString,
+    solvers::{SolverAtom, Atomize}
+};
+use shared::Search;
+
 use ariadne::{Color, Config, Fmt, Label, Report, Span};
-use solang_parser::pt::CodeLocation;
-use std::collections::BTreeMap;
+use solang_parser::pt::{CodeLocation};
+use std::collections::{BTreeMap, BTreeSet};
 
 mod report_display;
 pub use report_display::*;
@@ -48,7 +48,7 @@ impl<'a> FunctionVarsBoundAnalysis {
     pub fn reports_for_forks(
         &self,
         file_mapping: &'a BTreeMap<usize, String>,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Vec<Report<LocStrSpan>> {
         let mut handled_ctx_switches = BTreeSet::default();
         let reports = self
@@ -58,27 +58,55 @@ impl<'a> FunctionVarsBoundAnalysis {
                 // sort by display name instead of normal name
                 let deps = ctx.ctx_deps(analyzer).unwrap();
                 let deps = deps
-                    .values()
+                    .iter()
                     .map(|var| (var.display_name(analyzer).unwrap(), var))
                     .collect::<BTreeMap<_, _>>();
                 // create the bound strings
-                let bounds_string = deps
+                let mut ranges = BTreeMap::default();
+                deps.iter().for_each(|(_, dep)| {
+                    let range = dep.ref_range(analyzer).unwrap().unwrap();
+                    let r = range.into_flattened_range(analyzer).unwrap();
+                    ranges.insert(*dep, r);
+                });
+                let atoms = ranges
                     .iter()
-                    .enumerate()
-                    .filter_map(|(i, (name, cvar))| {
-                        let range = cvar.ref_range(analyzer).unwrap()?;
-                        let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
-                        let ret = parts.into_iter().fold(
-                            format!("{}. {name}", i + 1),
-                            |mut acc, part| {
-                                acc = format!("{acc}{}", part.to_cli_string());
-                                acc
-                            },
-                        );
-                        Some(format!("{ret}\n"))
+                    .filter_map(|(_dep, range)| {
+                        if let Some(atom) = range.min.atomize() {
+                            Some(atom)
+                        } else {
+                            range.max.atomize()
+                        }
                     })
-                    .collect::<Vec<_>>()
-                    .join("");
+                    .collect::<Vec<SolverAtom>>();
+                let mut handled_atom = vec![];
+                let mut bounds_string: Vec<String> = vec![];
+                atoms.iter().enumerate().for_each(|(i, atom)| {
+                    let atom_str = atom.to_range_string(true, analyzer).s;
+                    if !handled_atom.contains(&atom_str) {
+                        handled_atom.push(atom_str.clone());
+                        bounds_string.push(format!("{}. {}", i + 1, atom_str))
+                    }
+                });
+                let bounds_string = bounds_string.into_iter().collect::<Vec<_>>().join("\n");
+
+                // let bounds_string = deps
+                //     .iter()
+                //     .enumerate()
+                //     .filter_map(|(i, (name, cvar))| {
+                //         let range = cvar.ref_range(analyzer).unwrap()?;
+
+                //         let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
+                //         let ret = parts.into_iter().fold(
+                //             format!("{}. {name}", i + 1),
+                //             |mut acc, part| {
+                //                 acc = acc.to_string();
+                //                 acc
+                //             },
+                //         );
+                //         Some(format!("{ret}\n"))
+                //     })
+                //     .collect::<Vec<_>>()
+                //     .join("");
                 let mut report = Report::build(
                     self.report_kind(),
                     self.ctx_loc.source(),
@@ -291,18 +319,15 @@ impl<'a> FunctionVarsBoundAnalysis {
     }
 }
 
-impl<T> FunctionVarsBoundAnalyzer for T where T: VarBoundAnalyzer + Search + AnalyzerLike + Sized {}
-pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + Sized {
-    fn bounds_for_all<'a>(
+impl<T> FunctionVarsBoundAnalyzer for T where T: VarBoundAnalyzer + Search + AnalyzerBackend + Sized {}
+pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerBackend + Sized {
+    fn bounds_for_lineage<'a>(
         &'a self,
         file_mapping: &'a BTreeMap<usize, String>,
         ctx: ContextNode,
+        edges: Vec<ContextNode>,
         report_config: ReportConfig,
     ) -> FunctionVarsBoundAnalysis {
-        let mut edges = ctx.all_edges(self).unwrap();
-        if edges.is_empty() {
-            edges.push(ctx);
-        }
         let lineage_analyses = edges
             .iter()
             .filter_map(|fork| {
@@ -314,8 +339,7 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
                 {
                     return None;
                 }
-                if !report_config.show_nonreverts
-                    && matches!(fork.underlying(self).unwrap().killed, None)
+                if !report_config.show_nonreverts && fork.underlying(self).unwrap().killed.is_none()
                 {
                     return None;
                 }
@@ -374,5 +398,18 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerLike + 
             vars_by_ctx: lineage_analyses,
             report_config,
         }
+    }
+
+    fn bounds_for_all<'a>(
+        &'a self,
+        file_mapping: &'a BTreeMap<usize, String>,
+        ctx: ContextNode,
+        report_config: ReportConfig,
+    ) -> FunctionVarsBoundAnalysis {
+        let mut edges = ctx.all_edges(self).unwrap();
+        if edges.is_empty() {
+            edges.push(ctx);
+        }
+        self.bounds_for_lineage(file_mapping, ctx, edges, report_config)
     }
 }

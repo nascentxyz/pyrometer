@@ -1,19 +1,19 @@
-use crate::nodes::Concrete;
-use crate::nodes::ContextVarNode;
-
-use range::{
-    elem::{
-        RangeElem,
-        RangeOp,
-        Elem,
-        RangeExpr,
-        Reference
+use crate::{
+    GraphBackend,
+    nodes::{Concrete, ContextVarNode},
+    range::{
+        elem::{
+            RangeElem,
+            RangeOp,
+            Elem,
+            RangeExpr,
+            Reference
+        },
+        range_string::{ToRangeString, RangeElemString},
     },
-    range_string::{ToRangeString, RangeElemString}
 };
 
 
-use shared::GraphLike;
 
 use ethers_core::types::U256;
 use std::collections::BTreeMap;
@@ -128,10 +128,10 @@ pub struct SolverAtom {
 }
 
 impl ToRangeString for SolverAtom {
-    fn def_string(&self, analyzer: &impl GraphLike) -> RangeElemString {
+    fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {
         self.into_expr_elem().def_string(analyzer)
     }
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphLike) -> RangeElemString {
+    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
         self.into_expr_elem().to_range_string(maximize, analyzer)
     }
 }

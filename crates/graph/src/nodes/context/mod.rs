@@ -6,7 +6,7 @@ mod var;
 
 pub use node::ContextNode;
 pub use underlying::Context;
-pub use var::ContextVarNode;
+pub use var::{ContextVarNode, TmpConstruction, ContextVar};
 pub use expr_ret::{KilledKind, ExprRet};
 pub use context_tys::{ ModifierState, ContextCache, CallFork };
 

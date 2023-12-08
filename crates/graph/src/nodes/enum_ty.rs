@@ -1,10 +1,7 @@
-use crate::analyzer::GraphError;
-use crate::analyzer::GraphLike;
-use crate::range::SolcRange;
-use crate::AsDotStr;
-use crate::Concrete;
-use crate::Node;
-use crate::NodeIdx;
+use crate::{AsDotStr, GraphBackend, SolcRange, GraphError, Node, nodes::Concrete};
+
+use shared::NodeIdx;
+
 use ethers_core::types::U256;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 
@@ -13,7 +10,7 @@ use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 pub struct EnumNode(pub usize);
 
 impl AsDotStr for EnumNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "enum {} {{ {} }}",
@@ -29,7 +26,7 @@ impl AsDotStr for EnumNode {
 
 impl EnumNode {
     /// Gets the underlying node data for the [`Enum`]
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Enum, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Enum, GraphError> {
         match analyzer.node(*self) {
             Node::Enum(e) => Ok(e),
             e => Err(GraphError::NodeConfusion(format!(
@@ -39,7 +36,7 @@ impl EnumNode {
     }
 
     /// Gets the name of the enum from the underlying node data for the [`Enum`]
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .name
@@ -48,13 +45,13 @@ impl EnumNode {
             .name)
     }
 
-    pub fn variants(&self, analyzer: &impl GraphLike) -> Result<Vec<String>, GraphError> {
+    pub fn variants(&self, analyzer: &impl GraphBackend) -> Result<Vec<String>, GraphError> {
         Ok(self.underlying(analyzer)?.variants())
     }
 
     pub fn maybe_default_range(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<SolcRange>, GraphError> {
         let variants = self.variants(analyzer)?;
         if !variants.is_empty() {
@@ -69,7 +66,7 @@ impl EnumNode {
     pub fn range_from_variant(
         &self,
         variant: String,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<SolcRange, GraphError> {
         let variants = self.variants(analyzer)?;
         assert!(variants.contains(&variant));

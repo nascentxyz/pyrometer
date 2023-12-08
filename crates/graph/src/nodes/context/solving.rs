@@ -1,9 +1,20 @@
-use crate::GraphError;
-use shared::{AnalyzerLike, GraphLike};
+use crate::{
+    solvers::{SolverAtom, Atomize, dl::{SolveStatus, DLSolver}},
+    range::{elem::RangeOp, RangeEval},
+    nodes::{ContextVarNode, ContextNode},
+    Node, GraphError, GraphBackend, AnalyzerBackend, AsDotStr,
+    as_dot_str
+};
+
+use shared::NodeIdx;
+
+use petgraph::dot::Dot;
+
+use std::collections::BTreeMap;
 
 impl ContextNode {
 	/// Use a Difference Logic solver to see if it is unreachable
-	pub fn unreachable(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+	pub fn unreachable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let mut solver = self.dl_solver(analyzer)?.clone();
         match solver.solve_partial(analyzer)? {
             SolveStatus::Unsat => Ok(true),
@@ -12,7 +23,7 @@ impl ContextNode {
     }
 
     /// Get the dependencies as normalized solver atoms
-    pub fn dep_atoms(&self, analyzer: &impl GraphLike) -> Result<Vec<SolverAtom>, GraphError> {
+    pub fn dep_atoms(&self, analyzer: &impl GraphBackend) -> Result<Vec<SolverAtom>, GraphError> {
         let deps: Vec<_> = self.ctx_deps(analyzer)?;
         let mut ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
@@ -44,12 +55,12 @@ impl ContextNode {
     }
 
     /// Get the difference logic solver associated with this context
-    pub fn dl_solver<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a DLSolver, GraphError> {
+    pub fn dl_solver<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a DLSolver, GraphError> {
         Ok(&self.underlying(analyzer)?.dl_solver)
     }
 
     /// Returns a map of variable dependencies for this context
-    pub fn ctx_deps(&self, analyzer: &impl GraphLike) -> Result<Vec<ContextVarNode>, GraphError> {
+    pub fn ctx_deps(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
         Ok(self.underlying(analyzer)?.ctx_deps.clone())
     }
 
@@ -57,7 +68,7 @@ impl ContextNode {
     pub fn add_ctx_dep(
         &self,
         dep: ContextVarNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         tracing::trace!("Adding ctx dependency: {}", dep.display_name(analyzer)?);
         if dep.is_controllable(analyzer)? {
@@ -79,7 +90,7 @@ impl ContextNode {
     }
 
         /// Creates a DAG of the context dependencies and opens it with graphviz
-    pub fn deps_dag(&self, g: &impl GraphLike) -> Result<(), GraphError> {
+    pub fn deps_dag(&self, g: &impl GraphBackend) -> Result<(), GraphError> {
         let deps = self.ctx_deps(g)?;
         // #[derive(Debug, Copy, Clone)]
         // pub enum DepEdge {

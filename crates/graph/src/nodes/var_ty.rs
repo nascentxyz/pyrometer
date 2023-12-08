@@ -1,16 +1,7 @@
-use crate::analyzer::Search;
-use crate::nodes::GraphError;
-use crate::ContextEdge;
+use crate::{AsDotStr, AnalyzerBackend, GraphBackend, Node, Edge, VarType, ContextEdge, nodes::{ContextVar, ContractNode, ContextVarNode}, GraphError};
 
-use crate::ContextVarNode;
+use shared::{NodeIdx, Search};
 
-use crate::ContractNode;
-use crate::VarType;
-use crate::{
-    analyzer::{AnalyzerLike, AsDotStr, GraphLike},
-    Node, NodeIdx,
-};
-use crate::{ContextVar, Edge};
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{
     Expression, Identifier, Loc, VariableAttribute, VariableDefinition, Visibility,
@@ -20,7 +11,7 @@ use solang_parser::pt::{
 pub struct VarNode(pub usize);
 
 impl VarNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Var, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Var, GraphError> {
         match analyzer.node(*self) {
             Node::Var(func) => Ok(func),
             e => Err(GraphError::NodeConfusion(format!(
@@ -31,7 +22,7 @@ impl VarNode {
 
     pub fn underlying_mut<'a>(
         &self,
-        analyzer: &'a mut impl GraphLike,
+        analyzer: &'a mut impl GraphBackend,
     ) -> Result<&'a mut Var, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Var(func) => Ok(func),
@@ -43,7 +34,7 @@ impl VarNode {
 
     pub fn parse_initializer(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         parent: NodeIdx,
     ) -> Result<(), GraphError> {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
@@ -67,7 +58,7 @@ impl VarNode {
         Ok(())
     }
 
-    pub fn maybe_associated_contract(&self, analyzer: &impl GraphLike) -> Option<ContractNode> {
+    pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Outgoing)
@@ -84,7 +75,7 @@ impl VarNode {
             .map(ContractNode::from)
     }
 
-    pub fn maybe_associated_source_unit_part(&self, analyzer: &impl GraphLike) -> Option<NodeIdx> {
+    pub fn maybe_associated_source_unit_part(&self, analyzer: &impl GraphBackend) -> Option<NodeIdx> {
         if let Some(con) = self.maybe_associated_contract(analyzer) {
             Some(con.associated_source_unit_part(analyzer))
         } else {
@@ -104,12 +95,12 @@ impl VarNode {
         }
     }
 
-    pub fn maybe_associated_source(&self, analyzer: &(impl GraphLike + Search)) -> Option<NodeIdx> {
+    pub fn maybe_associated_source(&self, analyzer: &(impl GraphBackend + Search)) -> Option<NodeIdx> {
         let sup = self.maybe_associated_source_unit_part(analyzer)?;
         analyzer.search_for_ancestor(sup, &Edge::Part)
     }
 
-    pub fn name(&self, analyzer: &impl GraphLike) -> Result<String, GraphError> {
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         Ok(self
             .underlying(analyzer)?
             .name
@@ -121,7 +112,7 @@ impl VarNode {
     pub fn const_value(
         &self,
         loc: Loc,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<ContextVar>, GraphError> {
         let attrs = &self.underlying(analyzer)?.attrs;
         if attrs
@@ -147,7 +138,7 @@ impl VarNode {
         Ok(None)
     }
 
-    pub fn inherited_into(&self, analyzer: &impl GraphLike) -> Vec<ContextVarNode> {
+    pub fn inherited_into(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
@@ -163,7 +154,7 @@ impl VarNode {
 }
 
 impl AsDotStr for VarNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{}{} {}",
@@ -225,7 +216,7 @@ impl From<Var> for Node {
 
 impl Var {
     pub fn new(
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {

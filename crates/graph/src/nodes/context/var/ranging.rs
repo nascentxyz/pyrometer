@@ -1,16 +1,19 @@
 use crate::{
-    GraphError, SolcRange, 
-    nodes::{ContextVarNode, ContextNode},
+    AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
+    nodes::{ContextVarNode, ContextNode, Concrete},
+    range::{range_string::ToRangeString, Range},
 };
 
-use shared::{AnalyzerLike, GraphLike};
+use crate::range::elem::*;
+
+use solang_parser::pt::Loc;
 
 impl ContextVarNode {
 	#[tracing::instrument(level = "trace", skip_all)]
     pub fn update_deps(
         &mut self,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
         if let Some(mut range) = self.range(analyzer)? {
             range.update_deps(*self, ctx, analyzer);
@@ -20,11 +23,11 @@ impl ContextVarNode {
         Ok(())
     }
 
-    pub fn range(&self, analyzer: &impl GraphLike) -> Result<Option<SolcRange>, GraphError> {
+    pub fn range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
         self.underlying(analyzer)?.ty.range(analyzer)
     }
 
-    pub fn range_string(&self, analyzer: &impl GraphLike) -> Result<Option<String>, GraphError> {
+    pub fn range_string(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
         if let Some(range) = self.ref_range(analyzer)? {
             Ok(Some(format!(
                 "[ {}, {} ]",
@@ -44,14 +47,14 @@ impl ContextVarNode {
 
     pub fn ref_range<'a>(
         &self,
-        analyzer: &'a impl GraphLike,
+        analyzer: &'a impl GraphBackend,
     ) -> Result<Option<std::borrow::Cow<'a, SolcRange>>, GraphError> {
         self.underlying(analyzer)?.ty.ref_range(analyzer)
     }
 
     pub fn range_min(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<Elem<Concrete>>, GraphError> {
         if let Some(r) = self.ref_range(analyzer)? {
             Ok(Some(r.range_min().into_owned()))
@@ -62,7 +65,7 @@ impl ContextVarNode {
 
     pub fn range_max(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<Elem<Concrete>>, GraphError> {
         if let Some(r) = self.ref_range(analyzer)? {
             Ok(Some(r.range_max().into_owned()))
@@ -73,7 +76,7 @@ impl ContextVarNode {
 
     pub fn evaled_range_min(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<Elem<Concrete>>, GraphError> {
         if let Some(r) = self.ref_range(analyzer)? {
             Ok(Some(r.evaled_range_min(analyzer)?))
@@ -84,7 +87,7 @@ impl ContextVarNode {
 
     pub fn evaled_range_max(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
     ) -> Result<Option<Elem<Concrete>>, GraphError> {
         if let Some(r) = self.ref_range(analyzer)? {
             Ok(Some(r.evaled_range_max(analyzer)?))
@@ -95,7 +98,7 @@ impl ContextVarNode {
 
     pub fn as_range_elem(
         &self,
-        analyzer: &impl GraphLike,
+        analyzer: &impl GraphBackend,
         loc: Loc,
     ) -> Result<Elem<Concrete>, GraphError> {
         match self.underlying(analyzer)?.ty {
@@ -107,7 +110,7 @@ impl ContextVarNode {
         }
     }
 
-    pub fn cache_range(&self, analyzer: &mut impl GraphLike) -> Result<(), GraphError> {
+    pub fn cache_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if let Some(mut range) = self.range(analyzer)? {
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
@@ -117,7 +120,7 @@ impl ContextVarNode {
 
     pub fn set_range(
         &self,
-        analyzer: &mut impl GraphLike,
+        analyzer: &mut impl GraphBackend,
         new_range: SolcRange,
     ) -> Result<(), GraphError> {
         let underlying = self.underlying_mut(analyzer)?;
@@ -127,19 +130,19 @@ impl ContextVarNode {
 
     pub fn fallback_range(
         &self,
-        analyzer: &mut impl GraphLike,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<Option<SolcRange>, GraphError> {
         let underlying = self.underlying(analyzer)?;
         underlying.fallback_range(analyzer)
     }
 
-    pub fn needs_fallback(&self, analyzer: &impl GraphLike) -> Result<bool, GraphError> {
+    pub fn needs_fallback(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.needs_fallback())
     }
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_min: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         if new_min.contains_node((*self).into()) {
@@ -179,7 +182,7 @@ impl ContextVarNode {
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_max(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_max: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         if new_max.contains_node((*self).into()) {
@@ -218,7 +221,7 @@ impl ContextVarNode {
 
     pub fn set_range_exclusions(
         &self,
-        analyzer: &mut impl GraphLike,
+        analyzer: &mut impl GraphBackend,
         new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         let fallback = if self.needs_fallback(analyzer)? {
@@ -233,7 +236,7 @@ impl ContextVarNode {
 
     pub fn try_set_range_min(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_min: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
         if new_min.contains_node((*self).into()) {
@@ -261,7 +264,7 @@ impl ContextVarNode {
 
     pub fn try_set_range_max(
         &self,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_max: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
         if new_max.contains_node((*self).into()) {
@@ -289,7 +292,7 @@ impl ContextVarNode {
 
     pub fn try_set_range_exclusions(
         &self,
-        analyzer: &mut impl GraphLike,
+        analyzer: &mut impl GraphBackend,
         new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         let fallback = if self.needs_fallback(analyzer)? {
@@ -302,7 +305,7 @@ impl ContextVarNode {
             .try_set_range_exclusions(new_exclusions, fallback))
     }
 
-    pub fn range_deps(&self, analyzer: &impl GraphLike) -> Result<Vec<Self>, GraphError> {
+    pub fn range_deps(&self, analyzer: &impl GraphBackend) -> Result<Vec<Self>, GraphError> {
         if let Some(range) = self.ref_range(analyzer)? {
             Ok(range.dependent_on())
         } else {
@@ -310,7 +313,7 @@ impl ContextVarNode {
         }
     }
 
-    pub fn sol_delete_range(&mut self, analyzer: &mut impl GraphLike) -> Result<(), GraphError> {
+    pub fn sol_delete_range(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         let ty = self.ty(analyzer)?;
         if let Some(delete_range) = ty.delete_range_result(analyzer)? {
             self.set_range(analyzer, delete_range)?;

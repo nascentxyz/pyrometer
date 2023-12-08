@@ -1,5 +1,5 @@
-use crate::{GraphError, Node, VarType, nodes::context::ContextVarNode,};
-use shared::{NodeIdx, GraphLike, AsDotStr};
+use crate::{GraphBackend, AsDotStr, GraphError, Node, VarType, nodes::context::ContextVarNode,};
+use shared::NodeIdx;
 
 
 /// The reason a context was killed
@@ -45,7 +45,7 @@ pub enum ExprRet {
 
 impl ExprRet {
     /// Converts the expression return into a debug string
-    pub fn debug_str(&self, analyzer: &impl GraphLike) -> String {
+    pub fn debug_str(&self, analyzer: &impl GraphBackend<Node = Node>) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
                 Node::ContextVar(_) => ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
@@ -199,7 +199,7 @@ impl ExprRet {
     }
 
     /// Try to convert to a solidity-like function input string, i.e. `(uint256, uint256, bytes32)`
-    pub fn try_as_func_input_str(&self, analyzer: &impl GraphLike) -> String {
+    pub fn try_as_func_input_str(&self, analyzer: &impl GraphBackend) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let idx = inner;
@@ -214,7 +214,7 @@ impl ExprRet {
                     None => "<UnresolvedType>".to_string(),
                 }
             }
-            ExprRet::Multi(inner) if !self.has_fork() => {
+            ExprRet::Multi(inner) => {
                 let mut strs = vec![];
                 for ret in inner.iter() {
                     strs.push(ret.try_as_func_input_str(analyzer).replace(['(', ')'], ""));

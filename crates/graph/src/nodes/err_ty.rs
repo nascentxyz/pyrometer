@@ -1,13 +1,12 @@
-use crate::analyzer::GraphError;
-use crate::analyzer::{AnalyzerLike, GraphLike};
-use crate::AsDotStr;
-use crate::{Node, NodeIdx};
+use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node};
+
+use shared::NodeIdx;
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ErrorNode(pub usize);
 impl ErrorNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Error, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Error, GraphError> {
         match analyzer.node(*self) {
             Node::Error(err) => Ok(err),
             e => Err(GraphError::NodeConfusion(format!(
@@ -17,7 +16,7 @@ impl ErrorNode {
     }
 }
 impl AsDotStr for ErrorNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "error {}",
@@ -93,7 +92,7 @@ impl From<ErrorParam> for Node {
 
 impl ErrorParam {
     pub fn new(
-        analyzer: &mut (impl GraphLike + AnalyzerLike<Expr = Expression>),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
         param: ErrorParameter,
     ) -> Self {
         ErrorParam {

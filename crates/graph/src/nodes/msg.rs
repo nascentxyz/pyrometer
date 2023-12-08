@@ -1,22 +1,15 @@
-use crate::analyzer::AsDotStr;
-use crate::analyzer::{AnalyzerLike, GraphLike};
-use crate::nodes::GraphError;
-use crate::Builtin;
-use crate::Concrete;
-use crate::ContextNode;
-use crate::ContextVar;
+use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, nodes::{Concrete, Builtin, ContextNode, ContextVar}};
 
-use crate::Node;
-use crate::NodeIdx;
-use ethers_core::types::Address;
-use ethers_core::types::U256;
+use shared::NodeIdx;
+
+use ethers_core::types::{U256, Address};
 use solang_parser::pt::Loc;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct MsgNode(pub usize);
 
 impl MsgNode {
-    pub fn underlying<'a>(&self, analyzer: &'a impl GraphLike) -> Result<&'a Msg, GraphError> {
+    pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Msg, GraphError> {
         match analyzer.node(*self) {
             Node::Msg(st) => Ok(st),
             e => Err(GraphError::NodeConfusion(format!(
@@ -27,7 +20,7 @@ impl MsgNode {
 }
 
 impl AsDotStr for MsgNode {
-    fn as_dot_str(&self, analyzer: &impl GraphLike) -> String {
+    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         format!("msg {{ {:?} }}", self.underlying(analyzer).unwrap())
     }
 }
@@ -61,7 +54,7 @@ impl Msg {
         elem: &str,
         loc: Loc,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphLike + AnalyzerLike),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<ContextVar, GraphError> {
         let (node, name) = match elem {
             "data" => {
