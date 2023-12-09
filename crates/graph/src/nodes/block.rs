@@ -12,7 +12,10 @@ impl BlockNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Block, GraphError> {
         match analyzer.node(*self) {
             Node::Block(st) => Ok(st),
-            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find variable: {}",
+                ident.name
+            ))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Msg but it was: {e:?}"
             ))),

@@ -10,7 +10,10 @@ impl TyNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Ty, GraphError> {
         match analyzer.node(*self) {
             Node::Ty(ty) => Ok(ty),
-            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find variable: {}",
+                ident.name
+            ))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be TypeNode but it was: {e:?}"
             ))),

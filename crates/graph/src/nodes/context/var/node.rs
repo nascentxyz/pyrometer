@@ -63,7 +63,10 @@ impl ContextVarNode {
     ) -> Result<&'a ContextVar, GraphError> {
         match analyzer.node(*self) {
             Node::ContextVar(c) => Ok(c),
-            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find variable: {}",
+                ident.name
+            ))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be ContextVar but it was: {e:?}"
             ))),
@@ -76,7 +79,10 @@ impl ContextVarNode {
     ) -> Result<&'a mut ContextVar, GraphError> {
         match analyzer.node_mut(*self) {
             Node::ContextVar(c) => Ok(c),
-            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find variable: {}",
+                ident.name
+            ))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be ContextVar but it was: {e:?}"
             ))),
