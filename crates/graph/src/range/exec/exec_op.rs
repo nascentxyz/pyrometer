@@ -227,9 +227,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     // contains the rhs, we can add zero. Futher more, if
                     // the lhs contains rhs - 1, we can add max as it
                     // would overflow to uint256.max
-                    //     zero   min                          max  uint256.max 
+                    //     zero   min                          max  uint256.max
                     // lhs:  | - - |----------------------------| - - |
-                    // rhs:  | - - |--| - - - - - - - - - - - - - - - |  
+                    // rhs:  | - - |--| - - - - - - - - - - - - - - - |
                     match lhs_max.range_ord(&rhs_min) {
                         Some(std::cmp::Ordering::Less) => {
                             // We are going to overflow, zero not possible
@@ -237,7 +237,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         Some(std::cmp::Ordering::Equal) => {
                             // We are going to at least be zero,
                             // we may overflow. check if rhs is const, otherwise
-                            // add uint256.max as a candidate 
+                            // add uint256.max as a candidate
                             candidates.push(Some(zero.clone()));
                             if !consts.1 {
                                 candidates.push(zero.range_wrapping_sub(&one));
@@ -254,7 +254,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 Some(std::cmp::Ordering::Equal) => {
                                     // We are going to at least be zero,
                                     // we may overflow. check if rhs is const, otherwise
-                                    // add uint256.max as a candidate 
+                                    // add uint256.max as a candidate
                                     candidates.push(Some(zero.clone()));
                                     if !consts.1 {
                                         candidates.push(zero.range_wrapping_sub(&one));
@@ -262,13 +262,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 }
                                 Some(std::cmp::Ordering::Greater) => {
                                     // current info:
-                                    //     zero   min                          max  uint256.max 
+                                    //     zero   min                          max  uint256.max
                                     // lhs:  | - - |----------------------------| - - |
                                     // rhs:  | - |----? - - - - - - - - - - - - - - - |
                                     // figure out where rhs max is
                                     match lhs_min.range_ord(&rhs_max) {
                                         Some(std::cmp::Ordering::Less) => {
-                                            //     zero   min  
+                                            //     zero   min
                                             // lhs:  | - - |---?
                                             // rhs:  | - |----|
                                             //          min  max
@@ -277,21 +277,21 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                             candidates.push(zero.range_wrapping_sub(&one));
                                         }
                                         Some(std::cmp::Ordering::Equal) => {
-                                            //     zero   min  
+                                            //     zero   min
                                             // lhs:  | - - |---?
                                             // rhs:  | |---|
                                             //        min max
                                             // Add zero
-                                            candidates.push(Some(zero.clone()));   
+                                            candidates.push(Some(zero.clone()));
                                         }
                                         Some(std::cmp::Ordering::Greater) => {
-                                            //     zero   min  
+                                            //     zero   min
                                             // lhs:  | - - |---?
                                             // rhs:  |-----|
                                             //      min   max
                                             // Add nothing
-                                        } 
-                                        _ => {}  
+                                        }
+                                        _ => {}
                                     }
                                 }
                                 _ => {}

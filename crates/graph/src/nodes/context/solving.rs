@@ -79,7 +79,11 @@ impl ContextNode {
         dep: ContextVarNode,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
-        tracing::trace!("Adding ctx dependency: {}, is_controllable: {}", dep.display_name(analyzer)?, dep.is_controllable(analyzer)?);
+        tracing::trace!(
+            "Adding ctx dependency: {}, is_controllable: {}",
+            dep.display_name(analyzer)?,
+            dep.is_controllable(analyzer)?
+        );
         if dep.is_controllable(analyzer)? {
             let range = dep.ref_range(analyzer)?.unwrap();
             let r = range.into_flattened_range(analyzer)?;

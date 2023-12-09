@@ -57,10 +57,7 @@ impl ContextVarNode {
         Ok(global_first.is_storage(analyzer)? || global_first.is_calldata_input(analyzer))
     }
 
-    pub fn is_fundamental(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
+    pub fn is_fundamental(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let global_first = self.global_first_version(analyzer);
         let is_independent = self.is_independent(analyzer)?;
 
@@ -86,13 +83,16 @@ impl ContextVarNode {
     }
 
     pub fn is_controllable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.dependent_on(analyzer, true)?.iter().any(|dependent_on| {
-            if let Ok(t) = dependent_on.is_fundamental(analyzer) {
-                t
-            } else {
-                false
-            }
-        }))
+        Ok(self
+            .dependent_on(analyzer, true)?
+            .iter()
+            .any(|dependent_on| {
+                if let Ok(t) = dependent_on.is_fundamental(analyzer) {
+                    t
+                } else {
+                    false
+                }
+            }))
     }
 
     pub fn is_calldata_input(&self, analyzer: &impl GraphBackend) -> bool {

@@ -1332,7 +1332,8 @@ pub trait ContextBuilder:
         );
 
         let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?;
-        new_lhs.underlying_mut(self).into_expr_err(loc)?.tmp_of = rhs_cvar.tmp_of(self).into_expr_err(loc)?;
+        new_lhs.underlying_mut(self).into_expr_err(loc)?.tmp_of =
+            rhs_cvar.tmp_of(self).into_expr_err(loc)?;
         if lhs_cvar.is_storage(self).into_expr_err(loc)? {
             self.add_edge(new_lhs, rhs_cvar, Edge::Context(ContextEdge::StorageWrite));
         }
