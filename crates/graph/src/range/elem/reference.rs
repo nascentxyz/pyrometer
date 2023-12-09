@@ -65,7 +65,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         let cvar = ContextVarNode::from(self.idx);
-        if cvar.is_independent_and_storage_or_calldata(analyzer)? {
+        if cvar.is_fundamental(analyzer)? {
             return Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),
             )));
@@ -142,7 +142,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     ) -> Result<Elem<Concrete>, GraphError> {
         let cvar = ContextVarNode::from(self.idx);
 
-        let independent = cvar.is_independent_and_storage_or_calldata(analyzer)?;
+        let independent = cvar.is_fundamental(analyzer)?;
         if independent {
             Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),
@@ -159,7 +159,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         let cvar = ContextVarNode::from(self.idx);
-        if cvar.is_independent_and_storage_or_calldata(analyzer)? {
+        if cvar.is_fundamental(analyzer)? {
             Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),
             )))

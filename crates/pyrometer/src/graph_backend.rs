@@ -519,14 +519,14 @@ flowchart BT
                             )?)
                         }
                         Node::ContextVar(_) => None,
-                        _n => {
+                        n => {
                             handled_nodes.lock().unwrap().insert(*node);
                             Some(format!(
-                                "    {}(\"{}\")", //\n    style {} stroke:{}",
+                                "    {}(\"{}\")\n    style {} stroke:{}",
                                 petgraph::graph::GraphIndex::index(node),
                                 as_dot_str(*node, self).replace('\"', "\'"),
-                                // petgraph::graph::GraphIndex::index(node),
-                                // n.dot_str_color()
+                                petgraph::graph::GraphIndex::index(node),
+                                n.dot_str_color()
                             ))
                         }
                     }
@@ -546,9 +546,9 @@ flowchart BT
                     }
                     let from = from.index();
                     let to = to.index();
-                    let _edge_idx = edge.index();
+                    let edge_idx = edge.index();
                     Some(format!(
-                        "    {from:} -->|\"{:?}\"| {to:}", //    class {to} linkSource{edge_idx}\n    class {from} linkTarget{edge_idx}",
+                        "    {from:} -->|\"{:?}\"| {to:}\n    class {to} linkSource{edge_idx}\n    class {from} linkTarget{edge_idx}",
                         self.graph().edge_weight(edge).unwrap()
                     ))
                 } else {
@@ -585,29 +585,29 @@ pub fn mermaid_node(
     g: &impl GraphBackend,
     indent: &str,
     node: NodeIdx,
-    _style: bool,
-    _class: Option<&str>,
+    style: bool,
+    class: Option<&str>,
 ) -> String {
-    let node_str = format!(
+    let mut node_str = format!(
         "{indent}{}(\"{}\")",
         petgraph::graph::GraphIndex::index(&node),
         as_dot_str(node, g).replace('\"', "\'"),
     );
 
-    // if style {
-    //     node_str.push_str(&format!(
-    //         "\n{indent}style {} stroke:{}",
-    //         petgraph::graph::GraphIndex::index(&node),
-    //         g.node(node).dot_str_color()
-    //     ));
-    // }
+    if style {
+        node_str.push_str(&format!(
+            "\n{indent}style {} stroke:{}",
+            petgraph::graph::GraphIndex::index(&node),
+            g.node(node).dot_str_color()
+        ));
+    }
 
-    // if let Some(class) = class {
-    //     node_str.push_str(&format!(
-    //         "\n{indent}class {} {class}",
-    //         petgraph::graph::GraphIndex::index(&node),
-    //     ));
-    // }
+    if let Some(class) = class {
+        node_str.push_str(&format!(
+            "\n{indent}class {} {class}",
+            petgraph::graph::GraphIndex::index(&node),
+        ));
+    }
 
     node_str
 }

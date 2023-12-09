@@ -204,12 +204,108 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
             RangeOp::Sub(unchecked) => {
                 if unchecked {
-                    let candidates = vec![
+                    let mut candidates = vec![];
+                    // check if rhs contains zero, if so add lhs_min and max as candidates
+                    let zero = Elem::from(Concrete::from(U256::from(0)));
+                    let one = Elem::from(Concrete::from(U256::from(1)));
+                    let rhs_min_contains_zero = matches!(
+                        rhs_min.range_ord(&zero),
+                        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                    );
+
+                    let rhs_max_contains_zero = matches!(
+                        rhs_max.range_ord(&zero),
+                        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                    );
+
+                    if rhs_min_contains_zero && rhs_max_contains_zero {
+                        candidates.push(Some(lhs_min.clone()));
+                        candidates.push(Some(lhs_max.clone()));
+                    }
+
+                    // If we have the below case, where the lhs
+                    // contains the rhs, we can add zero. Futher more, if
+                    // the lhs contains rhs - 1, we can add max as it
+                    // would overflow to uint256.max
+                    //     zero   min                          max  uint256.max 
+                    // lhs:  | - - |----------------------------| - - |
+                    // rhs:  | - - |--| - - - - - - - - - - - - - - - |  
+                    match lhs_max.range_ord(&rhs_min) {
+                        Some(std::cmp::Ordering::Less) => {
+                            // We are going to overflow, zero not possible
+                        }
+                        Some(std::cmp::Ordering::Equal) => {
+                            // We are going to at least be zero,
+                            // we may overflow. check if rhs is const, otherwise
+                            // add uint256.max as a candidate 
+                            candidates.push(Some(zero.clone()));
+                            if !consts.1 {
+                                candidates.push(zero.range_wrapping_sub(&one));
+                            }
+                        }
+                        Some(std::cmp::Ordering::Greater) => {
+                            // No guarantees on overflow, check lhs_min
+                            match lhs_min.range_ord(&rhs_min) {
+                                Some(std::cmp::Ordering::Less) => {
+                                    // fully contained, add zero and max
+                                    candidates.push(Some(zero.clone()));
+                                    candidates.push(zero.range_wrapping_sub(&one));
+                                }
+                                Some(std::cmp::Ordering::Equal) => {
+                                    // We are going to at least be zero,
+                                    // we may overflow. check if rhs is const, otherwise
+                                    // add uint256.max as a candidate 
+                                    candidates.push(Some(zero.clone()));
+                                    if !consts.1 {
+                                        candidates.push(zero.range_wrapping_sub(&one));
+                                    }
+                                }
+                                Some(std::cmp::Ordering::Greater) => {
+                                    // current info:
+                                    //     zero   min                          max  uint256.max 
+                                    // lhs:  | - - |----------------------------| - - |
+                                    // rhs:  | - |----? - - - - - - - - - - - - - - - |
+                                    // figure out where rhs max is
+                                    match lhs_min.range_ord(&rhs_max) {
+                                        Some(std::cmp::Ordering::Less) => {
+                                            //     zero   min  
+                                            // lhs:  | - - |---?
+                                            // rhs:  | - |----|
+                                            //          min  max
+                                            // Add both
+                                            candidates.push(Some(zero.clone()));
+                                            candidates.push(zero.range_wrapping_sub(&one));
+                                        }
+                                        Some(std::cmp::Ordering::Equal) => {
+                                            //     zero   min  
+                                            // lhs:  | - - |---?
+                                            // rhs:  | |---|
+                                            //        min max
+                                            // Add zero
+                                            candidates.push(Some(zero.clone()));   
+                                        }
+                                        Some(std::cmp::Ordering::Greater) => {
+                                            //     zero   min  
+                                            // lhs:  | - - |---?
+                                            // rhs:  |-----|
+                                            //      min   max
+                                            // Add nothing
+                                        } 
+                                        _ => {}  
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    candidates.extend(vec![
                         lhs_min.range_wrapping_sub(&rhs_min),
                         lhs_min.range_wrapping_sub(&rhs_max),
                         lhs_max.range_wrapping_sub(&rhs_min),
                         lhs_max.range_wrapping_sub(&rhs_max),
-                    ];
+                    ]);
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
                     candidates.sort_by(|a, b| match a.range_ord(b) {
                         Some(r) => r,
