@@ -32,6 +32,13 @@ impl ContextVarNode {
         ))
     }
 
+    pub fn is_memory(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(matches!(
+            self.underlying(analyzer)?.storage,
+            Some(StorageLocation::Memory(..))
+        ))
+    }
+
     pub fn is_return_assignment(&self, analyzer: &impl GraphBackend) -> bool {
         analyzer
             .graph()

@@ -277,7 +277,25 @@ pub trait YulBuilder:
             HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),
             StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
-            Variable(ident) => self.variable(ident, ctx, None),
+            Variable(ident) => {
+                self.variable(ident, ctx, None)?;
+                self.apply_to_edges(ctx, ident.loc, &|analyzer, edge_ctx, loc| {
+                    if let Some(ret) = edge_ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
+                        if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?).is_memory(analyzer).into_expr_err(loc)? {
+                            // its a memory based variable, push a uint instead
+                            let b = Builtin::Uint(256);
+                            let var = ContextVar::new_from_builtin(loc, analyzer.builtin_or_add(b).into(), analyzer)
+                                .into_expr_err(loc)?;
+                            let node = analyzer.add_node(Node::ContextVar(var));
+                            edge_ctx.push_expr(ExprRet::Single(node), analyzer).into_expr_err(loc)
+                        } else {
+                            edge_ctx.push_expr(ret, analyzer).into_expr_err(loc)
+                        }
+                    } else {
+                        panic!("No variable?")
+                    }
+                })
+            },
             FunctionCall(yul_func_call) => self.yul_func_call(yul_func_call, ctx),
             SuffixAccess(_loc, _yul_member_expr, _ident) => Err(ExprErr::Todo(
                 expr.loc(),
