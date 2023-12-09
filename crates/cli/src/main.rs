@@ -252,7 +252,7 @@ fn main() {
     // analyzer.print_errors(&file_mapping, &mut source_map);
 
     // let t = petgraph::algo::toposort(&analyzer.graph, None);
-    // analyzer.print_errors(&file_mapping, &mut source_map);
+    analyzer.print_errors(&file_mapping, &mut source_map);
 
     if args.open_dot {
         analyzer.open_dot()

@@ -25,6 +25,7 @@ impl FunctionNode {
     ) -> Result<&'a Function, GraphError> {
         match analyzer.node(*self) {
             Node::Function(func) => Ok(func),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Function but it was: {e:?}"
             ))),
@@ -95,6 +96,7 @@ impl FunctionNode {
     ) -> Result<&'a mut Function, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Function(func) => Ok(func),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Function but it was: {e:?}"
             ))),
@@ -700,6 +702,7 @@ impl FunctionParamNode {
     ) -> Result<&'a FunctionParam, GraphError> {
         match analyzer.node(*self) {
             Node::FunctionParam(param) => Ok(param),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be FunctionParam but it was: {e:?}"
             ))),
@@ -822,6 +825,7 @@ impl FunctionReturnNode {
     ) -> Result<&'a FunctionReturn, GraphError> {
         match analyzer.node(*self) {
             Node::FunctionReturn(ret) => Ok(ret),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be FunctionReturn but it was: {e:?}"
             ))),

@@ -292,7 +292,13 @@ pub trait YulBuilder:
                             edge_ctx.push_expr(ret, analyzer).into_expr_err(loc)
                         }
                     } else {
-                        panic!("No variable?")
+                        Err(ExprErr::Unresolved(
+                            ident.loc,
+                            format!(
+                                "Could not find variable with name: {}",
+                                ident.name
+                            ),
+                        ))
                     }
                 })
             },

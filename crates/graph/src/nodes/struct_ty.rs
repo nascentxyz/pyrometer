@@ -15,6 +15,7 @@ impl StructNode {
     ) -> Result<&'a Struct, GraphError> {
         match analyzer.node(*self) {
             Node::Struct(st) => Ok(st),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Struct but it was: {e:?}"
             ))),
@@ -127,6 +128,7 @@ impl FieldNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Field, GraphError> {
         match analyzer.node(*self) {
             Node::Field(field) => Ok(field),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Field but it was: {e:?}"
             ))),

@@ -29,6 +29,7 @@ impl EnumNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Enum, GraphError> {
         match analyzer.node(*self) {
             Node::Enum(e) => Ok(e),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Contract but it was: {e:?}"
             ))),

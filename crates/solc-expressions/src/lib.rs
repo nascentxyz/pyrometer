@@ -148,6 +148,7 @@ impl ExprErr {
             GraphError(_loc, graph::GraphError::ExpectedSingle(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::StackLengthMismatch(msg), ..) => msg,
             GraphError(_loc, graph::GraphError::UnbreakableRecursion(msg), ..) => msg,
+            GraphError(_loc, graph::GraphError::UnknownVariable(msg), ..) => msg,
         }
     }
 
@@ -184,6 +185,7 @@ impl ExprErr {
             GraphError(_loc, graph::GraphError::ExpectedSingle(_), ..) => "Graph IR Error: Expecting single expression return, got multiple. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, graph::GraphError::StackLengthMismatch(_), ..) => "Graph IR Error: Expected a particular number of elements on the context stack but found a different amount. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             GraphError(_loc, graph::GraphError::UnbreakableRecursion(_), ..) => "Graph IR Error: Unbreakable recursion in variable range. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
+            GraphError(_loc, graph::GraphError::UnknownVariable(_), ..) => "Graph IR Error: Unknown variable. This is potentially a bug, but more likely a variable name is mistyped.",
         }
     }
 }

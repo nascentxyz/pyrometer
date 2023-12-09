@@ -17,6 +17,7 @@ impl VarNode {
     pub fn underlying<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Var, GraphError> {
         match analyzer.node(*self) {
             Node::Var(func) => Ok(func),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Var but it was: {e:?}"
             ))),
@@ -29,6 +30,7 @@ impl VarNode {
     ) -> Result<&'a mut Var, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Var(func) => Ok(func),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Var but it was: {e:?}"
             ))),

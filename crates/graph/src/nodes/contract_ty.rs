@@ -36,6 +36,7 @@ impl ContractNode {
     ) -> Result<&'a Contract, GraphError> {
         match analyzer.node(*self) {
             Node::Contract(contract) => Ok(contract),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Contract but it was: {e:?}"
             ))),

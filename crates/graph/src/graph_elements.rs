@@ -44,6 +44,8 @@ pub enum GraphError {
     StackLengthMismatch(String),
     /// A variable had a cyclic reference to another variable and we were unable to break the cycle
     UnbreakableRecursion(String),
+    /// The analyzer thought the node was suppose to be one type, but it was a different one
+    UnknownVariable(String),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

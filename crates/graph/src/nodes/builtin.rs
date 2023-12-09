@@ -18,6 +18,7 @@ impl BuiltInNode {
     ) -> Result<&'a Builtin, GraphError> {
         match analyzer.node(*self) {
             Node::Builtin(b) => Ok(b),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!("Could not find variable: {}", ident.name))),
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Builtin but it was: {e:?}"
             ))),
