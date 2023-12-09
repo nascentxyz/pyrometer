@@ -82,6 +82,50 @@ pub trait GraphDot: GraphLike {
             .expect("failed to execute process");
     }
 
+    fn open_mermaid(&self)
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        println!("Generating mermaid... This may take a moment");
+        use std::env::temp_dir;
+        use std::fs;
+        use std::io::Write;
+        use std::process::Command;
+        let temp_dir = temp_dir();
+        let file_name = "mermaid.mmd";
+        let config_name = "mermaidConfig.json";
+        let mut temp_path = temp_dir.clone();
+        let mut temp_config_path = temp_dir.clone();
+        temp_path.push(file_name);
+        temp_config_path.push(config_name);
+
+        let mut file = fs::File::create(temp_config_path.clone()).unwrap();
+        file.write_all(include_bytes!("./mermaidConfig.json")).unwrap();
+
+        let temp_svg_filename: String = format!("{}/mermaid.svg", &temp_dir.to_string_lossy());
+
+
+        let mut file = fs::File::create(temp_path.clone()).unwrap();
+        file.write_all(self.mermaid_str().as_bytes()).unwrap();
+        Command::new("mmdc")
+            .arg("-i")
+            .arg(temp_path)
+            .arg("-o")
+            .arg(&temp_svg_filename)
+            .arg("-c")
+            .arg(temp_config_path)
+            .arg("-b")
+            .arg("#1a1b26")
+            .output()
+            .expect("You may need to install mermaid-cli (https://github.com/mermaid-js/mermaid-cli), check if command 'mmdc' is in your $PATH");
+        println!("Done generating mermaid svg, opening...");
+        Command::new("open")
+            .arg(&temp_svg_filename)
+            .spawn()
+            .expect("failed to execute process");
+    }
+
     /// Creates a subgraph for visually identifying contexts and subcontexts
     fn cluster_str(
         &self,

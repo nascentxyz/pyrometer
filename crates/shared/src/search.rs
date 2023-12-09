@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{GraphLike, NodeIdx};
@@ -10,13 +11,15 @@ pub trait Heirarchical {
 impl<T> Search for T
 where
     T: GraphLike,
-    <T as GraphLike>::Edge: Ord + PartialEq + Heirarchical + Copy,
+    <T as GraphLike>::Edge: Ord + PartialEq + Heirarchical + Copy + Debug,
+    <T as GraphLike>::Node: Debug,
 {
 }
 /// A trait for searching through a graph
 pub trait Search: GraphLike
 where
-    <Self as GraphLike>::Edge: PartialEq + Heirarchical + Copy,
+    <Self as GraphLike>::Edge: PartialEq + Heirarchical + Copy + Debug,
+    <Self as GraphLike>::Node:  Debug,
 {
     fn search_for_ancestor(
         &self,
@@ -387,15 +390,14 @@ where
             seen.insert(start);
         }
 
-        let edges = self.graph().edges_directed(start, Direction::Incoming);
+        let edges = self.graph().edges_directed(start, Direction::Incoming).filter(|edge| {
+            !exclude_edges.contains(edge.weight())
+        });
+        
         let mut this_children: BTreeSet<NodeIdx> = edges
             .clone()
-            .filter_map(|edge| {
-                if !exclude_edges.contains(edge.weight()) {
-                    Some(edge.source())
-                } else {
-                    None
-                }
+            .map(|edge| {
+                edge.source()
             })
             .collect();
 

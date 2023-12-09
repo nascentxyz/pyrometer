@@ -538,6 +538,7 @@ pub trait ContextBuilder:
                 true
             }
             Err(e) => {
+                println!("e: {e:#?}");
                 let res = ctx
                     .kill(self, e.loc(), KilledKind::ParseError)
                     .into_expr_err(e.loc());

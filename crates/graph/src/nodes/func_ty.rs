@@ -451,7 +451,7 @@ impl AsDotStr for FunctionNode {
         format!(
             "{} {}({}) {}",
             self.underlying(analyzer).unwrap().ty,
-            self.name(analyzer).unwrap(),
+            self.name(analyzer).unwrap().split('(').collect::<Vec<_>>()[0],
             inputs,
             attrs
         )
@@ -682,7 +682,7 @@ impl AsDotStr for FunctionParamNode {
             if let Some(stor) = &self.underlying(analyzer).unwrap().storage {
                 format!(" {stor} ")
             } else {
-                "".to_string()
+                " ".to_string()
             },
             if let Some(name) = self.maybe_name(analyzer).unwrap() {
                 name
@@ -804,7 +804,7 @@ impl AsDotStr for FunctionReturnNode {
             if let Some(stor) = &self.underlying(analyzer).unwrap().storage {
                 format!(" {stor} ")
             } else {
-                "".to_string()
+                " ".to_string()
             },
             if let Some(name) = self.maybe_name(analyzer).unwrap() {
                 name

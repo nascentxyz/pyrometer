@@ -76,10 +76,13 @@ impl GraphDot for Analyzer {
 
         let g = &G { graph: &new_graph };
         let children = g.children_exclude(node, 0, &[Edge::Context(ContextEdge::Subcontext)]);
-        let mut children_edges = g.edges_for_nodes(&children);
+        let mut children_edges = g.edges_for_nodes(&children).into_iter().filter(|(_, _, e, _)| {
+            *e != Edge::Context(ContextEdge::InputVariable)
+        }).collect::<BTreeSet<_>>();
         children_edges.extend(
             self.graph()
                 .edges_directed(node, Direction::Incoming)
+                .filter(|edge| *edge.weight() != Edge::Context(ContextEdge::InputVariable))
                 .map(|edge| (edge.source(), edge.target(), *edge.weight(), edge.id()))
                 .collect::<BTreeSet<(NodeIdx, NodeIdx, Edge, EdgeIndex<usize>)>>(),
         );
@@ -164,7 +167,7 @@ impl GraphDot for Analyzer {
                         }
                     }
                     Node::ContextVar(_) => {
-                        let mut children = g.children(*child);
+                        let mut children = g.children_exclude(*child, usize::MAX, &[Edge::Context(ContextEdge::InputVariable)]);
                         children.insert(*child);
                         children
                             .iter()
@@ -513,11 +516,11 @@ flowchart BT
                         n => {
                             handled_nodes.lock().unwrap().insert(*node);
                             Some(format!(
-                                "    {}(\"{}\")\n    style {} stroke:{}",
+                                "    {}(\"{}\")",//\n    style {} stroke:{}",
                                 petgraph::graph::GraphIndex::index(node),
                                 as_dot_str(*node, self).replace('\"', "\'"),
-                                petgraph::graph::GraphIndex::index(node),
-                                n.dot_str_color()
+                                // petgraph::graph::GraphIndex::index(node),
+                                // n.dot_str_color()
                             ))
                         }
                     }
@@ -539,7 +542,7 @@ flowchart BT
                     let to = to.index();
                     let edge_idx = edge.index();
                     Some(format!(
-                        "    {from:} -->|\"{:?}\"| {to:}\n    class {to} linkSource{edge_idx}\n    class {from} linkTarget{edge_idx}",
+                        "    {from:} -->|\"{:?}\"| {to:}", //    class {to} linkSource{edge_idx}\n    class {from} linkTarget{edge_idx}",
                         self.graph().edge_weight(edge).unwrap()
                     ))
                 } else {
@@ -585,20 +588,20 @@ pub fn mermaid_node(
         as_dot_str(node, g).replace('\"', "\'"),
     );
 
-    if style {
-        node_str.push_str(&format!(
-            "\n{indent}style {} stroke:{}",
-            petgraph::graph::GraphIndex::index(&node),
-            g.node(node).dot_str_color()
-        ));
-    }
+    // if style {
+    //     node_str.push_str(&format!(
+    //         "\n{indent}style {} stroke:{}",
+    //         petgraph::graph::GraphIndex::index(&node),
+    //         g.node(node).dot_str_color()
+    //     ));
+    // }
 
-    if let Some(class) = class {
-        node_str.push_str(&format!(
-            "\n{indent}class {} {class}",
-            petgraph::graph::GraphIndex::index(&node),
-        ));
-    }
+    // if let Some(class) = class {
+    //     node_str.push_str(&format!(
+    //         "\n{indent}class {} {class}",
+    //         petgraph::graph::GraphIndex::index(&node),
+    //     ));
+    // }
 
     node_str
 }

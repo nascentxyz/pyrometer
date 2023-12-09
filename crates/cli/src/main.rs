@@ -64,6 +64,9 @@ struct Args {
     /// Whether to generate and open a dot visualization of the analyzed contracts
     #[clap(long, short, default_value = "false")]
     pub open_dot: bool,
+    /// Whether to generate and open a mermaid visualization of the analyzed contracts
+    #[clap(long, default_value = "false")]
+    pub open_mermaid: bool,
     /// Whether to evaluate variables down to their intervals or to keep them symbolic/relational to other variables
     #[clap(long, short)]
     pub eval: Option<bool>,
@@ -261,6 +264,10 @@ fn main() {
 
     if args.mermaid {
         println!("{}", analyzer.mermaid_str());
+    }
+
+    if args.open_mermaid {
+        analyzer.open_mermaid();
     }
 
     if args.debug {
