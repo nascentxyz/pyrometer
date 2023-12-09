@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Debug;
 
 use crate::{GraphLike, NodeIdx};
 use petgraph::{graph::*, visit::EdgeRef, Direction};
@@ -19,7 +19,7 @@ where
 pub trait Search: GraphLike
 where
     <Self as GraphLike>::Edge: PartialEq + Heirarchical + Copy + Debug,
-    <Self as GraphLike>::Node:  Debug,
+    <Self as GraphLike>::Node: Debug,
 {
     fn search_for_ancestor(
         &self,
@@ -390,16 +390,13 @@ where
             seen.insert(start);
         }
 
-        let edges = self.graph().edges_directed(start, Direction::Incoming).filter(|edge| {
-            !exclude_edges.contains(edge.weight())
-        });
-        
-        let mut this_children: BTreeSet<NodeIdx> = edges
-            .clone()
-            .map(|edge| {
-                edge.source()
-            })
-            .collect();
+        let edges = self
+            .graph()
+            .edges_directed(start, Direction::Incoming)
+            .filter(|edge| !exclude_edges.contains(edge.weight()));
+
+        let mut this_children: BTreeSet<NodeIdx> =
+            edges.clone().map(|edge| edge.source()).collect();
 
         this_children.extend(
             edges

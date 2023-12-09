@@ -101,10 +101,10 @@ pub trait GraphDot: GraphLike {
         temp_config_path.push(config_name);
 
         let mut file = fs::File::create(temp_config_path.clone()).unwrap();
-        file.write_all(include_bytes!("./mermaidConfig.json")).unwrap();
+        file.write_all(include_bytes!("./mermaidConfig.json"))
+            .unwrap();
 
         let temp_svg_filename: String = format!("{}/mermaid.svg", &temp_dir.to_string_lossy());
-
 
         let mut file = fs::File::create(temp_path.clone()).unwrap();
         file.write_all(self.mermaid_str().as_bytes()).unwrap();
