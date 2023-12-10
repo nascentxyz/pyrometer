@@ -1,5 +1,6 @@
 use crate::{range::elem::RangeElem, GraphBackend};
 use shared::NodeIdx;
+use std::borrow::Cow;
 
 pub trait Range<T> {
     type GraphError;
@@ -64,6 +65,10 @@ pub trait Range<T> {
     fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);
     /// Replace a potential recursion causing node index with a new index
     fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);
+    /// Cache the flattened range
+    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
+    /// Produce a flattened range or use the cached flattened range
+    fn flattened_range<'a>(&'a self, analyzer: &impl GraphBackend) -> Result<Cow<'a, Self>, Self::GraphError> where Self: Sized + Clone;
 }
 
 pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {

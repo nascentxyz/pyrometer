@@ -16,6 +16,10 @@ pub trait RangeElem<T> {
         maximize: bool,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
+    /// Returns whether `cache_flatten` has been called
+    fn is_flatten_cached(&self) -> bool;
+    /// Flattens an element and caches the result
+    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
     /// Maximizes the element and caches the result for quicker use later

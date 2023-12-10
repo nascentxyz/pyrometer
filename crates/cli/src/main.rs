@@ -89,6 +89,10 @@ struct Args {
     /// then ends the program
     #[clap(long)]
     pub debug: bool,
+
+    /// Max stack depth to evaluate to
+    #[clap(long, short, default_value = "200")]
+    pub max_stack_depth: usize,
 }
 
 pub fn subscriber() {
@@ -201,6 +205,7 @@ fn main() {
         },
     };
     let mut analyzer = Analyzer::default();
+    analyzer.max_depth = args.max_stack_depth;
     analyzer.root = Root::RemappingsDirectory(env::current_dir().unwrap());
 
     let (current_path, sol) = if args.path.ends_with(".sol") {

@@ -22,6 +22,10 @@ pub struct Reference<T> {
     pub minimized: Option<MinMaxed<T>>,
     /// Cached maximized value
     pub maximized: Option<MinMaxed<T>>,
+    /// Cached minimized flatten value
+    pub flattened_min: Option<Box<Elem<T>>>,
+    /// Cached maximized flatten value
+    pub flattened_max: Option<Box<Elem<T>>>,
 }
 
 impl<T> Reference<T> {
@@ -30,6 +34,8 @@ impl<T> Reference<T> {
             idx,
             minimized: None,
             maximized: None,
+            flattened_min: None,
+            flattened_max: None,
         }
     }
 }
@@ -94,6 +100,16 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         maximize: bool,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        match (maximize, &self.flattened_min, &self.flattened_max) {
+            (true, _, Some(flat))
+            | (false, Some(flat), _) => {
+                // println!("flatten cache hit: {}", self.idx.index());
+                return Ok(*flat.clone())
+            },
+            _ => {}
+        }
+
+        // println!("flatten cache miss: {}", self.idx.index());
         let cvar = ContextVarNode::from(self.idx);
         // println!("flattening reference: {} (idx_{})", cvar.display_name(analyzer)?, self.idx.index());
         if cvar.is_fundamental(analyzer)? {
@@ -103,15 +119,33 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
         if maximize {
             cvar.range_max(analyzer)?
-                .unwrap()
+                .unwrap_or(Elem::Null)
                 .flatten(maximize, analyzer)
         } else {
             let flattened = cvar
                 .range_min(analyzer)?
-                .unwrap()
+                .unwrap_or(Elem::Null)
                 .flatten(maximize, analyzer)?;
             Ok(flattened)
         }
+    }
+
+    fn is_flatten_cached(&self) -> bool {
+        self.flattened_min.is_some() && self.flattened_max.is_some()
+    }
+
+    fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+        if self.flattened_max.is_none() {
+            let flat_max = self.flatten(true, g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(&mut vec![], g)?;
+            self.flattened_max = Some(Box::new(simplified_flat_max));
+        }
+        if self.flattened_min.is_none() {
+            let flat_min = self.flatten(false, g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(&mut vec![], g)?;
+            self.flattened_min = Some(Box::new(simplified_flat_min));
+        }
+        Ok(())
     }
 
     fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
@@ -171,6 +205,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(simp_max) = &self.flattened_max {
+            return Ok(*simp_max.clone());
+        }
+
         let cvar = ContextVarNode::from(self.idx);
 
         let independent = cvar.is_fundamental(analyzer)?;
@@ -189,6 +227,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(simp_min) = &self.flattened_min {
+            return Ok(*simp_min.clone());
+        }
+
         let cvar = ContextVarNode::from(self.idx);
         if cvar.is_fundamental(analyzer)? {
             Ok(Elem::Reference(Reference::new(
@@ -217,6 +259,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn uncache(&mut self) {
         self.minimized = None;
         self.maximized = None;
+        self.flattened_min = None;
+        self.flattened_max = None;
     }
 
     fn contains_op_set(

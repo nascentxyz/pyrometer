@@ -41,13 +41,11 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(size))),
-                    val: existing,
-                    loc: other.loc,
-                })))
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(size))),
+                    existing,
+                    other.loc,
+                ))))
             }
             (
                 Concrete::DynBytes(val),
@@ -73,13 +71,11 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(val.len()))),
-                    val: existing,
-                    loc: other.loc,
-                })))
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(val.len()))),
+                    existing,
+                    other.loc,
+                ))))
             }
             (
                 Concrete::String(val),
@@ -105,13 +101,11 @@ impl RangeCast<Concrete, Box<RangeDyn<Concrete>>> for RangeConcrete<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(val.len()))),
-                    val: existing,
-                    loc: other.loc,
-                })))
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(val.len()))),
+                    existing,
+                    other.loc,
+                ))))
             }
             _e => None,
         }

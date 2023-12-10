@@ -42,13 +42,11 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(val.len()))),
-                    val: existing,
-                    loc: other.loc,
-                })))
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(val.len()))),
+                    existing,
+                    other.loc,
+                ))))
             }
             (
                 Concrete::String(val),
@@ -76,13 +74,11 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(val.len()))),
-                    val: existing,
-                    loc: other.loc,
-                })))
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(val.len()))),
+                    existing,
+                    other.loc,
+                ))))
             }
             _e => None,
         }
@@ -120,13 +116,11 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     .collect::<BTreeMap<_, _>>();
 
                 existing.extend(other_vals);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: self.len.clone() + other.len.clone(),
-                    val: existing,
-                    loc: other.loc,
-                })))
+                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    self.len.clone() + other.len.clone(),
+                    existing,
+                    other.loc,
+                ))))
             }
             (Some((_, l @ Elem::Reference(_))), None) => Some(l.clone()),
             (None, Some((_, r @ Elem::Reference(_)))) => Some(r.clone()),

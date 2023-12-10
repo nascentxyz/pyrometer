@@ -1,4 +1,4 @@
-use crate::nodes::{ContextNode, ContextVarNode, ContractNode, FunctionNode};
+use crate::nodes::{ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode};
 use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
@@ -75,6 +75,8 @@ pub struct ContextCache {
     pub vars: BTreeMap<String, ContextVarNode>,
     /// Visible functions from this context
     pub visible_funcs: Option<Vec<FunctionNode>>,
+    /// Visible structs from this context
+    pub visible_structs: Option<Vec<StructNode>>,
     /// First ancestor of this context
     pub first_ancestor: Option<ContextNode>,
     /// Associated source of this context

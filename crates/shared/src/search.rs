@@ -220,7 +220,11 @@ where
             .clone()
             .filter_map(|edge| {
                 if edge.weight() == edge_ty {
-                    Some(edge.source())
+                    if !seen.contains(&edge.source()) {
+                        Some(edge.source())    
+                    } else {
+                        None
+                    }                    
                 } else {
                     None
                 }
@@ -231,12 +235,16 @@ where
         this_children.extend(
             edges
                 .flat_map(|edge| {
-                    self.search_children_exclude_via_prevent_cycle(
-                        edge.source(),
-                        edge_ty,
-                        exclude_edges,
-                        seen,
-                    )
+                    if !seen.contains(&edge.source()) {
+                        self.search_children_exclude_via_prevent_cycle(
+                            edge.source(),
+                            edge_ty,
+                            exclude_edges,
+                            seen,
+                        )
+                    } else {
+                        Default::default()
+                    } 
                 })
                 .collect::<BTreeSet<NodeIdx>>(),
         );

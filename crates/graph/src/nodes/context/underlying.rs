@@ -207,6 +207,13 @@ impl Context {
                 } else {
                     None
                 },
+                visible_structs: if fork_expr.is_some() {
+                    parent_ctx.underlying(analyzer)?.cache.visible_structs.clone()
+                } else if let Some(ret_ctx) = returning_ctx {
+                    ret_ctx.underlying(analyzer)?.cache.visible_structs.clone()
+                } else {
+                    None
+                },
                 first_ancestor: if fork_expr.is_some() {
                     parent_ctx.underlying(analyzer)?.cache.first_ancestor
                 } else if let Some(ret_ctx) = returning_ctx {

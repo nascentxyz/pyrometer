@@ -1,7 +1,7 @@
 use crate::{
-    nodes::{ContextNode, ContractNode},
+    nodes::{ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, SolcRange,
-    VarType,
+    VarType
 };
 
 use shared::{NodeIdx, Search, StorageLocation};
@@ -226,14 +226,14 @@ impl FunctionNode {
     pub fn maybe_associated_source_unit_part(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Option<NodeIdx> {
+    ) -> Option<SourceUnitPartNode> {
         if let Some(sup) = self
             .underlying(analyzer)
             .unwrap()
             .cache
             .associated_source_unit_part
         {
-            Some(sup)
+            Some(sup.into())
         } else {
             let parent = analyzer
                 .graph()
@@ -255,13 +255,13 @@ impl FunctionNode {
                 Node::Contract(_) => {
                     ContractNode::from(parent).associated_source_unit_part(analyzer)
                 }
-                Node::SourceUnitPart(..) => parent,
+                Node::SourceUnitPart(..) => parent.into(),
                 _e => return None,
             };
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
-                .associated_source_unit_part = Some(sup);
+                .associated_source_unit_part = Some(sup.into());
             Some(sup)
         }
     }
@@ -269,38 +269,38 @@ impl FunctionNode {
     pub fn associated_source(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> NodeIdx {
+    ) -> SourceUnitNode {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
-            src
+            src.into()
         } else {
             let sup = self
                 .maybe_associated_source_unit_part(analyzer)
                 .expect("No associated source unit part");
             let src = analyzer
-                .search_for_ancestor(sup, &Edge::Part)
+                .search_for_ancestor(sup.into(), &Edge::Part)
                 .expect("detached function");
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
                 .associated_source = Some(src);
-            src
+            src.into()
         }
     }
 
     pub fn maybe_associated_source(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Option<NodeIdx> {
+    ) -> Option<SourceUnitNode> {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
-            Some(src)
+            Some(src.into())
         } else {
             let sup = self.maybe_associated_source_unit_part(analyzer)?;
-            let src = analyzer.search_for_ancestor(sup, &Edge::Part)?;
+            let src = analyzer.search_for_ancestor(sup.into(), &Edge::Part)?;
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
                 .associated_source = Some(src);
-            Some(src)
+            Some(src.into())
         }
     }
 

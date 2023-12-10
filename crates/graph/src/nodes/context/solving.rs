@@ -1,7 +1,9 @@
+use crate::SolcRange;
+use std::borrow::Cow;
 use crate::{
     as_dot_str,
     nodes::{ContextNode, ContextVarNode},
-    range::{elem::RangeOp, RangeEval},
+    range::{Range, elem::RangeOp, RangeEval},
     solvers::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,
@@ -37,9 +39,9 @@ impl ContextNode {
                     dep.display_name(analyzer).unwrap()
                 );
             }
-            let r = range.into_flattened_range(analyzer)?;
+            let r: Cow<'_, SolcRange> = range.flattened_range(analyzer)?;
             // println!("dep {} range: [{}, {}]", dep.display_name(analyzer).unwrap(), r.min, r.max);
-            ranges.insert(*dep, r);
+            ranges.insert(*dep, r.into_owned());
             Ok(())
         })?;
 
@@ -85,16 +87,21 @@ impl ContextNode {
             dep.is_controllable(analyzer)?
         );
         if dep.is_controllable(analyzer)? {
-            let range = dep.ref_range(analyzer)?.unwrap();
-            let r = range.into_flattened_range(analyzer)?;
-            let underlying = self.underlying_mut(analyzer)?;
-            if !underlying.ctx_deps.contains(&dep) {
+            // let underlying = self.underlying_mut(analyzer)?;
+            if !self.underlying(analyzer)?.ctx_deps.contains(&dep) {
+                // dep.cache_flattened_range(analyzer)?;
+                let range = dep.ref_range(analyzer)?.unwrap();
+                let r = range.flattened_range(analyzer)?.into_owned();
                 // add the atomic constraint
                 if let Some(atom) = r.min.atomize() {
+                    let underlying = self.underlying_mut(analyzer)?;
                     underlying.dl_solver.add_constraints(vec![atom]);
                 } else if let Some(atom) = r.max.atomize() {
+                    let underlying = self.underlying_mut(analyzer)?;
                     underlying.dl_solver.add_constraints(vec![atom]);
                 }
+
+                let underlying = self.underlying_mut(analyzer)?;
 
                 underlying.ctx_deps.push(dep);
             }

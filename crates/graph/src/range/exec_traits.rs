@@ -35,7 +35,7 @@ pub trait ExecOp<T> {
         &self,
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
-    ) -> Result<((Elem<T>, Elem<T>, Elem<T>, Elem<T>), bool), Self::GraphError>;
+    ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), Self::GraphError>;
 
     fn uncache_exec(&mut self);
 

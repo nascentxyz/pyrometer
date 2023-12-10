@@ -39,6 +39,8 @@ pub static FLIP_INEQ_OPS: &[RangeOp] = &[RangeOp::Lt, RangeOp::Lte, RangeOp::Gt,
 pub struct RangeExpr<T> {
     pub maximized: Option<MinMaxed<T>>,
     pub minimized: Option<MinMaxed<T>>,
+    pub flattened_min: Option<Box<Elem<T>>>,
+    pub flattened_max: Option<Box<Elem<T>>>,
     pub lhs: Box<Elem<T>>,
     pub op: RangeOp,
     pub rhs: Box<Elem<T>>,
@@ -77,6 +79,8 @@ impl<T> RangeExpr<T> {
         RangeExpr {
             maximized: None,
             minimized: None,
+            flattened_max: None,
+            flattened_min: None,
             lhs: Box::new(lhs),
             op,
             rhs: Box::new(rhs),
@@ -99,12 +103,25 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         maximize: bool,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        match (maximize, &self.flattened_min, &self.flattened_max) {
+            (true, _, Some(flat))
+            | (false, Some(flat), _) => {
+                // println!("flatten cache hit");
+                return Ok(*flat.clone())
+            },
+            _ => {}
+        }
+        // println!("flatten cache miss");
         // println!("flattening expr: {}", Elem::Expr(self.clone()));
         Ok(Elem::Expr(RangeExpr::new(
             self.lhs.flatten(maximize, analyzer)?,
             self.op,
             self.rhs.flatten(maximize, analyzer)?,
         )))
+    }
+
+    fn is_flatten_cached(&self) -> bool {
+        self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
     fn range_ord(&self, _other: &Self) -> Option<std::cmp::Ordering> {
@@ -166,14 +183,18 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(simp_max) = &self.flattened_max {
+            return Ok(*simp_max.clone());
+        }
+
         let l = self.lhs.simplify_maximize(exclude, analyzer)?;
         let r = self.rhs.simplify_maximize(exclude, analyzer)?;
-        match collapse(l, self.op, r) {
-            MaybeCollapsed::Collapsed(collapsed) => collapsed
-                .expect_into_expr()
-                .simplify_exec_op(true, exclude, analyzer),
+        let collapsed = collapse(l, self.op, r);
+        match collapsed {
+            MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer),
+            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(l, r) => {
-                RangeExpr::new(l, self.op, r).simplify_exec_op(true, exclude, analyzer)
+                Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))
             }
         }
     }
@@ -182,14 +203,34 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(simp_min) = &self.flattened_min {
+            return Ok(*simp_min.clone());
+        }
+
         let l = self.lhs.simplify_minimize(exclude, analyzer)?;
         let r = self.rhs.simplify_minimize(exclude, analyzer)?;
-        match collapse(l, self.op, r) {
+        let collapsed = collapse(l, self.op, r);
+        match collapsed {
+            MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer),
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(l, r) => {
-                RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer)
+                Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))
             }
         }
+    }
+
+    fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+        if self.flattened_max.is_none() {
+            let flat_max = self.flatten(true, g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(&mut vec![], g)?;
+            self.flattened_max = Some(Box::new(simplified_flat_max));
+        }
+        if self.flattened_min.is_none() {
+            let flat_min = self.flatten(false, g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(&mut vec![], g)?;
+            self.flattened_min = Some(Box::new(simplified_flat_min));
+        }
+        Ok(())
     }
 
     fn cache_maximize(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
@@ -226,6 +267,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 }
 
 enum MaybeCollapsed {
+    Concretes(Elem<Concrete>, Elem<Concrete>),
     Collapsed(Elem<Concrete>),
     Not(Elem<Concrete>, Elem<Concrete>),
 }
@@ -233,6 +275,9 @@ enum MaybeCollapsed {
 fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed {
     let zero = Elem::from(Concrete::from(U256::zero()));
     match (l.clone(), r.clone()) {
+        (Elem::Concrete(_), Elem::Concrete(_)) => {
+            MaybeCollapsed::Concretes(l, r)
+        }
         // if we have an expression, it fundamentally must have a dynamic in it
         (Elem::Expr(expr), c @ Elem::Concrete(_)) => {
             // potentially collapsible
@@ -629,6 +674,7 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
         (Elem::Concrete(_c), Elem::Expr(_expr)) => match collapse(r.clone(), op, l.clone()) {
             collapsed @ MaybeCollapsed::Collapsed(_) => collapsed,
             MaybeCollapsed::Not(_, _) => MaybeCollapsed::Not(l, r),
+            MaybeCollapsed::Concretes(_, _) => unreachable!(),
         },
         _ => MaybeCollapsed::Not(l, r),
     }

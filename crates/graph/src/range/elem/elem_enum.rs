@@ -401,6 +401,29 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
+    fn cache_flatten(
+        &mut self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<(), GraphError> {
+        match self {
+            Self::Reference(d) => d.cache_flatten(analyzer),
+            Self::Concrete(c) => c.cache_flatten(analyzer),
+            Self::Expr(expr) => expr.cache_flatten(analyzer),
+            Self::ConcreteDyn(d) => d.cache_flatten(analyzer),
+            Self::Null => Ok(()),
+        }
+    }
+
+    fn is_flatten_cached(&self) -> bool {
+        match self {
+            Self::Reference(d) => d.is_flatten_cached(),
+            Self::Concrete(c) => c.is_flatten_cached(),
+            Self::Expr(expr) => expr.is_flatten_cached(),
+            Self::ConcreteDyn(d) => d.is_flatten_cached(),
+            Self::Null => true,
+        }
+    }
+
     fn dependent_on(&self) -> Vec<ContextVarNode> {
         match self {
             Self::Reference(d) => d.dependent_on(),

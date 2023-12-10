@@ -231,23 +231,19 @@ impl Builtin {
             Builtin::Uint(_) => SolcRange::from(Concrete::from(U256::from(0))),
             Builtin::Bytes(s) => SolcRange::from(Concrete::Bytes(*s, H256::zero())),
             Builtin::DynamicBytes | Builtin::Array(_) | Builtin::Mapping(_, _) => {
-                let zero = Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::zero())),
-                    val: Default::default(),
-                    loc: Loc::Implicit,
-                }));
+                let zero = Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::zero())),
+                    Default::default(),
+                    Loc::Implicit,
+                )));
                 Some(SolcRange::new(zero.clone(), zero, vec![]))
             }
             Builtin::SizedArray(s, _) => {
-                let sized = Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(*s)),
-                    val: Default::default(),
-                    loc: Loc::Implicit,
-                }));
+                let sized = Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(*s)),
+                    Default::default(),
+                    Loc::Implicit,
+                )));
                 Some(SolcRange::new(sized.clone(), sized, vec![]))
             }
             Builtin::Rational | Builtin::Func(_, _) => None,

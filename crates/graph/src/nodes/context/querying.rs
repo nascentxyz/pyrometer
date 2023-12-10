@@ -1,9 +1,9 @@
 use crate::{
-    nodes::{ContextNode, ContractNode, FunctionNode, StructNode},
+    nodes::{ContextNode, ContractNode, FunctionNode, StructNode, SourceUnitNode, SourceUnitPartNode},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError,
 };
 
-use shared::{NodeIdx, Search};
+use shared::Search;
 use std::collections::{BTreeMap, BTreeSet};
 
 impl ContextNode {
@@ -32,16 +32,16 @@ impl ContextNode {
     pub fn maybe_associated_source(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Option<NodeIdx> {
+    ) -> Option<SourceUnitNode> {
         let context = self.underlying(analyzer).unwrap();
         if let Some(src) = context.cache.associated_source {
-            Some(src)
+            Some(src.into())
         } else if let Some(parent_ctx) = context.parent_ctx {
             let src = parent_ctx.maybe_associated_source(analyzer)?;
             self.underlying_mut(analyzer)
                 .unwrap()
                 .cache
-                .associated_source = Some(src);
+                .associated_source = Some(src.into());
             Some(src)
         } else {
             let func = self.associated_fn(analyzer).unwrap();
@@ -53,7 +53,7 @@ impl ContextNode {
     pub fn associated_source_unit_part(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<NodeIdx, GraphError> {
+    ) -> Result<SourceUnitPartNode, GraphError> {
         if let Some(sup) = self
             .associated_fn(analyzer)?
             .maybe_associated_source_unit_part(analyzer)
@@ -82,7 +82,7 @@ impl ContextNode {
             // extend with free floating functions
             modifiers.extend(
                 analyzer
-                    .search_children_depth(source, &Edge::Modifier, 1, 0)
+                    .search_children_depth(source.into(), &Edge::Modifier, 1, 0)
                     .into_iter()
                     .map(FunctionNode::from)
                     .collect::<Vec<_>>(),
@@ -131,7 +131,7 @@ impl ContextNode {
                 ));
             };
             Ok(analyzer
-                .search_children_depth(source, &Edge::Modifier, 1, 0)
+                .search_children_depth(source.into(), &Edge::Modifier, 1, 0)
                 .into_iter()
                 .map(FunctionNode::from)
                 .collect::<Vec<_>>())
@@ -195,7 +195,7 @@ impl ContextNode {
         };
         analyzer
             .search_children_exclude_via(
-                source,
+                source.into(),
                 &Edge::Func,
                 &[
                     Edge::Context(ContextEdge::Context),
@@ -211,17 +211,27 @@ impl ContextNode {
     pub fn visible_structs(
         &self,
         analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
-    ) -> Vec<StructNode> {
+    ) -> Result<Vec<StructNode>, GraphError> {
         // TODO: filter privates
+        if let Some(vis) = &self.underlying(analyzer)?.cache.visible_structs {
+            return Ok(vis.clone());
+        }
+
         let Some(source) = self.maybe_associated_source(analyzer) else {
-            return vec![];
+            return Ok(vec![]);
         };
 
-        analyzer
-            .search_children_exclude_via(source, &Edge::Struct, &[Edge::Func])
-            .into_iter()
-            .map(StructNode::from)
-            .collect::<Vec<_>>()
+        let mut structs = source.visible_structs(analyzer)?;
+        let contract = self.associated_contract(analyzer)?;
+        structs.extend(
+            contract.visible_structs(analyzer)
+        );
+
+        structs.sort();
+        structs.dedup();
+
+        self.underlying_mut(analyzer)?.cache.visible_structs = Some(structs.clone());
+        Ok(structs)
     }
 
     /// Gets the associated function for the context

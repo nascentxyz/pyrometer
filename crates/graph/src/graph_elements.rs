@@ -65,9 +65,9 @@ pub enum Node {
     /// The entry node in the graph
     Entry,
     /// A source unit (i.e. a source file)
-    SourceUnit(usize),
+    SourceUnit(SourceUnit),
     /// A subcomponent of the source unit
-    SourceUnitPart(usize, usize),
+    SourceUnitPart(SourceUnitPart),
     /// A contract
     Contract(Contract),
     /// A solidity-based function

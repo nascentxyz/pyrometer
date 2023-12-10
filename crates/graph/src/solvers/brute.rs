@@ -97,9 +97,9 @@ impl BruteBinSearchSolver {
                     dep.display_name(analyzer).unwrap()
                 );
             }
-            let r = range.into_flattened_range(analyzer)?;
+            let r = range.flattened_range(analyzer)?;
             atomic_idxs.extend(r.dependent_on());
-            ranges.insert(*dep, r);
+            ranges.insert(*dep, r.into_owned());
             Ok(())
         })?;
 

@@ -48,6 +48,12 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(Elem::Concrete(self.clone()))
     }
 
+    fn is_flatten_cached(&self) -> bool { true }
+
+    fn cache_flatten(&mut self, _: &impl GraphBackend) -> Result<(), GraphError> {
+        Ok(())
+    }
+
     fn range_eq(&self, other: &Self) -> bool {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => self_val == other_val,

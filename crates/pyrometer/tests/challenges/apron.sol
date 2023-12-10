@@ -1,4 +1,8 @@
 // Realistically this challenge requires `join` functionality to run in a normal time frame (15 seconds currently)
+
+// uint256 constant ITERS = 20;
+// int256 constant ITERS2 = int(ITERS) - 1;
+
 contract Apron {
     uint256 k;
     uint256 i;
@@ -15,7 +19,7 @@ contract Apron {
     }
 
     function bb1_t() public {
-        if (i <= 99) {
+        if (i <= 50) {
             bb2();
         }
     }
@@ -23,12 +27,12 @@ contract Apron {
     function bb2() public {
         i += 1;
         k += 1;
-        if (i <= 99) {
+        if (i <= 50) {
             bb1();
         }
     }
 
     function bb1_f() public {
-        require(-1 * int256(i) <= -100);
+        require(-1 * int256(i) <= -51);
     }
 }

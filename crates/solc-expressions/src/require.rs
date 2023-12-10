@@ -934,7 +934,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             tmp_cvar = Some(cvar);
 
             any_unsat |= new_var_range.unsat(self);
-            if any_unsat {
+            if any_unsat || ctx.unreachable(self).into_expr_err(loc)? {
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                 return Ok(None);
             }

@@ -9,7 +9,7 @@ use shared::NodeIdx;
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::Loc;
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct SolcRange {
@@ -18,6 +18,7 @@ pub struct SolcRange {
     pub max: Elem<Concrete>,
     pub max_cached: Option<Elem<Concrete>>,
     pub exclusions: Vec<Elem<Concrete>>,
+    pub flattened: Option<Box<Self>>,
 }
 
 impl AsDotStr for SolcRange {
@@ -124,6 +125,7 @@ impl SolcRange {
             max,
             max_cached: None,
             exclusions,
+            flattened: None,
         }
     }
 
@@ -184,13 +186,11 @@ impl SolcRange {
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
-                let r = Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(s.len()))),
+                let r = Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(s.len()))),
                     val,
-                    loc: Loc::Implicit,
-                }));
+                    Loc::Implicit,
+                )));
                 Some(SolcRange::new(r.clone(), r, vec![]))
             }
             Concrete::DynBytes(b) => {
@@ -205,13 +205,11 @@ impl SolcRange {
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
-                let r = Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::from(b.len()))),
+                let r = Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::from(b.len()))),
                     val,
-                    loc: Loc::Implicit,
-                }));
+                    Loc::Implicit,
+                )));
                 Some(SolcRange::new(r.clone(), r, vec![]))
             }
             _e => None,
@@ -319,37 +317,29 @@ impl SolcRange {
             | Builtin::String
             | Builtin::Array(_)
             | Builtin::Mapping(_, _) => Some(SolcRange::new(
-                Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::zero())),
-                    val: Default::default(),
-                    loc: Loc::Implicit,
-                })),
-                Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(U256::MAX)),
-                    val: Default::default(),
-                    loc: Loc::Implicit,
-                })),
+                Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::zero())),
+                    Default::default(),
+                    Loc::Implicit,
+                ))),
+                Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(U256::MAX)),
+                    Default::default(),
+                    Loc::Implicit,
+                ))),
                 vec![],
             )),
             Builtin::SizedArray(s, _) => Some(SolcRange::new(
-                Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(*s)),
-                    val: Default::default(),
-                    loc: Loc::Implicit,
-                })),
-                Elem::ConcreteDyn(Box::new(RangeDyn {
-                    minimized: None,
-                    maximized: None,
-                    len: Elem::from(Concrete::from(*s)),
-                    val: Default::default(),
-                    loc: Loc::Implicit,
-                })),
+                Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(*s)),
+                    Default::default(),
+                    Loc::Implicit,
+                ))),
+                Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                    Elem::from(Concrete::from(*s)),
+                    Default::default(),
+                    Loc::Implicit,
+                ))),
                 vec![],
             )),
             _ => None,
@@ -576,17 +566,22 @@ impl SolcRange {
     }
 
     pub fn into_flattened_range(&self, analyzer: &impl GraphBackend) -> Result<Self, GraphError> {
-        // println!("----- into flattened range -----");
+        if let Some(cached) = &self.flattened {
+            return Ok(*cached.clone());
+        }
+
         let flattened_min = self.range_min().flatten(false, analyzer)?;
-        // println!("flattened minimum: {}", flattened_min);
-        let simp_min = flattened_min.simplify_minimize(&mut vec![], analyzer)?;
-        // println!("simplified minimum: {}", simp_min);
-        // println!("----- min flattend -----");
+        let simp_min = if !self.range_min().is_flatten_cached() {
+            flattened_min.simplify_minimize(&mut vec![], analyzer)?
+        } else {
+            flattened_min
+        };
         let flattened_max = self.range_max().flatten(true, analyzer)?;
-        // println!("flattened maximum: {}", flattened_max);
-        let simp_max = flattened_max.simplify_maximize(&mut vec![], analyzer)?;
-        // println!("simplified maximum: {}", simp_max);
-        // println!("----- max flattend -----");
+        let simp_max = if !self.range_max().is_flatten_cached() {
+            flattened_max.simplify_maximize(&mut vec![], analyzer)?
+        } else {
+            flattened_max
+        };
 
         Ok(SolcRange::new(simp_min, simp_max, self.exclusions.clone()))
     }
@@ -612,11 +607,13 @@ impl Range<Concrete> for SolcRange {
         if self.min_cached.is_none() {
             let min = self.range_min_mut();
             min.cache_minimize(analyzer)?;
+            min.cache_flatten(analyzer)?;
             self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
             max.cache_maximize(analyzer)?;
+            max.cache_flatten(analyzer)?;
             self.max_cached = Some(self.range_max().maximize(analyzer)?);
         }
         Ok(())
@@ -682,6 +679,22 @@ impl Range<Concrete> for SolcRange {
     }
     fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx) {
         self.max.filter_recursion(self_idx, new_idx);
+    }
+
+    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError> {
+        if self.flattened.is_none() {
+            let flat = self.into_flattened_range(analyzer)?;
+            self.flattened = Some(Box::new(flat))
+        }
+        Ok(())
+    }
+    /// Produce a flattened range or use the cached flattened range
+    fn flattened_range<'a>(&'a self, analyzer: &impl GraphBackend) -> Result<Cow<'a, Self>, Self::GraphError> where Self: Sized + Clone {
+        if let Some(flat) = &self.flattened {
+            Ok(Cow::Borrowed(flat))
+        } else {
+            Ok(Cow::Owned(self.into_flattened_range(analyzer)?))
+        }
     }
 }
 

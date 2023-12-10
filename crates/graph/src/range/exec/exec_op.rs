@@ -40,7 +40,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
-        let (parts, lhs_is_conc) = self.simplify_spread(exclude, analyzer)?;
+        let (lhs_min, lhs_max, rhs_min, rhs_max) = self.simplify_spread(exclude, analyzer)?;
+        let lhs_is_conc = lhs_min.maybe_concrete().is_some() && lhs_max.maybe_concrete().is_some();
+        let rhs_is_conc = rhs_min.maybe_concrete().is_some() && rhs_max.maybe_concrete().is_some();
         if self.op == RangeOp::Cast {
             // for a cast we can *actually* evaluate dynamic elem if lhs side is concrete
             if lhs_is_conc {
@@ -56,7 +58,15 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
             }
         }
-        self.exec(parts, maximize)
+        let parts = (lhs_min, lhs_max, rhs_min, rhs_max);
+        match (lhs_is_conc, rhs_is_conc) {
+            (true, true) => {
+                self.exec(parts, maximize)
+            }
+            _ => {
+                Ok(Elem::Expr(self.clone()))
+            }
+        }
     }
 
     fn spread(
@@ -84,13 +94,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<
         (
-            (
-                Elem<Concrete>,
-                Elem<Concrete>,
-                Elem<Concrete>,
-                Elem<Concrete>,
-            ),
-            bool,
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
+            Elem<Concrete>,
         ),
         GraphError,
     > {
@@ -98,8 +105,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let lhs_max = self.lhs.simplify_maximize(exclude, analyzer)?;
         let rhs_min = self.rhs.simplify_minimize(exclude, analyzer)?;
         let rhs_max = self.rhs.simplify_maximize(exclude, analyzer)?;
-        let lhs_is_conc = lhs_min.maybe_concrete().is_some() && lhs_max.maybe_concrete().is_some();
-        Ok(((lhs_min, lhs_max, rhs_min, rhs_max), lhs_is_conc))
+        Ok((lhs_min, lhs_max, rhs_min, rhs_max))
     }
 
     fn exec(
@@ -404,7 +410,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             .range_mul(&rhs_min)
                             .unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts)),
                         (false, true, _, _) | (_, _, false, true) => {
-                            panic!("unsatisfiable range")
+                            fallback(self, lhs_min, rhs_min, consts)
                         }
                     }
                 } else {
@@ -453,7 +459,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             .range_mul(&rhs_min)
                             .unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts)),
                         (false, true, _, _) | (_, _, false, true) => {
-                            panic!("unsatisfiable range")
+                            fallback(self, lhs_min, rhs_min, consts)
                         }
                     }
                 }

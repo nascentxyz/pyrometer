@@ -54,7 +54,7 @@ pub trait InternalFuncCaller:
 
         if possible_funcs.is_empty() {
             // check structs
-            let structs = ctx.visible_structs(self);
+            let structs = ctx.visible_structs(self).into_expr_err(*loc)?;
             let possible_structs = structs
                 .iter()
                 .filter(|strukt| {

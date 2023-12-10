@@ -173,13 +173,11 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     rhs_cvar.display_name(self).unwrap()
                 );
                 let range = {
-                    let elem = Elem::Expr(RangeExpr {
-                        minimized: None,
-                        maximized: None,
-                        lhs: Box::new(Elem::from(lhs_cvar)),
+                    let elem = Elem::Expr(RangeExpr::new(
+                        Elem::from(lhs_cvar),
                         op,
-                        rhs: Box::new(Elem::from(rhs_cvar)),
-                    });
+                        Elem::from(rhs_cvar),
+                    ));
 
                     let exclusions = lhs_cvar
                         .ref_range(self)
@@ -285,13 +283,11 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
             // invert
             if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?) {
-                let val = Elem::Expr(RangeExpr {
-                    minimized: None,
-                    maximized: None,
-                    lhs: Box::new(lhs_range.range_min().into_owned()),
-                    op: RangeOp::Not,
-                    rhs: Box::new(Elem::Null),
-                });
+                let val = Elem::Expr(RangeExpr::new(
+                    lhs_range.range_min().into_owned(),
+                    RangeOp::Not,
+                    Elem::Null,
+                ));
 
                 return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions));
             }

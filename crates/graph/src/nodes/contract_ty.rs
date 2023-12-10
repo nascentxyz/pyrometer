@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{FunctionNode, StructNode, VarNode},
+    nodes::{FunctionNode, StructNode, VarNode, SourceUnitNode, SourceUnitPartNode},
     AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node,
 };
 use shared::{NodeIdx, Search};
@@ -62,7 +62,7 @@ impl ContractNode {
     ) {
         let src = self.associated_source(analyzer);
         let all_contracts = analyzer.search_children_include_via(
-            src,
+            src.into(),
             &Edge::Contract,
             &[
                 Edge::Import,
@@ -198,6 +198,15 @@ impl ContractNode {
             .collect()
     }
 
+    pub fn visible_structs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<StructNode> {
+        let mut structs = self.structs(analyzer);
+        let inherited = self.all_inherited_contracts(analyzer);
+        structs.extend(inherited.iter().flat_map(|c| {
+            c.structs(analyzer)
+        }).collect::<Vec<_>>());
+        structs
+    }
+
     /// Gets all associated modifiers from the underlying node data for the [`Contract`]
     pub fn modifiers(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<FunctionNode> {
         analyzer
@@ -207,17 +216,17 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn associated_source_unit_part(&self, analyzer: &(impl GraphBackend + Search)) -> NodeIdx {
+    pub fn associated_source_unit_part(&self, analyzer: &(impl GraphBackend + Search)) -> SourceUnitPartNode {
         analyzer
             .search_for_ancestor(self.0.into(), &Edge::Contract)
-            .expect("detached contract")
+            .expect("detached contract").into()
     }
 
-    pub fn associated_source(&self, analyzer: &(impl GraphBackend + Search)) -> NodeIdx {
+    pub fn associated_source(&self, analyzer: &(impl GraphBackend + Search)) -> SourceUnitNode {
         let sup = self.associated_source_unit_part(analyzer);
         analyzer
-            .search_for_ancestor(sup, &Edge::Part)
-            .expect("detached source unit part")
+            .search_for_ancestor(sup.into(), &Edge::Part)
+            .expect("detached source unit part").into()
     }
 }
 

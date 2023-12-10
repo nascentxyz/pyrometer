@@ -143,7 +143,7 @@ impl Default for Analyzer {
             builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
             expr_errs: Default::default(),
-            max_depth: 50,
+            max_depth: 200,
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
         };
@@ -321,10 +321,10 @@ impl Analyzer {
             .push((current_path.clone(), src.to_string(), Some(file_no), None));
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
-                let parent = self.add_node(Node::SourceUnit(file_no));
+                let parent = self.add_node(Node::SourceUnit(graph::nodes::SourceUnit::new(file_no)));
                 self.add_edge(parent, self.entry, Edge::Source);
                 let final_pass_part =
-                    self.parse_source_unit(source_unit, file_no, parent, current_path);
+                    self.parse_source_unit(source_unit, file_no, parent.into(), current_path);
                 self.final_pass_items.push(final_pass_part);
                 if entry {
                     self.final_pass();
@@ -381,7 +381,7 @@ impl Analyzer {
         &mut self,
         source_unit: SourceUnit,
         file_no: usize,
-        parent: NodeIdx,
+        parent: SourceUnitNode,
         current_path: &SourcePath,
     ) -> FinalPassItem {
         let mut all_funcs = vec![];
@@ -393,13 +393,14 @@ impl Analyzer {
             .iter()
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
-                let (_sup, funcs, usings, inherits, vars) = self.parse_source_unit_part(
+                let (sup, funcs, usings, inherits, vars) = self.parse_source_unit_part(
                     source_unit_part,
                     file_no,
                     unit_part,
                     parent,
                     current_path,
                 );
+                parent.add_part(sup, self);
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
                 all_inherits.extend(inherits);
@@ -414,11 +415,11 @@ impl Analyzer {
         sup: &SourceUnitPart,
         file_no: usize,
         unit_part: usize,
-        parent: NodeIdx,
+        parent: SourceUnitNode,
         // imported: &mut Vec<(Option<NodeIdx>, String, String, usize)>,
         current_path: &SourcePath,
     ) -> (
-        NodeIdx,
+        SourceUnitPartNode,
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<(ContractNode, Vec<String>)>,
@@ -426,7 +427,8 @@ impl Analyzer {
     ) {
         use SourceUnitPart::*;
 
-        let sup_node = self.add_node(Node::SourceUnitPart(file_no, unit_part));
+        let sup_node = self.add_node(Node::SourceUnitPart(graph::nodes::SourceUnitPart::new(file_no, unit_part)));
+        let s_node = SourceUnitPartNode::from(sup_node);
         self.add_edge(sup_node, parent, Edge::Part);
 
         let mut func_nodes = vec![];
@@ -438,6 +440,7 @@ impl Analyzer {
             ContractDefinition(def) => {
                 let (node, funcs, con_usings, unhandled_inherits, unhandled_vars) =
                     self.parse_contract_def(def, parent);
+                s_node.add_contract(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
                 usings.extend(con_usings);
@@ -446,6 +449,7 @@ impl Analyzer {
             }
             StructDefinition(def) => {
                 let node = self.parse_struct_def(def);
+                s_node.add_struct(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Struct);
             }
             EnumDefinition(def) => {
@@ -458,19 +462,24 @@ impl Analyzer {
             }
             VariableDefinition(def) => {
                 let (node, maybe_func, needs_final_pass) = self.parse_var_def(def, false);
+                s_node.add_constant(node, self).unwrap();
                 if let Some(func) = maybe_func {
-                    func_nodes.push(self.handle_func(func, None));
+                    let func = self.handle_func(func, None);
+                    func_nodes.push(func);
+                    s_node.add_func(func, self).unwrap();
                 }
 
                 if needs_final_pass {
-                    vars.push((node, parent));
+                    vars.push((node, parent.into()));
                 }
 
                 self.add_edge(node, sup_node, Edge::Var);
             }
             FunctionDefinition(def) => {
                 let node = self.parse_func_def(def, None);
+                s_node.add_func(node, self).unwrap();
                 func_nodes.push(node);
+
                 self.add_edge(node, sup_node, Edge::Func);
             }
             TypeDefinition(def) => {
@@ -479,18 +488,19 @@ impl Analyzer {
             }
             EventDefinition(_def) => todo!(),
             Annotation(_anno) => todo!(),
-            Using(using) => usings.push((*using.clone(), parent)),
+            Using(using) => usings.push((*using.clone(), parent.into())),
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
             ImportDirective(import) => {
                 self.parse_import(import, current_path, parent);
             }
         }
-        (sup_node, func_nodes, usings, inherits, vars)
+        
+        (s_node, func_nodes, usings, inherits, vars)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn parse_import(&mut self, import: &Import, current_path: &SourcePath, parent: NodeIdx) {
+    pub fn parse_import(&mut self, import: &Import, current_path: &SourcePath, parent: SourceUnitNode) {
         let (import_path, remapping) = match import {
             Import::Plain(import_path, _) => {
                 tracing::trace!("parse_import, path: {:?}", import_path);
@@ -734,7 +744,7 @@ impl Analyzer {
     pub fn parse_contract_def(
         &mut self,
         contract_def: &ContractDefinition,
-        source: NodeIdx,
+        source: SourceUnitNode,
     ) -> (
         ContractNode,
         Vec<FunctionNode>,
@@ -761,7 +771,7 @@ impl Analyzer {
         let import_nodes = import_nodes.as_slice();
 
         let (contract, unhandled_inherits) =
-            Contract::from_w_imports(contract_def.clone(), source, import_nodes, self);
+            Contract::from_w_imports(contract_def.clone(), source.into(), import_nodes, self);
 
         let inherits = contract.inherits.clone();
         let con_name = contract.name.clone().unwrap().name;
@@ -915,7 +925,7 @@ impl Analyzer {
                         // looking for free floating function
                         let funcs = match self.node(scope_node) {
                             Node::Contract(_) => self.search_children(
-                                ContractNode::from(scope_node).associated_source(self),
+                                ContractNode::from(scope_node).associated_source(self).into(),
                                 &Edge::Func,
                             ),
                             Node::SourceUnit(..) => self.search_children(scope_node, &Edge::Func),

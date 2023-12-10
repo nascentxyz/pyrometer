@@ -786,7 +786,7 @@ pub trait MemberAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         if let Some(source) = ctx.maybe_associated_source(self) {
             funcs.extend(
                 self.graph().edges_directed(ty, Direction::Outgoing).filter(|edge| {
-                    matches!(*edge.weight(), Edge::LibraryFunction(scope) if scope == source)
+                    matches!(*edge.weight(), Edge::LibraryFunction(scope) if scope == source.into())
                 }).map(|edge| edge.target().into()).collect::<BTreeSet<FunctionNode>>()
             );
         }
