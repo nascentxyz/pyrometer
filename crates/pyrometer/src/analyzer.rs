@@ -401,7 +401,7 @@ impl Analyzer {
                     parent,
                     current_path,
                 );
-                parent.add_part(sup, self);
+                parent.add_part(sup, self).unwrap();
                 all_funcs.extend(funcs);
                 all_usings.extend(usings);
                 all_inherits.extend(inherits);

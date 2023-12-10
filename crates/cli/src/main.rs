@@ -91,7 +91,7 @@ struct Args {
     pub debug: bool,
 
     /// Max stack depth to evaluate to
-    #[clap(long, short, default_value = "200")]
+    #[clap(long, default_value = "200")]
     pub max_stack_depth: usize,
 }
 

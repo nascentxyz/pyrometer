@@ -273,14 +273,61 @@ enum MaybeCollapsed {
 
 fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed {
     let zero = Elem::from(Concrete::from(U256::zero()));
+    let one = Elem::from(Concrete::from(U256::one()));
     match (l.clone(), r.clone()) {
         (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
+        (Elem::Expr(expr), d @ Elem::Reference(_)) => {
+            let x = expr.lhs;
+            let y = expr.rhs;
+            let z = d;
+
+            let x_ord_z = x.range_ord(&z);
+            let x_eq_z = matches!(x_ord_z, Some(std::cmp::Ordering::Equal));
+
+            let y_ord_z = y.range_ord(&z);
+            let y_eq_z = matches!(y_ord_z, Some(std::cmp::Ordering::Equal));
+
+            let y_eq_zero = matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Equal) | None);
+            let x_eq_zero = matches!(x.range_ord(&zero), Some(std::cmp::Ordering::Equal) | None);
+            let y_eq_one = matches!(y.range_ord(&one), Some(std::cmp::Ordering::Equal) | None);
+            let x_eq_one = matches!(x.range_ord(&one), Some(std::cmp::Ordering::Equal) | None);
+            match (expr.op, op) {
+                (RangeOp::Sub(_), RangeOp::Eq)
+                 | (RangeOp::Div(_), RangeOp::Eq) => {
+                    if x_eq_z && !y_eq_zero {
+                        // (x -|/ k) == x ==> false
+                        MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                }
+                (RangeOp::Add(_), RangeOp::Eq) => {
+                    if (x_eq_z && !y_eq_zero) || (y_eq_z && !x_eq_zero){
+                        // (x +|* k) == x ==> false
+                        MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                }
+                (RangeOp::Mul(_), RangeOp::Eq) => {
+                    if (x_eq_z && !y_eq_one) || (y_eq_z && !x_eq_one){
+                        // (x +|* k) == x ==> false
+                        MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                } 
+                _ => MaybeCollapsed::Not(l, r)
+            }
+        }
         // if we have an expression, it fundamentally must have a dynamic in it
         (Elem::Expr(expr), c @ Elem::Concrete(_)) => {
+            println!("expr, c");
             // potentially collapsible
             let x = expr.lhs;
             let y = expr.rhs;
             let z = c;
+
             match (expr.op, op) {
                 (RangeOp::Sub(false), RangeOp::Min) => {
                     // min{x - y, z}

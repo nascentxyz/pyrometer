@@ -8,7 +8,7 @@ contract Foo {
     function foo() public {
         Struct memory data;
         assembly {
-            let x = eq(data, 0xFF)
+            let x := eq(data, 0xFF)
         }
     }
 }
