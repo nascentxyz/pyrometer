@@ -206,7 +206,8 @@ pub trait IntrinsicFuncCaller:
                                     else {
                                         return Err(ExprErr::NoLhs(
                                             loc,
-                                            "array[].push(..) was not an array to push to".to_string(),
+                                            "array[].push(..) was not an array to push to"
+                                                .to_string(),
                                         ));
                                     };
 
@@ -234,7 +235,8 @@ pub trait IntrinsicFuncCaller:
                                     else {
                                         return Err(ExprErr::NoLhs(
                                             loc,
-                                            "array[].push(..) was not an array to push to".to_string(),
+                                            "array[].push(..) was not an array to push to"
+                                                .to_string(),
                                         ));
                                     };
                                     if matches!(array, ExprRet::CtxKilled(_)) {
@@ -243,8 +245,9 @@ pub trait IntrinsicFuncCaller:
                                     }
                                     analyzer.parse_ctx_expr(&input_exprs[1], ctx)?;
                                     analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                        let Some(new_elem) =
-                                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                        let Some(new_elem) = ctx
+                                            .pop_expr_latest(loc, analyzer)
+                                            .into_expr_err(loc)?
                                         else {
                                             return Err(ExprErr::NoRhs(
                                                 loc,
@@ -259,7 +262,8 @@ pub trait IntrinsicFuncCaller:
                                         }
 
                                         let arr = array.expect_single().into_expr_err(loc)?;
-                                        let arr = ContextVarNode::from(arr).latest_version(analyzer);
+                                        let arr =
+                                            ContextVarNode::from(arr).latest_version(analyzer);
                                         // get length
                                         let len = analyzer.tmp_length(arr, ctx, loc);
 
@@ -270,7 +274,9 @@ pub trait IntrinsicFuncCaller:
                                             ctx,
                                             loc,
                                             ExprRet::Single(arr.latest_version(analyzer).into()),
-                                            ExprRet::Single(len_as_idx.latest_version(analyzer).into()),
+                                            ExprRet::Single(
+                                                len_as_idx.latest_version(analyzer).into(),
+                                            ),
                                         )?;
                                         let index = ctx
                                             .pop_expr_latest(loc, analyzer)
@@ -287,18 +293,22 @@ pub trait IntrinsicFuncCaller:
                             } else {
                                 return Err(ExprErr::InvalidFunctionInput(
                                     *loc,
-                                    format!("array[].push(..) expected 0 or 1 inputs, got: {}", input_exprs.len()),
-                                ))
+                                    format!(
+                                        "array[].push(..) expected 0 or 1 inputs, got: {}",
+                                        input_exprs.len()
+                                    ),
+                                ));
                             }
-                            
-                            
                         }
                         "pop" => {
                             if input_exprs.len() != 1 {
                                 return Err(ExprErr::InvalidFunctionInput(
                                     *loc,
-                                    format!("array[].pop() expected 0 inputs, got: {}", input_exprs.len()),
-                                ))
+                                    format!(
+                                        "array[].pop() expected 0 inputs, got: {}",
+                                        input_exprs.len()
+                                    ),
+                                ));
                             }
                             self.parse_ctx_expr(&input_exprs[0], ctx)?;
                             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
