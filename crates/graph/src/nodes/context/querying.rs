@@ -1,5 +1,7 @@
 use crate::{
-    nodes::{ContextNode, ContractNode, FunctionNode, StructNode, SourceUnitNode, SourceUnitPartNode},
+    nodes::{
+        ContextNode, ContractNode, FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode,
+    },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError,
 };
 
@@ -223,9 +225,7 @@ impl ContextNode {
 
         let mut structs = source.visible_structs(analyzer)?;
         let contract = self.associated_contract(analyzer)?;
-        structs.extend(
-            contract.visible_structs(analyzer)
-        );
+        structs.extend(contract.visible_structs(analyzer));
 
         structs.sort();
         structs.dedup();

@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{ContextVar, ContextVarNode, ContractNode, SourceUnitPartNode, SourceUnitNode},
+    nodes::{ContextVar, ContextVarNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
@@ -114,7 +114,9 @@ impl VarNode {
         analyzer: &(impl GraphBackend + Search),
     ) -> Option<SourceUnitNode> {
         let sup = self.maybe_associated_source_unit_part(analyzer)?;
-        analyzer.search_for_ancestor(sup.into(), &Edge::Part).map(Into::into)
+        analyzer
+            .search_for_ancestor(sup.into(), &Edge::Part)
+            .map(Into::into)
     }
 
     pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {

@@ -321,7 +321,8 @@ impl Analyzer {
             .push((current_path.clone(), src.to_string(), Some(file_no), None));
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
-                let parent = self.add_node(Node::SourceUnit(graph::nodes::SourceUnit::new(file_no)));
+                let parent =
+                    self.add_node(Node::SourceUnit(graph::nodes::SourceUnit::new(file_no)));
                 self.add_edge(parent, self.entry, Edge::Source);
                 let final_pass_part =
                     self.parse_source_unit(source_unit, file_no, parent.into(), current_path);
@@ -427,7 +428,9 @@ impl Analyzer {
     ) {
         use SourceUnitPart::*;
 
-        let sup_node = self.add_node(Node::SourceUnitPart(graph::nodes::SourceUnitPart::new(file_no, unit_part)));
+        let sup_node = self.add_node(Node::SourceUnitPart(graph::nodes::SourceUnitPart::new(
+            file_no, unit_part,
+        )));
         let s_node = SourceUnitPartNode::from(sup_node);
         self.add_edge(sup_node, parent, Edge::Part);
 
@@ -495,12 +498,17 @@ impl Analyzer {
                 self.parse_import(import, current_path, parent);
             }
         }
-        
+
         (s_node, func_nodes, usings, inherits, vars)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn parse_import(&mut self, import: &Import, current_path: &SourcePath, parent: SourceUnitNode) {
+    pub fn parse_import(
+        &mut self,
+        import: &Import,
+        current_path: &SourcePath,
+        parent: SourceUnitNode,
+    ) {
         let (import_path, remapping) = match import {
             Import::Plain(import_path, _) => {
                 tracing::trace!("parse_import, path: {:?}", import_path);
@@ -925,7 +933,9 @@ impl Analyzer {
                         // looking for free floating function
                         let funcs = match self.node(scope_node) {
                             Node::Contract(_) => self.search_children(
-                                ContractNode::from(scope_node).associated_source(self).into(),
+                                ContractNode::from(scope_node)
+                                    .associated_source(self)
+                                    .into(),
                                 &Edge::Func,
                             ),
                             Node::SourceUnit(..) => self.search_children(scope_node, &Edge::Func),

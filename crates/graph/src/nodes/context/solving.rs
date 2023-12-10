@@ -1,15 +1,15 @@
 use crate::SolcRange;
-use std::borrow::Cow;
 use crate::{
     as_dot_str,
     nodes::{ContextNode, ContextVarNode},
-    range::{Range, elem::RangeOp, RangeEval},
+    range::{elem::RangeOp, Range, RangeEval},
     solvers::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,
     },
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
+use std::borrow::Cow;
 
 use shared::NodeIdx;
 

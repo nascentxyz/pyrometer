@@ -1,7 +1,7 @@
 use crate::{
     nodes::{ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, SolcRange,
-    VarType
+    VarType,
 };
 
 use shared::{NodeIdx, Search, StorageLocation};

@@ -101,11 +101,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
-            (true, _, Some(flat))
-            | (false, Some(flat), _) => {
+            (true, _, Some(flat)) | (false, Some(flat), _) => {
                 // println!("flatten cache hit: {}", self.idx.index());
-                return Ok(*flat.clone())
-            },
+                return Ok(*flat.clone());
+            }
             _ => {}
         }
 

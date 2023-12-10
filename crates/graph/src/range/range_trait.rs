@@ -68,7 +68,12 @@ pub trait Range<T> {
     /// Cache the flattened range
     fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Produce a flattened range or use the cached flattened range
-    fn flattened_range<'a>(&'a self, analyzer: &impl GraphBackend) -> Result<Cow<'a, Self>, Self::GraphError> where Self: Sized + Clone;
+    fn flattened_range<'a>(
+        &'a self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Cow<'a, Self>, Self::GraphError>
+    where
+        Self: Sized + Clone;
 }
 
 pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {

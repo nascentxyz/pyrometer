@@ -104,11 +104,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
-            (true, _, Some(flat))
-            | (false, Some(flat), _) => {
+            (true, _, Some(flat)) | (false, Some(flat), _) => {
                 // println!("flatten cache hit");
-                return Ok(*flat.clone())
-            },
+                return Ok(*flat.clone());
+            }
             _ => {}
         }
         // println!("flatten cache miss");
@@ -191,11 +190,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let r = self.rhs.simplify_maximize(exclude, analyzer)?;
         let collapsed = collapse(l, self.op, r);
         match collapsed {
-            MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer),
-            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-            MaybeCollapsed::Not(l, r) => {
-                Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))
+            MaybeCollapsed::Concretes(l, r) => {
+                RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer)
             }
+            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
+            MaybeCollapsed::Not(l, r) => Ok(Elem::Expr(RangeExpr::new(l, self.op, r))),
         }
     }
     fn simplify_minimize(
@@ -211,11 +210,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let r = self.rhs.simplify_minimize(exclude, analyzer)?;
         let collapsed = collapse(l, self.op, r);
         match collapsed {
-            MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer),
-            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-            MaybeCollapsed::Not(l, r) => {
-                Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))
+            MaybeCollapsed::Concretes(l, r) => {
+                RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer)
             }
+            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
+            MaybeCollapsed::Not(l, r) => Ok(Elem::Expr(RangeExpr::new(l, self.op, r))),
         }
     }
 
@@ -275,9 +274,7 @@ enum MaybeCollapsed {
 fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed {
     let zero = Elem::from(Concrete::from(U256::zero()));
     match (l.clone(), r.clone()) {
-        (Elem::Concrete(_), Elem::Concrete(_)) => {
-            MaybeCollapsed::Concretes(l, r)
-        }
+        (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
         // if we have an expression, it fundamentally must have a dynamic in it
         (Elem::Expr(expr), c @ Elem::Concrete(_)) => {
             // potentially collapsible

@@ -60,12 +60,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         }
         let parts = (lhs_min, lhs_max, rhs_min, rhs_max);
         match (lhs_is_conc, rhs_is_conc) {
-            (true, true) => {
-                self.exec(parts, maximize)
-            }
-            _ => {
-                Ok(Elem::Expr(self.clone()))
-            }
+            (true, true) => self.exec(parts, maximize),
+            _ => Ok(Elem::Expr(self.clone())),
         }
     }
 

@@ -48,7 +48,9 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(Elem::Concrete(self.clone()))
     }
 
-    fn is_flatten_cached(&self) -> bool { true }
+    fn is_flatten_cached(&self) -> bool {
+        true
+    }
 
     fn cache_flatten(&mut self, _: &impl GraphBackend) -> Result<(), GraphError> {
         Ok(())

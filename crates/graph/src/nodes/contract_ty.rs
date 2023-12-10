@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{FunctionNode, StructNode, VarNode, SourceUnitNode, SourceUnitPartNode},
+    nodes::{FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode, VarNode},
     AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node,
 };
 use shared::{NodeIdx, Search};
@@ -201,9 +201,12 @@ impl ContractNode {
     pub fn visible_structs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<StructNode> {
         let mut structs = self.structs(analyzer);
         let inherited = self.all_inherited_contracts(analyzer);
-        structs.extend(inherited.iter().flat_map(|c| {
-            c.structs(analyzer)
-        }).collect::<Vec<_>>());
+        structs.extend(
+            inherited
+                .iter()
+                .flat_map(|c| c.structs(analyzer))
+                .collect::<Vec<_>>(),
+        );
         structs
     }
 
@@ -216,17 +219,22 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn associated_source_unit_part(&self, analyzer: &(impl GraphBackend + Search)) -> SourceUnitPartNode {
+    pub fn associated_source_unit_part(
+        &self,
+        analyzer: &(impl GraphBackend + Search),
+    ) -> SourceUnitPartNode {
         analyzer
             .search_for_ancestor(self.0.into(), &Edge::Contract)
-            .expect("detached contract").into()
+            .expect("detached contract")
+            .into()
     }
 
     pub fn associated_source(&self, analyzer: &(impl GraphBackend + Search)) -> SourceUnitNode {
         let sup = self.associated_source_unit_part(analyzer);
         analyzer
             .search_for_ancestor(sup.into(), &Edge::Part)
-            .expect("detached source unit part").into()
+            .expect("detached source unit part")
+            .into()
     }
 }
 

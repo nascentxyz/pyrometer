@@ -401,10 +401,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn cache_flatten(
-        &mut self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<(), GraphError> {
+    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer),
             Self::Concrete(c) => c.cache_flatten(analyzer),

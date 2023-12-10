@@ -208,7 +208,11 @@ impl Context {
                     None
                 },
                 visible_structs: if fork_expr.is_some() {
-                    parent_ctx.underlying(analyzer)?.cache.visible_structs.clone()
+                    parent_ctx
+                        .underlying(analyzer)?
+                        .cache
+                        .visible_structs
+                        .clone()
                 } else if let Some(ret_ctx) = returning_ctx {
                     ret_ctx.underlying(analyzer)?.cache.visible_structs.clone()
                 } else {

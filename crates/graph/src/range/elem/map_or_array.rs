@@ -36,7 +36,7 @@ impl<T> RangeDyn<T> {
             flattened_max: None,
             len,
             val,
-            loc
+            loc,
         }
     }
 
@@ -120,8 +120,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
-            (true, _, Some(flat))
-            | (false, Some(flat), _) => return Ok(*flat.clone()),
+            (true, _, Some(flat)) | (false, Some(flat), _) => return Ok(*flat.clone()),
             _ => {}
         }
         // println!("flattening range dyn");
@@ -134,7 +133,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             val: {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx.flatten(maximize, analyzer)?, val.flatten(maximize, analyzer)?);
+                    map.insert(
+                        idx.flatten(maximize, analyzer)?,
+                        val.flatten(maximize, analyzer)?,
+                    );
                 }
                 map
             },
@@ -223,7 +225,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(max) = &self.flattened_max {
-            return Ok(*max.clone())
+            return Ok(*max.clone());
         }
         Ok(Elem::ConcreteDyn(Box::new(Self::new(
             self.len.simplify_maximize(exclude, analyzer)?,
@@ -243,7 +245,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(min) = &self.flattened_min {
-            return Ok(*min.clone())
+            return Ok(*min.clone());
         }
         Ok(Elem::ConcreteDyn(Box::new(Self::new(
             self.len.simplify_minimize(exclude, analyzer)?,

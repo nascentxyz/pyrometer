@@ -1,28 +1,23 @@
 use crate::{
-	Node, GraphBackend, GraphError, AsDotStr,
-	nodes::{
-        SourceUnitPartNode,
-		FunctionNode,
-		StructNode,
-		VarNode,
-		ContractNode,
-	},
+    nodes::{ContractNode, FunctionNode, SourceUnitPartNode, StructNode, VarNode},
+    AsDotStr, GraphBackend, GraphError, Node,
 };
 
 use shared::NodeIdx;
 
 #[derive(Default, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
 pub struct SourceUnit {
-	pub file: usize,
-	pub parts: Vec<SourceUnitPartNode>,
+    pub file: usize,
+    pub parts: Vec<SourceUnitPartNode>,
 }
 
 impl SourceUnit {
-	pub fn new(file: usize) -> Self {
-		Self {
-			file, ..Default::default()
-		}
-	}
+    pub fn new(file: usize) -> Self {
+        Self {
+            file,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -43,16 +38,12 @@ impl From<NodeIdx> for SourceUnitNode {
 impl AsDotStr for SourceUnitNode {
     fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
         let underlying = self.underlying(analyzer).unwrap();
-        format!(
-            "SourceUnit({})",
-            underlying.file
-        )
+        format!("SourceUnit({})", underlying.file)
     }
 }
 
-
 impl SourceUnitNode {
-	pub fn underlying<'a>(
+    pub fn underlying<'a>(
         &self,
         analyzer: &'a impl GraphBackend,
     ) -> Result<&'a SourceUnit, GraphError> {
@@ -84,56 +75,67 @@ impl SourceUnitNode {
         }
     }
 
-    pub fn parts<'a>(&self, analyzer: &'a impl GraphBackend) -> Result<&'a Vec<SourceUnitPartNode>, GraphError> {
+    pub fn parts<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Vec<SourceUnitPartNode>, GraphError> {
         Ok(&self.underlying(analyzer)?.parts)
     }
 
-    pub fn visible_funcs(&self, analyzer: &impl GraphBackend) -> Result<Vec<FunctionNode>, GraphError> {
+    pub fn visible_funcs(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<FunctionNode>, GraphError> {
         let mut nodes = vec![];
         self.parts(analyzer)?.iter().try_for_each(|part| {
-            nodes.extend(
-                part.visible_funcs(analyzer)?
-            );
+            nodes.extend(part.visible_funcs(analyzer)?);
             Ok(())
         })?;
         Ok(nodes)
     }
 
-    pub fn visible_structs(&self, analyzer: &impl GraphBackend) -> Result<Vec<StructNode>, GraphError> {
-    	let mut nodes = vec![];
+    pub fn visible_structs(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<StructNode>, GraphError> {
+        let mut nodes = vec![];
         self.parts(analyzer)?.iter().try_for_each(|part| {
-            nodes.extend(
-                part.visible_structs(analyzer)?
-            );
+            nodes.extend(part.visible_structs(analyzer)?);
             Ok(())
         })?;
         Ok(nodes)
     }
 
-    pub fn visible_constants(&self, analyzer: &impl GraphBackend) -> Result<Vec<VarNode>, GraphError> {
-    	let mut nodes = vec![];
+    pub fn visible_constants(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<VarNode>, GraphError> {
+        let mut nodes = vec![];
         self.parts(analyzer)?.iter().try_for_each(|part| {
-            nodes.extend(
-                part.visible_constants(analyzer)?
-            );
+            nodes.extend(part.visible_constants(analyzer)?);
             Ok(())
         })?;
         Ok(nodes)
     }
 
-    pub fn visible_contracts(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContractNode>, GraphError> {
-    	let mut nodes = vec![];
+    pub fn visible_contracts(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContractNode>, GraphError> {
+        let mut nodes = vec![];
         self.parts(analyzer)?.iter().try_for_each(|part| {
-            nodes.extend(
-                part.visible_contracts(analyzer)?
-            );
+            nodes.extend(part.visible_contracts(analyzer)?);
             Ok(())
         })?;
         Ok(nodes)
     }
 
-    pub fn add_part(&self, part: SourceUnitPartNode, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-    	self.underlying_mut(analyzer)?.parts.push(part);
-    	Ok(())
+    pub fn add_part(
+        &self,
+        part: SourceUnitPartNode,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<(), GraphError> {
+        self.underlying_mut(analyzer)?.parts.push(part);
+        Ok(())
     }
 }

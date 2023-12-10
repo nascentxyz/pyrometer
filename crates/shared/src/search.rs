@@ -221,10 +221,10 @@ where
             .filter_map(|edge| {
                 if edge.weight() == edge_ty {
                     if !seen.contains(&edge.source()) {
-                        Some(edge.source())    
+                        Some(edge.source())
                     } else {
                         None
-                    }                    
+                    }
                 } else {
                     None
                 }
@@ -244,7 +244,7 @@ where
                         )
                     } else {
                         Default::default()
-                    } 
+                    }
                 })
                 .collect::<BTreeSet<NodeIdx>>(),
         );
