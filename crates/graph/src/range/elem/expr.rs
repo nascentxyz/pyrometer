@@ -292,8 +292,7 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
             let y_eq_one = matches!(y.range_ord(&one), Some(std::cmp::Ordering::Equal) | None);
             let x_eq_one = matches!(x.range_ord(&one), Some(std::cmp::Ordering::Equal) | None);
             match (expr.op, op) {
-                (RangeOp::Sub(_), RangeOp::Eq)
-                 | (RangeOp::Div(_), RangeOp::Eq) => {
+                (RangeOp::Sub(_), RangeOp::Eq) | (RangeOp::Div(_), RangeOp::Eq) => {
                     if x_eq_z && !y_eq_zero {
                         // (x -|/ k) == x ==> false
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
@@ -302,7 +301,7 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
                     }
                 }
                 (RangeOp::Add(_), RangeOp::Eq) => {
-                    if (x_eq_z && !y_eq_zero) || (y_eq_z && !x_eq_zero){
+                    if (x_eq_z && !y_eq_zero) || (y_eq_z && !x_eq_zero) {
                         // (x +|* k) == x ==> false
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
                     } else {
@@ -310,14 +309,14 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
                     }
                 }
                 (RangeOp::Mul(_), RangeOp::Eq) => {
-                    if (x_eq_z && !y_eq_one) || (y_eq_z && !x_eq_one){
+                    if (x_eq_z && !y_eq_one) || (y_eq_z && !x_eq_one) {
                         // (x +|* k) == x ==> false
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
                     } else {
                         MaybeCollapsed::Not(l, r)
                     }
-                } 
-                _ => MaybeCollapsed::Not(l, r)
+                }
+                _ => MaybeCollapsed::Not(l, r),
             }
         }
         // if we have an expression, it fundamentally must have a dynamic in it
