@@ -411,7 +411,10 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+    fn recursive_dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         match self {
             Self::Reference(d) => d.recursive_dependent_on(analyzer),
             Self::Concrete(_) => Ok(vec![]),
@@ -421,7 +424,11 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, Self::GraphError> {
+    fn has_cycle(
+        &self,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, Self::GraphError> {
         match self {
             Self::Reference(d) => d.has_cycle(seen, analyzer),
             Self::Concrete(_) => Ok(false),

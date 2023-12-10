@@ -32,10 +32,14 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     //  Elem::Concrete(self.clone())
     // }
 
-    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, Self::GraphError> {
+    fn has_cycle(
+        &self,
+        _seen: &mut Vec<ContextVarNode>,
+        _analyzer: &impl GraphBackend,
+    ) -> Result<bool, Self::GraphError> {
         Ok(false)
     }
-    
+
     fn flatten(
         &self,
         _maximize: bool,
@@ -158,5 +162,10 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(false)
     }
 
-    fn recursive_dependent_on(&self, _: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> { Ok(vec![]) }
+    fn recursive_dependent_on(
+        &self,
+        _: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
+        Ok(vec![])
+    }
 }

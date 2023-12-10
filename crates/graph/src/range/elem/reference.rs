@@ -52,14 +52,21 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn dependent_on(&self) -> Vec<ContextVarNode> {
         vec![self.idx.into()]
     }
-    
-    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+
+    fn recursive_dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         let mut deps = ContextVarNode(self.idx.index()).dependent_on(analyzer, true)?;
         deps.push(ContextVarNode(self.idx.index()));
         Ok(deps)
     }
 
-    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    fn has_cycle(
+        &self,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         let cvar = ContextVarNode::from(self.idx);
         let mut has_cycle = false;
         if seen.contains(&cvar) {

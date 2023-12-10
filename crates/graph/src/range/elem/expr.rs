@@ -117,13 +117,20 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         deps
     }
 
-    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+    fn recursive_dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         let mut deps = self.lhs.recursive_dependent_on(analyzer)?;
         deps.extend(self.rhs.recursive_dependent_on(analyzer)?);
         Ok(deps)
     }
 
-    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    fn has_cycle(
+        &self,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         let lhs_has_cycle = self.lhs.has_cycle(seen, analyzer)?;
         let rhs_has_cycle = self.rhs.has_cycle(seen, analyzer)?;
         Ok(lhs_has_cycle || rhs_has_cycle)

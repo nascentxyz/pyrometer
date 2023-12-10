@@ -67,7 +67,10 @@ impl SolcRange {
         deps.into_iter().map(ContextVarNode::from).collect()
     }
 
-    pub fn recursive_dependent_on(&self, analyzer: &impl GraphBackend,) -> Result<Vec<ContextVarNode>, GraphError> {
+    pub fn recursive_dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         let mut deps = self.range_min().recursive_dependent_on(analyzer)?;
         deps.extend(self.range_max().recursive_dependent_on(analyzer)?);
         deps.dedup();

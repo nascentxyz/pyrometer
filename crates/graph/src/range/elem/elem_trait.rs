@@ -53,9 +53,16 @@ pub trait RangeElem<T> {
     /// and returns it in a vector.
     fn dependent_on(&self) -> Vec<ContextVarNode>;
 
-    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, Self::GraphError>;
+    fn recursive_dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, Self::GraphError>;
 
-    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, Self::GraphError>;
+    fn has_cycle(
+        &self,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, Self::GraphError>;
     /// Traverses the range expression and updates stale pointers from older versions
     /// of a variable to a newer version.
     ///

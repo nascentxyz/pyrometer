@@ -158,7 +158,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         let new_lhs = if assign {
             let new = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
-            new.underlying_mut(self).into_expr_err(loc)?.tmp_of = Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
+            new.underlying_mut(self).into_expr_err(loc)?.tmp_of =
+                Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
             new
         } else {
             let mut new_lhs_underlying = ContextVar {
@@ -666,7 +667,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             .latest_version(self)
             .set_range_min(self, expr.clone())
             .into_expr_err(loc)?;
-        new_lhs.latest_version(self).set_range_max(self, expr).into_expr_err(loc)?;
+        new_lhs
+            .latest_version(self)
+            .set_range_max(self, expr)
+            .into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
         // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.

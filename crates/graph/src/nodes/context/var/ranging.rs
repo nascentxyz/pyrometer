@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use crate::{
     nodes::{Concrete, ContextNode, ContextVarNode},
     range::{range_string::ToRangeString, Range},

@@ -942,7 +942,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
         }
 
-
         tracing::trace!(
             "{} is tmp: {}",
             new_lhs.display_name(self).unwrap(),
@@ -1309,8 +1308,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
                 let lhs_elem = Elem::from(new_lhs.latest_version(self));
 
-
-
                 // if lhs.max is < rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self).into_expr_err(loc)?;
                 let min = rhs_elem.minimize(self).into_expr_err(loc)?;
@@ -1318,8 +1315,16 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     return Ok(true);
                 }
 
-                let new_min = Elem::Expr(RangeExpr::new(new_lhs.latest_version(self).into(), RangeOp::Max, rhs_elem));
-                let new_max = Elem::Expr(RangeExpr::new(new_rhs.latest_version(self).into(), RangeOp::Min, lhs_elem));
+                let new_min = Elem::Expr(RangeExpr::new(
+                    new_lhs.latest_version(self).into(),
+                    RangeOp::Max,
+                    rhs_elem,
+                ));
+                let new_max = Elem::Expr(RangeExpr::new(
+                    new_rhs.latest_version(self).into(),
+                    RangeOp::Min,
+                    lhs_elem,
+                ));
 
                 let new_new_lhs = self.advance_var_in_curr_ctx(new_lhs, loc)?;
                 let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;

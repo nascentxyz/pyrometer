@@ -59,7 +59,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         deps
     }
 
-    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+    fn recursive_dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         let mut deps: Vec<ContextVarNode> = self.len.recursive_dependent_on(analyzer)?;
         deps.extend(
             self.val
@@ -68,7 +71,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 .collect::<Result<Vec<Vec<_>>, _>>()?
                 .iter()
                 .flatten()
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         );
         deps.extend(
             self.val
@@ -77,20 +80,22 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 .collect::<Result<Vec<Vec<_>>, _>>()?
                 .iter()
                 .flatten()
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         );
         Ok(deps)
     }
 
-    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    fn has_cycle(
+        &self,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         let mut has_cycle = false;
         has_cycle = has_cycle || self.len.has_cycle(seen, analyzer)?;
-        self.val
-            .iter()
-            .try_for_each(|(_, val)| {
-                has_cycle = has_cycle ||  val.has_cycle(seen, analyzer)?;
-                Ok(())
-            })?;
+        self.val.iter().try_for_each(|(_, val)| {
+            has_cycle = has_cycle || val.has_cycle(seen, analyzer)?;
+            Ok(())
+        })?;
         Ok(has_cycle)
     }
 
