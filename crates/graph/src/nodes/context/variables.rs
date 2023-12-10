@@ -201,6 +201,7 @@ impl ContextNode {
         loc: Loc,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<ContextVarNode, GraphError> {
+        let var = var.latest_version(analyzer);
         if let Some(ctx) = var.maybe_ctx(analyzer) {
             if ctx != *self {
                 let mut new_cvar = var.latest_version(analyzer).underlying(analyzer)?.clone();

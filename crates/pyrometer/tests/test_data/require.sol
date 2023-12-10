@@ -64,7 +64,3 @@ contract Require {
         require(x == bytes1(hex"13"));
     }
 }
-
-
-
-

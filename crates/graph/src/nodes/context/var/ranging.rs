@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use crate::{
     nodes::{Concrete, ContextNode, ContextVarNode},
     range::{range_string::ToRangeString, Range},
@@ -145,7 +146,8 @@ impl ContextVarNode {
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_min: Elem<Concrete>,
     ) -> Result<(), GraphError> {
-        if new_min.contains_node((*self).into()) {
+        assert!(self.latest_version(analyzer) == *self);
+        if new_min.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_or_inherited_version(analyzer) {
                 new_min.filter_recursion((*self).into(), prev.into());
             } else {
@@ -154,11 +156,12 @@ impl ContextVarNode {
         }
 
         tracing::trace!(
-            "setting range minimum: {} (node idx: {}), current:\n{:#?}, new_min:\n{:#?}",
+            "setting range minimum: {} (node idx: {}), current:{}, new_min:{}, deps: {:#?}",
             self.display_name(analyzer)?,
             self.0,
-            self.range_min(analyzer)?,
-            new_min
+            self.range_min(analyzer)?.unwrap(),
+            new_min,
+            new_min.recursive_dependent_on(analyzer)?
         );
 
         if self.is_concrete(analyzer)? {
@@ -185,14 +188,15 @@ impl ContextVarNode {
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_max: Elem<Concrete>,
     ) -> Result<(), GraphError> {
-        if new_max.contains_node((*self).into()) {
+        assert!(self.latest_version(analyzer) == *self);
+        if new_max.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_or_inherited_version(analyzer) {
                 new_max.filter_recursion((*self).into(), prev.into());
             }
         }
 
         tracing::trace!(
-            "setting range maximum: {:?}, {}, current:\n{:#?}, new:\n{:#?}",
+            "setting range maximum: {:?}, {}, current: {}, new: {:#?}",
             self,
             self.display_name(analyzer)?,
             self.ref_range(analyzer)?.unwrap().range_max(), // .unwrap()
@@ -239,7 +243,8 @@ impl ContextVarNode {
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_min: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
-        if new_min.contains_node((*self).into()) {
+        assert!(self.latest_version(analyzer) == *self);
+        if new_min.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_version(analyzer) {
                 new_min.filter_recursion((*self).into(), prev.into());
             }
@@ -267,7 +272,8 @@ impl ContextVarNode {
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
         mut new_max: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
-        if new_max.contains_node((*self).into()) {
+        assert!(self.latest_version(analyzer) == *self);
+        if new_max.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_version(analyzer) {
                 new_max.filter_recursion((*self).into(), prev.into());
             }

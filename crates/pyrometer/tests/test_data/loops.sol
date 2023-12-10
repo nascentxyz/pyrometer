@@ -28,4 +28,32 @@ contract For {
         require(x == 10);
         return x;
     }
+
+    function complicated_while_loop(uint256 amount) public returns (uint256) {
+        uint256 x = amount;
+        amount -= x;
+        return amount;
+        // uint256 balance = 1;
+        // uint256 amountToRedeem;
+        // if (amount > balance) {
+        //     amountToRedeem = balance;
+        // } else {
+        //     amountToRedeem = amount;
+        // }
+        // amount -= amountToRedeem;
+
+        // return amount;
+    }
+
+    function loop_op_assign(uint256 value) internal pure {
+        uint256 temp = value;
+        uint256 digits;
+        while (temp != 0) {
+            digits++;
+            temp /= 10;
+        }
+    }
 }
+
+
+

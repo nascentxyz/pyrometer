@@ -679,6 +679,10 @@ pub trait IntrinsicFuncCaller:
 
                                 let cvar =
                                     ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                                cvar.set_range_min(analyzer, Elem::from(to_be_unwrapped))
+                                    .into_expr_err(loc)?;
+                                cvar.set_range_max(analyzer, Elem::from(to_be_unwrapped))
+                                    .into_expr_err(loc)?;
                                 let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
                                 let expr = Elem::Expr(RangeExpr::new(
                                     Elem::from(to_be_unwrapped),
@@ -688,11 +692,6 @@ pub trait IntrinsicFuncCaller:
                                 next.set_range_min(analyzer, expr.clone())
                                     .into_expr_err(loc)?;
                                 next.set_range_max(analyzer, expr).into_expr_err(loc)?;
-
-                                cvar.set_range_min(analyzer, Elem::from(to_be_unwrapped))
-                                    .into_expr_err(loc)?;
-                                cvar.set_range_max(analyzer, Elem::from(to_be_unwrapped))
-                                    .into_expr_err(loc)?;
                                 ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
                                     .into_expr_err(loc)
                             })

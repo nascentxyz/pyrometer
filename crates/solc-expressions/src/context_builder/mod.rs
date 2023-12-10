@@ -538,7 +538,6 @@ pub trait ContextBuilder:
                 true
             }
             Err(e) => {
-                println!("e: {e:#?}");
                 let res = ctx
                     .kill(self, e.loc(), KilledKind::ParseError)
                     .into_expr_err(e.loc());
@@ -719,7 +718,7 @@ pub trait ContextBuilder:
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
+    #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self).replace('.', "\n\t.")))]
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         use Expression::*;
         // println!(
@@ -959,7 +958,7 @@ pub trait ContextBuilder:
                 let updated_func_expr = match **func_expr {
                     FunctionCallBlock(_loc, ref inner_func_expr, ref call_block) => {
                         // we dont currently handle the `{value: .. gas: ..}` msg updating
-                        self.add_expr_err(ExprErr::FunctionCallBlockTodo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take affect".to_string()));
+                        self.add_expr_err(ExprErr::FunctionCallBlockTodo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take effect".to_string()));
                         inner_func_expr.clone()
                     }
                     _ => func_expr.clone(),
@@ -1322,8 +1321,8 @@ pub trait ContextBuilder:
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!(
             "assigning: {} to {}",
+            rhs_cvar.display_name(self).unwrap(),
             lhs_cvar.display_name(self).unwrap(),
-            rhs_cvar.display_name(self).unwrap()
         );
 
         let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
@@ -1360,6 +1359,7 @@ pub trait ContextBuilder:
                 ));
             }
         }
+
         if !lhs_cvar.ty_eq(&rhs_cvar, self).into_expr_err(loc)? {
             let cast_to_min = match lhs_cvar.range_min(self).into_expr_err(loc)? {
                 Some(v) => v,
@@ -1436,6 +1436,8 @@ pub trait ContextBuilder:
             }
         }
 
+        // advance the rhs variable to avoid recursion issues
+        self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;
         Ok(ExprRet::Single(new_lhs.into()))
     }
 
@@ -1445,6 +1447,17 @@ pub trait ContextBuilder:
         cvar_node: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,
+    ) -> Result<ContextVarNode, ExprErr> {
+        self.advance_var_in_ctx_forcible(cvar_node, loc, ctx, false)
+    }
+
+    #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
+    fn advance_var_in_ctx_forcible(
+        &mut self,
+        cvar_node: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+        force: bool,
     ) -> Result<ContextVarNode, ExprErr> {
         tracing::trace!(
             "advancing variable: {}",
@@ -1477,14 +1490,16 @@ pub trait ContextBuilder:
 
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
-                // get the previous version to remove and prevent spurious nodes
-                if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
-                    let prev_version = prev.underlying(self).into_expr_err(loc)?;
-                    // check if there was no change between the previous version and the latest version
-                    if prev_version.eq_ignore_loc(&new_cvar) && old_ctx == ctx {
-                        // there was no change in the current context, just give them the current variable
-                        new_cvarnode = cvar_node.into();
-                        break 'a;
+                if !force {
+                    // get the previous version to remove and prevent spurious nodes
+                    if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
+                        let prev_version = prev.underlying(self).into_expr_err(loc)?;
+                        // check if there was no change between the previous version and the latest version
+                        if prev_version.eq_ignore_loc(&new_cvar) && old_ctx == ctx {
+                            // there was no change in the current context, just give them the current variable
+                            new_cvarnode = cvar_node.into();
+                            break 'a;
+                        }
                     }
                 }
 

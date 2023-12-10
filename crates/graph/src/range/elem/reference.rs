@@ -52,6 +52,29 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn dependent_on(&self) -> Vec<ContextVarNode> {
         vec![self.idx.into()]
     }
+    
+    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+        let mut deps = ContextVarNode(self.idx.index()).dependent_on(analyzer, true)?;
+        deps.push(ContextVarNode(self.idx.index()));
+        Ok(deps)
+    }
+
+    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let cvar = ContextVarNode::from(self.idx);
+        let mut has_cycle = false;
+        if seen.contains(&cvar) {
+            Ok(true)
+        } else {
+            seen.push(cvar);
+            if let Some(range) = cvar.ref_range(analyzer)? {
+                has_cycle = has_cycle || range.min.has_cycle(seen, analyzer)?;
+                has_cycle = has_cycle || range.max.has_cycle(seen, analyzer)?;
+                Ok(has_cycle)
+            } else {
+                Ok(false)
+            }
+        }
+    }
 
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
         if let Some(new) = mapping.get(&ContextVarNode::from(self.idx)) {
@@ -65,6 +88,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         let cvar = ContextVarNode::from(self.idx);
+        // println!("flattening reference: {} (idx_{})", cvar.display_name(analyzer)?, self.idx.index());
         if cvar.is_fundamental(analyzer)? {
             return Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),

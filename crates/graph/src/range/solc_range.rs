@@ -67,6 +67,14 @@ impl SolcRange {
         deps.into_iter().map(ContextVarNode::from).collect()
     }
 
+    pub fn recursive_dependent_on(&self, analyzer: &impl GraphBackend,) -> Result<Vec<ContextVarNode>, GraphError> {
+        let mut deps = self.range_min().recursive_dependent_on(analyzer)?;
+        deps.extend(self.range_max().recursive_dependent_on(analyzer)?);
+        deps.dedup();
+
+        Ok(deps)
+    }
+
     /// Update a particular context variable with the latest version
     pub fn update_deps(
         &mut self,
@@ -74,19 +82,25 @@ impl SolcRange {
         ctx: ContextNode,
         analyzer: &impl GraphBackend,
     ) {
+        assert!(node.latest_version(analyzer) == node);
         let deps = self.dependent_on();
         let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
             .into_iter()
             .filter(|dep| !dep.is_const(analyzer).unwrap())
             .map(|dep| {
                 let latest = dep.latest_version_in_ctx(ctx, analyzer).unwrap();
+                // let dep_depends_on_node = dep.range(analyzer).unwrap().unwrap().recursive_dependent_on(analyzer).unwrap();
+                // let dep_depends_on_node = dep_depends_on_node.contains(&node) || dep_depends_on_node.contains(&);
                 if latest == node {
                     if let Some(prev) = latest.previous_version(analyzer) {
+                        println!("replacing: {} with {}", dep.0, prev.0);
                         (dep, prev)
                     } else {
+                        println!("replacing: {} with {}", dep.0, dep.0);
                         (dep, dep)
                     }
                 } else {
+                    println!("replacing: {} with {}", dep.0, latest.0);
                     (dep, latest)
                 }
             })

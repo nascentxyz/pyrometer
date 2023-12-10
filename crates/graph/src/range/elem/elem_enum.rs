@@ -411,6 +411,26 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
+    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+        match self {
+            Self::Reference(d) => d.recursive_dependent_on(analyzer),
+            Self::Concrete(_) => Ok(vec![]),
+            Self::Expr(expr) => expr.recursive_dependent_on(analyzer),
+            Self::ConcreteDyn(d) => d.recursive_dependent_on(analyzer),
+            Self::Null => Ok(vec![]),
+        }
+    }
+
+    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, Self::GraphError> {
+        match self {
+            Self::Reference(d) => d.has_cycle(seen, analyzer),
+            Self::Concrete(_) => Ok(false),
+            Self::Expr(expr) => expr.has_cycle(seen, analyzer),
+            Self::ConcreteDyn(d) => d.has_cycle(seen, analyzer),
+            Self::Null => Ok(false),
+        }
+    }
+
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
         match self {
             Self::Reference(d) => d.update_deps(mapping),

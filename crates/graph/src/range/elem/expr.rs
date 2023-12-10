@@ -99,6 +99,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         maximize: bool,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        // println!("flattening expr: {}", Elem::Expr(self.clone()));
         Ok(Elem::Expr(RangeExpr::new(
             self.lhs.flatten(maximize, analyzer)?,
             self.op,
@@ -114,6 +115,18 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let mut deps = self.lhs.dependent_on();
         deps.extend(self.rhs.dependent_on());
         deps
+    }
+
+    fn recursive_dependent_on(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+        let mut deps = self.lhs.recursive_dependent_on(analyzer)?;
+        deps.extend(self.rhs.recursive_dependent_on(analyzer)?);
+        Ok(deps)
+    }
+
+    fn has_cycle(&self, seen: &mut Vec<ContextVarNode>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let lhs_has_cycle = self.lhs.has_cycle(seen, analyzer)?;
+        let rhs_has_cycle = self.rhs.has_cycle(seen, analyzer)?;
+        Ok(lhs_has_cycle || rhs_has_cycle)
     }
 
     fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {

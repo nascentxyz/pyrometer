@@ -157,7 +157,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         };
 
         let new_lhs = if assign {
-            self.advance_var_in_ctx(lhs_cvar, loc, ctx)?
+            let new = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
+            new.underlying_mut(self).into_expr_err(loc)?.tmp_of = Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
+            new
         } else {
             let mut new_lhs_underlying = ContextVar {
                 loc: Some(loc),
@@ -335,7 +337,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             }
                         }
                     } else if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
+                        let tmp_lhs = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
+                        // let tmp_rhs = self.advance_var_in_ctx_forcible(new_rhs, loc, ctx, true)?;
                         if self
                             .require(
                                 tmp_lhs,
@@ -353,16 +356,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // the new min is max(lhs.min, rhs.min)
                         let min = Elem::max(
                             Elem::from(Reference::new(lhs_cvar.into())),
-                            // .range_min(self)
-                            // .into_expr_err(loc)?
-                            // .unwrap_or_else(|| {
-                            //     panic!(
-                            //         "No range minimum: {:?}",
-                            //         tmp_lhs.ty(self).unwrap().as_dot_str(self)
-                            //     )
-                            // }),
                             Elem::from(rhs_cvar),
                         );
+                        let tmp_lhs = tmp_lhs.latest_version(self);
                         tmp_lhs.set_range_min(self, min).into_expr_err(loc)?;
 
                         let tmp_var = ContextVar {
@@ -667,9 +663,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         // let func = SolcRange::dyn_fn_from_op(op);
         // let new_range = func(lhs_range, new_rhs);
         new_lhs
+            .latest_version(self)
             .set_range_min(self, expr.clone())
             .into_expr_err(loc)?;
-        new_lhs.set_range_max(self, expr).into_expr_err(loc)?;
+        new_lhs.latest_version(self).set_range_max(self, expr).into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
         // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.
