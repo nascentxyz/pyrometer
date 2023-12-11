@@ -30,7 +30,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
-                            "ecrecover did not receive inputs".to_string(),
+                            "<type>.wrap(..) did not receive an input".to_string(),
                         ));
                     };
                     input.expect_length(2).into_expr_err(loc)?;
@@ -60,7 +60,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
-                            "ecrecover did not receive inputs".to_string(),
+                            "<type>.unwrap(..) did not receive an input".to_string(),
                         ));
                     };
                     input.expect_length(2).into_expr_err(loc)?;

@@ -26,7 +26,7 @@ pub trait PrecompileCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
-                            "abi.decode was not given the types for decoding".to_string(),
+                            "sha256 call was not given input".to_string(),
                         ));
                     };
                     if matches!(input, ExprRet::CtxKilled(_)) {
@@ -51,7 +51,7 @@ pub trait PrecompileCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
-                            "abi.decode was not given the types for decoding".to_string(),
+                            "ripemd160 was not given input".to_string(),
                         ));
                     };
                     if matches!(input, ExprRet::CtxKilled(_)) {

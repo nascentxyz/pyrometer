@@ -24,7 +24,7 @@ pub trait SolidityCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     else {
                         return Err(ExprErr::NoRhs(
                             loc,
-                            "abi.decode was not given the types for decoding".to_string(),
+                            "keccak256 call was not given inputs".to_string(),
                         ));
                     };
                     let var = ContextVar::new_from_builtin(

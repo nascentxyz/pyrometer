@@ -65,7 +65,10 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
                         ExprRet::CtxKilled(kind) => {
                             ctx.kill(analyzer, *loc, kind).into_expr_err(*loc)
                         }
-                        e => panic!("This is invalid solidity: {:?}", e),
+                        e => Err(ExprErr::ParseError(
+                            *loc,
+                            format!("This is invalid solidity: {:?}", e),
+                        )),
                     }
                 }
                 self.parse_ctx_expr(&input_exprs[1], ctx)?;
