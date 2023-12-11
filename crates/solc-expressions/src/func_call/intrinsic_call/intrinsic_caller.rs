@@ -3,7 +3,7 @@ use crate::{
         AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
         MsgCaller, PrecompileCaller, SolidityCaller, TypesCaller,
     },
-    ContextBuilder, ExprErr, FuncCaller, IntoExprErr,
+    ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper
 };
 
 use graph::{
@@ -14,6 +14,7 @@ use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Loc};
 
+/// Supertrait of individual types of calls like abi, address, etc.
 pub trait CallerParts:
     AbiCaller
     + AddressCaller
@@ -25,6 +26,7 @@ pub trait CallerParts:
     + TypesCaller
     + ConstructorCaller
     + MsgCaller
+    + CallerHelper
 {
 }
 
@@ -39,6 +41,7 @@ impl<T> CallerParts for T where
         + TypesCaller
         + ConstructorCaller
         + MsgCaller
+        + CallerHelper
 {
 }
 
@@ -46,6 +49,8 @@ impl<T> IntrinsicFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerParts
 {
 }
+
+/// Perform calls to intrinsic functions like `abi.encode`, `array.push`, `require`, and constructors etc.
 pub trait IntrinsicFuncCaller:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerParts
 {

@@ -13,7 +13,7 @@ mod loops;
 mod member_access;
 mod require;
 mod variable;
-mod yul;
+pub mod yul;
 
 pub use array::*;
 pub use bin_op::*;
@@ -28,8 +28,8 @@ pub use loops::*;
 pub use member_access::*;
 pub use require::*;
 pub use variable::*;
-pub use yul::*;
 
+/// Supertrait for parsing expressions
 pub trait ExprParser:
     BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env
 {
@@ -39,7 +39,9 @@ impl<T> ExprParser for T where
 {
 }
 
+/// Convert some error into an expression error by attaching a code source location
 pub trait IntoExprErr<T> {
+    /// Convert into a ExprErr
     fn into_expr_err(self, loc: Loc) -> Result<T, ExprErr>;
 }
 
@@ -53,6 +55,7 @@ impl<T> IntoExprErr<T> for Result<T, graph::GraphError> {
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
+/// An error that arose from the analyzer when interpreting expressions and statements
 pub enum ExprErr {
     ParseError(Loc, String),
     NoLhs(Loc, String),
@@ -81,12 +84,14 @@ pub enum ExprErr {
 }
 
 impl ExprErr {
+    /// Convert from a graph error
     pub fn from_graph_err(loc: Loc, graph_err: graph::GraphError) -> Self {
         Self::GraphError(loc, graph_err)
     }
 }
 
 impl ExprErr {
+    /// Get the code source location of the error
     pub fn loc(&self) -> Loc {
         use ExprErr::*;
         match self {
@@ -115,6 +120,7 @@ impl ExprErr {
         }
     }
 
+    /// Get the error message
     pub fn msg(&self) -> &str {
         use ExprErr::*;
         match self {
@@ -152,6 +158,7 @@ impl ExprErr {
         }
     }
 
+    /// Get the top-level report message
     pub fn report_msg(&self) -> &str {
         use ExprErr::*;
         match self {

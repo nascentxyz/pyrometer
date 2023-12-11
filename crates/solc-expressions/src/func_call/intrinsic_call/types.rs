@@ -1,4 +1,4 @@
-use crate::{ContextBuilder, ExprErr, FuncCaller, IntoExprErr};
+use crate::{ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper};
 
 use graph::{
     elem::*,
@@ -10,7 +10,10 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> TypesCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for calling type-based intrinsic functions, like `wrap`
 pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform a type-based intrinsic function call, like `wrap`
     fn types_call(
         &mut self,
         func_name: String,
@@ -116,6 +119,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         }
     }
 
+    /// Perform a cast of a type
     fn cast(
         &mut self,
         ty: Builtin,

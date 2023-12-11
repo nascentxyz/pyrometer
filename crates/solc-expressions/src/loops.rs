@@ -11,10 +11,13 @@ impl<T> Looper for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
 }
+
+/// Dealing with loops
 pub trait Looper:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Handles a for loop. Needs improvement
     fn for_loop(
         &mut self,
         loc: Loc,
@@ -38,6 +41,7 @@ pub trait Looper:
         }
     }
 
+    /// Resets all variables referenced in the loop because we don't elegantly handle loops
     fn reset_vars(&mut self, loc: Loc, ctx: ContextNode, body: &Statement) -> Result<(), ExprErr> {
         let og_ctx = ctx;
         let sctx = Context::new_subctx(ctx, None, loc, None, None, false, self, None)
@@ -81,6 +85,7 @@ pub trait Looper:
         })
     }
 
+    /// Handles a while-loop
     fn while_loop(
         &mut self,
         loc: Loc,

@@ -19,6 +19,8 @@ use solang_parser::{
 use std::cmp::Ordering;
 
 impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerBackend {}
+
+/// Deals with require and assert statements, as well as adjusts bounds for variables
 pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Inverts a comparator expression
     fn inverse_expr(&self, expr: Expression) -> Expression {
@@ -582,6 +584,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         }
     }
 
+    /// Do matching on [`ExprRet`]s to actually perform the require statement evaluation
     fn handle_require_inner(
         &mut self,
         ctx: ContextNode,

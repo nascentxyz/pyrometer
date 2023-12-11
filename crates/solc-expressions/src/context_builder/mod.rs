@@ -1,5 +1,6 @@
+//! Trait and blanket implementation for the core parsing loop
 use crate::{
-    func_call::FuncCaller, loops::Looper, yul::YulBuilder, ExprErr, ExprParser, IntoExprErr,
+    func_call::{func_caller::FuncCaller, modifier::ModifierCaller}, loops::Looper, yul::YulBuilder, ExprErr, ExprParser, IntoExprErr,
 };
 
 use graph::{
@@ -24,9 +25,11 @@ impl<T> ContextBuilder for T where
 {
 }
 
+/// Dispatcher for building up a context of a function
 pub trait ContextBuilder:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprParser
 {
+    /// Performs setup for parsing a solidity statement
     fn parse_ctx_statement(
         &mut self,
         stmt: &Statement,
@@ -61,6 +64,7 @@ pub trait ContextBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Performs parsing of a solidity statement
     fn parse_ctx_stmt_inner(
         &mut self,
         stmt: &Statement,
@@ -525,6 +529,7 @@ pub trait ContextBuilder:
         }
     }
 
+    /// TODO: rename this. Sometimes we dont want to kill a context if we hit an error
     fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {
             Err(ExprErr::FunctionCallBlockTodo(_, _s)) => {
@@ -549,6 +554,7 @@ pub trait ContextBuilder:
         }
     }
 
+    /// Match on the [`ExprRet`]s of a return statement and performs the return
     fn return_match(&mut self, ctx: ContextNode, loc: &Loc, paths: &ExprRet) {
         match paths {
             ExprRet::CtxKilled(kind) => {
@@ -582,6 +588,7 @@ pub trait ContextBuilder:
         }
     }
 
+    /// Match on the [`ExprRet`]s of a variable definition
     fn match_var_def(
         &mut self,
         ctx: ContextNode,
@@ -702,6 +709,7 @@ pub trait ContextBuilder:
         }
     }
 
+    /// Perform setup for parsing an expression
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         if !ctx.killed_or_ret(self).unwrap() {
             let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
@@ -719,6 +727,7 @@ pub trait ContextBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self).replace('.', "\n\t.")))]
+    /// Perform parsing of an expression
     fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         use Expression::*;
         // println!(
@@ -1128,6 +1137,7 @@ pub trait ContextBuilder:
         }
     }
 
+    /// Match on the [`ExprRet`]s of a pre-or-post in/decrement and performs it
     fn match_in_de_crement(
         &mut self,
         ctx: ContextNode,
@@ -1217,6 +1227,7 @@ pub trait ContextBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Parse an assignment expression
     fn assign_exprs(
         &mut self,
         loc: Loc,
@@ -1255,6 +1266,7 @@ pub trait ContextBuilder:
         })
     }
 
+    /// Match on the [`ExprRet`]s of an assignment expression
     fn match_assign_sides(
         &mut self,
         ctx: ContextNode,
@@ -1312,6 +1324,7 @@ pub trait ContextBuilder:
         }
     }
 
+    /// Perform an assignment
     fn assign(
         &mut self,
         loc: Loc,
@@ -1442,6 +1455,8 @@ pub trait ContextBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
+    /// Creates a newer version of a variable in the context. It may or may not actually
+    /// create this new variable depending on if there are two successively identical version.
     fn advance_var_in_ctx(
         &mut self,
         cvar_node: ContextVarNode,
@@ -1452,6 +1467,8 @@ pub trait ContextBuilder:
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
+    /// Creates a new version of a variable in a context. Takes an additional parameter
+    /// denoting whether or not to force the creation, skipping an optimization.
     fn advance_var_in_ctx_forcible(
         &mut self,
         cvar_node: ContextVarNode,
@@ -1526,6 +1543,7 @@ pub trait ContextBuilder:
         Ok(ContextVarNode::from(new_cvarnode))
     }
 
+    /// Creates a new version of a variable in it's current context
     fn advance_var_in_curr_ctx(
         &mut self,
         cvar_node: ContextVarNode,
@@ -1554,6 +1572,7 @@ pub trait ContextBuilder:
         Ok(ContextVarNode::from(new_cvarnode))
     }
 
+    /// 
     fn advance_var_underlying(&mut self, cvar_node: ContextVarNode, loc: Loc) -> &mut ContextVar {
         assert_eq!(None, cvar_node.next_version(self));
         let mut new_cvar = cvar_node
@@ -1569,6 +1588,9 @@ pub trait ContextBuilder:
             .unwrap()
     }
 
+    /// Apply an expression or statement to all *live* edges of a context. This is used everywhere
+    /// to ensure we only ever update *live* contexts. If a context has a subcontext, we *never*
+    /// want to update the original context. We only ever want to operate on the latest edges.
     fn apply_to_edges(
         &mut self,
         ctx: ContextNode,
@@ -1602,6 +1624,8 @@ pub trait ContextBuilder:
         }
     }
 
+    /// The inverse of [`apply_to_edges`], used only for modifiers because modifiers have extremely weird
+    /// dynamics.
     fn take_from_edge<T>(
         &mut self,
         ctx: ContextNode,

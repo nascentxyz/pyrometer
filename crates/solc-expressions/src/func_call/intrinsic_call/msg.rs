@@ -8,7 +8,10 @@ use graph::{
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> MsgCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for calling msg-based intrinsic functions, like `gasleft`
 pub trait MsgCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform a msg's builtin function call, like `gasleft()`
     fn msg_call(
         &mut self,
         func_name: String,

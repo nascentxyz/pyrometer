@@ -9,7 +9,10 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> ContractAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for performing member access on a Contract
 pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform member access on a contract
     fn contract_member_access(
         &mut self,
         member_idx: NodeIdx,

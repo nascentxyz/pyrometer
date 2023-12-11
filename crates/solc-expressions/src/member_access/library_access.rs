@@ -12,7 +12,10 @@ use solang_parser::pt::{Expression, Identifier};
 use std::collections::BTreeSet;
 
 impl<T> LibraryAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for getting library functions for a type
 pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Search for a library function by name
     fn library_func_search(
         &mut self,
         ctx: ContextNode,
@@ -37,6 +40,7 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
             })
     }
 
+    /// Get all possible library functions
     fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> BTreeSet<FunctionNode> {
         let mut funcs: BTreeSet<FunctionNode> = BTreeSet::new();
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {

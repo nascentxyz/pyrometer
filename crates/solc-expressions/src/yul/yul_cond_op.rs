@@ -1,4 +1,4 @@
-use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr, YulBuilder};
+use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr, yul::YulBuilder};
 
 use graph::{
     elem::*,
@@ -17,10 +17,13 @@ impl<T> YulCondOp for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
 {
 }
+
+/// Trait for dealing with conditional operations in yul
 pub trait YulCondOp:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
 {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Handle a yul conditional operation statement
     fn yul_cond_op_stmt(
         &mut self,
         loc: Loc,
@@ -98,6 +101,7 @@ pub trait YulCondOp:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Handle a yul if-else
     fn yul_if_else(
         &mut self,
         loc: Loc,
@@ -172,6 +176,7 @@ pub trait YulCondOp:
         })
     }
 
+    /// Helper for the `true` evaluation of a yul conditional
     fn match_yul_true(
         &mut self,
         ctx: ContextNode,
@@ -214,6 +219,7 @@ pub trait YulCondOp:
         Ok(())
     }
 
+    /// Helper for the `false` evaluation of a yul conditional
     fn match_yul_false(
         &mut self,
         ctx: ContextNode,
@@ -258,6 +264,7 @@ pub trait YulCondOp:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Handle a yul swithc statement by converting it into an if-else chain
     fn yul_switch_stmt(
         &mut self,
         loc: Loc,
@@ -274,6 +281,7 @@ pub trait YulCondOp:
 }
 
 #[derive(Clone, Debug)]
+/// A yul-based if-else chain, which represents a switch statement
 pub struct IfElseChain {
     pub if_expr: YulExpression,
     pub true_stmt: YulStatement,
@@ -281,6 +289,7 @@ pub struct IfElseChain {
 }
 
 #[derive(Clone, Debug)]
+/// Wrapper over a switch statement that denotes either another else statement or the default case
 pub enum ElseOrDefault {
     Else(Box<IfElseChain>),
     Default(YulStatement),

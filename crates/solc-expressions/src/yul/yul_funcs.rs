@@ -1,4 +1,4 @@
-use crate::{BinOp, Cmp, ContextBuilder, Env, ExprErr, IntoExprErr, YulBuilder};
+use crate::{BinOp, Cmp, ContextBuilder, Env, ExprErr, IntoExprErr, yul::YulBuilder};
 
 use graph::{
     elem::*,

@@ -10,7 +10,10 @@ use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> ArrayCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for calling array-based intrinsic functions
 pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform an `array.<..>` function call
     fn array_call(
         &mut self,
         func_name: String,

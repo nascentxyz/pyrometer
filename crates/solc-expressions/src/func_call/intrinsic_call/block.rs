@@ -8,7 +8,10 @@ use graph::{
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BlockCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for calling block-based intrinsic functions
 pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform a `block` function call
     fn block_call(
         &mut self,
         func_name: String,

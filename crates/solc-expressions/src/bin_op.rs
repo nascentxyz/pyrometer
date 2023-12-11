@@ -13,6 +13,7 @@ use ethers_core::types::{I256, U256};
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BinOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+/// Handles binary operations (`+`, `-`, `/`, etc.)
 pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Evaluate and execute a binary operation expression
     #[tracing::instrument(level = "trace", skip_all)]

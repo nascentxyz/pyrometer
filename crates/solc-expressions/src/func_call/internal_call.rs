@@ -1,4 +1,6 @@
-use crate::{ContextBuilder, ExprErr, FuncCaller, IntoExprErr};
+//! Traits & blanket implementations that facilitate performing locally scoped function calls.
+
+use crate::{func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
@@ -8,13 +10,15 @@ use graph::{
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
 impl<T> InternalFuncCaller for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
 {
 }
+/// A trait for performing internally scoped function calls (i.e. *NOT* `MyContract.func(...)`)
 pub trait InternalFuncCaller:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
 {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Perform a named function call
     fn call_internal_named_func(
         &mut self,
         ctx: ContextNode,
@@ -186,7 +190,7 @@ pub trait InternalFuncCaller:
         tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
         let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
-        // println!("visible funcs: {:#?}", funcs.iter().map(|f| f.name(self).unwrap()).collect::<Vec<_>>());
+
         // filter down all funcs to those that match
         let possible_funcs = funcs
             .iter()
@@ -198,89 +202,88 @@ pub trait InternalFuncCaller:
             .copied()
             .collect::<Vec<_>>();
 
-        if possible_funcs.is_empty() {
-            // this is a builtin, cast, or unknown function?
-            self.parse_ctx_expr(func_expr, ctx)?;
-            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let ret = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                let ret = ret.flatten();
-                if matches!(ret, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
-            })
-        } else if possible_funcs.len() == 1 {
-            self.parse_inputs(ctx, *loc, input_exprs)?;
-            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let inputs = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                let inputs = inputs.flatten();
-                if matches!(inputs, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                analyzer.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
-            })
-        } else {
-            // this is the annoying case due to function overloading & type inference on number literals
-            self.parse_inputs(ctx, *loc, input_exprs)?;
-            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let inputs = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                let inputs = inputs.flatten();
-                if matches!(inputs, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                let resizeables: Vec<_> = inputs.as_flat_vec()
-                    .iter()
-                    .map(|idx| {
-                        match VarType::try_from_idx(analyzer, *idx) {
-                            Some(VarType::BuiltIn(bn, _)) => {
-                                matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
-                                // match analyzer.node(bn) {
-                                //     Node::Builtin(Builtin::Uint(s)) if s < &256 => true,
-                                //     Node::Builtin(Builtin::Int(s)) if s < &256 => true,
-                                //     Node::Builtin(Builtin::Bytes(s)) if s < &32 => true,
-                                //     _ => false
-                                // }
+        match possible_funcs.len() {
+            0 => {
+                // this is a builtin, cast, or unknown function
+                self.parse_ctx_expr(func_expr, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let ret = ctx
+                        .pop_expr_latest(loc, analyzer)
+                        .into_expr_err(loc)?
+                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                    let ret = ret.flatten();
+                    if matches!(ret, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
+                })
+            }
+            1 => {
+                // there is only a single possible function
+                self.parse_inputs(ctx, *loc, input_exprs)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let inputs = ctx
+                        .pop_expr_latest(loc, analyzer)
+                        .into_expr_err(loc)?
+                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                    let inputs = inputs.flatten();
+                    if matches!(inputs, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    analyzer.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
+                })
+            }
+            _ => {
+                // this is the annoying case due to function overloading & type inference on number literals
+                self.parse_inputs(ctx, *loc, input_exprs)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let inputs = ctx
+                        .pop_expr_latest(loc, analyzer)
+                        .into_expr_err(loc)?
+                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                    let inputs = inputs.flatten();
+                    if matches!(inputs, ExprRet::CtxKilled(_)) {
+                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+                        return Ok(());
+                    }
+                    let resizeables: Vec<_> = inputs.as_flat_vec()
+                        .iter()
+                        .map(|idx| {
+                            match VarType::try_from_idx(analyzer, *idx) {
+                                Some(VarType::BuiltIn(bn, _)) => {
+                                    matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
+                                }
+                                Some(VarType::Concrete(c)) => {
+                                    matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
+                                }
+                                _ => false
                             }
-                            Some(VarType::Concrete(c)) => {
-                                matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
-                            }
-                            _ => false
-                        }
-                    })
-                    .collect();
-                if let Some(func) = analyzer.disambiguate_fn_call(
-                    &ident.name,
-                    resizeables,
-                    &inputs,
-                    &possible_funcs,
-                ) {
-                    analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
-                } else {
-                    Err(ExprErr::FunctionNotFound(
-                        loc,
-                        format!(
-                            "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
-                            inputs.try_as_func_input_str(analyzer),
-                            possible_funcs
-                                .iter()
-                                .map(|i| i.name(analyzer).unwrap())
-                                .collect::<Vec<_>>()
-                        ),
-                    ))
-                }
-            })
+                        })
+                        .collect();
+                    if let Some(func) = analyzer.disambiguate_fn_call(
+                        &ident.name,
+                        resizeables,
+                        &inputs,
+                        &possible_funcs,
+                    ) {
+                        analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
+                    } else {
+                        Err(ExprErr::FunctionNotFound(
+                            loc,
+                            format!(
+                                "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
+                                inputs.try_as_func_input_str(analyzer),
+                                possible_funcs
+                                    .iter()
+                                    .map(|i| i.name(analyzer).unwrap())
+                                    .collect::<Vec<_>>()
+                            ),
+                        ))
+                    }
+                })
+            }
         }
     }
 }

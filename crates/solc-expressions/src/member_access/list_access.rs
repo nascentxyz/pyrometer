@@ -10,8 +10,10 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> ListAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+/// Handles list/array member access (indices, length, etc)
 pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Access an index of a list/array
     fn index_access(
         &mut self,
         loc: Loc,
@@ -35,6 +37,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Match on the [`ExprRet`] of a index access expression
     fn match_index_access(
         &mut self,
         index_paths: &ExprRet,
@@ -91,6 +94,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Get the length member of an array/list
     fn length(
         &mut self,
         loc: Loc,
@@ -114,6 +118,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Get the length member of an array/list and create it as a temporary variable
     fn tmp_length(
         &mut self,
         arr: ContextVarNode,
@@ -188,6 +193,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Get the length member of an array/list
     fn match_length(
         &mut self,
         ctx: ContextNode,

@@ -1,4 +1,4 @@
-use crate::{ContextBuilder, ExprErr, FuncCaller, IntoExprErr};
+use crate::{ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper};
 
 use graph::{
     elem::*,
@@ -10,10 +10,13 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> ConstructorCaller for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper
 {
 }
-pub trait ConstructorCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+
+/// Trait for constructing compound types like contracts, structs and arrays
+pub trait ConstructorCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper {
+    /// Construct an array
     fn construct_array(
         &mut self,
         func_idx: NodeIdx,
@@ -97,6 +100,7 @@ pub trait ConstructorCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
         })
     }
 
+    /// Construct a contract
     fn construct_contract(
         &mut self,
         func_idx: NodeIdx,
@@ -144,6 +148,7 @@ pub trait ConstructorCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
         })
     }
 
+    /// Construct a struct
     fn construct_struct(
         &mut self,
         func_idx: NodeIdx,

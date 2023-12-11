@@ -1,4 +1,4 @@
-use crate::{ContextBuilder, ExprErr, FuncCaller, IntoExprErr};
+use crate::{ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper};
 
 use graph::{
     nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
@@ -8,9 +8,12 @@ use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> PrecompileCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+impl<T> PrecompileCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper
 {}
-pub trait PrecompileCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+
+/// Trait for calling precompile intrinsic functions, like `ecrecover`
+pub trait PrecompileCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper {
+    /// Perform a precompile's function call, like `ecrecover`
     fn precompile_call(
         &mut self,
         func_name: String,

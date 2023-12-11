@@ -1,3 +1,4 @@
+//! Traits & blanket implementations that facilitate performing intrinsic function calls.
 mod abi;
 mod address;
 mod array;

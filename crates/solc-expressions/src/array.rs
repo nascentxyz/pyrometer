@@ -12,6 +12,7 @@ use solang_parser::{
 };
 
 impl<T> Array for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+/// Handles arrays
 pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
     #[tracing::instrument(level = "trace", skip_all)]

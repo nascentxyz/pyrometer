@@ -1,4 +1,4 @@
-use crate::{require::Require, ContextBuilder, ExprErr, FuncCaller, IntoExprErr};
+use crate::{require::Require, ContextBuilder, ExprErr, func_call::helper::CallerHelper, IntoExprErr};
 
 use graph::{
     nodes::{Builtin, ContextNode, ContextVar, ExprRet},
@@ -7,8 +7,11 @@ use graph::{
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> SolidityCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait SolidityCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+impl<T> SolidityCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper {}
+
+/// Trait for calling solidity's intrinsic functions, like `keccak256`
+pub trait SolidityCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper {
+    /// Perform a solidity intrinsic function call, like `keccak256`
     fn solidity_call(
         &mut self,
         func_name: String,

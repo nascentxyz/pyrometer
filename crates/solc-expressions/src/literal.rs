@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 impl<T> Literal for T where T: AnalyzerBackend + Sized {}
 
+/// Dealing with literal expression and parsing them into nodes
 pub trait Literal: AnalyzerBackend + Sized {
     fn number_literal(
         &mut self,

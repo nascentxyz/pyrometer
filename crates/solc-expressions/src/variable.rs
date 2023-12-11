@@ -8,9 +8,10 @@ use graph::{
 use solang_parser::pt::{Expression, Identifier};
 
 impl<T> Variable for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-
+/// Deals with variable retrieval 
 pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Get a variable based on an identifier
     fn variable(
         &mut self,
         ident: &Identifier,

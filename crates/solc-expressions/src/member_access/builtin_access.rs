@@ -12,9 +12,12 @@ impl<T> BuiltinAccess for T where
     T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
 }
+
+/// Trait for performing member access on builtin types
 pub trait BuiltinAccess:
     LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
+    /// Perform member access on builtin types
     fn builtin_member_access(
         &mut self,
         loc: Loc,

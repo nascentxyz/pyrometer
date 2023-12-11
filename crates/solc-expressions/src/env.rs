@@ -1,4 +1,4 @@
-use crate::{func_call::FuncCaller, ExprErr, IntoExprErr};
+use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller, ExprErr, IntoExprErr};
 
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
@@ -9,6 +9,7 @@ use shared::StorageLocation;
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> Env for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+/// Handles environment based things like `msg`, `block`, etc.
 pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn env_variable(
         &mut self,

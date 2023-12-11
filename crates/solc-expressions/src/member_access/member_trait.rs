@@ -18,6 +18,8 @@ impl<T> MemberAccessParts for T where
     T: BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess
 {
 }
+
+/// Supertrait that coalesces various member access traits
 pub trait MemberAccessParts:
     BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess
 {
@@ -27,9 +29,110 @@ impl<T> MemberAccess for T where
     T: MemberAccessParts + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
 }
+
+/// Toplevel trait for performing member access. Utilizes other `..Access` traits
 pub trait MemberAccess:
     MemberAccessParts + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
+    /// Entry function for perform a member access
+    #[tracing::instrument(level = "trace", skip_all)]
+    fn member_access(
+        &mut self,
+        loc: Loc,
+        member_expr: &Expression,
+        ident: &Identifier,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        // TODO: this is wrong as it overwrites a function call of the form elem.length(...) i believe
+        if ident.name == "length" {
+            return self.length(loc, member_expr, ctx);
+        }
+
+        self.parse_ctx_expr(member_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoLhs(
+                    loc,
+                    "Attempted to perform member access without a left-hand side".to_string(),
+                ));
+            };
+            if matches!(ret, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
+            analyzer.match_member(ctx, loc, ident, ret)
+        })
+    }
+
+    /// Match on [`ExprRet`]s and call the member access for each
+    fn match_member(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        ident: &Identifier,
+        ret: ExprRet,
+    ) -> Result<(), ExprErr> {
+        match ret {
+            ExprRet::Single(idx) | ExprRet::SingleLiteral(idx) => {
+                ctx.push_expr(self.member_access_inner(loc, idx, ident, ctx)?, self)
+                    .into_expr_err(loc)?;
+                Ok(())
+            }
+            ExprRet::Multi(inner) => inner
+                .into_iter()
+                .try_for_each(|ret| self.match_member(ctx, loc, ident, ret)),
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
+            ExprRet::Null => Ok(()),
+        }
+    }
+
+    /// Perform the member access
+    fn member_access_inner(
+        &mut self,
+        loc: Loc,
+        member_idx: NodeIdx,
+        ident: &Identifier,
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
+        match self.node(member_idx) {
+            Node::ContextVar(cvar) => {
+                self.member_access_var_ty(cvar.clone(), loc, member_idx, ident, ctx)
+            }
+            Node::Contract(_c) => self.contract_member_access(
+                member_idx,
+                ContractNode::from(member_idx),
+                ident,
+                ctx,
+                loc,
+                None,
+            ),
+            Node::Struct(_c) => self.struct_member_access(
+                member_idx,
+                StructNode::from(member_idx),
+                ident,
+                ctx,
+                loc,
+                None,
+            ),
+            Node::Enum(_c) => {
+                self.enum_member_access(member_idx, EnumNode::from(member_idx), ident, ctx, loc)
+            }
+            Node::Ty(_ty) => {
+                self.ty_member_access(member_idx, TyNode::from(member_idx), ident, ctx, loc, None)
+            }
+            Node::Msg(_msg) => self.msg_access(loc, ctx, &ident.name),
+            Node::Block(_b) => self.block_access(loc, ctx, &ident.name),
+            Node::Builtin(ref _b) => {
+                self.builtin_member_access(loc, ctx, BuiltInNode::from(member_idx), false, ident)
+            }
+            e => Err(ExprErr::Todo(
+                loc,
+                format!("Member access on type: {e:?} is not yet supported"),
+            )),
+        }
+    }
+
+    /// Get visible functions for this member
     fn visible_member_funcs(
         &mut self,
         ctx: ContextNode,
@@ -105,102 +208,7 @@ pub trait MemberAccess:
         Ok(res)
     }
 
-    /// Gets the array type
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn member_access(
-        &mut self,
-        loc: Loc,
-        member_expr: &Expression,
-        ident: &Identifier,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        // TODO: this is wrong as it overwrites a function call of the form elem.length(...) i believe
-        if ident.name == "length" {
-            return self.length(loc, member_expr, ctx);
-        }
-
-        self.parse_ctx_expr(member_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "Attempted to perform member access without a left-hand side".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_member(ctx, loc, ident, ret)
-        })
-    }
-
-    fn match_member(
-        &mut self,
-        ctx: ContextNode,
-        loc: Loc,
-        ident: &Identifier,
-        ret: ExprRet,
-    ) -> Result<(), ExprErr> {
-        match ret {
-            ExprRet::Single(idx) | ExprRet::SingleLiteral(idx) => {
-                ctx.push_expr(self.member_access_inner(loc, idx, ident, ctx)?, self)
-                    .into_expr_err(loc)?;
-                Ok(())
-            }
-            ExprRet::Multi(inner) => inner
-                .into_iter()
-                .try_for_each(|ret| self.match_member(ctx, loc, ident, ret)),
-            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
-            ExprRet::Null => Ok(()),
-        }
-    }
-
-    fn member_access_inner(
-        &mut self,
-        loc: Loc,
-        member_idx: NodeIdx,
-        ident: &Identifier,
-        ctx: ContextNode,
-    ) -> Result<ExprRet, ExprErr> {
-        match self.node(member_idx) {
-            Node::ContextVar(cvar) => {
-                self.member_access_var_ty(cvar.clone(), loc, member_idx, ident, ctx)
-            }
-            Node::Contract(_c) => self.contract_member_access(
-                member_idx,
-                ContractNode::from(member_idx),
-                ident,
-                ctx,
-                loc,
-                None,
-            ),
-            Node::Struct(_c) => self.struct_member_access(
-                member_idx,
-                StructNode::from(member_idx),
-                ident,
-                ctx,
-                loc,
-                None,
-            ),
-            Node::Enum(_c) => {
-                self.enum_member_access(member_idx, EnumNode::from(member_idx), ident, ctx, loc)
-            }
-            Node::Ty(_ty) => {
-                self.ty_member_access(member_idx, TyNode::from(member_idx), ident, ctx, loc, None)
-            }
-            Node::Msg(_msg) => self.msg_access(loc, ctx, &ident.name),
-            Node::Block(_b) => self.block_access(loc, ctx, &ident.name),
-            Node::Builtin(ref _b) => {
-                self.builtin_member_access(loc, ctx, BuiltInNode::from(member_idx), false, ident)
-            }
-            e => Err(ExprErr::Todo(
-                loc,
-                format!("Member access on type: {e:?} is not yet supported"),
-            )),
-        }
-    }
-
+    /// Perform member access for a variable type
     fn member_access_var_ty(
         &mut self,
         cvar: ContextVar,
@@ -251,6 +259,7 @@ pub trait MemberAccess:
         }
     }
 
+    /// Perform a `TyNode` member access
     fn ty_member_access(
         &mut self,
         _member_idx: NodeIdx,

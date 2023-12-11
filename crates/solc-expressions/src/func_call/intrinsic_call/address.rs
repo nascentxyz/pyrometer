@@ -8,7 +8,10 @@ use graph::{
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> AddressCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for calling address-based intrinsic functions
 pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform an `address.<..>` function call
     fn address_call(
         &mut self,
         func_name: String,

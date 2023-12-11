@@ -12,9 +12,11 @@ impl<T> StructAccess for T where
     T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
 }
+/// Trait for performing member accesses on Structs
 pub trait StructAccess:
     LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
+    /// Perform member access on a struct
     fn struct_member_access(
         &mut self,
         member_idx: NodeIdx,

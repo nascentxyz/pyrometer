@@ -1,6 +1,9 @@
+//! Traits & blanket implementations that facilitate performing namespaced function calls.
+
 use crate::{
-    intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr,
-    FuncCaller, IntoExprErr,
+    func_call::helper::CallerHelper,
+    func_call::func_caller::FuncCaller,
+    intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr, IntoExprErr,
 };
 
 use graph::{
@@ -13,13 +16,15 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
 impl<T> NameSpaceFuncCaller for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
 {
 }
+/// A trait for performing namespaced function calls (i.e. `MyContract.myFunc(...)`)
 pub trait NameSpaceFuncCaller:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
 {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// TODO: Call a namedspaced named input function, i.e. `MyContract.myFunc({a: 1, b: 2})`
     fn call_name_spaced_named_func(
         &mut self,
         ctx: ContextNode,
@@ -33,6 +38,7 @@ pub trait NameSpaceFuncCaller:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Call a namedspaced function, i.e. `MyContract.myFunc(...)`
     fn call_name_spaced_func(
         &mut self,
         ctx: ContextNode,
@@ -153,6 +159,7 @@ pub trait NameSpaceFuncCaller:
         })
     }
 
+    /// Match the expression return for getting the member node
     fn match_namespaced_member(
         &mut self,
         ctx: ContextNode,
@@ -178,6 +185,7 @@ pub trait NameSpaceFuncCaller:
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Actually perform the namespaced function call
     fn call_name_spaced_func_inner(
         &mut self,
         ctx: ContextNode,

@@ -11,8 +11,10 @@ use solang_parser::pt::{Expression, Loc, Statement};
 
 impl<T> CondOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized
 {}
+/// Handles conditional operations, like `if .. else ..` and ternary operations
 pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Require + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Handles a conditional operation like `if .. else ..`
     fn cond_op_stmt(
         &mut self,
         loc: Loc,
@@ -126,6 +128,7 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
         })
     }
 
+    /// Handles a conditional expression like `if .. else ..`
     /// When we have a conditional operator, we create a fork in the context. One side of the fork is
     /// if the expression is true, the other is if it is false.
     #[tracing::instrument(level = "trace", skip_all)]

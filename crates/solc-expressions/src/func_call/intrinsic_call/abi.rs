@@ -8,7 +8,10 @@ use graph::{
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> AbiCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
+
+/// Trait for calling abi-namespaced intrinsic functions
 pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform an `abi.<..>` function call
     fn abi_call(
         &mut self,
         func_name: String,
@@ -91,7 +94,7 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
             | "abi.encodeCall"
             | "abi.encodeWithSignature"
             | "abi.encodeWithSelector" => {
-                // currently we dont support concrete abi encoding, TODO
+                // TODO: Support concrete abi encoding
                 let bn = self.builtin_or_add(Builtin::DynamicBytes);
                 let cvar = ContextVar::new_from_builtin(loc, bn.into(), self).into_expr_err(loc)?;
                 let node = self.add_node(Node::ContextVar(cvar));

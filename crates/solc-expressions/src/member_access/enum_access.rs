@@ -12,9 +12,12 @@ impl<T> EnumAccess for T where
     T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
 }
+
+/// Trait for performing member access on an enum
 pub trait EnumAccess:
     LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
+    /// Perform member access on an enum
     fn enum_member_access(
         &mut self,
         _member_idx: NodeIdx,

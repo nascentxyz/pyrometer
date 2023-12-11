@@ -9,7 +9,10 @@ use solang_parser::pt::{Expression, Loc};
 
 impl<T> DynBuiltinCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {}
+
+/// Trait for calling dynamic builtin-based intrinsic functions, like `concat`
 pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    /// Perform a dynamic builtin type's builtin function call
     fn dyn_builtin_call(
         &mut self,
         func_name: String,
@@ -30,6 +33,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
+    /// Concatenate two dynamic builtins
     fn concat(
         &mut self,
         loc: &Loc,
@@ -71,6 +75,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
         })
     }
 
+    /// Match on the expression returns
     fn match_concat(
         &mut self,
         ctx: ContextNode,
@@ -123,6 +128,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
         }
     }
 
+    /// Perform the concatenation
     fn concat_inner(
         &mut self,
         loc: Loc,

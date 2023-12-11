@@ -8,7 +8,7 @@ use graph::{
 use solang_parser::pt::{Expression, Loc, Parameter, ParameterList};
 
 impl<T> List for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-
+/// Dealing with list parsing and operations
 pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn list(&mut self, ctx: ContextNode, loc: Loc, params: &ParameterList) -> Result<(), ExprErr> {
