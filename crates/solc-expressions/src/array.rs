@@ -1,4 +1,4 @@
-use crate::{member_access::MemberAccess, require::Require, ContextBuilder, ExprErr, IntoExprErr};
+use crate::{ListAccess, require::Require, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
     elem::RangeOp,
