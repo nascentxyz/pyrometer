@@ -1,7 +1,5 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{
-    ContextBuilder, ExprErr, IntoExprErr, variable::Variable, ExpressionParser
-};
+use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 
 use graph::{
     nodes::{
@@ -14,11 +12,7 @@ use shared::{NodeIdx, StorageLocation};
 
 use solang_parser::pt::{Expression, Loc};
 
-use std::{
-	cell::RefCell,
-	collections::BTreeMap,
-	rc::Rc
-};
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 impl<T> CallerHelper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Helper trait for performing function calls

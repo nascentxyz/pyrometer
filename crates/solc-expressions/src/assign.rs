@@ -1,9 +1,9 @@
-use crate::{variable::Variable, ContextBuilder, ExprErr, IntoExprErr, ExpressionParser};
+use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 
 use graph::{
-    elem::Elem, GraphError, Range,
+    elem::Elem,
     nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge,
+    AnalyzerBackend, ContextEdge, Edge, GraphError, Range,
 };
 
 use solang_parser::pt::{Expression, Loc};
@@ -11,7 +11,7 @@ use solang_parser::pt::{Expression, Loc};
 impl<T> Assign for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles assignments
 pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
-#[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     /// Parse an assignment expression
     fn assign_exprs(
         &mut self,
@@ -239,4 +239,3 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         Ok(ExprRet::Single(new_lhs.into()))
     }
 }
-    

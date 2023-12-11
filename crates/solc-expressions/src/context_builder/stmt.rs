@@ -1,26 +1,25 @@
-
 use crate::{
-	context_builder::ContextBuilder,
-	ExpressionParser,
-    func_call::{func_caller::FuncCaller, modifier::ModifierCaller}, loops::Looper, yul::YulBuilder, ExprErr, IntoExprErr,
+    context_builder::ContextBuilder,
+    func_call::{func_caller::FuncCaller, modifier::ModifierCaller},
+    loops::Looper,
+    yul::YulBuilder,
+    ExprErr, ExpressionParser, IntoExprErr,
 };
 
 use graph::{
     nodes::{
-        Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
-        FunctionParamNode, FunctionReturnNode, KilledKind,
+        Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode, FunctionParamNode,
+        FunctionReturnNode, KilledKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::NodeIdx;
-
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Statement, YulStatement},
 };
-
 
 impl<T> StatementParser for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser

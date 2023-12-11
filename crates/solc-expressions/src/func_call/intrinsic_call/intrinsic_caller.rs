@@ -1,9 +1,10 @@
 use crate::{
+    func_call::helper::CallerHelper,
     intrinsic_call::{
         AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
         MsgCaller, PrecompileCaller, SolidityCaller, TypesCaller,
     },
-    ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper
+    ContextBuilder, ExprErr, IntoExprErr,
 };
 
 use graph::{

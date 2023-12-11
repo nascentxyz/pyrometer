@@ -12,9 +12,9 @@ mod list;
 mod literal;
 mod loops;
 mod member_access;
+mod pre_post_in_decrement;
 mod require;
 mod variable;
-mod pre_post_in_decrement;
 pub mod yul;
 
 pub use array::*;
@@ -29,17 +29,39 @@ pub use list::*;
 pub use literal::*;
 pub use loops::*;
 pub use member_access::*;
+pub use pre_post_in_decrement::*;
 pub use require::*;
 pub use variable::*;
-pub use pre_post_in_decrement::*;
 
 /// Supertrait for parsing expressions
 pub trait ExprTyParser:
-    BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env + PrePostIncDecrement + Assign
+    BinOp
+    + Require
+    + Variable
+    + Literal
+    + Array
+    + MemberAccess
+    + Cmp
+    + CondOp
+    + List
+    + Env
+    + PrePostIncDecrement
+    + Assign
 {
 }
 impl<T> ExprTyParser for T where
-    T: BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env + PrePostIncDecrement + Assign
+    T: BinOp
+        + Require
+        + Variable
+        + Literal
+        + Array
+        + MemberAccess
+        + Cmp
+        + CondOp
+        + List
+        + Env
+        + PrePostIncDecrement
+        + Assign
 {
 }
 

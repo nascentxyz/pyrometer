@@ -1,4 +1,4 @@
-use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr, yul::YulBuilder};
+use crate::{require::Require, yul::YulBuilder, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
     elem::*,

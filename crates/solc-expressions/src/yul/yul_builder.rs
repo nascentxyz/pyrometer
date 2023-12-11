@@ -1,9 +1,7 @@
 //! Trait and blanket implementation for parsing yul-based statements and expressions
 
 use crate::{
-	ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
-	yul::YulFuncCaller,
-	yul::YulCondOp
+    yul::YulCondOp, yul::YulFuncCaller, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
 };
 
 use graph::{
@@ -15,7 +13,6 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc, YulExpression, YulFor, YulStatement, YulSwitch},
 };
-
 
 impl<T> YulBuilder for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser

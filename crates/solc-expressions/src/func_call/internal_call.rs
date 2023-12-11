@@ -1,6 +1,9 @@
 //! Traits & blanket implementations that facilitate performing locally scoped function calls.
 
-use crate::{func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExprErr, IntoExprErr, ExpressionParser, assign::Assign};
+use crate::{
+    assign::Assign, func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder,
+    ExprErr, ExpressionParser, IntoExprErr,
+};
 
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
@@ -232,7 +235,13 @@ pub trait InternalFuncCaller:
                         ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.setup_fn_call(&ident.loc, &inputs, (possible_funcs[0]).into(), ctx, None)
+                    analyzer.setup_fn_call(
+                        &ident.loc,
+                        &inputs,
+                        (possible_funcs[0]).into(),
+                        ctx,
+                        None,
+                    )
                 })
             }
             _ => {

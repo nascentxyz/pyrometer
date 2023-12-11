@@ -1,25 +1,32 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
 use crate::{
-    helper::CallerHelper, ContextBuilder, ExprErr, IntoExprErr, func_caller::FuncCaller, ExpressionParser
+    func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExprErr, ExpressionParser,
+    IntoExprErr,
 };
 
 use graph::{
-    nodes::{
-        Context, ContextNode, ExprRet, FunctionNode, ModifierState,
-    },
+    nodes::{Context, ContextNode, ExprRet, FunctionNode, ModifierState},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
 
-use solang_parser::pt::{Expression, Loc, CodeLocation};
+use solang_parser::pt::{CodeLocation, Expression, Loc};
 
 impl<T> ModifierCaller for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + FuncCaller + CallerHelper
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
+        + Sized
+        + GraphBackend
+        + FuncCaller
+        + CallerHelper
 {
 }
 /// A trait for dealing with modifier calls
 pub trait ModifierCaller:
-    GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + FuncCaller + CallerHelper
+    GraphBackend
+    + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
+    + Sized
+    + FuncCaller
+    + CallerHelper
 {
     /// Calls a modifier for a function
     #[tracing::instrument(level = "trace", skip_all)]

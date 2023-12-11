@@ -1,11 +1,11 @@
 use crate::{assign::Assign, env::Env, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    nodes::{ContextVarNode, ContextNode, ContextVar, ExprRet, VarNode},
-    GraphError, AnalyzerBackend, ContextEdge, Edge, Node, VarType,
+    nodes::{ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
+    AnalyzerBackend, ContextEdge, Edge, GraphError, Node, VarType,
 };
 
-use solang_parser::pt::{VariableDeclaration, Loc, Expression, Identifier};
+use solang_parser::pt::{Expression, Identifier, Loc, VariableDeclaration};
 
 impl<T> Variable for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Deals with variable retrieval, parsing, and versioning

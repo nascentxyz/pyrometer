@@ -1,4 +1,7 @@
-use crate::{ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper, ExpressionParser, variable::Variable};
+use crate::{
+    func_call::helper::CallerHelper, variable::Variable, ContextBuilder, ExprErr, ExpressionParser,
+    IntoExprErr,
+};
 
 use graph::{
     elem::*,

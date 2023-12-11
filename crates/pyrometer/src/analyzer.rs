@@ -3,7 +3,7 @@ use crate::builtin_fns;
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use shared::{AnalyzerLike, GraphLike, NodeIdx, Search};
-use solc_expressions::{StatementParser, ExprErr, IntoExprErr};
+use solc_expressions::{ExprErr, IntoExprErr, StatementParser};
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use petgraph::{graph::*, Directed};

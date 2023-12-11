@@ -1,4 +1,6 @@
-use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr, StatementParser, ExpressionParser};
+use crate::{
+    require::Require, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, StatementParser,
+};
 
 use graph::{
     nodes::{Context, ContextNode},

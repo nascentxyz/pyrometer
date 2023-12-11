@@ -1,4 +1,4 @@
-use crate::{ContextBuilder, ExprErr, IntoExprErr, ExpressionParser};
+use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 
 use graph::{
     nodes::{ContextNode, ContextVar, ExprRet},

@@ -1,12 +1,8 @@
 //! Trait and blanket implementation for the core parsing loop
-use crate::{
-    ExprErr, IntoExprErr,
-};
+use crate::{ExprErr, IntoExprErr};
 
 use graph::{
-    nodes::{
-        ContextNode, ContextVarNode, ExprRet, KilledKind,
-    },
+    nodes::{ContextNode, ContextVarNode, ExprRet, KilledKind},
     AnalyzerBackend, ContextEdge, Edge, GraphError,
 };
 
@@ -17,17 +13,16 @@ impl<T> ContextBuilder for T where
 {
 }
 
-mod stmt;
 mod expr;
+mod stmt;
 
-pub use stmt::*;
 pub use expr::*;
+pub use stmt::*;
 
 /// Dispatcher for building up a context of a function
 pub trait ContextBuilder:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + StatementParser
 {
-
     /// TODO: rename this. Sometimes we dont want to kill a context if we hit an error
     fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {

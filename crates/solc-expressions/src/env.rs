@@ -1,4 +1,6 @@
-use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller, ExprErr, IntoExprErr};
+use crate::{
+    func_call::helper::CallerHelper, func_call::modifier::ModifierCaller, ExprErr, IntoExprErr,
+};
 
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},

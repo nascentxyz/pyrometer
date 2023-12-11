@@ -1,4 +1,7 @@
-use crate::{ContextBuilder, ExprErr, IntoExprErr, func_call::helper::CallerHelper, ExpressionParser, assign::Assign};
+use crate::{
+    assign::Assign, func_call::helper::CallerHelper, ContextBuilder, ExprErr, ExpressionParser,
+    IntoExprErr,
+};
 
 use graph::{
     elem::*,
@@ -15,7 +18,9 @@ impl<T> ConstructorCaller for T where
 }
 
 /// Trait for constructing compound types like contracts, structs and arrays
-pub trait ConstructorCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper {
+pub trait ConstructorCaller:
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper
+{
     /// Construct an array
     fn construct_array(
         &mut self,

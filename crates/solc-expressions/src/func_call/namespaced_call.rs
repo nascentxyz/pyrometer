@@ -1,10 +1,9 @@
 //! Traits & blanket implementations that facilitate performing namespaced function calls.
 
 use crate::{
-    func_call::helper::CallerHelper,
-    func_call::func_caller::FuncCaller,
-    intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr, IntoExprErr,
-    ExpressionParser
+    func_call::func_caller::FuncCaller, func_call::helper::CallerHelper,
+    intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr,
+    ExpressionParser, IntoExprErr,
 };
 
 use graph::{

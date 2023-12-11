@@ -1,23 +1,19 @@
 use crate::{
-	context_builder::ContextBuilder,
-    variable::Variable,
-    func_call::{func_caller::FuncCaller}, ExprErr, ExprTyParser, IntoExprErr,
+    context_builder::ContextBuilder, func_call::func_caller::FuncCaller, variable::Variable,
+    ExprErr, ExprTyParser, IntoExprErr,
 };
 
 use graph::{
     elem::*,
-    nodes::{
-        Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
-    },
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
 
-use ethers_core::types::{I256};
+use ethers_core::types::I256;
 use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc},
 };
-
 
 impl<T> ExpressionParser for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -28,7 +24,7 @@ impl<T> ExpressionParser for T where
 pub trait ExpressionParser:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
 {
-	/// Perform setup for parsing an expression
+    /// Perform setup for parsing an expression
     fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
         if !ctx.killed_or_ret(self).unwrap() {
             let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
