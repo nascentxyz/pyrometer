@@ -1,4 +1,4 @@
-use crate::{require::Require, ContextBuilder, ExprErr, IntoExprErr, ListAccess};
+use crate::{ExpressionParser, variable::Variable, require::Require, ContextBuilder, ExprErr, IntoExprErr, ListAccess};
 
 use graph::{
     elem::RangeOp,

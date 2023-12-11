@@ -1,6 +1,6 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
 use crate::{
-    ContextBuilder, ExprErr, IntoExprErr,
+    ContextBuilder, ExprErr, IntoExprErr, variable::Variable, ExpressionParser
 };
 
 use graph::{

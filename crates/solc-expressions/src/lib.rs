@@ -1,6 +1,7 @@
 use solang_parser::pt::Loc;
 
 mod array;
+mod assign;
 mod bin_op;
 mod cmp;
 mod cond_op;
@@ -13,9 +14,11 @@ mod loops;
 mod member_access;
 mod require;
 mod variable;
+mod pre_post_in_decrement;
 pub mod yul;
 
 pub use array::*;
+pub use assign::*;
 pub use bin_op::*;
 pub use cmp::*;
 pub use cond_op::*;
@@ -28,14 +31,15 @@ pub use loops::*;
 pub use member_access::*;
 pub use require::*;
 pub use variable::*;
+pub use pre_post_in_decrement::*;
 
 /// Supertrait for parsing expressions
-pub trait ExprParser:
-    BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env
+pub trait ExprTyParser:
+    BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env + PrePostIncDecrement + Assign
 {
 }
-impl<T> ExprParser for T where
-    T: BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env
+impl<T> ExprTyParser for T where
+    T: BinOp + Require + Variable + Literal + Array + MemberAccess + Cmp + CondOp + List + Env + PrePostIncDecrement + Assign
 {
 }
 

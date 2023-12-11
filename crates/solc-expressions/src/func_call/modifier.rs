@@ -1,8 +1,7 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
-use crate::helper::CallerHelper;
 use crate::{
-    ContextBuilder, ExprErr, IntoExprErr, func_caller::FuncCaller
+    helper::CallerHelper, ContextBuilder, ExprErr, IntoExprErr, func_caller::FuncCaller, ExpressionParser
 };
 
 use graph::{

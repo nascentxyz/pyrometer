@@ -1,6 +1,6 @@
 //! Traits & blanket implementations that facilitate performing locally scoped function calls.
 
-use crate::{func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExprErr, IntoExprErr};
+use crate::{func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExprErr, IntoExprErr, ExpressionParser, assign::Assign};
 
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},

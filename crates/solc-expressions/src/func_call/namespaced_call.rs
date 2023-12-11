@@ -4,6 +4,7 @@ use crate::{
     func_call::helper::CallerHelper,
     func_call::func_caller::FuncCaller,
     intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr, IntoExprErr,
+    ExpressionParser
 };
 
 use graph::{

@@ -1,4 +1,4 @@
-use crate::{require::Require, ContextBuilder, ExprErr, func_call::helper::CallerHelper, IntoExprErr};
+use crate::{require::Require, ContextBuilder, ExprErr, func_call::helper::CallerHelper, IntoExprErr, ExpressionParser};
 
 use graph::{
     nodes::{Builtin, ContextNode, ContextVar, ExprRet},

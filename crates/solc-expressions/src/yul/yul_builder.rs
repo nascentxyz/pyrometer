@@ -1,7 +1,7 @@
 //! Trait and blanket implementation for parsing yul-based statements and expressions
 
 use crate::{
-	ContextBuilder, ExprErr, ExprParser, IntoExprErr,
+	ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
 	yul::YulFuncCaller,
 	yul::YulCondOp
 };
@@ -18,12 +18,12 @@ use solang_parser::{
 
 
 impl<T> YulBuilder for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprParser
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
 {
 }
 /// Trait that processes Yul statements and expressions
 pub trait YulBuilder:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprParser
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
 {
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
     /// Parse a yul statement

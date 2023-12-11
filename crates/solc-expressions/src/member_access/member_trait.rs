@@ -1,6 +1,6 @@
 use crate::{
     BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExprErr, IntoExprErr,
-    ListAccess, StructAccess,
+    ListAccess, StructAccess, ExpressionParser
 };
 
 use graph::{
