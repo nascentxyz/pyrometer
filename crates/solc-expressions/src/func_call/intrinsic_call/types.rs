@@ -1,21 +1,23 @@
-use crate::{
-    ContextBuilder, ExprErr, FuncCaller, IntoExprErr,
-};
+use crate::{ContextBuilder, ExprErr, FuncCaller, IntoExprErr};
 
 use graph::{
     elem::*,
-    nodes::{
-        BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode,
-    },
+    nodes::{BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode},
     AnalyzerBackend, GraphBackend, Node, Range, SolcRange, VarType,
 };
-use shared::{NodeIdx};
+use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> TypesCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
-    fn types_call(&mut self, func_name: String, input_exprs: &[Expression], loc: Loc, ctx: ContextNode) -> Result<(), ExprErr> {
+    fn types_call(
+        &mut self,
+        func_name: String,
+        input_exprs: &[Expression],
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
         match &*func_name {
             "type" => self.parse_ctx_expr(&input_exprs[0], ctx),
             "wrap" => {
@@ -25,9 +27,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                 self.parse_inputs(ctx, loc, input_exprs)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(input) =
-                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
+                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
                             "ecrecover did not receive inputs".to_string(),
@@ -36,16 +36,11 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     input.expect_length(2).into_expr_err(loc)?;
                     let ret = input.as_vec();
                     let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
-                    let var = ContextVar::new_from_ty(
-                        loc,
-                        TyNode::from(wrapping_ty),
-                        ctx,
-                        analyzer,
-                    )
-                    .into_expr_err(loc)?;
+                    let var =
+                        ContextVar::new_from_ty(loc, TyNode::from(wrapping_ty), ctx, analyzer)
+                            .into_expr_err(loc)?;
                     let to_be_wrapped = ret[1].expect_single().into_expr_err(loc)?;
-                    let cvar =
-                        ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                    let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
                     let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
                     let expr = Elem::Expr(RangeExpr::new(
                         Elem::from(to_be_wrapped),
@@ -62,9 +57,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
             "unwrap" => {
                 self.parse_inputs(ctx, loc, input_exprs)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(input) =
-                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
+                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
                             "ecrecover did not receive inputs".to_string(),
@@ -95,8 +88,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             .into_expr_err(loc)?
                     );
 
-                    let cvar =
-                        ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                    let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
                     cvar.set_range_min(analyzer, Elem::from(to_be_unwrapped))
                         .into_expr_err(loc)?;
                     cvar.set_range_max(analyzer, Elem::from(to_be_unwrapped))
@@ -119,12 +111,19 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 format!(
                     "Could not find builtin types function: \"{func_name}\", context: {}",
                     ctx.path(self),
-                )
-            ))
+                ),
+            )),
         }
     }
 
-    fn cast(&mut self, ty: Builtin, func_idx: NodeIdx, input_exprs: &[Expression], loc: Loc, ctx: ContextNode) -> Result<(), ExprErr> {
+    fn cast(
+        &mut self,
+        ty: Builtin,
+        func_idx: NodeIdx,
+        input_exprs: &[Expression],
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
         // it is a cast
         fn cast_match(
             ctx: ContextNode,
@@ -135,9 +134,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
             func_idx: NodeIdx,
         ) -> Result<(), ExprErr> {
             match ret {
-                ExprRet::CtxKilled(kind) => {
-                    ctx.kill(analyzer, loc, kind).into_expr_err(loc)
-                }
+                ExprRet::CtxKilled(kind) => ctx.kill(analyzer, loc, kind).into_expr_err(loc),
                 ExprRet::Null => Ok(()),
                 ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
                     let new_var = ContextVarNode::from(cvar)
@@ -151,8 +148,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         .range(analyzer)
                         .into_expr_err(loc)?
                     {
-                        let curr_range =
-                            SolcRange::try_from_builtin(ty).expect("No default range");
+                        let curr_range = SolcRange::try_from_builtin(ty).expect("No default range");
                         let mut min = r
                             .range_min()
                             .into_owned()
@@ -166,8 +162,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                         max.cache_maximize(analyzer).into_expr_err(loc)?;
 
-                        let existing_max =
-                            r.evaled_range_max(analyzer).into_expr_err(loc)?;
+                        let existing_max = r.evaled_range_max(analyzer).into_expr_err(loc)?;
                         // Check if the max value has changed once the cast is applied.
                         // If it hasnt, then the cast had no effect and we should adjust the naming
                         // to not muddle the CLI
@@ -188,8 +183,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         // cast the range exclusions - TODO: verify this is correct
                         let mut exclusions = r.range_exclusions();
                         exclusions.iter_mut().for_each(|range| {
-                            *range =
-                                range.clone().cast(curr_range.range_min().into_owned());
+                            *range = range.clone().cast(curr_range.range_min().into_owned());
                         });
                         new_var
                             .set_range_exclusions(analyzer, exclusions)

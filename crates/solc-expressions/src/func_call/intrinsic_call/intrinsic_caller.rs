@@ -1,31 +1,46 @@
 use crate::{
-    ContextBuilder, ExprErr, FuncCaller, IntoExprErr,
     intrinsic_call::{
-        MsgCaller, AbiCaller, AddressCaller, ArrayCaller,
-        BlockCaller, DynBuiltinCaller, PrecompileCaller,
-        SolidityCaller, TypesCaller, ConstructorCaller
-    }
+        AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
+        MsgCaller, PrecompileCaller, SolidityCaller, TypesCaller,
+    },
+    ContextBuilder, ExprErr, FuncCaller, IntoExprErr,
 };
 
 use graph::{
-    nodes::{
-        Builtin, ContextNode, ExprRet,
-    },
+    nodes::{Builtin, ContextNode, ExprRet},
     AnalyzerBackend, Node,
 };
-use shared::{NodeIdx};
+use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Loc};
 
-pub trait CallerParts: AbiCaller + AddressCaller + ArrayCaller +
-    BlockCaller + DynBuiltinCaller + PrecompileCaller +
-    SolidityCaller + TypesCaller + ConstructorCaller + MsgCaller {}
+pub trait CallerParts:
+    AbiCaller
+    + AddressCaller
+    + ArrayCaller
+    + BlockCaller
+    + DynBuiltinCaller
+    + PrecompileCaller
+    + SolidityCaller
+    + TypesCaller
+    + ConstructorCaller
+    + MsgCaller
+{
+}
 
-impl<T> CallerParts for T where T: AbiCaller + AddressCaller + ArrayCaller +
-    BlockCaller + DynBuiltinCaller + PrecompileCaller +
-    SolidityCaller + TypesCaller + ConstructorCaller + MsgCaller {}
-
-
+impl<T> CallerParts for T where
+    T: AbiCaller
+        + AddressCaller
+        + ArrayCaller
+        + BlockCaller
+        + DynBuiltinCaller
+        + PrecompileCaller
+        + SolidityCaller
+        + TypesCaller
+        + ConstructorCaller
+        + MsgCaller
+{
+}
 
 impl<T> IntrinsicFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerParts
@@ -68,13 +83,15 @@ pub trait IntrinsicFuncCaller:
                             self.dyn_builtin_call(func_name.name.clone(), input_exprs, *loc, ctx)
                         }
                         // msg
-                        "gasleft" => {
-                            self.msg_call(func_name.name.clone(), input_exprs, *loc, ctx)
-                        }
+                        "gasleft" => self.msg_call(func_name.name.clone(), input_exprs, *loc, ctx),
                         // precompiles
-                        "sha256" | "ripemd160" | "ecrecover" => {
-                            self.precompile_call(func_name.name.clone(), func_idx, input_exprs, *loc, ctx)
-                        }
+                        "sha256" | "ripemd160" | "ecrecover" => self.precompile_call(
+                            func_name.name.clone(),
+                            func_idx,
+                            input_exprs,
+                            *loc,
+                            ctx,
+                        ),
                         // solidity
                         "keccak256" | "addmod" | "mulmod" | "require" | "assert" => {
                             self.solidity_call(func_name.name.clone(), input_exprs, *loc, ctx)
@@ -148,7 +165,10 @@ pub trait IntrinsicFuncCaller:
                     }
                 })
             }
-            e => Err(ExprErr::FunctionNotFound(*loc, format!("Unhandled function call type: {e:?}"))),
+            e => Err(ExprErr::FunctionNotFound(
+                *loc,
+                format!("Unhandled function call type: {e:?}"),
+            )),
         }
     }
 }

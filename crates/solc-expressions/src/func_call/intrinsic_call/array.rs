@@ -1,12 +1,8 @@
-use crate::{
-    array::Array, ContextBuilder, ExprErr, IntoExprErr, ListAccess,
-};
+use crate::{array::Array, ContextBuilder, ExprErr, IntoExprErr, ListAccess};
 
 use graph::{
     elem::*,
-    nodes::{
-        Concrete, ContextNode, ContextVarNode, ExprRet,
-    },
+    nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend,
 };
 
@@ -15,7 +11,13 @@ use solang_parser::pt::{Expression, Loc};
 
 impl<T> ArrayCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
-    fn array_call(&mut self, func_name: String, input_exprs: &[Expression], loc: Loc, ctx: ContextNode) -> Result<(), ExprErr> {
+    fn array_call(
+        &mut self,
+        func_name: String,
+        input_exprs: &[Expression],
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
         match &*func_name {
             "push" => {
                 if input_exprs.len() == 1 {
@@ -23,13 +25,11 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     // empty element onto the expr ret stack
                     self.parse_ctx_expr(&input_exprs[0], ctx)?;
                     self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(array) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoLhs(
                                 loc,
-                                "array[].push(..) was not an array to push to"
-                                    .to_string(),
+                                "array[].push(..) was not an array to push to".to_string(),
                             ));
                         };
 
@@ -38,8 +38,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         // get length
                         let len = analyzer.tmp_length(arr, ctx, loc);
 
-                        let len_as_idx =
-                            len.as_tmp(loc, ctx, analyzer).into_expr_err(loc)?;
+                        let len_as_idx = len.as_tmp(loc, ctx, analyzer).into_expr_err(loc)?;
                         // set length as index
                         analyzer.index_into_array_inner(
                             ctx,
@@ -53,13 +52,11 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     // array.push(value)
                     self.parse_ctx_expr(&input_exprs[0], ctx)?;
                     self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(array) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoLhs(
                                 loc,
-                                "array[].push(..) was not an array to push to"
-                                    .to_string(),
+                                "array[].push(..) was not an array to push to".to_string(),
                             ));
                         };
                         if matches!(array, ExprRet::CtxKilled(_)) {
@@ -68,14 +65,12 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         }
                         analyzer.parse_ctx_expr(&input_exprs[1], ctx)?;
                         analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                            let Some(new_elem) = ctx
-                                .pop_expr_latest(loc, analyzer)
-                                .into_expr_err(loc)?
+                            let Some(new_elem) =
+                                ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                             else {
                                 return Err(ExprErr::NoRhs(
                                     loc,
-                                    "array[].push(..) was not given an element to push"
-                                        .to_string(),
+                                    "array[].push(..) was not given an element to push".to_string(),
                                 ));
                             };
 
@@ -85,21 +80,17 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             }
 
                             let arr = array.expect_single().into_expr_err(loc)?;
-                            let arr =
-                                ContextVarNode::from(arr).latest_version(analyzer);
+                            let arr = ContextVarNode::from(arr).latest_version(analyzer);
                             // get length
                             let len = analyzer.tmp_length(arr, ctx, loc);
 
-                            let len_as_idx =
-                                len.as_tmp(loc, ctx, analyzer).into_expr_err(loc)?;
+                            let len_as_idx = len.as_tmp(loc, ctx, analyzer).into_expr_err(loc)?;
                             // set length as index
                             analyzer.index_into_array_inner(
                                 ctx,
                                 loc,
                                 ExprRet::Single(arr.latest_version(analyzer).into()),
-                                ExprRet::Single(
-                                    len_as_idx.latest_version(analyzer).into(),
-                                ),
+                                ExprRet::Single(len_as_idx.latest_version(analyzer).into()),
                             )?;
                             let index = ctx
                                 .pop_expr_latest(loc, analyzer)
@@ -135,9 +126,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 }
                 self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(array) =
-                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
+                    let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(
                             loc,
                             "array[].pop() was not an array to pop from".to_string(),
@@ -154,9 +143,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                     // get length
                     analyzer.match_length(ctx, loc, array, false)?;
-                    let Some(len) =
-                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
+                    let Some(len) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(
                             loc,
                             "array[].pop() was not an array to pop from".to_string(),
@@ -191,10 +178,8 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 format!(
                     "Could not find builtin array function: \"{func_name}\", context: {}",
                     ctx.path(self),
-                )
-            ))
+                ),
+            )),
         }
     }
 }
-
-
