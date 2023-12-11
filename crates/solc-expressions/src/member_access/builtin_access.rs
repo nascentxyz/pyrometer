@@ -1,19 +1,21 @@
-use crate::{LibraryAccess, ExprErr, IntoExprErr};
+use crate::{ExprErr, IntoExprErr, LibraryAccess};
 
 use graph::{
-    nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ExprRet,
-    },
+    nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-
-impl<T> BuiltinAccess for T where T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait BuiltinAccess: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
-	fn builtin_member_access(
+impl<T> BuiltinAccess for T where
+    T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+}
+pub trait BuiltinAccess:
+    LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+    fn builtin_member_access(
         &mut self,
         loc: Loc,
         ctx: ContextNode,

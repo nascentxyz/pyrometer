@@ -2,9 +2,7 @@ use crate::{ContextBuilder, ExprErr, IntoExprErr, Variable};
 
 use graph::{
     elem::*,
-    nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
-    },
+    nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, Range, SolcRange, VarType,
 };
 use shared::NodeIdx;
@@ -12,7 +10,7 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> ListAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
+pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn index_access(
         &mut self,

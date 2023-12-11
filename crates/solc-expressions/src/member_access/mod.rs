@@ -11,5 +11,5 @@ pub use contract_access::*;
 pub use enum_access::*;
 pub use library_access::*;
 pub use list_access::*;
-pub use struct_access::*;
 pub use member_trait::*;
+pub use struct_access::*;

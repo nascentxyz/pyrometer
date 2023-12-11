@@ -1,9 +1,7 @@
 use crate::{ExprErr, IntoExprErr};
 
 use graph::{
-    nodes::{
-        Builtin, Concrete, ContextNode, ContextVar, ContractNode, ExprRet,
-    },
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContractNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::NodeIdx;
@@ -11,8 +9,8 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> ContractAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
-	fn contract_member_access(
+pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn contract_member_access(
         &mut self,
         member_idx: NodeIdx,
         con_node: ContractNode,

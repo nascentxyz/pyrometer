@@ -1,9 +1,7 @@
-use crate::{ExprErr};
+use crate::ExprErr;
 
 use graph::{
-    nodes::{
-        ContextNode, ExprRet, FunctionNode,
-    },
+    nodes::{ContextNode, ExprRet, FunctionNode},
     AnalyzerBackend, Edge,
 };
 use shared::NodeIdx;
@@ -14,8 +12,8 @@ use solang_parser::pt::{Expression, Identifier};
 use std::collections::BTreeSet;
 
 impl<T> LibraryAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
-	fn library_func_search(
+pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn library_func_search(
         &mut self,
         ctx: ContextNode,
         ty: NodeIdx,

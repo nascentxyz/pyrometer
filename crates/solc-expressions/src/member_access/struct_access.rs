@@ -1,18 +1,21 @@
-use crate::{LibraryAccess, ExprErr, IntoExprErr};
+use crate::{ExprErr, IntoExprErr, LibraryAccess};
 
 use graph::{
-    nodes::{
-        ContextNode, ContextVar, ContextVarNode, ExprRet, StructNode,
-    },
+    nodes::{ContextNode, ContextVar, ContextVarNode, ExprRet, StructNode},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-impl<T> StructAccess for T where T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait StructAccess: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
-	fn struct_member_access(
+impl<T> StructAccess for T where
+    T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+}
+pub trait StructAccess:
+    LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+    fn struct_member_access(
         &mut self,
         member_idx: NodeIdx,
         struct_node: StructNode,

@@ -1,6 +1,5 @@
 use crate::{
-    array::Array, ListAccess, require::Require, ContextBuilder, ExprErr,
-    FuncCaller, IntoExprErr,
+    array::Array, require::Require, ContextBuilder, ExprErr, FuncCaller, IntoExprErr, ListAccess,
 };
 
 use graph::{

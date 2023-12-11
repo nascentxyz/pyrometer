@@ -1,19 +1,21 @@
 use crate::{ExprErr, IntoExprErr, LibraryAccess};
 
 use graph::{
-    nodes::{
-        ContextNode, ContextVar,
-        EnumNode, ExprRet,
-    },
+    nodes::{ContextNode, ContextVar, EnumNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-impl<T> EnumAccess for T where T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait EnumAccess: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
-	fn enum_member_access(
+impl<T> EnumAccess for T where
+    T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+}
+pub trait EnumAccess:
+    LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+    fn enum_member_access(
         &mut self,
         _member_idx: NodeIdx,
         enum_node: EnumNode,

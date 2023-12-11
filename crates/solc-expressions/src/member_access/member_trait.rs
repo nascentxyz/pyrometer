@@ -1,13 +1,12 @@
 use crate::{
-	ContextBuilder, Env, ExprErr, IntoExprErr,
-	StructAccess, BuiltinAccess, ListAccess,
-	ContractAccess, EnumAccess
+    BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExprErr, IntoExprErr,
+    ListAccess, StructAccess,
 };
 
 use graph::{
     nodes::{
-        BuiltInNode, ContextNode, ContextVar, ContextVarNode, ContractNode,
-        EnumNode, ExprRet, FunctionNode, StructNode, TyNode,
+        BuiltInNode, ContextNode, ContextVar, ContextVarNode, ContractNode, EnumNode, ExprRet,
+        FunctionNode, StructNode, TyNode,
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
@@ -15,11 +14,22 @@ use shared::NodeIdx;
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
-impl<T> MemberAccessParts for T where T: BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess {}
-pub trait MemberAccessParts: BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess {}
+impl<T> MemberAccessParts for T where
+    T: BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess
+{
+}
+pub trait MemberAccessParts:
+    BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess
+{
+}
 
-impl<T> MemberAccess for T where T: MemberAccessParts + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
-pub trait MemberAccess: MemberAccessParts + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized  {
+impl<T> MemberAccess for T where
+    T: MemberAccessParts + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
+}
+pub trait MemberAccess:
+    MemberAccessParts + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
+{
     fn visible_member_funcs(
         &mut self,
         ctx: ContextNode,
