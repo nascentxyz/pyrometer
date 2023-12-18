@@ -1,7 +1,6 @@
 mod add;
 mod bitwise;
 mod cast;
-mod concat;
 mod div;
 mod exec_op;
 mod exp;
@@ -13,3 +12,4 @@ mod mul;
 mod ord;
 mod shift;
 mod sub;
+mod mem_ops;

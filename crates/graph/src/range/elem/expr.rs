@@ -73,7 +73,7 @@ impl RangeExpr<Concrete> {
     }
 }
 
-impl<T> RangeExpr<T> {
+impl<T: Ord> RangeExpr<T> {
     /// Creates a new range expression given a left hand side range [`Elem`], a [`RangeOp`], and a a right hand side range [`Elem`].
     pub fn new(lhs: Elem<T>, op: RangeOp, rhs: Elem<T>) -> RangeExpr<T> {
         RangeExpr {
@@ -105,13 +105,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
             (true, _, Some(flat)) | (false, Some(flat), _) => {
-                // println!("flatten cache hit");
                 return Ok(*flat.clone());
             }
             _ => {}
         }
-        // println!("flatten cache miss");
-        // println!("flattening expr: {}", Elem::Expr(self.clone()));
         Ok(Elem::Expr(RangeExpr::new(
             self.lhs.flatten(maximize, analyzer)?,
             self.op,
@@ -165,6 +162,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
             Ok(*cached)
+        } else if self.op == RangeOp::SetIndices {
+            self.simplify_exec_op(true, &mut vec![], analyzer)
         } else {
             self.exec_op(true, analyzer)
         }
@@ -172,8 +171,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
             Ok(*cached)
+        } else if self.op == RangeOp::SetIndices {
+            self.simplify_exec_op(false, &mut vec![], analyzer)
         } else {
-            self.exec_op(false, analyzer)
+            self.exec_op(false, analyzer)    
         }
     }
 
@@ -191,10 +192,22 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let collapsed = collapse(l, self.op, r);
         match collapsed {
             MaybeCollapsed::Concretes(l, r) => {
-                RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer)
+                RangeExpr::new(l, self.op, r).exec_op(true, analyzer)
             }
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-            MaybeCollapsed::Not(l, r) => Ok(Elem::Expr(RangeExpr::new(l, self.op, r))),
+            MaybeCollapsed::Not(l, r) => {
+                // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
+                match RangeExpr::new(l, self.op, r).simplify_exec_op(true, &mut vec![], analyzer)? {
+                    ref e @ Elem::Expr(ref expr) => {
+                        match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                            MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, expr.op, r).exec_op(true, analyzer),
+                            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
+                            _ => Ok(e.clone())
+                        }
+                    }
+                    other => Ok(other)
+                }
+            },
         }
     }
     fn simplify_minimize(
@@ -211,10 +224,22 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let collapsed = collapse(l, self.op, r);
         match collapsed {
             MaybeCollapsed::Concretes(l, r) => {
-                RangeExpr::new(l, self.op, r).simplify_exec_op(false, exclude, analyzer)
+                RangeExpr::new(l, self.op, r).exec_op(false, analyzer)
             }
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-            MaybeCollapsed::Not(l, r) => Ok(Elem::Expr(RangeExpr::new(l, self.op, r))),
+            MaybeCollapsed::Not(l, r) => {
+                // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
+                match RangeExpr::new(l, self.op, r).simplify_exec_op(false, &mut vec![], analyzer)? {
+                    ref e @ Elem::Expr(ref expr) => {
+                        match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                            MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, expr.op, r).exec_op(false, analyzer),
+                            MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
+                            _ => Ok(e.clone())
+                        }
+                    }
+                    other => Ok(other)
+                }
+            },
         }
     }
 
@@ -265,18 +290,21 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
 }
 
-enum MaybeCollapsed {
+pub enum MaybeCollapsed {
     Concretes(Elem<Concrete>, Elem<Concrete>),
     Collapsed(Elem<Concrete>),
     Not(Elem<Concrete>, Elem<Concrete>),
 }
 
-fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed {
+pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed {
     let zero = Elem::from(Concrete::from(U256::zero()));
     let one = Elem::from(Concrete::from(U256::one()));
     match (l.clone(), r.clone()) {
+        // (Elem::Null, _) => MaybeCollapsed::Collapsed(r),
+        // (_, Elem::Null) => MaybeCollapsed::Collapsed(l), 
         (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
         (Elem::Expr(expr), d @ Elem::Reference(_)) => {
+            // try to collapse the expression
             let x = expr.lhs;
             let y = expr.rhs;
             let z = d;
@@ -321,7 +349,6 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
         }
         // if we have an expression, it fundamentally must have a dynamic in it
         (Elem::Expr(expr), c @ Elem::Concrete(_)) => {
-            println!("expr, c");
             // potentially collapsible
             let x = expr.lhs;
             let y = expr.rhs;
@@ -719,6 +746,27 @@ fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed
             MaybeCollapsed::Not(_, _) => MaybeCollapsed::Not(l, r),
             MaybeCollapsed::Concretes(_, _) => unreachable!(),
         },
+        (le @ Elem::Reference(_), c @ Elem::Concrete(_)) => {
+            match op {
+                RangeOp::Sub(_)
+                | RangeOp::Add(_) => {
+                    if matches!(c.range_ord(&zero), Some(std::cmp::Ordering::Equal)) {
+                        MaybeCollapsed::Collapsed(le)
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                }
+                RangeOp::Mul(_)
+                | RangeOp::Div(_) => {
+                    if matches!(c.range_ord(&one), Some(std::cmp::Ordering::Equal)) {
+                        MaybeCollapsed::Collapsed(le)
+                    } else {
+                        MaybeCollapsed::Not(l, r)
+                    }
+                }
+                _ => MaybeCollapsed::Not(l, r)
+            }
+        }
         _ => MaybeCollapsed::Not(l, r),
     }
 }

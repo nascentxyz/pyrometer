@@ -187,19 +187,6 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         .range_exclusions();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
-                // println!("{:?}", range.evaled_range_max(self));
-                // println!("{:?}", range.evaled_range_min(self));
-
-                // println!(
-                //     "cmp: {} {} {}, [{}, {}], [{}, {}] ",
-                //     lhs_cvar.name(self).into_expr_err(loc)?,
-                //     op.to_string(),
-                //     rhs_cvar.name(self).into_expr_err(loc)?,
-                //     lhs_cvar.evaled_range_min(self).into_expr_err(loc)?.unwrap().to_range_string(false, self).s,
-                //     lhs_cvar.evaled_range_max(self).into_expr_err(loc)?.unwrap().to_range_string(true, self).s,
-                //     rhs_cvar.evaled_range_min(self).into_expr_err(loc)?.unwrap().to_range_string(false, self).s,
-                //     rhs_cvar.evaled_range_max(self).into_expr_err(loc)?.unwrap().to_range_string(true, self).s
-                // );
 
                 let out_var = ContextVar {
                     loc: Some(loc),

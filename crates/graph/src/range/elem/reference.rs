@@ -102,15 +102,12 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
             (true, _, Some(flat)) | (false, Some(flat), _) => {
-                // println!("flatten cache hit: {}", self.idx.index());
                 return Ok(*flat.clone());
             }
             _ => {}
         }
 
-        // println!("flatten cache miss: {}", self.idx.index());
         let cvar = ContextVarNode::from(self.idx);
-        // println!("flattening reference: {} (idx_{})", cvar.display_name(analyzer)?, self.idx.index());
         if cvar.is_fundamental(analyzer)? {
             return Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),

@@ -106,13 +106,13 @@ impl BruteBinSearchSolver {
         // Sometimes a storage variable will be split due to a context fork. We recombine them here
         atomic_idxs.sort();
         atomic_idxs.dedup();
-        atomic_idxs.iter().for_each(|dep| {
-            println!(
-                "atomic dep: {} - {}",
-                dep.display_name(analyzer).unwrap(),
-                dep.0
-            )
-        });
+        // atomic_idxs.iter().for_each(|dep| {
+        //     println!(
+        //         "atomic dep: {} - {}",
+        //         dep.display_name(analyzer).unwrap(),
+        //         dep.0
+        //     )
+        // });
         // let atomics = atomic_idxs;
         let mut storage_atomics: BTreeMap<VarNode, Vec<ContextVarNode>> = BTreeMap::default();
         let mut calldata_atomics = vec![];

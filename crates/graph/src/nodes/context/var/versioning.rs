@@ -192,4 +192,25 @@ impl ContextVarNode {
                 .next()
         }
     }
+
+    pub fn previous_global_version(&self, analyzer: &impl GraphBackend) -> Option<Self> {
+        if let Some(prev) = self.previous_version(analyzer) {
+            Some(prev)
+        } else if let Some(inherited) = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| Edge::Context(ContextEdge::InheritedVariable) == *edge.weight())
+            .map(|edge| ContextVarNode::from(edge.target()))
+            .take(1)
+            .next() {
+            Some(inherited)
+        } else { analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| Edge::Context(ContextEdge::InputVariable) == *edge.weight())
+            .map(|edge| ContextVarNode::from(edge.target()))
+            .take(1)
+            .next()
+        }
+    }
 }

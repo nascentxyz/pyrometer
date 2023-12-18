@@ -61,51 +61,37 @@ impl<'a> FunctionVarsBoundAnalysis {
                     .map(|var| (var.display_name(analyzer).unwrap(), var))
                     .collect::<BTreeMap<_, _>>();
                 // create the bound strings
-                let mut ranges = BTreeMap::default();
-                deps.iter().for_each(|(_, dep)| {
-                    let range = dep.ref_range(analyzer).unwrap().unwrap();
-                    let r = range.into_flattened_range(analyzer).unwrap();
-                    ranges.insert(*dep, r);
-                });
-                let atoms = ranges
+                // let atoms = ctx.dep_atoms(analyzer).unwrap();
+                // println!("had {} atoms", atoms.len());
+                // let mut handled_atom = vec![];
+                // let mut bounds_string: Vec<String> = vec![];
+                // atoms.iter().enumerate().for_each(|(i, atom)| {
+                //     let atom_str = atom.to_range_string(true, analyzer).s;
+                //     if !handled_atom.contains(&atom_str) {
+                //         handled_atom.push(atom_str.clone());
+                //         bounds_string.push(format!("{}. {}", i + 1, atom_str))
+                //     }
+                // });
+                // let bounds_string = bounds_string.into_iter().collect::<Vec<_>>().join("\n");
+
+                let bounds_string = deps
                     .iter()
-                    .filter_map(|(_dep, range)| {
-                        if let Some(atom) = range.min.atomize() {
-                            Some(atom)
-                        } else {
-                            range.max.atomize()
-                        }
+                    .enumerate()
+                    .filter_map(|(i, (name, cvar))| {
+                        let range = cvar.ref_range(analyzer).unwrap()?;
+
+                        let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
+                        let ret = parts.into_iter().fold(
+                            format!("{}. {name}", i + 1),
+                            |mut acc, part| {
+                                acc = acc.to_string();
+                                acc
+                            },
+                        );
+                        Some(format!("{ret}\n"))
                     })
-                    .collect::<Vec<SolverAtom>>();
-                let mut handled_atom = vec![];
-                let mut bounds_string: Vec<String> = vec![];
-                atoms.iter().enumerate().for_each(|(i, atom)| {
-                    let atom_str = atom.to_range_string(true, analyzer).s;
-                    if !handled_atom.contains(&atom_str) {
-                        handled_atom.push(atom_str.clone());
-                        bounds_string.push(format!("{}. {}", i + 1, atom_str))
-                    }
-                });
-                let bounds_string = bounds_string.into_iter().collect::<Vec<_>>().join("\n");
-
-                // let bounds_string = deps
-                //     .iter()
-                //     .enumerate()
-                //     .filter_map(|(i, (name, cvar))| {
-                //         let range = cvar.ref_range(analyzer).unwrap()?;
-
-                //         let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
-                //         let ret = parts.into_iter().fold(
-                //             format!("{}. {name}", i + 1),
-                //             |mut acc, part| {
-                //                 acc = acc.to_string();
-                //                 acc
-                //             },
-                //         );
-                //         Some(format!("{ret}\n"))
-                //     })
-                //     .collect::<Vec<_>>()
-                //     .join("");
+                    .collect::<Vec<_>>()
+                    .join("");
                 let mut report = Report::build(
                     self.report_kind(),
                     self.ctx_loc.source(),

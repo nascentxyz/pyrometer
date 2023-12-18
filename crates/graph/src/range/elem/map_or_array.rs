@@ -20,29 +20,79 @@ pub struct RangeDyn<T> {
     pub flattened_min: Option<Box<Elem<T>>>,
     pub flattened_max: Option<Box<Elem<T>>>,
     /// Length of the dynamic variable
-    pub len: Elem<T>,
+    pub len: Box<Elem<T>>,
     /// Values of the dynamic variable
-    pub val: BTreeMap<Elem<T>, Elem<T>>,
+    pub val: BTreeMap<Elem<T>, (Elem<T>, usize)>,
+    /// An operations log
+    pub op_num: usize,
+    /// For recursion, sets whether to filter nulls
+    // pub filter_null: bool,
     /// Sourcecode location
     pub loc: Loc,
 }
 
-impl<T> RangeDyn<T> {
-    pub fn new(len: Elem<T>, val: BTreeMap<Elem<T>, Elem<T>>, loc: Loc) -> Self {
+impl<T: Ord> RangeDyn<T> {
+    pub fn new_w_op_nums(len: Elem<T>, val: BTreeMap<Elem<T>, (Elem<T>, usize)>, loc: Loc) -> Self {
+        let op_num = val.iter().fold(0, |mut acc, (_k, (_v, i))| {
+            if i > &acc {
+                acc = *i;
+                acc
+            } else {
+                acc
+            }
+        });
         Self {
             minimized: None,
             maximized: None,
             flattened_min: None,
             flattened_max: None,
-            len,
+            len: Box::new(len),
             val,
+            op_num,
+            loc,
+        }
+    }
+    pub fn new(len: Elem<T>, val: BTreeMap<Elem<T>, Elem<T>>, loc: Loc) -> Self {
+        let mut op_num = 0;
+        let val = val.into_iter().map(|(k, v)| {
+            let res = (k, (v, op_num));
+            op_num += 1;
+            res
+        }).collect();
+        Self {
+            minimized: None,
+            maximized: None,
+            flattened_min: None,
+            flattened_max: None,
+            len: Box::new(len),
+            val,
+            op_num,
+            loc,
+        }
+    }
+
+    pub fn new_for_indices(vals: Vec<(Elem<T>, Elem<T>)>, loc: Loc) -> Self {
+        let mut op_num = 0;
+        let val = vals.into_iter().map(|(k, v)| {
+            let res = (k, (v, op_num));
+            op_num += 1;
+            res
+        }).collect();
+        Self {
+            minimized: None,
+            maximized: None,
+            flattened_min: None,
+            flattened_max: None,
+            len: Box::new(Elem::Null),
+            val,
+            op_num,
             loc,
         }
     }
 
     /// Set the length
     pub fn set_len(&mut self, new_len: Elem<T>) {
-        self.len = new_len;
+        self.len = Box::new(new_len);
     }
 
     /// Check if the node contains a reference to a node index
@@ -52,6 +102,10 @@ impl<T> RangeDyn<T> {
     }
 }
 
+impl RangeDyn<Concrete> {
+
+}
+
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
 
@@ -59,8 +113,35 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         false
     }
 
-    fn range_ord(&self, _other: &Self) -> Option<std::cmp::Ordering> {
-        None
+    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.len.range_ord(&other.len) {
+            Some(std::cmp::Ordering::Equal) => {
+                let mut eq = 0;
+                let mut self_lt = 0;
+                let mut self_gt = 0;
+                self.val.iter().zip(other.val.iter()).for_each(|((self_key, self_val), (other_key, other_val))| {
+                    if let Some(std::cmp::Ordering::Equal) = self_key.clone().range_ord(other_key) {
+                        match self_val.0.clone().range_ord(&other_val.0) {
+                            Some(std::cmp::Ordering::Equal) => eq += 1,
+                            Some(std::cmp::Ordering::Less) => self_lt += 1,
+                            Some(std::cmp::Ordering::Greater) => self_gt += 1,
+                            _ => {}
+                        }
+                    }
+                });
+
+                if self_lt == self.val.len() {
+                    Some(std::cmp::Ordering::Less)
+                } else if eq == self.val.len() {
+                    Some(std::cmp::Ordering::Equal)
+                } else if self_gt == self.val.len() {
+                    Some(std::cmp::Ordering::Greater)
+                } else {
+                    None
+                }
+            }
+            other => other
+        }
     }
 
     fn dependent_on(&self) -> Vec<ContextVarNode> {
@@ -68,7 +149,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         deps.extend(
             self.val
                 .iter()
-                .flat_map(|(_, val)| val.dependent_on())
+                .flat_map(|(_, val)| val.0.dependent_on())
                 .collect::<Vec<_>>(),
         );
         deps
@@ -82,7 +163,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         deps.extend(
             self.val
                 .values()
-                .map(|val| val.recursive_dependent_on(analyzer))
+                .map(|val| val.0.recursive_dependent_on(analyzer))
                 .collect::<Result<Vec<Vec<_>>, _>>()?
                 .iter()
                 .flatten()
@@ -108,7 +189,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         let mut has_cycle = false;
         has_cycle = has_cycle || self.len.has_cycle(seen, analyzer)?;
         self.val.iter().try_for_each(|(_, val)| {
-            has_cycle = has_cycle || val.has_cycle(seen, analyzer)?;
+            has_cycle = has_cycle || val.0.has_cycle(seen, analyzer)?;
             Ok(())
         })?;
         Ok(has_cycle)
@@ -123,25 +204,25 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             (true, _, Some(flat)) | (false, Some(flat), _) => return Ok(*flat.clone()),
             _ => {}
         }
-        // println!("flattening range dyn");
-        Ok(Elem::ConcreteDyn(Box::new(Self {
+        Ok(Elem::ConcreteDyn(Self {
             minimized: None,
             maximized: None,
             flattened_min: None,
             flattened_max: None,
-            len: self.len.flatten(maximize, analyzer)?,
+            len: Box::new(self.len.flatten(maximize, analyzer)?),
             val: {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
                     map.insert(
                         idx.flatten(maximize, analyzer)?,
-                        val.flatten(maximize, analyzer)?,
+                        (val.0.flatten(maximize, analyzer)?, val.1)
                     );
                 }
                 map
             },
+            op_num: self.op_num,
             loc: self.loc,
-        })))
+        }))
     }
 
     fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
@@ -166,7 +247,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         self.len.update_deps(mapping);
         self.val
             .iter_mut()
-            .for_each(|(_, val)| val.update_deps(mapping));
+            .for_each(|(_, val)| val.0.update_deps(mapping));
     }
 
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
@@ -177,7 +258,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             .into_iter()
             .map(|(mut k, mut v)| {
                 k.filter_recursion(node_idx, new_idx);
-                v.filter_recursion(node_idx, new_idx);
+                v.0.filter_recursion(node_idx, new_idx);
                 (k, v)
             })
             .collect();
@@ -188,17 +269,24 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             return Ok(*cached);
         }
 
-        Ok(Elem::ConcreteDyn(Box::new(Self::new(
+        Ok(Elem::ConcreteDyn(Self::new_w_op_nums(
             self.len.maximize(analyzer)?,
             {
-                let mut map = BTreeMap::default();
+                let mut map: BTreeMap<_, (Elem<Concrete>, usize)> = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx, val.maximize(analyzer)?);
+                    // We dont maximize the key so that any subsequent
+                    // `get_index` can find potential values
+                    let maximized = val.0.maximize(analyzer)?;
+                    map.insert(idx.simplify_maximize(&mut vec![], analyzer)?, (maximized, val.1));
                 }
+
+                // map.into_iter().filter(|(k, (v, op))| {
+                //     *v != Elem::Null
+                // }).collect()
                 map
             },
             self.loc,
-        ))))
+        )))
     }
 
     fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
@@ -206,17 +294,24 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             return Ok(*cached);
         }
 
-        Ok(Elem::ConcreteDyn(Box::new(Self::new(
+        Ok(Elem::ConcreteDyn(Self::new_w_op_nums(
             self.len.minimize(analyzer)?,
             {
-                let mut map = BTreeMap::default();
+                let mut map: BTreeMap<_, (Elem<Concrete>, usize)> = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx, val.minimize(analyzer)?);
+                    // We dont minimize the key so that any subsequent
+                    // `get_index` can find potential values
+                    let minimized = val.0.minimize(analyzer)?;
+                    map.insert(idx.simplify_minimize(&mut vec![], analyzer)?, (minimized, val.1));
                 }
+
+                // map.into_iter().filter(|(k, (v, op))| {
+                //     *v != Elem::Null
+                // }).collect()
                 map
             },
             self.loc,
-        ))))
+        )))
     }
 
     fn simplify_maximize(
@@ -227,17 +322,21 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         if let Some(max) = &self.flattened_max {
             return Ok(*max.clone());
         }
-        Ok(Elem::ConcreteDyn(Box::new(Self::new(
+        Ok(Elem::ConcreteDyn(Self::new_w_op_nums(
             self.len.simplify_maximize(exclude, analyzer)?,
             {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx, val.simplify_maximize(exclude, analyzer)?);
+                    // We dont minimize the key so that any subsequent
+                    // `get_index` can find potential values
+                    let simplified = val.0.simplify_maximize(exclude, analyzer)?;
+                    map.insert(idx, (simplified, val.1));
                 }
                 map
             },
             self.loc,
-        ))))
+        )))
+
     }
     fn simplify_minimize(
         &self,
@@ -247,17 +346,21 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         if let Some(min) = &self.flattened_min {
             return Ok(*min.clone());
         }
-        Ok(Elem::ConcreteDyn(Box::new(Self::new(
+
+        Ok(Elem::ConcreteDyn(Self::new_w_op_nums(
             self.len.simplify_minimize(exclude, analyzer)?,
             {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
-                    map.insert(idx, val.simplify_minimize(exclude, analyzer)?);
+                    // We dont minimize the key so that any subsequent
+                    // `get_index` can find potential values
+                    let simplified = val.0.simplify_minimize(exclude, analyzer)?;
+                    map.insert(idx, (simplified, val.1));
                 }
                 map
             },
             self.loc,
-        ))))
+        )))
     }
 
     fn cache_maximize(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
@@ -277,8 +380,8 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn uncache(&mut self) {
         self.minimized = None;
         self.maximized = None;
-        self.flattened_min = None;
-        self.flattened_max = None;
+        // self.flattened_min = None;
+        // self.flattened_max = None;
     }
 
     fn contains_op_set(

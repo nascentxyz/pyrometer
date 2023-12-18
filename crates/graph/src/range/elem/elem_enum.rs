@@ -1,6 +1,6 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference},
+    range::elem::{MaybeCollapsed, collapse, RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference},
     GraphBackend, GraphError,
 };
 use solang_parser::pt::Loc;
@@ -20,7 +20,7 @@ pub enum Elem<T> {
     /// A range element that is a reference to another node
     Reference(Reference<T>),
     /// A concrete range element of type `T`. e.g.: some number like `10`
-    ConcreteDyn(Box<RangeDyn<T>>),
+    ConcreteDyn(RangeDyn<T>),
     /// A concrete range element of type `T`. e.g.: some number like `10`
     Concrete(RangeConcrete<T>),
     /// A range element that is an expression composed of other range elements
@@ -79,13 +79,29 @@ impl<T: Clone> Elem<T> {
 
     pub fn maybe_range_dyn(&self) -> Option<RangeDyn<T>> {
         match self {
-            Elem::ConcreteDyn(a) => Some(*a.clone()),
+            Elem::ConcreteDyn(a) => Some(a.clone()),
             _ => None,
+        }
+    }
+
+    pub fn is_conc(&self) -> bool {
+        match self {
+            Elem::Concrete(_a) => true,
+            Elem::ConcreteDyn(a) => {
+                a.len.maybe_concrete().is_some()
+                && a.val.iter().all(|(key, (val, _))| {
+                    key.is_conc() && val.is_conc()
+                })
+            }
+            Elem::Expr(expr) => {
+                expr.lhs.is_conc() && expr.rhs.is_conc()
+            },
+            _ => false,
         }
     }
 }
 
-impl<T> Elem<T> {
+impl<T: Ord> Elem<T> {
     pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
         match self {
             Self::Reference(d) => d.idx == node_idx,
@@ -103,14 +119,14 @@ impl<T> Elem<T> {
         }
     }
 
-    pub fn dyn_map(&self) -> Option<&BTreeMap<Self, Self>> {
+    pub fn dyn_map(&self) -> Option<&BTreeMap<Self, (Self, usize)>> {
         match self {
             Self::ConcreteDyn(dyn_range) => Some(&dyn_range.val),
             _ => None,
         }
     }
 
-    pub fn dyn_map_mut(&mut self) -> Option<&mut BTreeMap<Self, Self>> {
+    pub fn dyn_map_mut(&mut self) -> Option<&mut BTreeMap<Self, (Self, usize)>> {
         match self {
             Self::ConcreteDyn(ref mut dyn_range) => Some(&mut dyn_range.val),
             _ => None,
@@ -157,6 +173,36 @@ impl<T> Elem<T> {
         let expr = RangeExpr::new(self, RangeOp::Exp, other);
         Elem::Expr(expr)
     }
+
+    /// Creates a new range element that is a memcopy of another
+    pub fn memcopy(self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Memcopy, Elem::Null);
+        Elem::Expr(expr)
+    }
+
+    /// Creates a new range element that applies a setting of indices of a memory object
+    pub fn set_indices(self, other: RangeDyn<T>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::SetIndices, Elem::ConcreteDyn(other));
+        Elem::Expr(expr)
+    }
+
+    /// Creates a new range element that sets the length of a memory object
+    pub fn set_length(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::SetLength, other);
+        Elem::Expr(expr)
+    }
+
+    /// Gets the length of a memory object
+    pub fn get_length(self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::GetLength, Elem::Null);
+        Elem::Expr(expr)
+    }
+
+    /// Gets the length of a memory object
+    pub fn get_index(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::GetIndex, other);
+        Elem::Expr(expr)
+    }
 }
 
 impl<T> From<Reference<T>> for Elem<T> {
@@ -171,7 +217,7 @@ impl<T> From<RangeConcrete<T>> for Elem<T> {
     }
 }
 
-impl<T> Add for Elem<T> {
+impl<T: Ord> Add for Elem<T> {
     type Output = Self;
 
     fn add(self, other: Elem<T>) -> Self {
@@ -180,7 +226,7 @@ impl<T> Add for Elem<T> {
     }
 }
 
-impl<T> Sub for Elem<T> {
+impl<T: Ord> Sub for Elem<T> {
     type Output = Self;
 
     fn sub(self, other: Elem<T>) -> Self {
@@ -189,7 +235,7 @@ impl<T> Sub for Elem<T> {
     }
 }
 
-impl<T> Mul for Elem<T> {
+impl<T: Ord> Mul for Elem<T> {
     type Output = Self;
 
     fn mul(self, other: Elem<T>) -> Self {
@@ -198,7 +244,7 @@ impl<T> Mul for Elem<T> {
     }
 }
 
-impl<T> Div for Elem<T> {
+impl<T: Ord> Div for Elem<T> {
     type Output = Self;
 
     fn div(self, other: Elem<T>) -> Self {
@@ -207,7 +253,7 @@ impl<T> Div for Elem<T> {
     }
 }
 
-impl<T> Shl for Elem<T> {
+impl<T: Ord> Shl for Elem<T> {
     type Output = Self;
 
     fn shl(self, other: Elem<T>) -> Self {
@@ -216,7 +262,7 @@ impl<T> Shl for Elem<T> {
     }
 }
 
-impl<T> Shr for Elem<T> {
+impl<T: Ord> Shr for Elem<T> {
     type Output = Self;
 
     fn shr(self, other: Elem<T>) -> Self {
@@ -225,7 +271,7 @@ impl<T> Shr for Elem<T> {
     }
 }
 
-impl<T> Rem for Elem<T> {
+impl<T: Ord> Rem for Elem<T> {
     type Output = Self;
 
     fn rem(self, other: Elem<T>) -> Self {
@@ -234,7 +280,7 @@ impl<T> Rem for Elem<T> {
     }
 }
 
-impl<T> BitAnd for Elem<T> {
+impl<T: Ord> BitAnd for Elem<T> {
     type Output = Self;
 
     fn bitand(self, other: Self) -> Self::Output {
@@ -243,7 +289,7 @@ impl<T> BitAnd for Elem<T> {
     }
 }
 
-impl<T> BitOr for Elem<T> {
+impl<T: Ord> BitOr for Elem<T> {
     type Output = Self;
 
     fn bitor(self, other: Self) -> Self::Output {
@@ -252,7 +298,7 @@ impl<T> BitOr for Elem<T> {
     }
 }
 
-impl<T> BitXor for Elem<T> {
+impl<T: Ord> BitXor for Elem<T> {
     type Output = Self;
 
     fn bitxor(self, other: Self) -> Self::Output {
@@ -268,6 +314,103 @@ impl<T> From<NodeIdx> for Elem<T> {
 }
 
 impl Elem<Concrete> {
+    pub fn overlaps(&self, other: &Self, eval: bool, analyzer: &impl GraphBackend) -> Result<Option<bool>, GraphError> {
+        match (self, other) {
+            (Elem::Concrete(s), Elem::Concrete(o)) => {
+                Ok(Some(o.val == s.val))
+            }
+            (Elem::Reference(s), Elem::Reference(o)) => {
+                if eval {
+                    let lhs_min = s.minimize(analyzer)?;
+                    let rhs_max = o.maximize(analyzer)?;
+
+                    match lhs_min.range_ord(&rhs_max) {
+                        Some(std::cmp::Ordering::Less) => {
+                            // we know our min is less than the other max
+                            // check that the max is greater than or eq their min
+                            let lhs_max = s.maximize(analyzer)?;
+                            let rhs_min = o.minimize(analyzer)?;
+                            Ok(Some(matches!(
+                                lhs_max.range_ord(&rhs_min),
+                                Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                            )))
+                        }
+                        Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
+                        _ => Ok(Some(false)),
+                    }
+                } else if s == o {
+                    Ok(Some(true))
+                } else {
+                    Ok(None)    
+                }
+            }
+            (Elem::Reference(s), c @ Elem::Concrete(_)) => {
+                if eval {
+                    let lhs_min = s.minimize(analyzer)?;
+                    
+                    match lhs_min.range_ord(c) {
+                        Some(std::cmp::Ordering::Less) => {
+                            // we know our min is less than the other max
+                            // check that the max is greater than or eq their min
+                            let lhs_max = s.maximize(analyzer)?;
+                            Ok(Some(matches!(
+                                lhs_max.range_ord(c),
+                                Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                            )))
+                        }
+                        Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
+                        _ => Ok(Some(false)),
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+            (Elem::Concrete(_), Elem::Reference(_)) => other.overlaps(self, eval, analyzer),
+            _ => Ok(None)
+        }
+    }
+    pub fn overlaps_dual(&self, rhs_min: &Self, rhs_max: &Self, eval: bool, analyzer: &impl GraphBackend) -> Result<Option<bool>, GraphError> {
+        match self {
+            Self::Reference(d) => {
+                 if eval {
+                    let lhs_min = d.minimize(analyzer)?;
+                    let rhs_max = rhs_max.maximize(analyzer)?;
+
+                    match lhs_min.range_ord(&rhs_max) {
+                        Some(std::cmp::Ordering::Less) => {
+                            // we know our min is less than the other max
+                            // check that the max is greater than or eq their min
+                            let lhs_max = d.maximize(analyzer)?;
+                            let rhs_min = rhs_min.minimize(analyzer)?;
+                            Ok(Some(matches!(
+                                lhs_max.range_ord(&rhs_min),
+                                Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                            )))
+                        }
+                        Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
+                        _ => Ok(Some(false)),
+                    }
+                } else if self == rhs_min || self == rhs_max {
+                    Ok(Some(true))
+                } else {
+                    Ok(None)    
+                }
+            },
+            Self::Concrete(_) => {
+                match rhs_min.range_ord(self) {
+                    Some(std::cmp::Ordering::Less) => {
+                        Ok(Some(matches!(
+                            rhs_max.range_ord(self),
+                            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                        )))
+                    }
+                    Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
+                    _ => Ok(Some(false)),
+                }
+            },
+            _ => Ok(None),
+        }
+    }
     pub fn is_negative(
         &self,
         maximize: bool,
@@ -339,7 +482,13 @@ impl std::fmt::Display for Elem<Concrete> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Elem::Reference(Reference { idx, .. }) => write!(f, "idx_{}", idx.index()),
-            Elem::ConcreteDyn(..) => write!(f, "range_elem"),
+            Elem::ConcreteDyn(d) => {
+                write!(f, "{{len: {}, values: {{", d.len)?;
+                d.val.iter().try_for_each(|(key, (val, op))| {
+                    write!(f, " {key}: ({val}, {op}),")
+                })?;
+                write!(f, "}}}}")
+            },
             Elem::Concrete(RangeConcrete { val, .. }) => {
                 write!(f, "{}", val.as_string())
             }
@@ -383,6 +532,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         match (self, other) {
             (Self::Concrete(a), Self::Concrete(b)) => a.range_ord(b),
             (Self::Reference(a), Self::Reference(b)) => a.range_ord(b),
+            (Elem::Null, Elem::Null) => None,
+            (_a, Elem::Null) => Some(std::cmp::Ordering::Greater),
+            (Elem::Null, _a) => Some(std::cmp::Ordering::Less),
             _ => None,
         }
     }
@@ -516,7 +668,14 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.simplify_maximize(exclude, analyzer),
             Concrete(inner) => inner.simplify_maximize(exclude, analyzer),
             ConcreteDyn(inner) => inner.simplify_maximize(exclude, analyzer),
-            Expr(expr) => expr.simplify_maximize(exclude, analyzer),
+            Expr(expr) => {
+                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                    MaybeCollapsed::Collapsed(collapsed) => {
+                        collapsed.simplify_maximize(exclude, analyzer)
+                    }
+                    _ => expr.simplify_maximize(exclude, analyzer)
+                }
+            }
             Null => Ok(Elem::Null),
         }
     }
@@ -531,7 +690,14 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.simplify_minimize(exclude, analyzer),
             Concrete(inner) => inner.simplify_minimize(exclude, analyzer),
             ConcreteDyn(inner) => inner.simplify_minimize(exclude, analyzer),
-            Expr(expr) => expr.simplify_minimize(exclude, analyzer),
+            Expr(expr) => {
+                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                    MaybeCollapsed::Collapsed(collapsed) => {
+                        collapsed.simplify_minimize(exclude, analyzer)
+                    }
+                    _ => expr.simplify_minimize(exclude, analyzer)
+                } 
+            },
             Null => Ok(Elem::Null),
         }
     }
@@ -542,7 +708,16 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.cache_maximize(analyzer),
             Concrete(inner) => inner.cache_maximize(analyzer),
             ConcreteDyn(inner) => inner.cache_maximize(analyzer),
-            Expr(expr) => expr.cache_maximize(analyzer),
+            Expr(expr) => {
+                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                    MaybeCollapsed::Collapsed(mut collapsed) => {
+                        collapsed.cache_minimize(analyzer)?;
+                        *self = collapsed;
+                        Ok(())
+                    }
+                    _ => expr.cache_maximize(analyzer)
+                }
+            },
             Null => Ok(()),
         }
     }
@@ -553,7 +728,16 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.cache_minimize(analyzer),
             Concrete(inner) => inner.cache_minimize(analyzer),
             ConcreteDyn(inner) => inner.cache_minimize(analyzer),
-            Expr(expr) => expr.cache_minimize(analyzer),
+            Expr(expr) => {
+                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                    MaybeCollapsed::Collapsed(mut collapsed) => {
+                        collapsed.cache_minimize(analyzer)?;
+                        *self = collapsed;
+                        Ok(())
+                    }
+                    _ => expr.cache_minimize(analyzer)
+                }
+            },
             Null => Ok(()),
         }
     }

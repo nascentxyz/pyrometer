@@ -8,7 +8,7 @@ use shared::NodeIdx;
 
 use std::collections::BTreeMap;
 
-pub trait RangeElem<T> {
+pub trait RangeElem<T: Ord> {
     type GraphError;
     /// Flattens an element into an expression or concrete based purely on inputs, calldata, storage, or environment data variables
     fn flatten(

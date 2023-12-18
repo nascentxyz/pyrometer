@@ -116,7 +116,6 @@ impl ContextNode {
                     let as_vec = modifier_set.iter().collect::<Vec<_>>();
 
                     if as_vec.len() > 2 {
-                        println!("{}", as_vec.iter().map(|i| i.name(analyzer).unwrap()).collect::<Vec<_>>().join(", "));
                         panic!("3+ visible functions with the same name. This is invalid solidity, {as_vec:#?}")
                     } else if as_vec.len() == 2 {
                         as_vec[0].get_overriding(as_vec[1], analyzer)

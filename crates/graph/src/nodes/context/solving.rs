@@ -1,15 +1,15 @@
 use crate::SolcRange;
+use std::borrow::Cow;
 use crate::{
     as_dot_str,
     nodes::{ContextNode, ContextVarNode},
-    range::{elem::RangeOp, Range, RangeEval},
+    range::{Range, elem::RangeOp, RangeEval},
     solvers::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,
     },
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
-use std::borrow::Cow;
 
 use shared::NodeIdx;
 
@@ -33,14 +33,7 @@ impl ContextNode {
         let mut ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
             let range = dep.ref_range(analyzer)?.unwrap();
-            if range.unsat(analyzer) {
-                panic!(
-                    "initial range for {} not sat",
-                    dep.display_name(analyzer).unwrap()
-                );
-            }
             let r: Cow<'_, SolcRange> = range.flattened_range(analyzer)?;
-            // println!("dep {} range: [{}, {}]", dep.display_name(analyzer).unwrap(), r.min, r.max);
             ranges.insert(*dep, r.into_owned());
             Ok(())
         })?;
@@ -49,10 +42,8 @@ impl ContextNode {
             .iter()
             .filter_map(|(_dep, range)| {
                 if let Some(atom) = range.min.atomize() {
-                    // println!("dep {} atomized min: {:?}", dep.display_name(analyzer).unwrap(), atom);
                     Some(atom)
                 } else {
-                    // println!("dep {} atomized max: {:?}", dep.display_name(analyzer).unwrap(), atom);
                     range.max.atomize()
                 }
             })
@@ -102,7 +93,6 @@ impl ContextNode {
                 }
 
                 let underlying = self.underlying_mut(analyzer)?;
-
                 underlying.ctx_deps.push(dep);
             }
         }

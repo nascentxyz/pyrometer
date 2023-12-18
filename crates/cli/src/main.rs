@@ -345,11 +345,11 @@ fn main() {
                         all_edges.push(ctx);
                         all_edges.iter().for_each(|c| {
                             let rets =  c.return_nodes(&analyzer).unwrap();
-                            if c.path(&analyzer).starts_with(r#"step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64)"#)
-                            && rets.iter().take(1).any(|ret| {
-                                let range = ret.1.ref_range(&analyzer).unwrap().unwrap();
-                                range.evaled_range_min(&analyzer).unwrap().range_eq(&Elem::from(Concrete::from(I256::from(-1))))
-                            })
+                            // if c.path(&analyzer).starts_with(r#"step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64)"#)
+                            // && rets.iter().take(1).any(|ret| {
+                            //     let range = ret.1.ref_range(&analyzer).unwrap().unwrap();
+                            //     range.evaled_range_min(&analyzer).unwrap().range_eq(&Elem::from(Concrete::from(I256::from(-1))))
+                            // })
                             { // step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64).fork{ false }.fork{ true }.fork{ true }.fork{ false }"#.to_string()) {
                                 // println!("{:#?}", c.ctx_deps_as_controllables_str(&analyzer).unwrap());
                                 if let Some(mut solver) = BruteBinSearchSolver::maybe_new(c.ctx_deps(&analyzer).unwrap(), &analyzer).unwrap() {

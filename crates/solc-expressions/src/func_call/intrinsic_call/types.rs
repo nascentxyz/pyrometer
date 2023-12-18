@@ -144,57 +144,18 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 ExprRet::CtxKilled(kind) => ctx.kill(analyzer, loc, kind).into_expr_err(loc),
                 ExprRet::Null => Ok(()),
                 ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
-                    let new_var = ContextVarNode::from(cvar)
+                    let cvar = ContextVarNode::from(cvar);
+                    let new_var = cvar
                         .as_cast_tmp(loc, ctx, ty.clone(), analyzer)
                         .into_expr_err(loc)?;
 
-                    new_var.underlying_mut(analyzer).into_expr_err(loc)?.ty =
-                        VarType::try_from_idx(analyzer, func_idx).expect("");
-                    // cast the ranges
-                    if let Some(r) = ContextVarNode::from(cvar)
-                        .range(analyzer)
-                        .into_expr_err(loc)?
-                    {
-                        let curr_range = SolcRange::try_from_builtin(ty).expect("No default range");
-                        let mut min = r
-                            .range_min()
-                            .into_owned()
-                            .cast(curr_range.range_min().into_owned());
-
-                        min.cache_minimize(analyzer).into_expr_err(loc)?;
-                        let mut max = r
-                            .range_max()
-                            .into_owned()
-                            .cast(curr_range.range_max().into_owned());
-
-                        max.cache_maximize(analyzer).into_expr_err(loc)?;
-
-                        let existing_max = r.evaled_range_max(analyzer).into_expr_err(loc)?;
-                        // Check if the max value has changed once the cast is applied.
-                        // If it hasnt, then the cast had no effect and we should adjust the naming
-                        // to not muddle the CLI
-                        if let Some(std::cmp::Ordering::Equal) = max
-                            .maximize(analyzer)
-                            .into_expr_err(loc)?
-                            .range_ord(&existing_max)
-                        {
-                            // its a noop, reflect that in the naming
-                            new_var.underlying_mut(analyzer).unwrap().display_name =
-                                ContextVarNode::from(cvar)
-                                    .display_name(analyzer)
-                                    .into_expr_err(loc)?;
-                        }
-
-                        new_var.set_range_min(analyzer, min).into_expr_err(loc)?;
-                        new_var.set_range_max(analyzer, max).into_expr_err(loc)?;
-                        // cast the range exclusions - TODO: verify this is correct
-                        let mut exclusions = r.range_exclusions();
-                        exclusions.iter_mut().for_each(|range| {
-                            *range = range.clone().cast(curr_range.range_min().into_owned());
-                        });
-                        new_var
-                            .set_range_exclusions(analyzer, exclusions)
-                            .into_expr_err(loc)?;
+                    let v_ty = VarType::try_from_idx(analyzer, func_idx).expect("");
+                    let maybe_new_range = cvar.cast_exprs(&v_ty, analyzer).into_expr_err(loc)?;
+                    new_var.underlying_mut(analyzer).into_expr_err(loc)?.ty = v_ty;
+                    
+                    if let Some((new_min, new_max)) = maybe_new_range {
+                        new_var.set_range_min(analyzer, new_min).into_expr_err(loc)?;
+                        new_var.set_range_max(analyzer, new_max).into_expr_err(loc)?;
                     }
 
                     ctx.push_expr(ExprRet::Single(new_var.into()), analyzer)

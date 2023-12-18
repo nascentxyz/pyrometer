@@ -337,7 +337,7 @@ pub enum ContextEdge {
 
     /// A connection between a variable and a parent variable where the child is some attribute on the parent
     /// (i.e. `.length`)
-    AttrAccess,
+    AttrAccess(&'static str),
     /// A connection between a variable and the index that was used to create the variable from an IndexAccess
     Index,
     /// A connection between a variable and a parent variable where the child is some index into the parent

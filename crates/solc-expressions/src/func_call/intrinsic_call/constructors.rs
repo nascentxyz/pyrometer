@@ -79,7 +79,7 @@ pub trait ConstructorCaller:
             ctx.add_var(arr, analyzer).into_expr_err(loc)?;
             analyzer.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
             ctx.add_var(len_cvar.into(), analyzer).into_expr_err(loc)?;
-            analyzer.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess));
+            analyzer.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess("length")));
 
             // update the length
             if let Some(r) = arr.ref_range(analyzer).into_expr_err(loc)? {
@@ -87,14 +87,14 @@ pub trait ConstructorCaller:
                 let max = r.evaled_range_max(analyzer).into_expr_err(loc)?;
 
                 if let Some(mut rd) = min.maybe_range_dyn() {
-                    rd.len = Elem::from(len_cvar);
-                    arr.set_range_min(analyzer, Elem::ConcreteDyn(Box::new(rd)))
+                    rd.len = Box::new(Elem::from(len_cvar));
+                    arr.set_range_min(analyzer, Elem::ConcreteDyn(rd))
                         .into_expr_err(loc)?;
                 }
 
                 if let Some(mut rd) = max.maybe_range_dyn() {
-                    rd.len = Elem::from(len_cvar);
-                    arr.set_range_min(analyzer, Elem::ConcreteDyn(Box::new(rd)))
+                    rd.len = Box::new(Elem::from(len_cvar));
+                    arr.set_range_min(analyzer, Elem::ConcreteDyn(rd))
                         .into_expr_err(loc)?;
                 }
             }
@@ -195,7 +195,7 @@ pub trait ConstructorCaller:
                     .expect("Invalid struct field");
 
                     let fc_node = analyzer.add_node(Node::ContextVar(field_cvar));
-                    analyzer.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
+                    analyzer.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess("field")));
                     analyzer.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                     ctx.add_var(fc_node.into(), analyzer).into_expr_err(loc)?;
                     let field_as_ret = ExprRet::Single(fc_node);

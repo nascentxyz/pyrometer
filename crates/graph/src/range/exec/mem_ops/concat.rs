@@ -1,3 +1,4 @@
+
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 
@@ -20,10 +21,10 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 Concrete::DynBytes(val),
                 Some((
                     _,
-                    Elem::Concrete(RangeConcrete {
+                    (Elem::Concrete(RangeConcrete {
                         val: Concrete::Bytes(..),
                         ..
-                    }),
+                    }), _),
                 )),
             )
             | (Concrete::DynBytes(val), None) => {
@@ -34,28 +35,28 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     .enumerate()
                     .map(|(i, v)| {
                         let idx = Elem::from(Concrete::from(U256::from(i)));
-                        let idx = last.clone() + idx;
+                        let idx = *last.clone() + idx;
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
                         let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (idx, v)
+                        (idx, (v, self.op_num + i))
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
                     Elem::from(Concrete::from(U256::from(val.len()))),
                     existing,
                     other.loc,
-                ))))
+                )))
             }
             (
                 Concrete::String(val),
                 Some((
                     _,
-                    Elem::Concrete(RangeConcrete {
+                    (Elem::Concrete(RangeConcrete {
                         val: Concrete::String(..),
                         ..
-                    }),
+                    }), _),
                 )),
             )
             | (Concrete::String(val), None) => {
@@ -66,19 +67,19 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     .enumerate()
                     .map(|(i, v)| {
                         let idx = Elem::from(Concrete::from(U256::from(i)));
-                        let idx = last.clone() + idx;
+                        let idx = *last.clone() + idx;
                         let mut bytes = [0x00; 32];
                         v.encode_utf8(&mut bytes[..]);
                         let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (idx, v)
+                        (idx, (v, self.op_num + i))
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
                     Elem::from(Concrete::from(U256::from(val.len()))),
                     existing,
                     other.loc,
-                ))))
+                )))
             }
             _e => None,
         }
@@ -87,23 +88,23 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
 
 impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {
-        let val: Option<(_, &Elem<Concrete>)> = self.val.iter().take(1).next();
-        let o_val: Option<(_, &Elem<Concrete>)> = other.val.iter().take(1).next();
+        let val: Option<(_, &(Elem<Concrete>, _))> = self.val.iter().take(1).next();
+        let o_val: Option<(_, &(Elem<Concrete>, _))> = other.val.iter().take(1).next();
         match (val, o_val) {
             (
                 Some((
                     _,
-                    &Elem::Concrete(RangeConcrete {
+                    &(Elem::Concrete(RangeConcrete {
                         val: Concrete::Bytes(..),
                         ..
-                    }),
+                    }), _),
                 )),
                 Some((
                     _,
-                    &Elem::Concrete(RangeConcrete {
+                    &(Elem::Concrete(RangeConcrete {
                         val: Concrete::Bytes(..),
                         ..
-                    }),
+                    }), _),
                 )),
             ) => {
                 let last = self.len.clone();
@@ -112,29 +113,32 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     .val
                     .clone()
                     .into_iter()
-                    .map(|(i, v)| (i + last.clone(), v))
+                    .enumerate()
+                    .map(|(i, (key, (v, _op)))| (key + *last.clone(), (v, self.op_num + i)))
                     .collect::<BTreeMap<_, _>>();
 
                 existing.extend(other_vals);
-                Some(Elem::ConcreteDyn(Box::new(RangeDyn::new(
-                    self.len.clone() + other.len.clone(),
+
+                Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
+                    *self.len.clone() + *other.len.clone().max(Box::new(Elem::from(Concrete::from(U256::from(1))))),
                     existing,
                     other.loc,
-                ))))
+                )))
             }
-            (Some((_, l @ Elem::Reference(_))), None) => Some(l.clone()),
-            (None, Some((_, r @ Elem::Reference(_)))) => Some(r.clone()),
-            (None, None) => Some(Elem::ConcreteDyn(Box::new(self.clone()))),
+            (Some((_, (l @ Elem::Reference(_), _))), None) => Some(l.clone()),
+            (None, Some((_, (r @ Elem::Reference(_), _)))) => Some(r.clone()),
+            (None, None) => Some(Elem::ConcreteDyn(self.clone())),
             _e => None,
         }
     }
 }
 
+
 impl RangeConcat<Concrete> for Elem<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_concat(b),
-            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_concat(&**b),
+            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_concat(b),
             (Elem::Concrete(c), Elem::ConcreteDyn(d))
             | (Elem::ConcreteDyn(d), Elem::Concrete(c)) => d.range_concat(c),
             _e => None,

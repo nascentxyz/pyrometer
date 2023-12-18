@@ -236,10 +236,11 @@ impl GraphDot for Analyzer {
                 let from = petgraph::graph::GraphIndex::index(from);
                 let to = petgraph::graph::GraphIndex::index(to);
                 let edge_idx = idx.index();
+                let edge_str = format!("{edge:?}").replace('"', "\'");
                 if as_mermaid {
-                    format!("{indent}{from:} -->|\"{edge:?}\"| {to:}\n{indent}class {to} linkSource{edge_idx}\n{indent}class {from} linkTarget{edge_idx}")
+                    format!("{indent}{from:} -->|\"{edge_str}\"| {to:}\n{indent}class {to} linkSource{edge_idx}\n{indent}class {from} linkTarget{edge_idx}")
                 } else {
-                    format!("{indent}{from:} -> {to:} [label = \"{edge:?}\"]",)    
+                    format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)    
                 }
             })
             .collect::<Vec<_>>()
@@ -368,8 +369,8 @@ impl GraphDot for Analyzer {
                     let from = from.index();
                     let to = to.index();
                     Some(format!(
-                        "    {from:} -> {to:} [label = \"{:?}\"]",
-                        self.graph().edge_weight(edge).unwrap()
+                        "    {from:} -> {to:} [label = \"{}\"]",
+                        format!("{:?}", self.graph().edge_weight(edge).unwrap()).replace('"', "\'")
                     ))
                 } else {
                     None
@@ -419,8 +420,8 @@ impl GraphDot for Analyzer {
                 ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
-                        Edge::Context(edge) => format!("label = \"{edge:?}\""),
-                        e => format!("label = \"{e:?}\""),
+                        Edge::Context(edge) => format!("label = \"{}\"", format!("{edge:?}").replace('"', "\'")),
+                        e => format!("label = \"{}\"", format!("{e:?}").replace('"', "\'")),
                     }
                 },
                 &|_graph, (idx, node_ref)| {
@@ -548,8 +549,8 @@ flowchart BT
                     let to = to.index();
                     let edge_idx = edge.index();
                     Some(format!(
-                        "    {from:} -->|\"{:?}\"| {to:}\n    class {to} linkSource{edge_idx}\n    class {from} linkTarget{edge_idx}",
-                        self.graph().edge_weight(edge).unwrap()
+                        "    {from:} -->|\"{}\"| {to:}\n    class {to} linkSource{edge_idx}\n    class {from} linkTarget{edge_idx}",
+                        format!("{:?}", self.graph().edge_weight(edge).unwrap()).replace('"', "\'")
                     ))
                 } else {
                     None

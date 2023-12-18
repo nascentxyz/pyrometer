@@ -9,25 +9,35 @@ contract DynTypes {
     }
 
     function array_dyn(uint256[] calldata x) public {
-        uint256[] memory y = x;
+        x[0] = 5;
         require(x.length < 10);
+        uint256[] memory y = x;
         y[8] = 100;
         require(y.length == 9);
     }
 
-    function nested_bytes_dyn(bytes[] calldata x) public {
+    function nested_bytes_dyn(bytes[] calldata x, uint y) public returns (bytes1) {
         bytes memory a = hex"1337";
         x[0] = a;
         require(x[0][0] == hex"13");
-        require(x.length == 1);
+        // return x[0][0];
+
+        x[y] = hex"1122";
+        uint256 z = y - 1;
+        require(x[z + 1][0] == hex"11");
     }
 
     function array_push(uint256 x) public {
-        require(x > 5);
+        // require(x > 5);
+        storeVar.push(x);
+        storeVar.push(x);
         storeVar.push(x);
         // TODO: handle this better
         require(storeVar[0] == x);
-        uint256 y = storeVar.pop();
+        storeVar.push(x);
+        require(storeVar[1] == x);
+        uint256 y = storeVar[storeVar.length - 1];
+        storeVar.pop();
         require(y == x);
     }
 

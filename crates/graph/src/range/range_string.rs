@@ -64,7 +64,7 @@ impl ToRangeString for Elem<Concrete> {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Reference(Reference { idx, .. }) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.display_name(analyzer).unwrap();
+                let name = as_var.as_controllable_name(analyzer).unwrap();
                 RangeElemString::new(name, as_var.loc(analyzer).unwrap())
             }
             Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
@@ -80,12 +80,12 @@ impl ToRangeString for RangeDyn<Concrete> {
             .val
             .iter()
             .take(20)
-            .map(|(key, val)| (key.minimize(analyzer).unwrap(), val))
+            .map(|(key, val)| (key, val))
             .collect::<BTreeMap<_, _>>();
 
         let val_str = displayed_vals
             .iter()
-            .map(|(key, val)| {
+            .map(|(key, (val, _))| {
                 format!(
                     "{}: {}",
                     key.def_string(analyzer).s,
@@ -111,12 +111,9 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .val
                 .iter()
                 .take(5)
-                .map(|(key, val)| {
-                    if maximize {
-                        (key.maximize(analyzer).unwrap(), val)
-                    } else {
-                        (key.minimize(analyzer).unwrap(), val)
-                    }
+                .filter(|(key, (val, op))| *val != Elem::Null)
+                .map(|(key, (val, op))| {
+                    (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
                 })
                 .collect::<BTreeMap<_, _>>();
 
@@ -125,8 +122,8 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .map(|(key, val)| {
                     format!(
                         "{}: {}",
-                        key.def_string(analyzer).s,
-                        val.def_string(analyzer).s
+                        key,
+                        val
                     )
                 })
                 .collect::<Vec<_>>()
@@ -137,12 +134,10 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .iter()
                 .rev()
                 .take(5)
-                .map(|(key, val)| {
-                    if maximize {
-                        (key.maximize(analyzer).unwrap(), val)
-                    } else {
-                        (key.minimize(analyzer).unwrap(), val)
-                    }
+                .filter(|(key, (val, op))| *val != Elem::Null)
+                .map(|(key, (val, op))| {
+                    // (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
+                    (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
                 })
                 .collect::<BTreeMap<_, _>>();
 
@@ -151,8 +146,8 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .map(|(key, val)| {
                     format!(
                         "{}: {}",
-                        key.def_string(analyzer).s,
-                        val.def_string(analyzer).s
+                        key,
+                        val
                     )
                 })
                 .collect::<Vec<_>>()
@@ -163,12 +158,9 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .val
                 .iter()
                 .take(10)
-                .map(|(key, val)| {
-                    if maximize {
-                        (key.maximize(analyzer).unwrap(), val)
-                    } else {
-                        (key.minimize(analyzer).unwrap(), val)
-                    }
+                .filter(|(key, (val, op))| *val != Elem::Null)
+                .map(|(key, (val, op))| {
+                    (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
                 })
                 .collect::<BTreeMap<_, _>>();
 
@@ -177,8 +169,8 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .map(|(key, val)| {
                     format!(
                         "{}: {}",
-                        key.def_string(analyzer).s,
-                        val.def_string(analyzer).s
+                        key,
+                        val,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -202,6 +194,9 @@ impl ToRangeString for RangeExpr<Concrete> {
     }
 
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
+        if let MaybeCollapsed::Collapsed(collapsed) = collapse(*self.lhs.clone(), self.op, *self.rhs.clone()) {
+            return collapsed.to_range_string(maximize, analyzer)
+        }
         let lhs_r_str = self.lhs.to_range_string(maximize, analyzer);
         let lhs_str = match *self.lhs {
             Elem::Expr(_) => {
@@ -226,7 +221,7 @@ impl ToRangeString for RangeExpr<Concrete> {
                 format!("{}{{{}, {}}}", self.op.to_string(), lhs_str.s, rhs_str.s),
                 lhs_str.loc,
             )
-        } else if matches!(self.op, RangeOp::Cast | RangeOp::Concat) {
+        } else if matches!(self.op, RangeOp::Cast) {
             let rhs = if maximize {
                 self.rhs.maximize(analyzer).unwrap()
             } else {
@@ -258,6 +253,14 @@ impl ToRangeString for RangeExpr<Concrete> {
                 Elem::Concrete(_c) => RangeElemString::new(format!("~{}", lhs_str.s), lhs_str.loc),
                 _ => RangeElemString::new(format!("~{}", lhs_str.s), lhs_str.loc),
             }
+        } else if matches!(self.op, RangeOp::SetIndices) {
+            RangeElemString::new(format!("set_indicies({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
+        } else if matches!(self.op, RangeOp::GetLength) {
+            RangeElemString::new(format!("get_length({})", lhs_str.s), lhs_str.loc)
+        } else if matches!(self.op, RangeOp::SetLength) {
+            RangeElemString::new(format!("set_length({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
+        } else if matches!(self.op, RangeOp::Concat) {
+            RangeElemString::new(format!("concat({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
         } else {
             RangeElemString::new(
                 format!("{} {} {}", lhs_str.s, self.op.to_string(), rhs_str.s),

@@ -50,7 +50,7 @@ pub trait StructAccess:
                 self.add_edge(
                     fc_node,
                     ContextVarNode::from(member_idx).first_version(self),
-                    Edge::Context(ContextEdge::AttrAccess),
+                    Edge::Context(ContextEdge::AttrAccess("field")),
                 );
                 ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
                 self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));

@@ -623,4 +623,16 @@ contract Unchecked {
         a += (type(uint256).max - 99);
         require(a == type(uint256).max);
     }
+
+    function symbUncheckedMul(int256 a, int b) public {
+        unchecked {
+            a = a * b;
+        }
+    }
+
+    function asmSymbUncheckedMul(int256 a, int b) public {
+        assembly {
+            a := mul(a, b)
+        }
+    }
 }

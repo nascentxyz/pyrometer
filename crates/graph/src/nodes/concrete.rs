@@ -103,6 +103,12 @@ pub enum Concrete {
     Array(Vec<Concrete>),
 }
 
+// impl From<usize> for Concrete {
+//     fn from(u: usize) -> Self {
+//         Concrete::Uint(256, U256::from(u))
+//     }
+// }
+
 impl From<U256> for Concrete {
     fn from(u: U256) -> Self {
         Concrete::Uint(256, u)
@@ -161,6 +167,65 @@ impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
 }
 
 impl Concrete {
+    pub fn set_indices(&mut self, other: &Self) {
+        match (self, other) {
+            (Concrete::DynBytes(s), Concrete::DynBytes(o)) => {
+                o.iter().enumerate().for_each(|(i, b)| {
+                    s[i] = *b;
+                });
+            }
+            (Concrete::Array(s), Concrete::Array(o)) => {
+                o.iter().enumerate().for_each(|(i, b)| {
+                    s[i] = b.clone();
+                });
+            }
+            (Concrete::String(s), Concrete::String(o)) => {
+                o.chars().enumerate().for_each(|(i, b)| {
+                    s.replace_range(i..i+1, &b.to_string());
+                });
+            }
+            (Concrete::Bytes(size, s), Concrete::Bytes(cap, o)) => {
+                let mut bytes = [0u8; 32];
+                s.0.into_iter()
+                    .take((*size).into())
+                    .enumerate()
+                    .for_each(|(i, b)| bytes[i] = b);
+                o.0.into_iter()
+                    .take((*cap).into())
+                    .enumerate()
+                    .for_each(|(i, b)| bytes[i] = b);
+                *s = H256(bytes);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn get_index(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Concrete::DynBytes(s), Concrete::Uint(_, o)) => {
+                let index = o.as_usize();
+                let mut bytes = [0u8; 32];
+                bytes[0] = s[index];
+                Some(Concrete::Bytes(1, H256(bytes)))
+            }
+            (Concrete::Array(s), Concrete::Uint(_, o)) => {
+                let index = o.as_usize();
+                Some(s[index].clone())
+            }
+            (Concrete::String(s), Concrete::Uint(_, o)) => {
+                let index = o.as_usize();
+                Some(Concrete::String(s[index..index+1].to_string()))
+            }
+            (Concrete::Bytes(size, s), Concrete::Uint(_, o)) => {
+                let index = o.as_usize();
+                let mut bytes = [0u8; 32];
+                bytes[0] = s[index];
+                Some(Concrete::Bytes(1, H256(bytes)))
+            }
+            _ => None
+        }
+    }
+
     /// Returns whether this concrete is a dynamic type
     pub fn is_dyn(&self) -> bool {
         matches!(
@@ -229,6 +294,12 @@ impl Concrete {
                 } else {
                     Concrete::Bool(false)
                 }
+            }
+            Concrete::DynBytes(v) => {
+                let mut bytes = [0u8; 32];
+                uint.to_big_endian(&mut bytes);
+                let new_vec = &bytes.to_vec()[0..v.len()];
+                Concrete::DynBytes(new_vec.to_vec())
             }
             e => todo!("Unsupported: {e:?}"),
         }
@@ -310,6 +381,20 @@ impl Concrete {
         }
     }
 
+    pub fn bit_representation(&self) -> Option<Concrete> {
+        match self {
+            Concrete::Int(size, val) => {
+                let mut bytes = [0u8; 32];
+                val.to_big_endian(&mut bytes);
+                Some(Concrete::Uint(*size, U256::from_big_endian(&bytes)))
+            }
+            Concrete::Bytes(size, _) => Some(Concrete::Uint(*size as u16 / 8, self.into_u256().unwrap())),
+            Concrete::Bool(_val) => Some(Concrete::Uint(8, self.into_u256().unwrap())),
+            Concrete::Address(_val) => Some(Concrete::Uint(20, self.into_u256().unwrap())),
+            _ => None
+        }
+    }
+
     /// Cast the concrete to another type as denoted by a [`Builtin`].
     pub fn cast(self, builtin: Builtin) -> Option<Self> {
         match self {
@@ -337,7 +422,9 @@ impl Concrete {
                             }
                         }
                     }
-                    Builtin::Int(size) => Some(Concrete::Int(size, I256::from_raw(val))),
+                    Builtin::Int(size) => {
+                        Some(Concrete::Int(size, I256::from_raw(val)))
+                    },
                     Builtin::Bytes(size) => {
                         let mask = if size == 32 {
                             U256::MAX
@@ -367,13 +454,9 @@ impl Concrete {
                     val.to_big_endian(&mut bytes);
                     Some(Concrete::Address(Address::from_slice(&bytes[12..])))
                 }
-                Builtin::Uint(size) => {
-                    let mask = if size == 256 {
-                        U256::MAX
-                    } else {
-                        U256::from(2).pow(size.into()) - 1
-                    };
-                    Some(Concrete::Uint(size, val.into_raw() & mask))
+                Builtin::Uint(_size) => {
+                    let bit_repr = self.bit_representation().unwrap();
+                    bit_repr.cast(builtin)
                 }
                 Builtin::Int(size) => {
                     // no op
@@ -574,6 +657,9 @@ impl Concrete {
                 }
             }
             Concrete::Bytes(_, b) => Some(U256::from_big_endian(b.as_bytes())),
+            Concrete::DynBytes(v) if v.len() <= 32 => {
+                self.clone().cast(Builtin::Bytes(v.len() as u8))?.into_u256()
+            },
             Concrete::Address(a) => Some(U256::from_big_endian(a.as_bytes())),
             Concrete::Bool(b) => {
                 if *b {
@@ -761,6 +847,45 @@ impl Concrete {
         }
     }
 
+    pub fn as_hex_string(&self) -> String {
+        match self {
+            Concrete::Uint(_, val) => {
+                let mut bytes = [0u8; 32];
+                val.to_big_endian(&mut bytes);
+                format!("0x{}", hex::encode(bytes))
+            },
+            Concrete::Int(_, val) => {
+                let mut bytes = [0u8; 32];
+                val.to_big_endian(&mut bytes);
+                format!("0x{}", hex::encode(bytes))
+            },
+            Concrete::Bytes(size, b) => format!(
+                "0x{}",
+                b.0.iter()
+                    .take(*size as usize)
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<Vec<_>>()
+                    .join("")
+            ),
+            Concrete::String(s) => hex::encode(s),
+            Concrete::Bool(_b) => self.bit_representation().unwrap().as_hex_string(),
+            Concrete::Address(_a) => self.bit_representation().unwrap().as_hex_string(),
+            Concrete::DynBytes(a) => {
+                if a.is_empty() {
+                    "0x".to_string()
+                } else {
+                    hex::encode(a)
+                }
+            }
+            Concrete::Array(arr) => format!(
+                "0x{}",
+                arr.iter()
+                    .map(|i| i.as_hex_string()[2..].to_string())
+                    .collect::<Vec<String>>()
+                    .join("")
+            ),
+        }
+    }
     /// Converts to a string
     pub fn as_string(&self) -> String {
         match self {

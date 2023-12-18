@@ -145,11 +145,13 @@ impl ContextVarNode {
     pub fn as_controllable_name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         if let Some(ref_range) = self.ref_range(analyzer)? {
             let mut exclude = vec![];
+
             let min_name = ref_range
                 .range_min()
                 .simplify_minimize(&mut exclude, analyzer)?
                 .to_range_string(false, analyzer)
                 .s;
+
             exclude = vec![];
             let max_name = ref_range
                 .range_max()
@@ -206,19 +208,49 @@ impl ContextVarNode {
         Ok(self.underlying(analyzer)?.tmp_of())
     }
 
+    pub fn array_to_len_var(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Option<ContextVarNode> {
+        if let Some(len) = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("length")))
+            .map(|edge| edge.source()) {
+            Some(len.into())       
+        } else if let Some(prev) = self.previous_version(analyzer) {
+            prev.array_to_len_var(analyzer)
+        } else {
+            None
+        }
+    }
+
+    pub fn index_access_to_array(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Option<ContextVarNode> {
+        if let Some(arr) = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
+            .map(|edge| edge.target()) {
+            Some(arr.into())       
+        } else if let Some(prev) = self.previous_version(analyzer) {
+            prev.index_access_to_array(analyzer)
+        } else {
+            None
+        }
+    }
+
     pub fn len_var_to_array(
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Option<ContextVarNode>, GraphError> {
-        if self.name(analyzer)?.ends_with(".length") {
-            if let Some(arr) = analyzer.search_for_ancestor(
-                self.first_version(analyzer).into(),
-                &Edge::Context(ContextEdge::AttrAccess),
-            ) {
-                Ok(Some(ContextVarNode::from(arr).latest_version(analyzer)))
-            } else {
-                Ok(None)
-            }
+        if let Some(arr) = analyzer.search_for_ancestor(
+            self.0.into(),
+            &Edge::Context(ContextEdge::AttrAccess("length")),
+        ) {
+            Ok(Some(ContextVarNode::from(arr).latest_version(analyzer)))
         } else {
             Ok(None)
         }
@@ -228,13 +260,12 @@ impl ContextVarNode {
         let arr = analyzer
             .graph()
             .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
-            .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
-            .map(|edge| edge.target())
-            .take(1)
-            .next()?;
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
+            .map(|edge| edge.target())?;
         Some(ContextVarNode::from(arr).latest_version(analyzer))
     }
 
+    /// Goes from an index access (i.e. `x[idx]`) to the index (i.e. `idx`)
     pub fn index_access_to_index(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let index = analyzer.find_child_exclude_via(
             self.first_version(analyzer).into(),
@@ -250,8 +281,7 @@ impl ContextVarNode {
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| {
-                Edge::Context(ContextEdge::IndexAccess) == *edge.weight()
-                    || Edge::Context(ContextEdge::AttrAccess) == *edge.weight()
+                matches!(*edge.weight(), Edge::Context(ContextEdge::IndexAccess) | Edge::Context(ContextEdge::AttrAccess(_)))
             })
             .map(|edge| ContextVarNode::from(edge.source()))
             .collect()

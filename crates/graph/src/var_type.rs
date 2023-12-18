@@ -482,139 +482,139 @@ impl VarType {
         }))
     }
 
-    pub fn try_match_index_dynamic_ty(
-        &self,
-        index: ContextVarNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<Option<NodeIdx>, GraphError> {
-        match self {
-            Self::BuiltIn(_node, None) => Ok(None),
-            Self::BuiltIn(node, Some(r)) => {
-                if let Builtin::Bytes(size) = node.underlying(analyzer)? {
-                    if r.is_const(analyzer)? && index.is_const(analyzer)? {
-                        let Some(min) = r.evaled_range_min(analyzer)?.maybe_concrete() else {
-                            return Ok(None);
-                        };
-                        let Concrete::Bytes(_, val) = min.val else {
-                            return Ok(None);
-                        };
-                        let Some(idx) = index.evaled_range_min(analyzer)?.unwrap().maybe_concrete()
-                        else {
-                            return Ok(None);
-                        };
-                        let Concrete::Uint(_, idx) = idx.val else {
-                            return Ok(None);
-                        };
-                        if idx.low_u32() < (*size as u32) {
-                            let mut h = H256::default();
-                            h.0[0] = val.0[idx.low_u32() as usize];
-                            let ret_val = Concrete::Bytes(1, h);
-                            let node = analyzer.add_node(Node::Concrete(ret_val));
-                            return Ok(Some(node));
-                        }
-                    }
-                    Ok(None)
-                } else {
-                    // check if the index exists as a key
-                    let min = r.range_min();
-                    if let Some(map) = min.dyn_map() {
-                        let name = index.name(analyzer)?;
-                        let is_const = index.is_const(analyzer)?;
-                        if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
-                            Elem::Reference(Reference { idx, .. }) => match analyzer.node(*idx) {
-                                Node::ContextVar(_) => {
-                                    let cvar = ContextVarNode::from(*idx);
-                                    cvar.name(analyzer).unwrap() == name
-                                }
-                                _ => false,
-                            },
-                            c @ Elem::Concrete(..) if is_const => {
-                                let index_val = index.evaled_range_min(analyzer).unwrap().unwrap();
-                                index_val.range_eq(c)
-                            }
-                            _ => false,
-                        }) {
-                            if let Some(idx) = val.node_idx() {
-                                return Ok(idx.into());
-                            } else if let Some(c) = val.concrete() {
-                                let cnode = analyzer.add_node(Node::Concrete(c));
-                                return Ok(cnode.into());
-                            }
-                        }
-                    }
-                    Ok(None)
-                }
-            }
-            Self::Concrete(node) => {
-                if index.is_const(analyzer)? {
-                    let idx = index
-                        .evaled_range_min(analyzer)
-                        .unwrap()
-                        .unwrap()
-                        .concrete()
-                        .unwrap()
-                        .uint_val()
-                        .unwrap();
-                    match node.underlying(analyzer)? {
-                        Concrete::Bytes(size, val) => {
-                            if idx.low_u32() < (*size as u32) {
-                                let mut h = H256::default();
-                                h.0[0] = val.0[idx.low_u32() as usize];
-                                let ret_val = Concrete::Bytes(1, h);
-                                let node = analyzer.add_node(Node::Concrete(ret_val));
-                                return Ok(Some(node));
-                            }
-                        }
-                        Concrete::DynBytes(elems) => {
-                            if idx.low_u32() < (elems.len() as u32) {
-                                let mut h = H256::default();
-                                h.0[0] = elems[idx.low_u32() as usize];
-                                let ret_val = Concrete::Bytes(1, h);
-                                let node = analyzer.add_node(Node::Concrete(ret_val));
-                                return Ok(Some(node));
-                            }
-                        }
-                        Concrete::String(st) => {
-                            if idx.low_u32() < (st.len() as u32) {
-                                let mut h = H256::default();
-                                h.0[0] = st.as_bytes()[idx.low_u32() as usize];
-                                let ret_val = Concrete::Bytes(1, h);
-                                let node = analyzer.add_node(Node::Concrete(ret_val));
-                                return Ok(Some(node));
-                            }
-                        }
-                        Concrete::Array(elems) => {
-                            if idx.low_u32() < (elems.len() as u32) {
-                                let elem = &elems[idx.low_u32() as usize];
-                                let node = analyzer.add_node(Node::Concrete(elem.clone()));
-                                return Ok(Some(node));
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Ok(None)
-            }
-            _ => Ok(None),
-        }
-    }
+    // pub fn try_match_index_dynamic_ty(
+    //     &self,
+    //     index: ContextVarNode,
+    //     analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+    // ) -> Result<Option<NodeIdx>, GraphError> {
+    //     match self {
+    //         Self::BuiltIn(_node, None) => Ok(None),
+    //         Self::BuiltIn(node, Some(r)) => {
+    //             if let Builtin::Bytes(size) = node.underlying(analyzer)? {
+    //                 if r.is_const(analyzer)? && index.is_const(analyzer)? {
+    //                     let Some(min) = r.evaled_range_min(analyzer)?.maybe_concrete() else {
+    //                         return Ok(None);
+    //                     };
+    //                     let Concrete::Bytes(_, val) = min.val else {
+    //                         return Ok(None);
+    //                     };
+    //                     let Some(idx) = index.evaled_range_min(analyzer)?.unwrap().maybe_concrete()
+    //                     else {
+    //                         return Ok(None);
+    //                     };
+    //                     let Concrete::Uint(_, idx) = idx.val else {
+    //                         return Ok(None);
+    //                     };
+    //                     if idx.low_u32() < (*size as u32) {
+    //                         let mut h = H256::default();
+    //                         h.0[0] = val.0[idx.low_u32() as usize];
+    //                         let ret_val = Concrete::Bytes(1, h);
+    //                         let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                         return Ok(Some(node));
+    //                     }
+    //                 }
+    //                 Ok(None)
+    //             } else {
+    //                 // check if the index exists as a key
+    //                 let min = r.range_min();
+    //                 if let Some(map) = min.dyn_map() {
+    //                     let name = index.name(analyzer)?;
+    //                     let is_const = index.is_const(analyzer)?;
+    //                     if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
+    //                         Elem::Reference(Reference { idx, .. }) => match analyzer.node(*idx) {
+    //                             Node::ContextVar(_) => {
+    //                                 let cvar = ContextVarNode::from(*idx);
+    //                                 cvar.name(analyzer).unwrap() == name
+    //                             }
+    //                             _ => false,
+    //                         },
+    //                         c @ Elem::Concrete(..) if is_const => {
+    //                             let index_val = index.evaled_range_min(analyzer).unwrap().unwrap();
+    //                             index_val.range_eq(c)
+    //                         }
+    //                         _ => false,
+    //                     }) {
+    //                         if let Some(idx) = val.0.node_idx() {
+    //                             return Ok(idx.into());
+    //                         } else if let Some(c) = val.0.concrete() {
+    //                             let cnode = analyzer.add_node(Node::Concrete(c));
+    //                             return Ok(cnode.into());
+    //                         }
+    //                     }
+    //                 }
+    //                 Ok(None)
+    //             }
+    //         }
+    //         Self::Concrete(node) => {
+    //             if index.is_const(analyzer)? {
+    //                 let idx = index
+    //                     .evaled_range_min(analyzer)
+    //                     .unwrap()
+    //                     .unwrap()
+    //                     .concrete()
+    //                     .unwrap()
+    //                     .uint_val()
+    //                     .unwrap();
+    //                 match node.underlying(analyzer)? {
+    //                     Concrete::Bytes(size, val) => {
+    //                         if idx.low_u32() < (*size as u32) {
+    //                             let mut h = H256::default();
+    //                             h.0[0] = val.0[idx.low_u32() as usize];
+    //                             let ret_val = Concrete::Bytes(1, h);
+    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             return Ok(Some(node));
+    //                         }
+    //                     }
+    //                     Concrete::DynBytes(elems) => {
+    //                         if idx.low_u32() < (elems.len() as u32) {
+    //                             let mut h = H256::default();
+    //                             h.0[0] = elems[idx.low_u32() as usize];
+    //                             let ret_val = Concrete::Bytes(1, h);
+    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             return Ok(Some(node));
+    //                         }
+    //                     }
+    //                     Concrete::String(st) => {
+    //                         if idx.low_u32() < (st.len() as u32) {
+    //                             let mut h = H256::default();
+    //                             h.0[0] = st.as_bytes()[idx.low_u32() as usize];
+    //                             let ret_val = Concrete::Bytes(1, h);
+    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             return Ok(Some(node));
+    //                         }
+    //                     }
+    //                     Concrete::Array(elems) => {
+    //                         if idx.low_u32() < (elems.len() as u32) {
+    //                             let elem = &elems[idx.low_u32() as usize];
+    //                             let node = analyzer.add_node(Node::Concrete(elem.clone()));
+    //                             return Ok(Some(node));
+    //                         }
+    //                     }
+    //                     _ => {}
+    //                 }
+    //             }
+    //             Ok(None)
+    //         }
+    //         _ => Ok(None),
+    //     }
+    // }
 
     pub fn get_index_dynamic_ty(
         &self,
         index: ContextVarNode,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<VarType, GraphError> {
-        if let Some(var_ty) = self.try_match_index_dynamic_ty(index, analyzer)? {
-            Ok(VarType::try_from_idx(analyzer, var_ty).unwrap())
-        } else {
-            match self {
-                Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
-                Self::Concrete(node) => node.dynamic_underlying_ty(analyzer),
-                e => Err(GraphError::NodeConfusion(format!(
-                    "Node type confusion: expected node to be Builtin but it was: {e:?}"
-                ))),
-            }
+        // if let Some(var_ty) = self.try_match_index_dynamic_ty(index, analyzer)? {
+        //     Ok(VarType::try_from_idx(analyzer, var_ty).unwrap())
+        // } else {
+        match self {
+            Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
+            Self::Concrete(node) => node.dynamic_underlying_ty(analyzer),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Builtin but it was: {e:?}"
+            ))),
         }
+        // }
     }
 
     pub fn dynamic_underlying_ty(

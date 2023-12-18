@@ -2,7 +2,7 @@ use crate::{range::elem::RangeElem, GraphBackend};
 use shared::NodeIdx;
 use std::borrow::Cow;
 
-pub trait Range<T> {
+pub trait Range<T: Ord> {
     type GraphError;
     type ElemTy: RangeElem<T> + Clone;
     /// Evaluate both the minimum and the maximum - cache along the way
@@ -76,7 +76,7 @@ pub trait Range<T> {
         Self: Sized + Clone;
 }
 
-pub trait RangeEval<E, T: RangeElem<E>>: Range<E, ElemTy = T> {
+pub trait RangeEval<E: Ord, T: RangeElem<E>>: Range<E, ElemTy = T> {
     fn sat(&self, analyzer: &impl GraphBackend) -> bool;
     fn unsat(&self, analyzer: &impl GraphBackend) -> bool {
         !self.sat(analyzer)

@@ -183,6 +183,7 @@ pub trait YulFuncCaller:
                     lhs_paths
                         .cast_from_ty(cast_ty.clone(), analyzer)
                         .into_expr_err(loc)?;
+
                     let rhs_paths =
                         ContextVarNode::from(inputs[1].expect_single().into_expr_err(loc)?);
                     rhs_paths
@@ -192,8 +193,8 @@ pub trait YulFuncCaller:
                     analyzer.op_match(
                         ctx,
                         loc,
-                        &ExprRet::Single(lhs_paths.into()),
-                        &ExprRet::Single(rhs_paths.into()),
+                        &ExprRet::Single(lhs_paths.latest_version(analyzer).into()),
+                        &ExprRet::Single(rhs_paths.latest_version(analyzer).into()),
                         op,
                         false,
                     )
@@ -262,7 +263,7 @@ pub trait YulFuncCaller:
                         let expr = Elem::Expr(RangeExpr::new(
                             Elem::from(res),
                             RangeOp::Cast,
-                            Elem::from(Concrete::Uint(1, U256::zero())),
+                            Elem::from(Concrete::Uint(256, U256::zero())),
                         ));
 
                         next.set_range_min(analyzer, expr.clone())

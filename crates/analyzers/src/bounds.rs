@@ -88,7 +88,7 @@ impl OrderedAnalysis {
                     init: false,
                     name: ba.var_display_name.clone(),
                     loc: LocSpan(bound_change.0 .1),
-                    order: i as i32,
+                    order: (bound_change.0.end() - bound_change.0.start()) as i32, //i as i32,
                     // storage: ba.storage.clone(),
                     ctx: ba.ctx,
                     ctx_conditionals: ba.conditionals(analyzer),

@@ -1,4 +1,4 @@
-use crate::{range::elem::Elem, GraphBackend};
+use crate::{range::elem::{RangeDyn, Elem}, GraphBackend};
 use shared::NodeIdx;
 
 /// For execution of operations to be performed on range expressions
@@ -10,14 +10,13 @@ pub trait ExecOp<T> {
         &self,
         maximize: bool,
         analyzer: &impl GraphBackend,
-    ) -> Result<Elem<T>, Self::GraphError> {
-        self.exec(self.spread(analyzer)?, maximize)
-    }
+    ) -> Result<Elem<T>, Self::GraphError>;
 
     fn exec(
         &self,
         parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
         maximize: bool,
+        analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Cache execution
     fn cache_exec_op(
@@ -51,8 +50,9 @@ pub trait ExecOp<T> {
         &self,
         parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
         maximize: bool,
+        analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError> {
-        self.exec(parts, maximize)
+        self.exec(parts, maximize, analyzer)
     }
 }
 
@@ -114,11 +114,6 @@ pub trait RangeCast<T, Rhs = Self> {
     fn range_cast(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
-pub trait RangeConcat<T, Rhs = Self> {
-    /// Perform a cast on an element to the type of the right hand side
-    fn range_concat(&self, other: &Rhs) -> Option<Elem<T>>;
-}
-
 pub trait RangeUnary<T, Rhs = Self> {
     /// Perform a logical NOT
     fn range_not(&self) -> Option<Elem<T>>;
@@ -151,4 +146,24 @@ pub trait RangeOrd<T, Rhs = Self> {
     fn range_gte(&self, other: &Rhs) -> Option<Elem<T>>;
     /// Perform a logical less than or equal test
     fn range_lte(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+pub trait RangeMemOps<T, Rhs = Self>: RangeMemSet<T, Self> + RangeConcat<T, Self> + Sized {
+    /// Perform a memory copy
+    fn range_memcopy(&self) -> Option<Elem<T>>;
+}
+
+pub trait RangeConcat<T, Rhs = Self> {
+    /// Perform a cast on an element to the type of the right hand side
+    fn range_concat(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+pub trait RangeMemSet<T, Rhs = Self> {
+    /// Applies a transformation of indices
+    fn range_set_indices(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Gets an index
+    fn range_get_index(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Applies a transformation of length
+    fn range_set_length(&self, other: &Rhs) -> Option<Elem<T>>;
+    fn range_get_length(&self) -> Option<Elem<T>>;
 }

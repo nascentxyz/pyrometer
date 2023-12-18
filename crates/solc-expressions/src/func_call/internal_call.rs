@@ -115,7 +115,7 @@ pub trait InternalFuncCaller:
                     .expect("Invalid struct field");
 
                     let fc_node = self.add_node(Node::ContextVar(field_cvar));
-                    self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess));
+                    self.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess("field")));
                     self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                     ctx.add_var(fc_node.into(), self).into_expr_err(*loc)?;
                     let field_as_ret = ExprRet::Single(fc_node);

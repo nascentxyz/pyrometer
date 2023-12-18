@@ -1,4 +1,4 @@
-use crate::{BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, Variable};
+use crate::{array::Array, BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, Variable};
 
 use graph::{
     elem::*,
@@ -10,7 +10,7 @@ use graph::{
     AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 
-use ethers_core::types::I256;
+use ethers_core::types::{U256, I256};
 use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc},
@@ -707,9 +707,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
         if let Some(lhs_range) = new_lhs
             .latest_version(self)
-            .underlying(self)
-            .into_expr_err(loc)?
-            .ty
             .range(self)
             .into_expr_err(loc)?
         {
@@ -732,7 +729,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
                         if self
-                            .update_nonconst_from_const(loc, rhs_op, new_lhs, new_rhs, rhs_range)?
+                            .update_nonconst_from_const(ctx, loc, rhs_op, new_lhs, new_rhs, rhs_range)?
                         {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -740,7 +737,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         }
                     }
                     (false, true) => {
-                        if self.update_nonconst_from_const(loc, op, new_rhs, new_lhs, lhs_range)? {
+                        if self.update_nonconst_from_const(ctx, loc, op, new_rhs, new_lhs, lhs_range)? {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
@@ -748,7 +745,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     }
                     (false, false) => {
                         if self.update_nonconst_from_nonconst(
-                            loc, op, new_lhs, new_rhs, lhs_range, rhs_range,
+                            ctx, loc, op, new_lhs, new_rhs, lhs_range, rhs_range,
                         )? {
                             tracing::trace!("nonconst killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -768,78 +765,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             new_rhs = new_rhs.latest_version(self);
             new_lhs = new_lhs.latest_version(self);
 
-            if let Some(backing_arr) = new_lhs.len_var_to_array(self).into_expr_err(loc)? {
-                if let Some(r) = backing_arr.ref_range(self).into_expr_err(loc)? {
-                    let min = r.range_min().into_owned();
-                    let max = r.range_max().into_owned();
-
-                    if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::from(new_lhs);
-                        backing_arr
-                            .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                            .into_expr_err(loc)?;
-                    }
-
-                    if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::from(new_lhs);
-                        backing_arr
-                            .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
-                            .into_expr_err(loc)?;
-                    }
-                }
-            } else if let Some(arr) = new_lhs.index_to_array(self) {
-                if let Some(index) = new_lhs.index_access_to_index(self) {
-                    let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, ctx)?;
-                    if next_arr
-                        .underlying(self)
-                        .into_expr_err(loc)?
-                        .ty
-                        .is_dyn_builtin(self)
-                        .into_expr_err(loc)?
-                    {
-                        if let Some(r) = next_arr.ref_range(self).into_expr_err(loc)? {
-                            let min = r.evaled_range_min(self).into_expr_err(loc)?;
-                            let max = r.evaled_range_max(self).into_expr_err(loc)?;
-
-                            if let Some(mut rd) = min.maybe_range_dyn() {
-                                rd.val.insert(Elem::from(index), Elem::from(new_rhs));
-                                next_arr
-                                    .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                                    .into_expr_err(loc)?;
-                            }
-
-                            if let Some(mut rd) = max.maybe_range_dyn() {
-                                rd.val.insert(Elem::from(index), Elem::from(new_rhs));
-                                next_arr
-                                    .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
-                                    .into_expr_err(loc)?;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Some(backing_arr) = new_rhs.len_var_to_array(self).into_expr_err(loc)? {
-                if let Some(r) = backing_arr.ref_range(self).into_expr_err(loc)? {
-                    let min = r.range_min().into_owned();
-                    let max = r.range_max().into_owned();
-
-                    if let Some(mut rd) = min.maybe_range_dyn() {
-                        rd.len = Elem::from(new_lhs);
-                        backing_arr
-                            .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                            .into_expr_err(loc)?;
-                    }
-
-                    if let Some(mut rd) = max.maybe_range_dyn() {
-                        rd.len = Elem::from(new_lhs);
-                        backing_arr
-                            .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
-                            .into_expr_err(loc)?;
-                    }
-                }
-            }
-
+            // self.update_array_if_index_access(ctx, loc, new_lhs, new_rhs)?;
+            // self.update_array_if_index_access(ctx, loc, new_rhs, new_lhs)?;
+            // self.update_array_if_length_var(ctx, loc, new_lhs)?;
+            // self.update_array_if_length_var(ctx, loc, new_rhs)?;
+            
             let rhs_display_name = new_rhs.display_name(self).into_expr_err(loc)?;
             let display_name = if rhs_display_name == "true" {
                 (new_lhs.display_name(self).into_expr_err(loc)?).to_string()
@@ -1022,6 +952,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn update_nonconst_from_const(
         &mut self,
+        ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         const_var: ContextVarNode,
@@ -1046,6 +977,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     .set_range_min(self, elem.clone())
                     .into_expr_err(loc)?;
                 nonconst_var.set_range_max(self, elem).into_expr_err(loc)?;
+                // self.update_array_min_if_length(ctx, loc, nonconst_var)?;
+                // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Neq => {
@@ -1066,6 +999,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
                     nonconst_var.set_range_min(self, min).into_expr_err(loc)?;
+                    self.update_array_min_if_length(ctx, loc, nonconst_var)?;
                 } else if let Some(std::cmp::Ordering::Equal) = nonconst_range
                     .evaled_range_max(self)
                     .into_expr_err(loc)?
@@ -1080,6 +1014,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
                     nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
+                    // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 } else {
                     // just add as an exclusion
                     nonconst_range.add_range_exclusion(elem);
@@ -1104,7 +1039,14 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 // we add one to the element because its strict >
                 let Some(max_conc) = max.maybe_concrete() else {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                    return Err(ExprErr::BadRange(loc, format!(
+                        "Expected {} to have a concrete range by now. This is likely a bug. Max: {}, expr: {} {} {}",
+                        nonconst_var.display_name(self).unwrap(),
+                        nonconst_range.max,
+                        nonconst_var.display_name(self).unwrap(),
+                        op.to_string(),
+                        const_var.display_name(self).unwrap(),
+                    )));
                 };
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
                 nonconst_var
@@ -1113,6 +1055,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (elem + one.into()).max(nonconst_range.range_min().into_owned()),
                     )
                     .into_expr_err(loc)?;
+                // self.update_array_min_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Gte => {
@@ -1132,6 +1075,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 nonconst_var
                     .set_range_min(self, elem.max(nonconst_range.range_min().into_owned()))
                     .into_expr_err(loc)?;
+                self.update_array_min_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Lt => {
@@ -1149,7 +1093,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // we add one to the element because its strict >
 
                 let Some(min_conc) = min.maybe_concrete() else {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(true, self).s)));
+                    return Err(ExprErr::BadRange(loc, format!("Expected {} to have a concrete range by now. This is likely a bug. Min: {}", nonconst_var.display_name(self).unwrap(), nonconst_range.min)));
                 };
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
@@ -1159,6 +1103,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (elem - one.into()).min(nonconst_range.range_max().into_owned()),
                     )
                     .into_expr_err(loc)?;
+                // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Lte => {
@@ -1176,6 +1121,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 nonconst_var
                     .set_range_max(self, elem.min(nonconst_range.range_max().into_owned()))
                     .into_expr_err(loc)?;
+                // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),
@@ -1185,6 +1131,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Given a const var and a nonconst range, update the range based on the op. Returns whether its impossible
     fn update_nonconst_from_nonconst(
         &mut self,
+        ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         new_lhs: ContextVarNode,
@@ -1246,6 +1193,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     }
                 }
 
+                // self.update_array_min_if_length(ctx, loc, new_rhs)?;
+                // self.update_array_min_if_length(ctx, loc, new_lhs)?;
+                // self.update_array_max_if_length(ctx, loc, new_rhs)?;
+                // self.update_array_max_if_length(ctx, loc, new_lhs)?;
+
                 Ok(false)
             }
             RangeOp::Neq => {
@@ -1302,6 +1254,9 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (lhs_elem - one.into()).min(rhs_range.range_max().into_owned()),
                     )
                     .into_expr_err(loc)?;
+
+                // self.update_array_min_if_length(ctx, loc, new_rhs)?;
+                // self.update_array_min_if_length(ctx, loc, new_lhs)?;
                 Ok(false)
             }
             RangeOp::Gte => {
@@ -1338,9 +1293,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 new_new_rhs
                     .set_range_max(self, new_max)
                     .into_expr_err(loc)?;
-                // new_rhs
-                //     .set_range_max(self, Elem::Expr(RangeExpr::new(new_rhs.previous_version(self).unwrap().into(), RangeOp::Min, lhs_elem)))
-                //     .into_expr_err(loc)?;
+                // self.update_array_min_if_length(ctx, loc, new_rhs)?;
+                // self.update_array_min_if_length(ctx, loc, new_lhs)?;
                 Ok(false)
             }
             RangeOp::Lt => {
@@ -1380,6 +1334,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (lhs_elem + one.into()).max(rhs_range.range_min().into_owned()),
                     )
                     .into_expr_err(loc)?;
+                // self.update_array_max_if_length(ctx, loc, new_rhs)?;
+                // self.update_array_max_if_length(ctx, loc, new_lhs)?;
                 Ok(false)
             }
             RangeOp::Lte => {
@@ -1403,6 +1359,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     .latest_version(self)
                     .set_range_min(self, lhs_elem.max(rhs_range.range_min().into_owned()))
                     .into_expr_err(loc)?;
+                // self.update_array_max_if_length(ctx, loc, new_rhs.latest_version(self))?;
+                // self.update_array_max_if_length(ctx, loc, new_lhs.latest_version(self))?;
                 Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),

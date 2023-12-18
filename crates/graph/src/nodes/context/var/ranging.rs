@@ -1,6 +1,6 @@
 use crate::{
     nodes::{Concrete, ContextNode, ContextVarNode},
-    range::{range_string::ToRangeString, Range},
+    range::{range_string::ToRangeString, Range, RangeEval},
     AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
 };
 
@@ -149,6 +149,15 @@ impl ContextVarNode {
     pub fn needs_fallback(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.needs_fallback())
     }
+
+    pub fn range_contains_elem(&self, elem: Elem<Concrete>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        if let Some(r) = self.ref_range(analyzer)? {
+            Ok(r.contains_elem(&elem, analyzer))
+        } else {
+            Ok(false)
+        }
+    }
+
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
@@ -185,7 +194,7 @@ impl ContextVarNode {
                 None
             };
             self.underlying_mut(analyzer)?
-                .set_range_min(new_min, fallback);
+                .set_range_min(new_min, fallback)?;
         }
         self.cache_range(analyzer)?;
         Ok(())
@@ -225,7 +234,7 @@ impl ContextVarNode {
             };
 
             self.underlying_mut(analyzer)?
-                .set_range_max(new_max, fallback)
+                .set_range_max(new_max, fallback)?;
         }
 
         self.cache_range(analyzer)?;
@@ -237,13 +246,15 @@ impl ContextVarNode {
         analyzer: &mut impl GraphBackend,
         new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        tracing::trace!("setting range exclusions for {}", self.display_name(analyzer)?);
+        assert!(*self == self.latest_version(analyzer));
         let fallback = if self.needs_fallback(analyzer)? {
             self.fallback_range(analyzer)?
         } else {
             None
         };
         self.underlying_mut(analyzer)?
-            .set_range_exclusions(new_exclusions, fallback);
+            .set_range_exclusions(new_exclusions, fallback)?;
         Ok(())
     }
 
@@ -310,6 +321,8 @@ impl ContextVarNode {
         analyzer: &mut impl GraphBackend,
         new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
+        tracing::trace!("setting range exclusions for: {}", self.display_name(analyzer).unwrap());
+        assert!(*self == self.latest_version(analyzer));
         let fallback = if self.needs_fallback(analyzer)? {
             self.fallback_range(analyzer)?
         } else {

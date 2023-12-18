@@ -251,11 +251,16 @@ contract Cast {
         require(b == x);
     }
 
-    function int_uint_int() internal {
+    function int_uint_int_conc() internal {
         int256 a = -100;
         uint256 b = uint(a);
         int256 c = int(b);
         require(-100 == c);
+    }
+
+    function int_uint_int(int a) internal {
+        uint256 b = uint(a);
+        int256 c = int(b);
     }
 }
 

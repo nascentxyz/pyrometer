@@ -1,9 +1,9 @@
-use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use crate::{ListAccess, array::Array, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphError, Range,
+    nodes::{ContextNode, ContextVarNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, GraphError,
 };
 
 use solang_parser::pt::{Expression, Loc};
@@ -123,7 +123,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             lhs_cvar.display_name(self).unwrap(),
         );
 
-        let (new_lower_bound, new_upper_bound): (Elem<Concrete>, Elem<Concrete>) = (
+        let (new_lower_bound, new_upper_bound) = (
             Elem::from(rhs_cvar.latest_version(self)),
             Elem::from(rhs_cvar.latest_version(self)),
         );
@@ -200,39 +200,17 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             let _ = self.add_if_err(res);
         }
 
-        if let Some(arr) = lhs_cvar.index_to_array(self) {
-            if let Some(index) = lhs_cvar.index_access_to_index(self) {
-                let next_arr = self.advance_var_in_ctx(arr, loc, ctx)?;
-                if next_arr
-                    .underlying(self)
-                    .into_expr_err(loc)?
-                    .ty
-                    .is_dyn_builtin(self)
-                    .into_expr_err(loc)?
-                {
-                    if let Some(r) = next_arr.ref_range(self).into_expr_err(loc)? {
-                        let min = r.evaled_range_min(self).into_expr_err(loc)?;
-                        let max = r.evaled_range_max(self).into_expr_err(loc)?;
-
-                        if let Some(mut rd) = min.maybe_range_dyn() {
-                            rd.val.insert(Elem::from(index), Elem::from(rhs_cvar));
-                            let res = next_arr
-                                .set_range_min(self, Elem::ConcreteDyn(Box::new(rd)))
-                                .into_expr_err(loc);
-                            let _ = self.add_if_err(res);
-                        }
-
-                        if let Some(mut rd) = max.maybe_range_dyn() {
-                            rd.val.insert(Elem::from(index), Elem::from(rhs_cvar));
-                            let res = next_arr
-                                .set_range_max(self, Elem::ConcreteDyn(Box::new(rd)))
-                                .into_expr_err(loc);
-                            let _ = self.add_if_err(res);
-                        }
-                    }
-                }
-            }
+        if rhs_cvar.is_indexable(self).into_expr_err(loc)? {
+            // rhs is indexable. get the length attribute, create a new length for the lhs,
+            // and perform assign
+            let rhs_len_cvar = self.get_length(ctx, loc, rhs_cvar, true)?.unwrap();
+            let lhs_len_cvar = self.get_length(ctx, loc, lhs_cvar, true)?.unwrap();
+            self.assign(loc, lhs_len_cvar, rhs_len_cvar, ctx)?;
+            // update the range
+            self.update_array_if_length_var(ctx, loc, lhs_len_cvar.latest_version(self))?;
         }
+
+        self.update_array_if_index_access(ctx, loc, lhs_cvar, rhs_cvar)?;
 
         // advance the rhs variable to avoid recursion issues
         self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;

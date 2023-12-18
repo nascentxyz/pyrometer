@@ -209,7 +209,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             Elem::from(Reference::new(rhs_cvar.latest_version(self).into())),
         ));
 
-        // TODO: change to only hit this path if !uncheck
+
+        // to prevent some recursive referencing, forcibly increase lhs_cvar
+        self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?;
 
         // TODO: If one of lhs_cvar OR rhs_cvar are not symbolic,
         // apply the requirement on the symbolic expression side instead of
@@ -653,6 +655,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
                 _ => {}
             }
+        } else {
+            
+            // self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;
         }
 
         // let lhs_range = if let Some(lhs_range) = new_lhs.range(self).into_expr_err(loc)? {
@@ -697,7 +702,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
             }
         }
-        Ok(ExprRet::Single(new_lhs.into()))
+        Ok(ExprRet::Single(new_lhs.latest_version(self).into()))
     }
 
     #[tracing::instrument(level = "trace", skip_all)]

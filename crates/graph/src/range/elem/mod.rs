@@ -73,6 +73,16 @@ pub enum RangeOp {
     Exp,
     /// Concatenation
     Concat,
+    /// Memcopy
+    Memcopy,
+    /// Set memory indices of a memory object
+    SetIndices,
+    /// Gets an index of a memory object
+    GetIndex,
+    /// Set length of a memory object
+    SetLength,
+    /// Get Length of a memory object
+    GetLength,
 }
 
 impl RangeOp {
@@ -157,6 +167,11 @@ impl ToString for RangeOp {
             BitXor => "^".to_string(),
             BitNot => "~".to_string(),
             Concat => "concat".to_string(),
+            Memcopy => "memcopy".to_string(),
+            SetIndices => "set_indices".to_string(),
+            GetIndex => "get_index".to_string(),
+            GetLength => "get_length".to_string(),
+            SetLength => "set_length".to_string(),
         }
     }
 }

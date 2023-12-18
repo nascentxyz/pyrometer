@@ -231,19 +231,19 @@ impl Builtin {
             Builtin::Uint(_) => SolcRange::from(Concrete::from(U256::from(0))),
             Builtin::Bytes(s) => SolcRange::from(Concrete::Bytes(*s, H256::zero())),
             Builtin::DynamicBytes | Builtin::Array(_) | Builtin::Mapping(_, _) => {
-                let zero = Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                let zero = Elem::ConcreteDyn(RangeDyn::new(
                     Elem::from(Concrete::from(U256::zero())),
                     Default::default(),
                     Loc::Implicit,
-                )));
+                ));
                 Some(SolcRange::new(zero.clone(), zero, vec![]))
             }
             Builtin::SizedArray(s, _) => {
-                let sized = Elem::ConcreteDyn(Box::new(RangeDyn::new(
+                let sized = Elem::ConcreteDyn(RangeDyn::new(
                     Elem::from(Concrete::from(*s)),
                     Default::default(),
                     Loc::Implicit,
-                )));
+                ));
                 Some(SolcRange::new(sized.clone(), sized, vec![]))
             }
             Builtin::Rational | Builtin::Func(_, _) => None,
@@ -387,6 +387,75 @@ impl Builtin {
             Int(_from_size) => Uint(256),
             Bytes(_from_size) => Uint(32),
             _ => self.clone(),
+        }
+    }
+
+    pub fn zero_concrete(&self) -> Option<Concrete> {
+        match self {
+            Builtin::Uint(size) => {
+                Some(Concrete::Uint(*size, U256::zero()))
+            }
+            Builtin::Int(size) => {
+                Some(Concrete::Int(*size, I256::from_raw(U256::zero())))
+            }
+            Builtin::Bytes(size) => {
+                let h = H256::default();
+                Some(Concrete::Bytes(*size, h))
+            }
+            Builtin::Address => Some(Concrete::Address(Address::from_slice(&[0x00; 20]))),
+            Builtin::Bool => Some(Concrete::Bool(false)),
+            _ => None,
+        }
+    }
+
+    pub fn max_concrete(&self) -> Option<Concrete> {
+        match self {
+            Builtin::Uint(size) => {
+                let max = if *size == 256 {
+                    U256::MAX
+                } else {
+                    U256::from(2).pow(U256::from(*size)) - 1
+                };
+                Some(Concrete::Uint(*size, max))
+            }
+            Builtin::Int(size) => {
+                let max: I256 =
+                    I256::from_raw((U256::from(1u8) << U256::from(*size - 1)) - U256::from(1));
+                Some(Concrete::Int(*size, max))
+            }
+            Builtin::Bytes(size) => {
+                let size = *size as u16 * 8;
+                let max = if size == 256 {
+                    U256::MAX
+                } else {
+                    U256::from(2).pow(U256::from(size)) - 1
+                };
+
+                let mut h = H256::default();
+                max.to_big_endian(h.as_mut());
+                Some(Concrete::Bytes((size / 8) as u8, h))
+            }
+            Builtin::Address => Some(Concrete::Address(Address::from_slice(&[0xff; 20]))),
+            Builtin::Bool => Some(Concrete::Bool(true)),
+            _ => None,
+        }
+    }
+
+    pub fn min_concrete(&self) -> Option<Concrete> {
+        match self {
+            Builtin::Uint(size) => {
+                Some(Concrete::Uint(*size, U256::zero()))
+            }
+            Builtin::Int(size) => {
+                Some(Concrete::Int(*size, I256::MIN))
+            }
+            Builtin::Bytes(size) => {
+                let h = H256::default();
+                Some(Concrete::Bytes(*size, h))
+            }
+            Builtin::Address => Some(Concrete::Address(Address::from_slice(&[0x00; 20]))),
+            Builtin::Bool => Some(Concrete::Bool(false)),
+            _ => None,
         }
     }
 
