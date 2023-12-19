@@ -112,13 +112,14 @@ impl ContextVarNode {
 
     pub fn cache_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if let Some(mut range) = self.range(analyzer)? {
-            range.cache_eval(analyzer)?;
             range.cache_flatten(analyzer)?;
+            range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
         }
-        // self.cache_flattened_range(analyzer)?;
         Ok(())
     }
+
+
 
     // pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
     //     if let Some(mut range) = self.range(analyzer)? {
@@ -214,7 +215,7 @@ impl ContextVarNode {
         }
 
         tracing::trace!(
-            "setting range maximum: {:?}, {}, current: {}, new: {:#?}",
+            "setting range maximum: {:?}, {}, current: {}, new: {}",
             self,
             self.display_name(analyzer)?,
             self.ref_range(analyzer)?.unwrap().range_max(), // .unwrap()

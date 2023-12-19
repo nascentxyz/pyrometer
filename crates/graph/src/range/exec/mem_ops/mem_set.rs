@@ -159,7 +159,6 @@ impl RangeMemSet<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
 
 impl RangeMemSet<Concrete> for Elem<Concrete> {
     fn range_set_indices(&self, other: &Elem<Concrete>) -> Option<Elem<Concrete>> {
-        println!("setting indices: {self}, {other}");
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_set_indices(b),
             (Elem::ConcreteDyn(a), Elem::Concrete(b)) => a.range_set_indices(b),

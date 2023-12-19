@@ -90,6 +90,10 @@ struct Args {
     #[clap(long)]
     pub debug: bool,
 
+    /// Forces a panic on first error encountered
+    #[clap(long)]
+    pub debug_panic: bool,
+
     /// Max stack depth to evaluate to
     #[clap(long, default_value = "200")]
     pub max_stack_depth: usize,
@@ -207,6 +211,8 @@ fn main() {
     let mut analyzer = Analyzer::default();
     analyzer.max_depth = args.max_stack_depth;
     analyzer.root = Root::RemappingsDirectory(env::current_dir().unwrap());
+    println!("debug panic: {}", args.debug_panic);
+    analyzer.debug_panic = args.debug_panic;
 
     let (current_path, sol) = if args.path.ends_with(".sol") {
         let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");

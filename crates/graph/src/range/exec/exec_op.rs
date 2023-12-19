@@ -1,4 +1,3 @@
-use crate::nodes::ContextVarNode;
 use crate::{
     nodes::Concrete,
     range::{elem::*, exec_traits::*},
@@ -9,6 +8,8 @@ use shared::NodeIdx;
 
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
+
+use std::collections::BTreeMap;
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
@@ -47,10 +48,24 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
     fn simplify_exec_op(
         &self,
         maximize: bool,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
-        let (lhs_min, lhs_max, rhs_min, rhs_max) = self.simplify_spread(exclude, analyzer)?;
+        if let Some(res) = seen_ops.get(&Elem::Expr(self.clone())) {
+            return Ok(res.clone());
+        }
+
+        let (lhs_min, lhs_max, rhs_min, rhs_max) = self.simplify_spread(seen_ops, analyzer)?;
+        tracing::trace!(
+            "simplifying op: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
+            self.lhs,
+            self.op.to_string(),
+            self.rhs,
+            lhs_min,
+            lhs_max,
+            rhs_min,
+            rhs_max
+        );
         let lhs_is_conc = lhs_min.is_conc() && lhs_max.is_conc();
         let rhs_is_conc = rhs_min.is_conc() && rhs_max.is_conc();
         if self.op == RangeOp::Cast {
@@ -173,7 +188,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 
     fn simplify_spread(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<
         (
@@ -184,10 +199,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         ),
         GraphError,
     > {
-        let lhs_min = self.lhs.simplify_minimize(exclude, analyzer)?;
-        let lhs_max = self.lhs.simplify_maximize(exclude, analyzer)?;
-        let rhs_min = self.rhs.simplify_minimize(exclude, analyzer)?;
-        let rhs_max = self.rhs.simplify_maximize(exclude, analyzer)?;
+        let lhs_min = self.lhs.simplify_minimize(seen_ops, analyzer)?;
+        let lhs_max = self.lhs.simplify_maximize(seen_ops, analyzer)?;
+        let rhs_min = self.rhs.simplify_minimize(seen_ops, analyzer)?;
+        let rhs_max = self.rhs.simplify_maximize(seen_ops, analyzer)?;
         Ok((lhs_min, lhs_max, rhs_min, rhs_max))
     }
 
@@ -250,12 +265,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 if maximize {
                     let mut new = lhs_max.clone();
                     new.uncache();
-                    let new_max = new.simplify_minimize(&mut vec![], analyzer)?;
+                    let new_max = new.simplify_minimize(&mut Default::default(), analyzer)?;
                     let res = new_max.range_get_length();
                     res
                         .unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
                 } else {
-                    let new_min = lhs_min.simplify_minimize(&mut vec![], analyzer)?;
+                    let new_min = lhs_min.simplify_minimize(&mut Default::default(), analyzer)?;
                     let res = new_min.range_get_length();
                     res
                         .unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
@@ -289,7 +304,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 })?.unwrap_or_else(|| Elem::Null))
                             }
                             Elem::Reference(_) => {
-                                let new_max = lhs_max.simplify_maximize(&mut vec![], analyzer)?;
+                                let new_max = lhs_max.simplify_maximize(&mut Default::default(), analyzer)?;
                                 if new_max == lhs_max {
                                     Ok(Elem::Null)
                                 } else {
@@ -319,7 +334,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 })?.unwrap_or_else(|| Elem::Null))
                             }
                             Elem::Reference(ref _r) => {
-                                let new_min = lhs_min.simplify_minimize(&mut vec![], analyzer)?;
+                                let new_min = lhs_min.simplify_minimize(&mut Default::default(), analyzer)?;
                                 if new_min == lhs_min {
                                     Ok(Elem::Null)
                                 } else {
@@ -335,7 +350,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             },
             RangeOp::SetIndices => {
                 if maximize {
-                    let max = self.rhs.simplify_maximize(&mut vec![], analyzer)?;
+                    let max = self.rhs.simplify_maximize(&mut Default::default(), analyzer)?;
                     
                     lhs_max.range_set_indices(&rhs_max)
                         .unwrap_or_else(|| {
@@ -343,7 +358,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 .unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
                         })
                 } else {
-                    let min = self.rhs.simplify_minimize(&mut vec![], analyzer)?;
+                    let min = self.rhs.simplify_minimize(&mut Default::default(), analyzer)?;
                     lhs_min.range_set_indices(&rhs_min)
                         .unwrap_or_else(|| {
                             lhs_min.range_set_indices(&min)

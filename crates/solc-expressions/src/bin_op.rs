@@ -221,7 +221,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if !unchecked {
             match op {
                 RangeOp::Div(..) | RangeOp::Mod => {
+                    // x / y
+
                     if new_rhs.is_const(self).into_expr_err(loc)? {
+                        // y is constant, do a check if it is 0
                         if new_rhs
                             .evaled_range_min(self)
                             .into_expr_err(loc)?
@@ -234,6 +237,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
+                        // y is symbolic, add 
                         let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let var = ContextVar::new_from_concrete(
@@ -259,68 +263,70 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
 
-                        let tmp_var = ContextVar {
-                            loc: Some(loc),
-                            name: format!(
-                                "tmp{}({} != 0)",
-                                ctx.new_tmp(self).into_expr_err(loc)?,
-                                tmp_rhs.name(self).into_expr_err(loc)?,
-                            ),
-                            display_name: format!(
-                                "({} != 0)",
-                                tmp_rhs.display_name(self).into_expr_err(loc)?,
-                            ),
-                            storage: None,
-                            is_tmp: true,
-                            tmp_of: Some(TmpConstruction::new(
-                                new_lhs,
-                                RangeOp::Gt,
-                                Some(zero_node.into()),
-                            )),
-                            is_symbolic: true,
-                            is_return: false,
-                            ty: VarType::BuiltIn(
-                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                                SolcRange::from(Concrete::Bool(true)),
-                            ),
-                        };
+                        // let tmp_rhs = tmp_rhs.latest_version(self);
 
-                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+                        // let tmp_var = ContextVar {
+                        //     loc: Some(loc),
+                        //     name: format!(
+                        //         "tmp{}({} != 0)",
+                        //         ctx.new_tmp(self).into_expr_err(loc)?,
+                        //         tmp_rhs.name(self).into_expr_err(loc)?,
+                        //     ),
+                        //     display_name: format!(
+                        //         "({} != 0)",
+                        //         tmp_rhs.display_name(self).into_expr_err(loc)?,
+                        //     ),
+                        //     storage: None,
+                        //     is_tmp: true,
+                        //     tmp_of: Some(TmpConstruction::new(
+                        //         new_lhs,
+                        //         RangeOp::Neq,
+                        //         Some(zero_node.into()),
+                        //     )),
+                        //     is_symbolic: true,
+                        //     is_return: false,
+                        //     ty: VarType::BuiltIn(
+                        //         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                        //         SolcRange::from(Concrete::Bool(true)),
+                        //     ),
+                        // };
 
-                        let range = tmp_rhs
-                            .ref_range(self)
-                            .into_expr_err(loc)?
-                            .expect("No range?");
-                        if range.min_is_negative(self).into_expr_err(loc)? {
-                            let mut range_excls = range.range_exclusions();
-                            let excl = Elem::from(Concrete::from(I256::zero()));
-                            if !range_excls.contains(&excl) {
-                                range_excls.push(excl);
-                            }
-                            tmp_rhs
-                                .set_range_exclusions(self, range_excls)
-                                .into_expr_err(loc)?;
-                        } else {
-                            // the new min is max(1, rhs.min)
-                            let min = Elem::max(
-                                Elem::from(Reference::new(new_rhs.into())),
-                                // tmp_rhs
-                                //     .range_min(self)
-                                //     .into_expr_err(loc)?
-                                //     .unwrap_or_else(|| {
-                                //         panic!("No range minimum: {:?}", tmp_rhs.underlying(self))
-                                //     }),
-                                Elem::from(Concrete::from(U256::from(1))).cast(
-                                    Elem::from(Reference::new(tmp_rhs.into())), // .range_min(self)
-                                                                                // .into_expr_err(loc)?
-                                                                                // .expect("No range minimum?"),
-                                ),
-                            );
+                        // let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        // ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
 
-                            tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
-                            new_rhs = tmp_rhs;
-                        }
+                        // let range = tmp_rhs
+                        //     .ref_range(self)
+                        //     .into_expr_err(loc)?
+                        //     .expect("No range?");
+                        // if range.min_is_negative(self).into_expr_err(loc)? {
+                        //     let mut range_excls = range.range_exclusions();
+                        //     let excl = Elem::from(Concrete::from(I256::zero()));
+                        //     if !range_excls.contains(&excl) {
+                        //         range_excls.push(excl);
+                        //     }
+                        //     tmp_rhs
+                        //         .set_range_exclusions(self, range_excls)
+                        //         .into_expr_err(loc)?;
+                        // } else {
+                        //     // the new min is max(1, rhs.min)
+                        //     let min = Elem::max(
+                        //         Elem::from(Reference::new(new_rhs.into())),
+                        //         // tmp_rhs
+                        //         //     .range_min(self)
+                        //         //     .into_expr_err(loc)?
+                        //         //     .unwrap_or_else(|| {
+                        //         //         panic!("No range minimum: {:?}", tmp_rhs.underlying(self))
+                        //         //     }),
+                        //         Elem::from(Concrete::from(U256::from(1))).cast(
+                        //             Elem::from(Reference::new(tmp_rhs.into())), // .range_min(self)
+                        //                                                         // .into_expr_err(loc)?
+                        //                                                         // .expect("No range minimum?"),
+                        //         ),
+                        //     );
+
+                        //     tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
+                        //     new_rhs = tmp_rhs;
+                        // }
                     }
                 }
                 RangeOp::Sub(..) => {
@@ -429,7 +435,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             max_node.into(),
                             new_rhs,
                             ctx,
-                            RangeOp::Sub(false),
+                            RangeOp::Sub(true),
                             false,
                         )?;
 
@@ -516,7 +522,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
                         let tmp_rhs =
-                            self.op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div(true), true)?;
+                            self.op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div(true), false)?;
 
                         if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
                             return Ok(tmp_rhs);
@@ -538,6 +544,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
+
+                        let tmp_rhs = ContextVarNode::from(tmp_rhs).latest_version(self);
 
                         let tmp_var = ContextVar {
                             loc: Some(loc),

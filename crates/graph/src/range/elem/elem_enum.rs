@@ -660,20 +660,24 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
     fn simplify_maximize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(res) = seen_ops.get(&self) {
+            return Ok(res.clone())
+        }
+
         use Elem::*;
         match self {
-            Reference(dy) => dy.simplify_maximize(exclude, analyzer),
-            Concrete(inner) => inner.simplify_maximize(exclude, analyzer),
-            ConcreteDyn(inner) => inner.simplify_maximize(exclude, analyzer),
+            Reference(dy) => dy.simplify_maximize(seen_ops, analyzer),
+            Concrete(inner) => inner.simplify_maximize(seen_ops, analyzer),
+            ConcreteDyn(inner) => inner.simplify_maximize(seen_ops, analyzer),
             Expr(expr) => {
                 match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
                     MaybeCollapsed::Collapsed(collapsed) => {
-                        collapsed.simplify_maximize(exclude, analyzer)
+                        collapsed.simplify_maximize(seen_ops, analyzer)
                     }
-                    _ => expr.simplify_maximize(exclude, analyzer)
+                    _ => expr.simplify_maximize(seen_ops, analyzer)
                 }
             }
             Null => Ok(Elem::Null),
@@ -682,24 +686,31 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
     fn simplify_minimize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(res) = seen_ops.get(&self) {
+            return Ok(res.clone())
+        }
+
         use Elem::*;
-        match self {
-            Reference(dy) => dy.simplify_minimize(exclude, analyzer),
-            Concrete(inner) => inner.simplify_minimize(exclude, analyzer),
-            ConcreteDyn(inner) => inner.simplify_minimize(exclude, analyzer),
+        let res = match self {
+            Reference(dy) => dy.simplify_minimize(seen_ops, analyzer),
+            Concrete(inner) => inner.simplify_minimize(seen_ops, analyzer),
+            ConcreteDyn(inner) => inner.simplify_minimize(seen_ops, analyzer),
             Expr(expr) => {
                 match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
                     MaybeCollapsed::Collapsed(collapsed) => {
-                        collapsed.simplify_minimize(exclude, analyzer)
+                        collapsed.simplify_minimize(seen_ops, analyzer)
                     }
-                    _ => expr.simplify_minimize(exclude, analyzer)
+                    _ => expr.simplify_minimize(seen_ops, analyzer)
                 } 
             },
             Null => Ok(Elem::Null),
-        }
+        }?;
+
+        seen_ops.insert(self.clone(), res.clone());
+        Ok(res)
     }
 
     fn cache_maximize(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {

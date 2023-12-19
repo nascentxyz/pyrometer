@@ -163,7 +163,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
             Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
-            self.simplify_exec_op(true, &mut vec![], analyzer)
+            self.simplify_exec_op(true, &mut Default::default(), analyzer)
         } else {
             self.exec_op(true, analyzer)
         }
@@ -172,7 +172,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
             Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
-            self.simplify_exec_op(false, &mut vec![], analyzer)
+            self.simplify_exec_op(false, &mut Default::default(), analyzer)
         } else {
             self.exec_op(false, analyzer)    
         }
@@ -180,15 +180,15 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
     fn simplify_maximize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_max) = &self.flattened_max {
             return Ok(*simp_max.clone());
         }
 
-        let l = self.lhs.simplify_maximize(exclude, analyzer)?;
-        let r = self.rhs.simplify_maximize(exclude, analyzer)?;
+        let l = self.lhs.simplify_maximize(seen_ops, analyzer)?;
+        let r = self.rhs.simplify_maximize(seen_ops, analyzer)?;
         let collapsed = collapse(l, self.op, r);
         match collapsed {
             MaybeCollapsed::Concretes(l, r) => {
@@ -197,7 +197,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(l, r) => {
                 // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
-                match RangeExpr::new(l, self.op, r).simplify_exec_op(true, &mut vec![], analyzer)? {
+                match RangeExpr::new(l, self.op, r).simplify_exec_op(true, seen_ops, analyzer)? {
                     ref e @ Elem::Expr(ref expr) => {
                         match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
                             MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, expr.op, r).exec_op(true, analyzer),
@@ -212,15 +212,15 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
     fn simplify_minimize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_min) = &self.flattened_min {
             return Ok(*simp_min.clone());
         }
 
-        let l = self.lhs.simplify_minimize(exclude, analyzer)?;
-        let r = self.rhs.simplify_minimize(exclude, analyzer)?;
+        let l = self.lhs.simplify_minimize(seen_ops, analyzer)?;
+        let r = self.rhs.simplify_minimize(seen_ops, analyzer)?;
         let collapsed = collapse(l, self.op, r);
         match collapsed {
             MaybeCollapsed::Concretes(l, r) => {
@@ -229,7 +229,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(l, r) => {
                 // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
-                match RangeExpr::new(l, self.op, r).simplify_exec_op(false, &mut vec![], analyzer)? {
+                match RangeExpr::new(l, self.op, r).simplify_exec_op(false, seen_ops, analyzer)? {
                     ref e @ Elem::Expr(ref expr) => {
                         match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
                             MaybeCollapsed::Concretes(l, r) => RangeExpr::new(l, expr.op, r).exec_op(false, analyzer),
@@ -246,12 +246,12 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
         if self.flattened_max.is_none() {
             let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut vec![], g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
             let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut vec![], g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())

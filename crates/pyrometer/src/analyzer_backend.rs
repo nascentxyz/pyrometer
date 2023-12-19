@@ -45,6 +45,9 @@ impl AnalyzerLike for Analyzer {
     }
 
     fn add_expr_err(&mut self, err: ExprErr) {
+        if self.debug_panic() {
+            panic!("Encountered an error: {err:?}");
+        }
         if !self.expr_errs.contains(&err) {
             self.expr_errs.push(err);
         }
@@ -223,4 +226,6 @@ impl AnalyzerLike for Analyzer {
             None
         }
     }
+
+    fn debug_panic(&self) -> bool { self.debug_panic }
 }

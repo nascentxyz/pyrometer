@@ -599,24 +599,6 @@ impl VarType {
     //     }
     // }
 
-    pub fn get_index_dynamic_ty(
-        &self,
-        index: ContextVarNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<VarType, GraphError> {
-        // if let Some(var_ty) = self.try_match_index_dynamic_ty(index, analyzer)? {
-        //     Ok(VarType::try_from_idx(analyzer, var_ty).unwrap())
-        // } else {
-        match self {
-            Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),
-            Self::Concrete(node) => node.dynamic_underlying_ty(analyzer),
-            e => Err(GraphError::NodeConfusion(format!(
-                "Node type confusion: expected node to be Builtin but it was: {e:?}"
-            ))),
-        }
-        // }
-    }
-
     pub fn dynamic_underlying_ty(
         &self,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),

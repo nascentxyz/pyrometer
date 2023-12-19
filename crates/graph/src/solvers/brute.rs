@@ -605,7 +605,7 @@ impl SolcSolver for BruteBinSearchSolver {
                 .filter_map(|(_, range)| {
                     if let Some(atom) = range
                         .min
-                        .simplify_minimize(&mut vec![], analyzer)
+                        .simplify_minimize(&mut Default::default(), analyzer)
                         .unwrap()
                         .atomize()
                     {
@@ -613,7 +613,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     } else {
                         range
                             .max
-                            .simplify_maximize(&mut vec![], analyzer)
+                            .simplify_maximize(&mut Default::default(), analyzer)
                             .unwrap()
                             .atomize()
                     }

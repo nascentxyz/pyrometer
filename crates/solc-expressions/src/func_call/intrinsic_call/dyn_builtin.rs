@@ -232,8 +232,8 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 Ok(())
             }
             (VarType::BuiltIn(_bn, Some(r)), VarType::BuiltIn(_bn2, Some(r2))) => {
-                let min = r.min.clone().concat(r2.min.clone()).simplify_minimize(&mut vec![], self).into_expr_err(loc)?;
-                let max = r.max.clone().concat(r2.max.clone()).simplify_maximize(&mut vec![], self).into_expr_err(loc)?;
+                let min = r.min.clone().concat(r2.min.clone()).simplify_minimize(&mut Default::default(), self).into_expr_err(loc)?;
+                let max = r.max.clone().concat(r2.max.clone()).simplify_maximize(&mut Default::default(), self).into_expr_err(loc)?;
                 accum.set_range_min(self, min).into_expr_err(loc)?;
                 accum.set_range_max(self, max).into_expr_err(loc)?;
                 Ok(())

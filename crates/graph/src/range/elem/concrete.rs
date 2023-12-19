@@ -139,14 +139,14 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
 
     fn simplify_maximize(
         &self,
-        _exclude: &mut Vec<NodeIdx>,
+        _seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         _analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
     fn simplify_minimize(
         &self,
-        _exclude: &mut Vec<NodeIdx>,
+        _seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         _analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))

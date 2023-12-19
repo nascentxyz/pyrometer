@@ -33,13 +33,13 @@ pub trait RangeElem<T: Ord> {
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_maximize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_minimize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Checks if two range elements are equal

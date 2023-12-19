@@ -23,7 +23,13 @@ pub trait GraphLike {
     fn graph(&self) -> &Graph<Self::Node, Self::Edge, Directed, usize>;
     /// Add a node to the graph
     fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx {
-        self.graph_mut().add_node(node.into())
+        let res = self.graph_mut().add_node(node.into());
+        // if res == 81.into() {
+        //     panic!("here");
+        // } else {
+        //     res
+        // }
+        res
     }
     /// Get a reference to a node in the graph
     fn node(&self, node: impl Into<NodeIdx>) -> &Self::Node {

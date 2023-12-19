@@ -180,8 +180,8 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 .unwrap()
             {
                 if let Some(r) = next_arr.ref_range(self).unwrap() {
-                    let min = r.simplified_range_min(&mut vec![], self).unwrap();
-                    let max = r.simplified_range_max(&mut vec![], self).unwrap();
+                    let min = r.simplified_range_min(self).unwrap();
+                    let max = r.simplified_range_max(self).unwrap();
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         ContextVarNode::from(len_node).set_range_min(self, *rd.len.clone()).unwrap();
                         rd.len = Box::new(Elem::from(len_node));

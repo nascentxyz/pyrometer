@@ -133,12 +133,12 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
         if self.flattened_max.is_none() {
             let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut vec![], g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
             let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut vec![], g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
@@ -198,7 +198,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
     fn simplify_maximize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_max) = &self.flattened_max {
@@ -214,13 +214,13 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             )))
         } else {
             self.flatten(true, analyzer)?
-                .simplify_maximize(exclude, analyzer)
+                .simplify_maximize(seen_ops, analyzer)
         }
     }
 
     fn simplify_minimize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_min) = &self.flattened_min {
@@ -234,7 +234,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             )))
         } else {
             self.flatten(false, analyzer)?
-                .simplify_minimize(exclude, analyzer)
+                .simplify_minimize(seen_ops, analyzer)
         }
     }
 

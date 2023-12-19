@@ -1,5 +1,6 @@
-use crate::{range::elem::{RangeDyn, Elem}, GraphBackend};
-use shared::NodeIdx;
+use crate::{range::elem::{Elem}, GraphBackend};
+use std::collections::BTreeMap;
+
 
 /// For execution of operations to be performed on range expressions
 pub trait ExecOp<T> {
@@ -32,7 +33,7 @@ pub trait ExecOp<T> {
 
     fn simplify_spread(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), Self::GraphError>;
 
@@ -41,7 +42,7 @@ pub trait ExecOp<T> {
     fn simplify_exec_op(
         &self,
         maximize: bool,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
 

@@ -764,11 +764,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             new_rhs = new_rhs.latest_version(self);
             new_lhs = new_lhs.latest_version(self);
-
-            // self.update_array_if_index_access(ctx, loc, new_lhs, new_rhs)?;
-            // self.update_array_if_index_access(ctx, loc, new_rhs, new_lhs)?;
-            // self.update_array_if_length_var(ctx, loc, new_lhs)?;
-            // self.update_array_if_length_var(ctx, loc, new_rhs)?;
             
             let rhs_display_name = new_rhs.display_name(self).into_expr_err(loc)?;
             let display_name = if rhs_display_name == "true" {
@@ -977,8 +972,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     .set_range_min(self, elem.clone())
                     .into_expr_err(loc)?;
                 nonconst_var.set_range_max(self, elem).into_expr_err(loc)?;
-                // self.update_array_min_if_length(ctx, loc, nonconst_var)?;
-                // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Neq => {
@@ -999,7 +992,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
                     nonconst_var.set_range_min(self, min).into_expr_err(loc)?;
-                    self.update_array_min_if_length(ctx, loc, nonconst_var)?;
                 } else if let Some(std::cmp::Ordering::Equal) = nonconst_range
                     .evaled_range_max(self)
                     .into_expr_err(loc)?
@@ -1014,7 +1006,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
                     nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
-                    // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 } else {
                     // just add as an exclusion
                     nonconst_range.add_range_exclusion(elem);
@@ -1055,7 +1046,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (elem + one.into()).max(nonconst_range.range_min().into_owned()),
                     )
                     .into_expr_err(loc)?;
-                // self.update_array_min_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Gte => {
@@ -1075,7 +1065,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 nonconst_var
                     .set_range_min(self, elem.max(nonconst_range.range_min().into_owned()))
                     .into_expr_err(loc)?;
-                self.update_array_min_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Lt => {
@@ -1103,7 +1092,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (elem - one.into()).min(nonconst_range.range_max().into_owned()),
                     )
                     .into_expr_err(loc)?;
-                // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             RangeOp::Lte => {
@@ -1121,7 +1109,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 nonconst_var
                     .set_range_max(self, elem.min(nonconst_range.range_max().into_owned()))
                     .into_expr_err(loc)?;
-                // self.update_array_max_if_length(ctx, loc, nonconst_var)?;
                 Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),
@@ -1193,11 +1180,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     }
                 }
 
-                // self.update_array_min_if_length(ctx, loc, new_rhs)?;
-                // self.update_array_min_if_length(ctx, loc, new_lhs)?;
-                // self.update_array_max_if_length(ctx, loc, new_rhs)?;
-                // self.update_array_max_if_length(ctx, loc, new_lhs)?;
-
                 Ok(false)
             }
             RangeOp::Neq => {
@@ -1255,8 +1237,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     )
                     .into_expr_err(loc)?;
 
-                // self.update_array_min_if_length(ctx, loc, new_rhs)?;
-                // self.update_array_min_if_length(ctx, loc, new_lhs)?;
                 Ok(false)
             }
             RangeOp::Gte => {
@@ -1293,8 +1273,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 new_new_rhs
                     .set_range_max(self, new_max)
                     .into_expr_err(loc)?;
-                // self.update_array_min_if_length(ctx, loc, new_rhs)?;
-                // self.update_array_min_if_length(ctx, loc, new_lhs)?;
                 Ok(false)
             }
             RangeOp::Lt => {
@@ -1334,8 +1312,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         (lhs_elem + one.into()).max(rhs_range.range_min().into_owned()),
                     )
                     .into_expr_err(loc)?;
-                // self.update_array_max_if_length(ctx, loc, new_rhs)?;
-                // self.update_array_max_if_length(ctx, loc, new_lhs)?;
                 Ok(false)
             }
             RangeOp::Lte => {
@@ -1359,8 +1335,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     .latest_version(self)
                     .set_range_min(self, lhs_elem.max(rhs_range.range_min().into_owned()))
                     .into_expr_err(loc)?;
-                // self.update_array_max_if_length(ctx, loc, new_rhs.latest_version(self))?;
-                // self.update_array_max_if_length(ctx, loc, new_lhs.latest_version(self))?;
                 Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),

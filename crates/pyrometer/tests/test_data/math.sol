@@ -627,7 +627,13 @@ contract Unchecked {
     function symbUncheckedMul(int256 a, int b) public {
         unchecked {
             a = a * b;
+            int c = a * a / a;
+            int d = a * c * b;
         }
+
+        a = a * b;
+        int c = a * a / a;
+        int d = a * c * b;
     }
 
     function asmSymbUncheckedMul(int256 a, int b) public {

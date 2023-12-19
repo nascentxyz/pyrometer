@@ -155,7 +155,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         length_requirement: bool,
         return_var: bool,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
-        println!("access array: {}, parent: {}", index.display_name(self).unwrap(), parent.display_name(self).unwrap());
         let idx = self.advance_var_in_ctx(index, loc, ctx)?;
         if length_requirement && !parent.is_mapping(self).into_expr_err(loc)? && parent.is_indexable(self).into_expr_err(loc)? {
             let len_var = self.get_length(ctx, loc, parent, true)?.unwrap().latest_version(self);
@@ -182,8 +181,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
         } else {
             let ty = parent.ty(self).into_expr_err(loc)?.clone();
-            let ty = ty.get_index_dynamic_ty(index, self).into_expr_err(loc)?;
-            // println!("index access ty: {:?#")
+
+            let ty = ty.dynamic_underlying_ty(self).into_expr_err(loc)?;
+            let has_range = ty.ref_range(self).into_expr_err(loc)?.is_some();
             let index_access_var = ContextVar {
                 loc: Some(loc),
                 name: name.clone(),
@@ -206,25 +206,30 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             ctx.add_var(idx_access_node.into(), self).into_expr_err(loc)?;
             self.add_edge(index, idx_access_node, Edge::Context(ContextEdge::Index));
 
-            let min = Elem::from(parent).get_index(index.into()).max(ContextVarNode::from(idx_access_node).into()); //.range_min(self).unwrap().unwrap());
-            let max = Elem::from(parent).get_index(index.into()).min(ContextVarNode::from(idx_access_node).into()); //.range_max(self).unwrap().unwrap());
-            
-            let idx_access_cvar = self.advance_var_in_ctx_forcible(ContextVarNode::from(idx_access_node), loc, ctx, true)?;
-            idx_access_cvar.set_range_min(self, min).into_expr_err(loc)?;
-            idx_access_cvar.set_range_max(self, max).into_expr_err(loc)?;
+            let idx_access_cvar = if has_range {
+                let min = Elem::from(parent).get_index(index.into()).max(ContextVarNode::from(idx_access_node).into()); //.range_min(self).unwrap().unwrap());
+                let max = Elem::from(parent).get_index(index.into()).min(ContextVarNode::from(idx_access_node).into()); //.range_max(self).unwrap().unwrap());
+                
+                let idx_access_cvar = self.advance_var_in_ctx(ContextVarNode::from(idx_access_node), loc, ctx)?;
+                idx_access_cvar.set_range_min(self, min).into_expr_err(loc)?;
+                idx_access_cvar.set_range_max(self, max).into_expr_err(loc)?;
 
-            if idx_access_cvar
-                .underlying(self)
-                .into_expr_err(loc)?
-                .ty
-                .is_dyn_builtin(self)
-                .into_expr_err(loc)?
-            {
-                // if the index access is also an array, produce a length variable
-                // we specify to return the variable because we dont want it on the stack
-                let _ = self.get_length(ctx, loc, idx_access_node.into(), true)?;
+                if idx_access_cvar
+                    .underlying(self)
+                    .into_expr_err(loc)?
+                    .ty
+                    .is_dyn_builtin(self)
+                    .into_expr_err(loc)?
+                {
+                    // if the index access is also an array, produce a length variable
+                    // we specify to return the variable because we dont want it on the stack
+                    let _ = self.get_length(ctx, loc, idx_access_node.into(), true)?;
 
-            }
+                }
+                idx_access_cvar
+            } else {
+                ContextVarNode::from(idx_access_node)
+            };
 
             if !return_var {
                 ctx.push_expr(ExprRet::Single(idx_access_cvar.latest_version(self).into()), self).into_expr_err(loc)?;
@@ -242,10 +247,8 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         maybe_index_access: ContextVarNode,
         new_value: ContextVarNode
     ) -> Result<(), ExprErr> {
-        // println!("checking if array access: {} (idx {})", maybe_index_access.display_name(self).unwrap(), maybe_index_access.0);
         if let Some(arr) = maybe_index_access.index_access_to_array(self) {
             // Was indeed an indexed value
-            // println!("updating index to array: {}, index: {}", arr.display_name(self).unwrap(), maybe_index_access.display_name(self).unwrap());
             if let Some(index) = maybe_index_access.index_access_to_index(self) {
                 // Found the associated index
                 let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, ctx)?;

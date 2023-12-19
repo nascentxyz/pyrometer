@@ -1,5 +1,5 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, member_access::ListAccess};
 
 use graph::{
     nodes::{
@@ -43,7 +43,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         let mut new_cvar = self.add_if_err(res)?;
                         new_cvar.loc = Some(param.loc(self).unwrap());
                         new_cvar.name = name.clone();
-                        new_cvar.display_name = name;
+                        new_cvar.display_name = name.clone();
                         new_cvar.is_tmp = false;
                         new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
                             param.underlying(self).unwrap().storage
@@ -69,6 +69,14 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             input.latest_version(self),
                             Edge::Context(ContextEdge::InputVariable),
                         );
+
+
+
+                        if let Some(_len_var) = input.array_to_len_var(self) {
+                            // bring the length variable along as well
+                            self.get_length(callee_ctx, loc, node, false).unwrap();
+                        }
+                        let node = node.latest_version(self);
 
                         if let (Some(r), Some(r2)) =
                             (node.range(self).unwrap(), param.range(self).unwrap())

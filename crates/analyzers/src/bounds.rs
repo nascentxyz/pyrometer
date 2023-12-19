@@ -265,9 +265,8 @@ pub fn range_parts(
             .to_range_string(false, analyzer)
             .s
     } else if report_config.simplify_bounds {
-        let mut exclude = vec![];
         range
-            .simplified_range_min(&mut exclude, analyzer)
+            .simplified_range_min(analyzer)
             .unwrap()
             .to_range_string(false, analyzer)
             .s
@@ -281,9 +280,8 @@ pub fn range_parts(
             .to_range_string(true, analyzer)
             .s
     } else if report_config.simplify_bounds {
-        let mut exclude = vec![];
         range
-            .simplified_range_max(&mut exclude, analyzer)
+            .simplified_range_max(analyzer)
             .unwrap()
             .to_range_string(true, analyzer)
             .s

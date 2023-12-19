@@ -123,6 +123,8 @@ pub struct Analyzer {
     pub max_width: usize,
     /// Dummy function used during parsing to attach contexts to for more complex first-pass parsing (i.e. before `final_pass`)
     pub parse_fn: FunctionNode,
+    /// Whether to force a panic on first error encountered
+    pub debug_panic: bool,
 }
 
 impl Default for Analyzer {
@@ -146,6 +148,7 @@ impl Default for Analyzer {
             max_depth: 200,
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
+            debug_panic: false,
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 

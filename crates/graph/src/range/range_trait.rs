@@ -20,13 +20,11 @@ pub trait Range<T: Ord> {
     /// Simplify the minimum, leaving references in place
     fn simplified_range_min(
         &self,
-        exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Self::ElemTy, Self::GraphError>;
     /// Simplify the maximum, leaving references in place
     fn simplified_range_max(
         &self,
-        exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Self::ElemTy, Self::GraphError>;
     /// Return the range minimum

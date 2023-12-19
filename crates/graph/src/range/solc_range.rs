@@ -569,13 +569,13 @@ impl SolcRange {
 
         let flattened_min = self.range_min().flatten(false, analyzer)?;
         let simp_min = if !self.range_min().is_flatten_cached() {
-            flattened_min.simplify_minimize(&mut vec![], analyzer)?
+            flattened_min.simplify_minimize(&mut Default::default(), analyzer)?
         } else {
             flattened_min
         };
         let flattened_max = self.range_max().flatten(true, analyzer)?;
         let simp_max = if !self.range_max().is_flatten_cached() {
-            flattened_max.simplify_maximize(&mut vec![], analyzer)?
+            flattened_max.simplify_maximize(&mut Default::default(), analyzer)?
         } else {
             flattened_max
         };
@@ -634,21 +634,19 @@ impl Range<Concrete> for SolcRange {
 
     fn simplified_range_min(
         &self,
-        exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Self::ElemTy, GraphError> {
         self.range_min()
             .flatten(false, analyzer)?
-            .simplify_minimize(exclude, analyzer)
+            .simplify_minimize(&mut Default::default(), analyzer)
     }
     fn simplified_range_max(
         &self,
-        exclude: &mut Vec<NodeIdx>,
         analyzer: &impl GraphBackend,
     ) -> Result<Self::ElemTy, GraphError> {
         self.range_max()
             .flatten(true, analyzer)?
-            .simplify_maximize(exclude, analyzer)
+            .simplify_maximize(&mut Default::default(), analyzer)
     }
 
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {

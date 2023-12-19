@@ -144,18 +144,15 @@ impl ContextVarNode {
 
     pub fn as_controllable_name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         if let Some(ref_range) = self.ref_range(analyzer)? {
-            let mut exclude = vec![];
-
             let min_name = ref_range
                 .range_min()
-                .simplify_minimize(&mut exclude, analyzer)?
+                .simplify_minimize(&mut Default::default(), analyzer)?
                 .to_range_string(false, analyzer)
                 .s;
 
-            exclude = vec![];
             let max_name = ref_range
                 .range_max()
-                .simplify_maximize(&mut exclude, analyzer)?
+                .simplify_maximize(&mut Default::default(), analyzer)?
                 .to_range_string(true, analyzer)
                 .s;
             if max_name == min_name {
@@ -292,11 +289,29 @@ impl ContextVarNode {
         analyzer: &impl GraphBackend,
         return_self: bool,
     ) -> Result<Vec<Self>, GraphError> {
+        self.dependent_on_no_recursion(analyzer, &mut vec![*self], return_self)
+    }
+
+    fn dependent_on_no_recursion(
+        &self,
+        analyzer: &impl GraphBackend,
+        seen: &mut Vec<Self>,
+        return_self: bool,
+    ) -> Result<Vec<Self>, GraphError> {
         let underlying = self.underlying(analyzer)?;
         if let Some(tmp) = underlying.tmp_of() {
-            let mut nodes = tmp.lhs.dependent_on(analyzer, true)?;
+            let mut nodes = if !seen.contains(&tmp.lhs) {
+                seen.push(tmp.lhs);
+                tmp.lhs.dependent_on(analyzer, true)?
+            } else {
+                vec![]
+            };
+            
             if let Some(rhs) = tmp.rhs {
-                nodes.extend(rhs.dependent_on(analyzer, true)?);
+                if !seen.contains(&rhs) {
+                    seen.push(rhs);
+                    nodes.extend(rhs.dependent_on(analyzer, true)?);    
+                }
             }
             Ok(nodes)
         } else if return_self {

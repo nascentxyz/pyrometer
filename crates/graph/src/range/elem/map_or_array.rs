@@ -228,12 +228,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
         if self.flattened_max.is_none() {
             let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut vec![], g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
             let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut vec![], g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
@@ -277,7 +277,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     // We dont maximize the key so that any subsequent
                     // `get_index` can find potential values
                     let maximized = val.0.maximize(analyzer)?;
-                    map.insert(idx.simplify_maximize(&mut vec![], analyzer)?, (maximized, val.1));
+                    map.insert(idx.simplify_maximize(&mut Default::default(), analyzer)?, (maximized, val.1));
                 }
 
                 // map.into_iter().filter(|(k, (v, op))| {
@@ -302,7 +302,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     // We dont minimize the key so that any subsequent
                     // `get_index` can find potential values
                     let minimized = val.0.minimize(analyzer)?;
-                    map.insert(idx.simplify_minimize(&mut vec![], analyzer)?, (minimized, val.1));
+                    map.insert(idx.simplify_minimize(&mut Default::default(), analyzer)?, (minimized, val.1));
                 }
 
                 // map.into_iter().filter(|(k, (v, op))| {
@@ -316,20 +316,20 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
 
     fn simplify_maximize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(max) = &self.flattened_max {
             return Ok(*max.clone());
         }
         Ok(Elem::ConcreteDyn(Self::new_w_op_nums(
-            self.len.simplify_maximize(exclude, analyzer)?,
+            self.len.simplify_maximize(seen_ops, analyzer)?,
             {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
                     // We dont minimize the key so that any subsequent
                     // `get_index` can find potential values
-                    let simplified = val.0.simplify_maximize(exclude, analyzer)?;
+                    let simplified = val.0.simplify_maximize(seen_ops, analyzer)?;
                     map.insert(idx, (simplified, val.1));
                 }
                 map
@@ -340,7 +340,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     }
     fn simplify_minimize(
         &self,
-        exclude: &mut Vec<NodeIdx>,
+        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(min) = &self.flattened_min {
@@ -348,13 +348,13 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         }
 
         Ok(Elem::ConcreteDyn(Self::new_w_op_nums(
-            self.len.simplify_minimize(exclude, analyzer)?,
+            self.len.simplify_minimize(seen_ops, analyzer)?,
             {
                 let mut map = BTreeMap::default();
                 for (idx, val) in self.val.clone().into_iter() {
                     // We dont minimize the key so that any subsequent
                     // `get_index` can find potential values
-                    let simplified = val.0.simplify_minimize(exclude, analyzer)?;
+                    let simplified = val.0.simplify_minimize(seen_ops, analyzer)?;
                     map.insert(idx, (simplified, val.1));
                 }
                 map
