@@ -52,7 +52,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         true
     }
 
-    fn cache_flatten(&mut self, _: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_flatten(&mut self, _: &mut impl GraphBackend) -> Result<(), GraphError> {
         Ok(())
     }
 
@@ -152,11 +152,11 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(Elem::Concrete(self.clone()))
     }
 
-    fn cache_maximize(&mut self, _g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_maximize(&mut self, _g: &mut impl GraphBackend) -> Result<(), GraphError> {
         Ok(())
     }
 
-    fn cache_minimize(&mut self, _g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_minimize(&mut self, _g: &mut impl GraphBackend) -> Result<(), GraphError> {
         Ok(())
     }
     fn uncache(&mut self) {}

@@ -22,7 +22,7 @@ pub trait ExecOp<T> {
     fn cache_exec_op(
         &mut self,
         maximize: bool,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<(), Self::GraphError>;
 
     fn spread(

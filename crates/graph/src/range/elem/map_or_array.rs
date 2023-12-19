@@ -233,15 +233,29 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         }))
     }
 
-    fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.flattened_max.is_none() {
-            let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
+            self.len.cache_flatten(analyzer)?;
+            let mapping = std::mem::take(&mut self.val);
+            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
+                idx.cache_flatten(analyzer).unwrap();
+                val.0.cache_flatten(analyzer).unwrap();
+                (idx, val)
+            }).collect();
+            let flat_max = self.flatten(true, analyzer)?;
+            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), analyzer)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
-            let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
+            self.len.cache_flatten(analyzer)?;
+            let mapping = std::mem::take(&mut self.val);
+            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
+                idx.cache_flatten(analyzer).unwrap();
+                val.0.cache_flatten(analyzer).unwrap();
+                (idx, val)
+            }).collect();
+            let flat_min = self.flatten(false, analyzer)?;
+            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), analyzer)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
@@ -376,15 +390,29 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         )))
     }
 
-    fn cache_maximize(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.maximized.is_none() {
+            self.len.cache_maximize(g)?;
+            let mapping = std::mem::take(&mut self.val);
+            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
+                idx.cache_maximize(g).unwrap();
+                val.0.cache_maximize(g).unwrap();
+                (idx, val)
+            }).collect();
             self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
         }
         Ok(())
     }
 
-    fn cache_minimize(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.minimized.is_none() {
+            self.len.cache_minimize(g)?;
+            let mapping = std::mem::take(&mut self.val);
+            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
+                idx.cache_minimize(g).unwrap();
+                val.0.cache_minimize(g).unwrap();
+                (idx, val)
+            }).collect();
             self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
         }
         Ok(())

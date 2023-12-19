@@ -600,7 +600,7 @@ impl Range<Concrete> for SolcRange {
         &mut self.max
     }
 
-    fn cache_eval(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_eval(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
             max.cache_flatten(analyzer)?;

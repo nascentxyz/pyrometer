@@ -14,7 +14,7 @@ impl ContextNode {
         var: ContextVarNode,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
-        var.cache_range(analyzer)?;
+        // var.cache_range(analyzer)?;
         let name = var.name(analyzer)?;
         let vars = &mut self.underlying_mut(analyzer)?.cache.vars;
         vars.insert(name, var);

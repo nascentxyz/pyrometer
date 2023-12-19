@@ -130,13 +130,17 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
-    fn cache_flatten(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.flattened_max.is_none() {
+            let cvar = ContextVarNode::from(self.idx);
+            cvar.cache_flattened_range(g)?;
             let flat_max = self.flatten(true, g)?;
             let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
+            let cvar = ContextVarNode::from(self.idx);
+            cvar.cache_flattened_range(g)?;
             let flat_min = self.flatten(false, g)?;
             let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
@@ -238,15 +242,19 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn cache_maximize(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.maximized.is_none() {
+            let cvar = ContextVarNode::from(self.idx);
+            cvar.cache_eval_range(g)?;
             self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
         }
         Ok(())
     }
 
-    fn cache_minimize(&mut self, g: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.minimized.is_none() {
+            let cvar = ContextVarNode::from(self.idx);
+            cvar.cache_eval_range(g)?;
             self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
         }
         Ok(())

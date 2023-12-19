@@ -19,15 +19,15 @@ pub trait RangeElem<T: Ord> {
     /// Returns whether `cache_flatten` has been called
     fn is_flatten_cached(&self) -> bool;
     /// Flattens an element and caches the result
-    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
+    fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
     /// Maximizes the element and caches the result for quicker use later
-    fn cache_maximize(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
+    fn cache_maximize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its minimum value
     fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
     /// Minimizes the element and caches the result for quicker use later
-    fn cache_minimize(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
+    fn cache_minimize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Uncaches the minimum and maximum
     fn uncache(&mut self);
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)

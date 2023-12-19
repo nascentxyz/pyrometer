@@ -360,12 +360,12 @@ fn main() {
                                 // println!("{:#?}", c.ctx_deps_as_controllables_str(&analyzer).unwrap());
                                 if let Some(mut solver) = BruteBinSearchSolver::maybe_new(
                                     c.ctx_deps(&analyzer).unwrap(),
-                                    &analyzer,
+                                    &mut analyzer,
                                 )
                                 .unwrap()
                                 {
                                     println!("created solver");
-                                    match solver.solve(&analyzer).unwrap() {
+                                    match solver.solve(&mut analyzer).unwrap() {
                                         AtomicSolveStatus::Unsat => {
                                             println!("TRUE UNSAT: {}", c.path(&analyzer));
                                         }

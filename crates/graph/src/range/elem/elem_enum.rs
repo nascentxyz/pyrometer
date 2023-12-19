@@ -558,7 +558,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer),
             Self::Concrete(c) => c.cache_flatten(analyzer),
@@ -714,7 +714,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         Ok(res)
     }
 
-    fn cache_maximize(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_maximize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         use Elem::*;
         match self {
             Reference(dy) => dy.cache_maximize(analyzer),
@@ -732,7 +732,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn cache_minimize(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_minimize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         use Elem::*;
         match self {
             Reference(dy) => dy.cache_minimize(analyzer),

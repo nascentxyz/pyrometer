@@ -119,13 +119,21 @@ impl ContextVarNode {
         Ok(())
     }
 
-    // pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-    //     if let Some(mut range) = self.range(analyzer)? {
-    //         range.cache_flatten(analyzer)?;
-    //         self.set_range(analyzer, range)?;
-    //     }
-    //     Ok(())
-    // }
+    pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        if let Some(mut range) = self.range(analyzer)? {
+            range.cache_flatten(analyzer)?;
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
+
+    pub fn cache_eval_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        if let Some(mut range) = self.range(analyzer)? {
+            range.cache_eval(analyzer)?;
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
 
     pub fn set_range(
         &self,
@@ -176,6 +184,9 @@ impl ContextVarNode {
             }
         }
 
+        // new_min.cache_flatten(analyzer)?;
+        // new_min.cache_minimize(analyzer)?;
+
         tracing::trace!(
             "setting range minimum: {} (node idx: {}), current:{}, new_min:{}, deps: {:#?}",
             self.display_name(analyzer)?,
@@ -215,6 +226,10 @@ impl ContextVarNode {
                 new_max.filter_recursion((*self).into(), prev.into());
             }
         }
+
+        // new_max.cache_flatten(analyzer)?;
+        // new_max.cache_maximize(analyzer)?;
+
 
         tracing::trace!(
             "setting range maximum: {:?}, {}, current: {}, new: {}",
@@ -276,6 +291,9 @@ impl ContextVarNode {
             }
         }
 
+        new_min.cache_flatten(analyzer)?;
+        new_min.cache_minimize(analyzer)?;
+
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
             new_ty.concrete_to_builtin(analyzer)?;
@@ -304,6 +322,9 @@ impl ContextVarNode {
                 new_max.filter_recursion((*self).into(), prev.into());
             }
         }
+
+        new_max.cache_flatten(analyzer)?;
+        new_max.cache_maximize(analyzer)?;
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();

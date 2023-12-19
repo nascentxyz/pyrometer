@@ -15,20 +15,20 @@ pub trait SolcSolver {
     fn simplify(&mut self, analyzer: &(impl GraphBackend + AnalyzerBackend));
     fn solve(
         &mut self,
-        analyzer: &(impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<AtomicSolveStatus, GraphError>;
     fn recurse_check(
         &mut self,
         idx: usize,
         solved_atomics: &mut Vec<usize>,
-        analyzer: &(impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<bool, GraphError>;
     fn check(
         &mut self,
         solved_for: usize,
         lmr: (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>),
         solved_atomics: &mut Vec<usize>,
-        analyzer: &(impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(bool, Option<HintOrRanges>), GraphError>;
 }
 
@@ -83,7 +83,7 @@ pub enum HintOrRanges {
 impl BruteBinSearchSolver {
     pub fn maybe_new(
         deps: Vec<ContextVarNode>,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<Option<Self>, GraphError> {
         let mut atomic_idxs = vec![];
 
@@ -184,7 +184,7 @@ impl BruteBinSearchSolver {
     pub fn lmr(
         &self,
         atomic: &Atomic,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>) {
         let range = &self.atomic_ranges[atomic];
         let mut min = range.evaled_range_min(analyzer).unwrap();
@@ -197,14 +197,14 @@ impl BruteBinSearchSolver {
         (min, mid, max)
     }
 
-    pub fn reset_lmrs(&mut self, analyzer: &impl GraphBackend) {
+    pub fn reset_lmrs(&mut self, analyzer: &mut impl GraphBackend) {
         self.lmrs = vec![];
         (0..self.atomic_ranges.len()).for_each(|i| {
             self.lmrs.push(self.lmr(&self.atomics[i], analyzer).into());
         });
     }
 
-    pub fn reset_lmr(&mut self, i: usize, analyzer: &impl GraphBackend) {
+    pub fn reset_lmr(&mut self, i: usize, analyzer: &mut impl GraphBackend) {
         self.lmrs[i] = self.lmr(&self.atomics[i], analyzer).into();
     }
 
@@ -274,7 +274,7 @@ impl SolcSolver for BruteBinSearchSolver {
 
     fn solve(
         &mut self,
-        analyzer: &(impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<AtomicSolveStatus, GraphError> {
         // pick a value for a variable. check if it satisfies all dependendies
         // if is sat, try to reduce using bin search? Not sure how that will
@@ -431,7 +431,7 @@ impl SolcSolver for BruteBinSearchSolver {
         &mut self,
         i: usize,
         solved_atomics: &mut Vec<usize>,
-        analyzer: &(impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<bool, GraphError> {
         // println!("recurse check for: {}", self.atomics[i].idxs[0].display_name(analyzer).unwrap());
         if i >= self.lmrs.len() {
@@ -515,7 +515,7 @@ impl SolcSolver for BruteBinSearchSolver {
         solved_for_idx: usize,
         (low, mid, high): (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>),
         solved_atomics: &mut Vec<usize>,
-        analyzer: &(impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
         let solved_dep = &self.atomics[solved_for_idx].clone();
 
@@ -528,7 +528,7 @@ impl SolcSolver for BruteBinSearchSolver {
             mut mid_done: bool,
             mut high_done: bool,
             solved_atomics: &mut Vec<usize>,
-            analyzer: &impl GraphBackend,
+            analyzer: &mut impl GraphBackend,
         ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
             let res = if !low_done {
                 check_for_lmr(
@@ -590,7 +590,7 @@ impl SolcSolver for BruteBinSearchSolver {
             solved_dep: &Atomic,
             conc: Elem<Concrete>,
             solved_atomics: &mut Vec<usize>,
-            analyzer: &impl GraphBackend,
+            analyzer: &mut impl GraphBackend,
         ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
             // println!("checking: {}, conc: {}, {}", this.atomics[solved_for_idx].idxs[0].display_name(analyzer).unwrap(), conc.maximize(analyzer)?.to_range_string(true, analyzer).s, conc.minimize(analyzer)?.to_range_string(false, analyzer).s);
             solved_atomics.push(solved_for_idx);

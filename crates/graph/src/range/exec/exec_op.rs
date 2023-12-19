@@ -23,7 +23,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
     fn cache_exec_op(
         &mut self,
         maximize: bool,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<(), GraphError> {
         self.lhs.cache_minimize(analyzer)?;
         self.lhs.cache_maximize(analyzer)?;
@@ -286,7 +286,6 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::GetLength => {
                 if maximize {
                     let mut new = lhs_max.clone();
-                    new.uncache();
                     let new_max = new.simplify_minimize(&mut Default::default(), analyzer)?;
                     let res = new_max.range_get_length();
                     res.unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))

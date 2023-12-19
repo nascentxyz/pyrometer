@@ -6,7 +6,7 @@ pub trait Range<T: Ord> {
     type GraphError;
     type ElemTy: RangeElem<T> + Clone;
     /// Evaluate both the minimum and the maximum - cache along the way
-    fn cache_eval(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
+    fn cache_eval(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Evaluate the range minimum
     fn evaled_range_min(
         &self,
