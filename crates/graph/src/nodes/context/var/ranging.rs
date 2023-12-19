@@ -119,8 +119,6 @@ impl ContextVarNode {
         Ok(())
     }
 
-
-
     // pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
     //     if let Some(mut range) = self.range(analyzer)? {
     //         range.cache_flatten(analyzer)?;
@@ -151,7 +149,11 @@ impl ContextVarNode {
         Ok(self.underlying(analyzer)?.needs_fallback())
     }
 
-    pub fn range_contains_elem(&self, elem: Elem<Concrete>, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn range_contains_elem(
+        &self,
+        elem: Elem<Concrete>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         if let Some(r) = self.ref_range(analyzer)? {
             Ok(r.contains_elem(&elem, analyzer))
         } else {
@@ -247,7 +249,10 @@ impl ContextVarNode {
         analyzer: &mut impl GraphBackend,
         new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
-        tracing::trace!("setting range exclusions for {}", self.display_name(analyzer)?);
+        tracing::trace!(
+            "setting range exclusions for {}",
+            self.display_name(analyzer)?
+        );
         assert!(*self == self.latest_version(analyzer));
         let fallback = if self.needs_fallback(analyzer)? {
             self.fallback_range(analyzer)?
@@ -322,7 +327,10 @@ impl ContextVarNode {
         analyzer: &mut impl GraphBackend,
         new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
-        tracing::trace!("setting range exclusions for: {}", self.display_name(analyzer).unwrap());
+        tracing::trace!(
+            "setting range exclusions for: {}",
+            self.display_name(analyzer).unwrap()
+        );
         assert!(*self == self.latest_version(analyzer));
         let fallback = if self.needs_fallback(analyzer)? {
             self.fallback_range(analyzer)?

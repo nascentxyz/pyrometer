@@ -11,7 +11,7 @@ use graph::{
     AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 
-use ethers_core::types::{I256, U256};
+use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BinOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
@@ -209,7 +209,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             Elem::from(Reference::new(rhs_cvar.latest_version(self).into())),
         ));
 
-
         // to prevent some recursive referencing, forcibly increase lhs_cvar
         self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?;
 
@@ -237,7 +236,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
                     } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
-                        // y is symbolic, add 
+                        // y is symbolic, add
                         let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let var = ContextVar::new_from_concrete(
@@ -521,8 +520,14 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         );
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
-                        let tmp_rhs =
-                            self.op(loc, max_node.into(), new_rhs, ctx, RangeOp::Div(true), false)?;
+                        let tmp_rhs = self.op(
+                            loc,
+                            max_node.into(),
+                            new_rhs,
+                            ctx,
+                            RangeOp::Div(true),
+                            false,
+                        )?;
 
                         if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
                             return Ok(tmp_rhs);
@@ -565,7 +570,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             tmp_of: Some(TmpConstruction::new(
                                 tmp_lhs,
                                 RangeOp::Lte,
-                                Some(tmp_rhs.into()),
+                                Some(tmp_rhs),
                             )),
                             is_symbolic: true,
                             is_return: false,
@@ -664,7 +669,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 _ => {}
             }
         } else {
-            
+
             // self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;
         }
 

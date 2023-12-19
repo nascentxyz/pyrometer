@@ -6,7 +6,7 @@ use crate::{
 use graph::{
     elem::*,
     nodes::{BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode},
-    AnalyzerBackend, GraphBackend, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, GraphBackend, Node, Range, VarType,
 };
 use shared::NodeIdx;
 
@@ -152,10 +152,14 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let v_ty = VarType::try_from_idx(analyzer, func_idx).expect("");
                     let maybe_new_range = cvar.cast_exprs(&v_ty, analyzer).into_expr_err(loc)?;
                     new_var.underlying_mut(analyzer).into_expr_err(loc)?.ty = v_ty;
-                    
+
                     if let Some((new_min, new_max)) = maybe_new_range {
-                        new_var.set_range_min(analyzer, new_min).into_expr_err(loc)?;
-                        new_var.set_range_max(analyzer, new_max).into_expr_err(loc)?;
+                        new_var
+                            .set_range_min(analyzer, new_min)
+                            .into_expr_err(loc)?;
+                        new_var
+                            .set_range_max(analyzer, new_max)
+                            .into_expr_err(loc)?;
                     }
 
                     ctx.push_expr(ExprRet::Single(new_var.into()), analyzer)

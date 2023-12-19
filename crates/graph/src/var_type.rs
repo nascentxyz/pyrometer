@@ -1,10 +1,10 @@
 use crate::{
     nodes::{
-        BuiltInNode, Builtin, Concrete, ConcreteNode, ContextVarNode, ContractNode, EnumNode,
-        FunctionNode, StructNode, TyNode,
+        BuiltInNode, Builtin, Concrete, ConcreteNode, ContractNode, EnumNode, FunctionNode,
+        StructNode, TyNode,
     },
     range::{
-        elem::{Elem, RangeElem, Reference},
+        elem::{Elem, RangeElem},
         Range, SolcRange,
     },
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
@@ -12,7 +12,7 @@ use crate::{
 
 use shared::NodeIdx;
 
-use ethers_core::types::{Address, H256, U256};
+use ethers_core::types::{Address, U256};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum VarType {

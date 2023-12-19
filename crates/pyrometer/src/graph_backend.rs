@@ -420,7 +420,9 @@ impl GraphDot for Analyzer {
                 ],
                 &|_graph, edge_ref| {
                     match edge_ref.weight() {
-                        Edge::Context(edge) => format!("label = \"{}\"", format!("{edge:?}").replace('"', "\'")),
+                        Edge::Context(edge) => {
+                            format!("label = \"{}\"", format!("{edge:?}").replace('"', "\'"))
+                        }
                         e => format!("label = \"{}\"", format!("{e:?}").replace('"', "\'")),
                     }
                 },

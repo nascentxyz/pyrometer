@@ -1,4 +1,7 @@
-use crate::{ListAccess, array::Array, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use crate::{
+    array::Array, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    ListAccess,
+};
 
 use graph::{
     elem::Elem,

@@ -1,6 +1,8 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{MaybeCollapsed, collapse, RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference},
+    range::elem::{
+        collapse, MaybeCollapsed, RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference,
+    },
     GraphBackend, GraphError,
 };
 use solang_parser::pt::Loc;
@@ -89,13 +91,11 @@ impl<T: Clone> Elem<T> {
             Elem::Concrete(_a) => true,
             Elem::ConcreteDyn(a) => {
                 a.len.maybe_concrete().is_some()
-                && a.val.iter().all(|(key, (val, _))| {
-                    key.is_conc() && val.is_conc()
-                })
+                    && a.val
+                        .iter()
+                        .all(|(key, (val, _))| key.is_conc() && val.is_conc())
             }
-            Elem::Expr(expr) => {
-                expr.lhs.is_conc() && expr.rhs.is_conc()
-            },
+            Elem::Expr(expr) => expr.lhs.is_conc() && expr.rhs.is_conc(),
             _ => false,
         }
     }
@@ -314,11 +314,14 @@ impl<T> From<NodeIdx> for Elem<T> {
 }
 
 impl Elem<Concrete> {
-    pub fn overlaps(&self, other: &Self, eval: bool, analyzer: &impl GraphBackend) -> Result<Option<bool>, GraphError> {
+    pub fn overlaps(
+        &self,
+        other: &Self,
+        eval: bool,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<bool>, GraphError> {
         match (self, other) {
-            (Elem::Concrete(s), Elem::Concrete(o)) => {
-                Ok(Some(o.val == s.val))
-            }
+            (Elem::Concrete(s), Elem::Concrete(o)) => Ok(Some(o.val == s.val)),
             (Elem::Reference(s), Elem::Reference(o)) => {
                 if eval {
                     let lhs_min = s.minimize(analyzer)?;
@@ -341,13 +344,13 @@ impl Elem<Concrete> {
                 } else if s == o {
                     Ok(Some(true))
                 } else {
-                    Ok(None)    
+                    Ok(None)
                 }
             }
             (Elem::Reference(s), c @ Elem::Concrete(_)) => {
                 if eval {
                     let lhs_min = s.minimize(analyzer)?;
-                    
+
                     match lhs_min.range_ord(c) {
                         Some(std::cmp::Ordering::Less) => {
                             // we know our min is less than the other max
@@ -366,13 +369,19 @@ impl Elem<Concrete> {
                 }
             }
             (Elem::Concrete(_), Elem::Reference(_)) => other.overlaps(self, eval, analyzer),
-            _ => Ok(None)
+            _ => Ok(None),
         }
     }
-    pub fn overlaps_dual(&self, rhs_min: &Self, rhs_max: &Self, eval: bool, analyzer: &impl GraphBackend) -> Result<Option<bool>, GraphError> {
+    pub fn overlaps_dual(
+        &self,
+        rhs_min: &Self,
+        rhs_max: &Self,
+        eval: bool,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<bool>, GraphError> {
         match self {
             Self::Reference(d) => {
-                 if eval {
+                if eval {
                     let lhs_min = d.minimize(analyzer)?;
                     let rhs_max = rhs_max.maximize(analyzer)?;
 
@@ -393,20 +402,16 @@ impl Elem<Concrete> {
                 } else if self == rhs_min || self == rhs_max {
                     Ok(Some(true))
                 } else {
-                    Ok(None)    
+                    Ok(None)
                 }
-            },
-            Self::Concrete(_) => {
-                match rhs_min.range_ord(self) {
-                    Some(std::cmp::Ordering::Less) => {
-                        Ok(Some(matches!(
-                            rhs_max.range_ord(self),
-                            Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
-                        )))
-                    }
-                    Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
-                    _ => Ok(Some(false)),
-                }
+            }
+            Self::Concrete(_) => match rhs_min.range_ord(self) {
+                Some(std::cmp::Ordering::Less) => Ok(Some(matches!(
+                    rhs_max.range_ord(self),
+                    Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+                ))),
+                Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
+                _ => Ok(Some(false)),
             },
             _ => Ok(None),
         }
@@ -484,11 +489,11 @@ impl std::fmt::Display for Elem<Concrete> {
             Elem::Reference(Reference { idx, .. }) => write!(f, "idx_{}", idx.index()),
             Elem::ConcreteDyn(d) => {
                 write!(f, "{{len: {}, values: {{", d.len)?;
-                d.val.iter().try_for_each(|(key, (val, op))| {
-                    write!(f, " {key}: ({val}, {op}),")
-                })?;
+                d.val
+                    .iter()
+                    .try_for_each(|(key, (val, op))| write!(f, " {key}: ({val}, {op}),"))?;
                 write!(f, "}}}}")
-            },
+            }
             Elem::Concrete(RangeConcrete { val, .. }) => {
                 write!(f, "{}", val.as_string())
             }
@@ -663,8 +668,8 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(res) = seen_ops.get(&self) {
-            return Ok(res.clone())
+        if let Some(res) = seen_ops.get(self) {
+            return Ok(res.clone());
         }
 
         use Elem::*;
@@ -672,14 +677,12 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.simplify_maximize(seen_ops, analyzer),
             Concrete(inner) => inner.simplify_maximize(seen_ops, analyzer),
             ConcreteDyn(inner) => inner.simplify_maximize(seen_ops, analyzer),
-            Expr(expr) => {
-                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
-                    MaybeCollapsed::Collapsed(collapsed) => {
-                        collapsed.simplify_maximize(seen_ops, analyzer)
-                    }
-                    _ => expr.simplify_maximize(seen_ops, analyzer)
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                MaybeCollapsed::Collapsed(collapsed) => {
+                    collapsed.simplify_maximize(seen_ops, analyzer)
                 }
-            }
+                _ => expr.simplify_maximize(seen_ops, analyzer),
+            },
             Null => Ok(Elem::Null),
         }
     }
@@ -689,8 +692,8 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(res) = seen_ops.get(&self) {
-            return Ok(res.clone())
+        if let Some(res) = seen_ops.get(self) {
+            return Ok(res.clone());
         }
 
         use Elem::*;
@@ -698,13 +701,11 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.simplify_minimize(seen_ops, analyzer),
             Concrete(inner) => inner.simplify_minimize(seen_ops, analyzer),
             ConcreteDyn(inner) => inner.simplify_minimize(seen_ops, analyzer),
-            Expr(expr) => {
-                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
-                    MaybeCollapsed::Collapsed(collapsed) => {
-                        collapsed.simplify_minimize(seen_ops, analyzer)
-                    }
-                    _ => expr.simplify_minimize(seen_ops, analyzer)
-                } 
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                MaybeCollapsed::Collapsed(collapsed) => {
+                    collapsed.simplify_minimize(seen_ops, analyzer)
+                }
+                _ => expr.simplify_minimize(seen_ops, analyzer),
             },
             Null => Ok(Elem::Null),
         }?;
@@ -719,15 +720,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.cache_maximize(analyzer),
             Concrete(inner) => inner.cache_maximize(analyzer),
             ConcreteDyn(inner) => inner.cache_maximize(analyzer),
-            Expr(expr) => {
-                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
-                    MaybeCollapsed::Collapsed(mut collapsed) => {
-                        collapsed.cache_minimize(analyzer)?;
-                        *self = collapsed;
-                        Ok(())
-                    }
-                    _ => expr.cache_maximize(analyzer)
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                MaybeCollapsed::Collapsed(mut collapsed) => {
+                    collapsed.cache_minimize(analyzer)?;
+                    *self = collapsed;
+                    Ok(())
                 }
+                _ => expr.cache_maximize(analyzer),
             },
             Null => Ok(()),
         }
@@ -739,15 +738,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.cache_minimize(analyzer),
             Concrete(inner) => inner.cache_minimize(analyzer),
             ConcreteDyn(inner) => inner.cache_minimize(analyzer),
-            Expr(expr) => {
-                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
-                    MaybeCollapsed::Collapsed(mut collapsed) => {
-                        collapsed.cache_minimize(analyzer)?;
-                        *self = collapsed;
-                        Ok(())
-                    }
-                    _ => expr.cache_minimize(analyzer)
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                MaybeCollapsed::Collapsed(mut collapsed) => {
+                    collapsed.cache_minimize(analyzer)?;
+                    *self = collapsed;
+                    Ok(())
                 }
+                _ => expr.cache_minimize(analyzer),
             },
             Null => Ok(()),
         }

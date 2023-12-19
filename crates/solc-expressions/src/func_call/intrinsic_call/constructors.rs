@@ -79,7 +79,11 @@ pub trait ConstructorCaller:
             ctx.add_var(arr, analyzer).into_expr_err(loc)?;
             analyzer.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
             ctx.add_var(len_cvar.into(), analyzer).into_expr_err(loc)?;
-            analyzer.add_edge(len_cvar, arr, Edge::Context(ContextEdge::AttrAccess("length")));
+            analyzer.add_edge(
+                len_cvar,
+                arr,
+                Edge::Context(ContextEdge::AttrAccess("length")),
+            );
 
             // update the length
             if let Some(r) = arr.ref_range(analyzer).into_expr_err(loc)? {
@@ -195,7 +199,11 @@ pub trait ConstructorCaller:
                     .expect("Invalid struct field");
 
                     let fc_node = analyzer.add_node(Node::ContextVar(field_cvar));
-                    analyzer.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess("field")));
+                    analyzer.add_edge(
+                        fc_node,
+                        cvar,
+                        Edge::Context(ContextEdge::AttrAccess("field")),
+                    );
                     analyzer.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                     ctx.add_var(fc_node.into(), analyzer).into_expr_err(loc)?;
                     let field_as_ret = ExprRet::Single(fc_node);

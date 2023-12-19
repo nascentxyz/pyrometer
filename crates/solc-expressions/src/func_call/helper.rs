@@ -1,5 +1,8 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, member_access::ListAccess};
+use crate::{
+    member_access::ListAccess, variable::Variable, ContextBuilder, ExprErr, ExpressionParser,
+    IntoExprErr,
+};
 
 use graph::{
     nodes::{
@@ -69,8 +72,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             input.latest_version(self),
                             Edge::Context(ContextEdge::InputVariable),
                         );
-
-
 
                         if let Some(_len_var) = input.array_to_len_var(self) {
                             // bring the length variable along as well

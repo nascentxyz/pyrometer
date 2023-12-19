@@ -1,14 +1,13 @@
-use graph::elem::RangeElem;
 use crate::{
     require::Require, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
     ListAccess,
 };
+use graph::elem::RangeElem;
 
 use graph::{
-    elem::{Elem, RangeOp, RangeDyn},
-    range_string::ToRangeString,
-    nodes::{TmpConstruction, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, VarType, Range,
+    elem::{Elem, RangeDyn, RangeOp},
+    nodes::{Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
+    AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
 
 use solang_parser::{
@@ -156,8 +155,14 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         return_var: bool,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         let idx = self.advance_var_in_ctx(index, loc, ctx)?;
-        if length_requirement && !parent.is_mapping(self).into_expr_err(loc)? && parent.is_indexable(self).into_expr_err(loc)? {
-            let len_var = self.get_length(ctx, loc, parent, true)?.unwrap().latest_version(self);
+        if length_requirement
+            && !parent.is_mapping(self).into_expr_err(loc)?
+            && parent.is_indexable(self).into_expr_err(loc)?
+        {
+            let len_var = self
+                .get_length(ctx, loc, parent, true)?
+                .unwrap()
+                .latest_version(self);
             self.require(
                 len_var.latest_version(self),
                 idx.latest_version(self),
@@ -169,12 +174,17 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             )?;
         }
 
-        let name = format!("{}[{}]", parent.name(self).into_expr_err(loc)?, index.name(self).into_expr_err(loc)?);
+        let name = format!(
+            "{}[{}]",
+            parent.name(self).into_expr_err(loc)?,
+            index.name(self).into_expr_err(loc)?
+        );
         if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
             let index_var = index_var.latest_version(self);
             let index_var = self.advance_var_in_ctx(index_var, loc, ctx)?;
             if !return_var {
-                ctx.push_expr(ExprRet::Single(index_var.into()), self).into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Single(index_var.into()), self)
+                    .into_expr_err(loc)?;
                 Ok(None)
             } else {
                 Ok(Some(index_var))
@@ -194,25 +204,43 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ),
                 storage: *parent.storage(self).into_expr_err(loc)?,
                 is_tmp: false,
-                tmp_of: Some(TmpConstruction::new(parent, RangeOp::SetIndices, Some(index))),
+                tmp_of: Some(TmpConstruction::new(
+                    parent,
+                    RangeOp::SetIndices,
+                    Some(index),
+                )),
                 is_symbolic: true,
                 is_return: false,
                 ty,
             };
 
             let idx_access_node = self.add_node(Node::ContextVar(index_access_var));
-            self.add_edge(idx_access_node, parent, Edge::Context(ContextEdge::IndexAccess));
+            self.add_edge(
+                idx_access_node,
+                parent,
+                Edge::Context(ContextEdge::IndexAccess),
+            );
             self.add_edge(idx_access_node, ctx, Edge::Context(ContextEdge::Variable));
-            ctx.add_var(idx_access_node.into(), self).into_expr_err(loc)?;
+            ctx.add_var(idx_access_node.into(), self)
+                .into_expr_err(loc)?;
             self.add_edge(index, idx_access_node, Edge::Context(ContextEdge::Index));
 
             let idx_access_cvar = if has_range {
-                let min = Elem::from(parent).get_index(index.into()).max(ContextVarNode::from(idx_access_node).into()); //.range_min(self).unwrap().unwrap());
-                let max = Elem::from(parent).get_index(index.into()).min(ContextVarNode::from(idx_access_node).into()); //.range_max(self).unwrap().unwrap());
-                
-                let idx_access_cvar = self.advance_var_in_ctx(ContextVarNode::from(idx_access_node), loc, ctx)?;
-                idx_access_cvar.set_range_min(self, min).into_expr_err(loc)?;
-                idx_access_cvar.set_range_max(self, max).into_expr_err(loc)?;
+                let min = Elem::from(parent)
+                    .get_index(index.into())
+                    .max(ContextVarNode::from(idx_access_node).into()); //.range_min(self).unwrap().unwrap());
+                let max = Elem::from(parent)
+                    .get_index(index.into())
+                    .min(ContextVarNode::from(idx_access_node).into()); //.range_max(self).unwrap().unwrap());
+
+                let idx_access_cvar =
+                    self.advance_var_in_ctx(ContextVarNode::from(idx_access_node), loc, ctx)?;
+                idx_access_cvar
+                    .set_range_min(self, min)
+                    .into_expr_err(loc)?;
+                idx_access_cvar
+                    .set_range_max(self, max)
+                    .into_expr_err(loc)?;
 
                 if idx_access_cvar
                     .underlying(self)
@@ -224,7 +252,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     // if the index access is also an array, produce a length variable
                     // we specify to return the variable because we dont want it on the stack
                     let _ = self.get_length(ctx, loc, idx_access_node.into(), true)?;
-
                 }
                 idx_access_cvar
             } else {
@@ -232,7 +259,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             };
 
             if !return_var {
-                ctx.push_expr(ExprRet::Single(idx_access_cvar.latest_version(self).into()), self).into_expr_err(loc)?;
+                ctx.push_expr(
+                    ExprRet::Single(idx_access_cvar.latest_version(self).into()),
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(None)
             } else {
                 Ok(Some(idx_access_cvar.latest_version(self)))
@@ -245,7 +276,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
         loc: Loc,
         maybe_index_access: ContextVarNode,
-        new_value: ContextVarNode
+        new_value: ContextVarNode,
     ) -> Result<(), ExprErr> {
         if let Some(arr) = maybe_index_access.index_access_to_array(self) {
             // Was indeed an indexed value
@@ -260,21 +291,28 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .into_expr_err(loc)?
                 {
                     // update the range
-                    let min = Elem::from(arr).set_indices(RangeDyn::new_for_indices(vec![(index.into(), new_value.into())], loc));
-                    let max = Elem::from(arr).set_indices(RangeDyn::new_for_indices(vec![(index.into(), new_value.into())], loc));
-                    next_arr
-                            .set_range_min(self, min)
-                            .into_expr_err(loc)?;
-                    next_arr
-                            .set_range_max(self, max)
-                            .into_expr_err(loc)?;
+                    let min = Elem::from(arr).set_indices(RangeDyn::new_for_indices(
+                        vec![(index.into(), new_value.into())],
+                        loc,
+                    ));
+                    let max = Elem::from(arr).set_indices(RangeDyn::new_for_indices(
+                        vec![(index.into(), new_value.into())],
+                        loc,
+                    ));
+                    next_arr.set_range_min(self, min).into_expr_err(loc)?;
+                    next_arr.set_range_max(self, max).into_expr_err(loc)?;
                 }
 
                 // handle nested arrays, i.e. if:
                 // uint256[][] memory z;
                 // z[x][y] = 5;
                 // first pass sets z[x][y] = 5, second pass needs to set z[x] = x
-                self.update_array_if_index_access(ctx, loc, next_arr.latest_version(self), next_arr.latest_version(self))?;
+                self.update_array_if_index_access(
+                    ctx,
+                    loc,
+                    next_arr.latest_version(self),
+                    next_arr.latest_version(self),
+                )?;
             }
         }
         Ok(())
@@ -290,11 +328,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
             let new_len = Elem::from(backing_arr).set_length(maybe_length.into());
             next_arr
-                    .set_range_min(self, new_len.clone())
-                    .into_expr_err(loc)?;
-            next_arr
-                    .set_range_max(self, new_len)
-                    .into_expr_err(loc)?;
+                .set_range_min(self, new_len.clone())
+                .into_expr_err(loc)?;
+            next_arr.set_range_max(self, new_len).into_expr_err(loc)?;
         }
         Ok(())
     }
@@ -304,20 +340,20 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
         loc: Loc,
         new_length: ContextVarNode,
-        backing_arr: ContextVarNode
+        backing_arr: ContextVarNode,
     ) -> Result<(), ExprErr> {
         let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
         let new_len = Elem::from(backing_arr).get_length().max(new_length.into());
         let min = Elem::from(backing_arr).set_length(new_len);
-        next_arr
-                .set_range_min(self, min)
-                .into_expr_err(loc)?;
+        next_arr.set_range_min(self, min).into_expr_err(loc)?;
         let new_len = Elem::from(backing_arr).get_length().min(new_length.into());
         let max = Elem::from(backing_arr).set_length(new_len);
-        next_arr
-                .set_range_max(self, max)
-                .into_expr_err(loc)?;
-        self.add_edge(new_length, next_arr, Edge::Context(ContextEdge::AttrAccess("length")));
+        next_arr.set_range_max(self, max).into_expr_err(loc)?;
+        self.add_edge(
+            new_length,
+            next_arr,
+            Edge::Context(ContextEdge::AttrAccess("length")),
+        );
         Ok(())
     }
 
@@ -327,7 +363,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         loc: Loc,
         index: ContextVarNode,
         access: ContextVarNode,
-        backing_arr: ContextVarNode
+        backing_arr: ContextVarNode,
     ) -> Result<(), ExprErr> {
         let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
         if next_arr
@@ -338,19 +374,30 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             .into_expr_err(loc)?
         {
             // update the range
-            let min = Elem::from(backing_arr).set_indices(RangeDyn::new_for_indices(vec![(index.into(), access.into())], loc));
-            let max = Elem::from(backing_arr).set_indices(RangeDyn::new_for_indices(vec![(index.into(), access.into())], loc));
-            next_arr
-                    .set_range_min(self, min)
-                    .into_expr_err(loc)?;
-            next_arr
-                    .set_range_max(self, max)
-                    .into_expr_err(loc)?;
+            let min = Elem::from(backing_arr).set_indices(RangeDyn::new_for_indices(
+                vec![(index.into(), access.into())],
+                loc,
+            ));
+            let max = Elem::from(backing_arr).set_indices(RangeDyn::new_for_indices(
+                vec![(index.into(), access.into())],
+                loc,
+            ));
+            next_arr.set_range_min(self, min).into_expr_err(loc)?;
+            next_arr.set_range_max(self, max).into_expr_err(loc)?;
         }
 
         // handle nested arrays
-        if let (Some(backing_arr), Some(parent_nested_index)) = (next_arr.index_access_to_array(self), next_arr.index_access_to_index(self)) {
-            self.update_array_from_index_access(ctx, loc, parent_nested_index, next_arr, backing_arr.latest_version(self))
+        if let (Some(backing_arr), Some(parent_nested_index)) = (
+            next_arr.index_access_to_array(self),
+            next_arr.index_access_to_index(self),
+        ) {
+            self.update_array_from_index_access(
+                ctx,
+                loc,
+                parent_nested_index,
+                next_arr,
+                backing_arr.latest_version(self),
+            )
         } else {
             Ok(())
         }
@@ -364,11 +411,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
             let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
-            let new_len = Elem::from(backing_arr).get_length().max(maybe_length.into());
+            let new_len = Elem::from(backing_arr)
+                .get_length()
+                .max(maybe_length.into());
             let min = Elem::from(backing_arr).set_length(new_len);
-            next_arr
-                    .set_range_min(self, min)
-                    .into_expr_err(loc)?;
+            next_arr.set_range_min(self, min).into_expr_err(loc)?;
         }
         Ok(())
     }
@@ -381,11 +428,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
             let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
-            let new_len = Elem::from(backing_arr).get_length().min(maybe_length.into());
+            let new_len = Elem::from(backing_arr)
+                .get_length()
+                .min(maybe_length.into());
             let max = Elem::from(backing_arr).set_length(new_len);
-            next_arr
-                    .set_range_max(self, max)
-                    .into_expr_err(loc)?;
+            next_arr.set_range_max(self, max).into_expr_err(loc)?;
         }
         Ok(())
     }

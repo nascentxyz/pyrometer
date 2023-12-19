@@ -45,7 +45,6 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     }
 
     fn range_bit_or(&self, other: &Self) -> Option<Elem<Concrete>> {
-
         match (&self.val, &other.val) {
             (Concrete::Uint(s, a), Concrete::Uint(s2, b)) => {
                 let size = if s > s2 { s } else { s2 };

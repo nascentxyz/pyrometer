@@ -5,8 +5,6 @@ use crate::{
 
 use graph::{
     nodes::{ContextNode, KilledKind},
-    range_string::ToRangeString,
-    solvers::{Atomize, SolverAtom},
     AnalyzerBackend, GraphBackend,
 };
 use shared::Search;
@@ -83,7 +81,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                         let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
                         let ret = parts.into_iter().fold(
                             format!("{}. {name}", i + 1),
-                            |mut acc, part| {
+                            |mut acc, _part| {
                                 acc = acc.to_string();
                                 acc
                             },

@@ -50,9 +50,12 @@ pub trait AnalyzerLike: GraphLike {
     fn builtin_fn_or_maybe_add(&mut self, builtin_name: &str) -> Option<NodeIdx>
     where
         Self: std::marker::Sized;
-  
+
     fn debug_panic(&self) -> bool;
-    fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T> where Self::ExprErr: std::fmt::Debug {
+    fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T>
+    where
+        Self::ExprErr: std::fmt::Debug,
+    {
         match err {
             Ok(t) => Some(t),
             Err(e) => {
@@ -61,6 +64,4 @@ pub trait AnalyzerLike: GraphLike {
             }
         }
     }
-
-    
 }

@@ -1,4 +1,3 @@
-
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 
@@ -21,10 +20,13 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 Concrete::DynBytes(val),
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::DynBytes(val), None) => {
@@ -53,10 +55,13 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 Concrete::String(val),
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::String(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::String(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::String(val), None) => {
@@ -94,17 +99,23 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
             (
                 Some((
                     _,
-                    &(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    &(
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 Some((
                     _,
-                    &(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    &(
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             ) => {
                 let last = self.len.clone();
@@ -120,7 +131,11 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                 existing.extend(other_vals);
 
                 Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
-                    *self.len.clone() + *other.len.clone().max(Box::new(Elem::from(Concrete::from(U256::from(1))))),
+                    *self.len.clone()
+                        + *other
+                            .len
+                            .clone()
+                            .max(Box::new(Elem::from(Concrete::from(U256::from(1))))),
                     existing,
                     other.loc,
                 )))
@@ -132,7 +147,6 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
         }
     }
 }
-
 
 impl RangeConcat<Concrete> for Elem<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {

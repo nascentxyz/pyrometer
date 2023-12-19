@@ -324,9 +324,9 @@ impl Atomize for Elem<Concrete> {
         use Elem::*;
 
         match self {
-            Reference(_) => None, //{ println!("was dyn"); None},
-            Null => None, //{ println!("was null"); None},
-            Concrete(_c) => None, //{ println!("was conc: {}", _c.val.as_human_string()); None },
+            Reference(_) => None,   //{ println!("was dyn"); None},
+            Null => None,           //{ println!("was null"); None},
+            Concrete(_c) => None,   //{ println!("was conc: {}", _c.val.as_human_string()); None },
             ConcreteDyn(_) => None, //{ println!("was concDyn"); None},
             Expr(_) => {
                 // println!("atomized: was expr");

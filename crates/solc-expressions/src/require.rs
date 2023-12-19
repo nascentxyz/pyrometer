@@ -1,4 +1,4 @@
-use crate::{array::Array, BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, Variable};
+use crate::{BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, Variable};
 
 use graph::{
     elem::*,
@@ -10,7 +10,7 @@ use graph::{
     AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 
-use ethers_core::types::{U256, I256};
+use ethers_core::types::I256;
 use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc},
@@ -728,16 +728,18 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         // flip the new range around to be in terms of rhs
                         let rhs_range_fn = SolcRange::dyn_fn_from_op(rhs_op);
                         new_var_range = rhs_range_fn(rhs_range.clone(), new_lhs);
-                        if self
-                            .update_nonconst_from_const(ctx, loc, rhs_op, new_lhs, new_rhs, rhs_range)?
-                        {
+                        if self.update_nonconst_from_const(
+                            ctx, loc, rhs_op, new_lhs, new_rhs, rhs_range,
+                        )? {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
                     }
                     (false, true) => {
-                        if self.update_nonconst_from_const(ctx, loc, op, new_rhs, new_lhs, lhs_range)? {
+                        if self
+                            .update_nonconst_from_const(ctx, loc, op, new_rhs, new_lhs, lhs_range)?
+                        {
                             tracing::trace!("half-const killable");
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
@@ -764,7 +766,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             new_rhs = new_rhs.latest_version(self);
             new_lhs = new_lhs.latest_version(self);
-            
+
             let rhs_display_name = new_rhs.display_name(self).into_expr_err(loc)?;
             let display_name = if rhs_display_name == "true" {
                 (new_lhs.display_name(self).into_expr_err(loc)?).to_string()
@@ -947,7 +949,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn update_nonconst_from_const(
         &mut self,
-        ctx: ContextNode,
+        _ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         const_var: ContextVarNode,
@@ -1118,7 +1120,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Given a const var and a nonconst range, update the range based on the op. Returns whether its impossible
     fn update_nonconst_from_nonconst(
         &mut self,
-        ctx: ContextNode,
+        _ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         new_lhs: ContextVarNode,

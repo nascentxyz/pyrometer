@@ -82,7 +82,7 @@ impl OrderedAnalysis {
         ba.bound_changes
             .iter()
             .enumerate()
-            .for_each(|(i, bound_change)| {
+            .for_each(|(_i, bound_change)| {
                 let (parts, unsat) = range_parts(analyzer, &ba.report_config, &bound_change.1);
                 let item = StrippedAnalysisItem {
                     init: false,

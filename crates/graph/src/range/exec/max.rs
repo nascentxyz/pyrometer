@@ -45,7 +45,7 @@ impl RangeMax<Concrete> for Elem<Concrete> {
                 } else {
                     None
                 }
-            },
+            }
             (_, Elem::Null) => Some(self.clone()),
             (Elem::Null, _) => Some(other.clone()),
             _ => None,

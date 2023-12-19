@@ -20,10 +20,13 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
                 Concrete::Bytes(size, val),
                 Some((
                     _,
-                    (Elem::Concrete(Self {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(Self {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::Bytes(size, val), None) => {
@@ -51,10 +54,13 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
                 Concrete::DynBytes(val),
                 Some((
                     _,
-                    (Elem::Concrete(Self {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(Self {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::DynBytes(val), None) => {
@@ -81,10 +87,13 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
                 Concrete::String(val),
                 Some((
                     _,
-                    (Elem::Concrete(Self {
-                        val: Concrete::String(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(Self {
+                            val: Concrete::String(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::String(val), None) => {
@@ -120,78 +129,105 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
             (
                 Some((
                     _,
-                    &(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    &(
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 Some((
                     _,
-                    &(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    &(
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (
                 Some((
                     _,
-                    &(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    &(
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 None,
             ) => Some(Elem::ConcreteDyn(self.clone())),
             (
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Uint(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Uint(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Uint(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Uint(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Uint(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Uint(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 None,
             ) => Some(Elem::ConcreteDyn(self.clone())),
             (
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Int(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
                 None,
             ) => Some(Elem::ConcreteDyn(self.clone())),
@@ -218,10 +254,13 @@ impl RangeCast<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 let mut h = H256::default();
                 for (i, (_, val)) in self.val.iter().take(*size as usize).enumerate() {
                     match val {
-                        (Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bytes(1, v),
-                            ..
-                        }), _) => {
+                        (
+                            Elem::Concrete(RangeConcrete {
+                                val: Concrete::Bytes(1, v),
+                                ..
+                            }),
+                            _,
+                        ) => {
                             // consume as many as we can
                             h.0[i] = v.0[0];
                         }

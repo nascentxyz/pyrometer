@@ -45,7 +45,7 @@ impl RangeMin<Concrete> for Elem<Concrete> {
                 } else {
                     None
                 }
-            },
+            }
             (c @ Elem::Concrete(_), Elem::ConcreteDyn(b))
             | (Elem::ConcreteDyn(b), c @ Elem::Concrete(_)) => {
                 if b.op_num == 0 {
@@ -53,7 +53,7 @@ impl RangeMin<Concrete> for Elem<Concrete> {
                 } else {
                     None
                 }
-            },
+            }
             (_, Elem::Null) => Some(self.clone()),
             (Elem::Null, _) => Some(other.clone()),
             _ => None,

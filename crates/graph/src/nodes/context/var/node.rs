@@ -205,16 +205,14 @@ impl ContextVarNode {
         Ok(self.underlying(analyzer)?.tmp_of())
     }
 
-    pub fn array_to_len_var(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Option<ContextVarNode> {
+    pub fn array_to_len_var(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         if let Some(len) = analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("length")))
-            .map(|edge| edge.source()) {
-            Some(len.into())       
+            .map(|edge| edge.source())
+        {
+            Some(len.into())
         } else if let Some(prev) = self.previous_version(analyzer) {
             prev.array_to_len_var(analyzer)
         } else {
@@ -222,16 +220,14 @@ impl ContextVarNode {
         }
     }
 
-    pub fn index_access_to_array(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Option<ContextVarNode> {
+    pub fn index_access_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         if let Some(arr) = analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Outgoing)
             .find(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
-            .map(|edge| edge.target()) {
-            Some(arr.into())       
+            .map(|edge| edge.target())
+        {
+            Some(arr.into())
         } else if let Some(prev) = self.previous_version(analyzer) {
             prev.index_access_to_array(analyzer)
         } else {
@@ -278,7 +274,11 @@ impl ContextVarNode {
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| {
-                matches!(*edge.weight(), Edge::Context(ContextEdge::IndexAccess) | Edge::Context(ContextEdge::AttrAccess(_)))
+                matches!(
+                    *edge.weight(),
+                    Edge::Context(ContextEdge::IndexAccess)
+                        | Edge::Context(ContextEdge::AttrAccess(_))
+                )
             })
             .map(|edge| ContextVarNode::from(edge.source()))
             .collect()
@@ -306,11 +306,11 @@ impl ContextVarNode {
             } else {
                 vec![]
             };
-            
+
             if let Some(rhs) = tmp.rhs {
                 if !seen.contains(&rhs) {
                     seen.push(rhs);
-                    nodes.extend(rhs.dependent_on(analyzer, true)?);    
+                    nodes.extend(rhs.dependent_on(analyzer, true)?);
                 }
             }
             Ok(nodes)

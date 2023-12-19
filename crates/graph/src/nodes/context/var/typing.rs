@@ -1,7 +1,7 @@
 use crate::{
-    range::RangeEval,
+    elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
-    elem::{Elem},
+    range::RangeEval,
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
@@ -74,22 +74,22 @@ impl ContextVarNode {
         Ok(is_independent
             && (
                 global_first.is_storage(analyzer)?
-                || global_first.is_calldata_input(analyzer)
-                || global_first.is_msg(analyzer)?
-                || global_first.is_block(analyzer)?
-                || (
-                    // if its a function input, and we are evaluating the function
-                    // as a standalone (i.e. its internal, but we are treating it like its external)
-                    // it wont be marked as calldata, but for the purposes
-                    // of determining controllability it is to better to assume there is some path that lets us
-                    // control it
-                    global_first.is_func_input(analyzer)
-                        && global_first.maybe_ctx(analyzer).is_some()
-                        && !global_first.ctx(analyzer).has_parent(analyzer)?
+                    || global_first.is_calldata_input(analyzer)
+                    || global_first.is_msg(analyzer)?
+                    || global_first.is_block(analyzer)?
+                    || (
+                        // if its a function input, and we are evaluating the function
+                        // as a standalone (i.e. its internal, but we are treating it like its external)
+                        // it wont be marked as calldata, but for the purposes
+                        // of determining controllability it is to better to assume there is some path that lets us
+                        // control it
+                        global_first.is_func_input(analyzer)
+                            && global_first.maybe_ctx(analyzer).is_some()
+                            && !global_first.ctx(analyzer).has_parent(analyzer)?
                     )
-                || self.is_attr_or_index_of_fundamental(analyzer) // performed last to try to not have to do this check
-            )
-        )
+                    || self.is_attr_or_index_of_fundamental(analyzer)
+                // performed last to try to not have to do this check
+            ))
     }
 
     pub fn is_attr_or_index_of_fundamental(&self, analyzer: &impl GraphBackend) -> bool {
@@ -97,8 +97,15 @@ impl ContextVarNode {
             .graph()
             .edges_directed(self.0.into(), Direction::Outgoing)
             .any(|edge| {
-                if matches!(edge.weight(), Edge::Context(ContextEdge::AttrAccess(_)) | Edge::Context(ContextEdge::IndexAccess) | Edge::Context(ContextEdge::Index)) {
-                    ContextVarNode::from(edge.target()).is_fundamental(analyzer).unwrap_or(false)
+                if matches!(
+                    edge.weight(),
+                    Edge::Context(ContextEdge::AttrAccess(_))
+                        | Edge::Context(ContextEdge::IndexAccess)
+                        | Edge::Context(ContextEdge::Index)
+                ) {
+                    ContextVarNode::from(edge.target())
+                        .is_fundamental(analyzer)
+                        .unwrap_or(false)
                 } else {
                     false
                 }
@@ -117,8 +124,15 @@ impl ContextVarNode {
             .graph()
             .edges_directed(self.0.into(), Direction::Outgoing)
             .any(|edge| {
-                if matches!(edge.weight(), Edge::Context(ContextEdge::AttrAccess(_)) | Edge::Context(ContextEdge::IndexAccess) | Edge::Context(ContextEdge::Index)) {
-                    ContextVarNode::from(edge.target()).is_storage(analyzer).unwrap_or(false)
+                if matches!(
+                    edge.weight(),
+                    Edge::Context(ContextEdge::AttrAccess(_))
+                        | Edge::Context(ContextEdge::IndexAccess)
+                        | Edge::Context(ContextEdge::Index)
+                ) {
+                    ContextVarNode::from(edge.target())
+                        .is_storage(analyzer)
+                        .unwrap_or(false)
                 } else {
                     false
                 }
@@ -323,9 +337,7 @@ impl ContextVarNode {
         to_ty: VarType,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
-        let new_underlying = self
-            .underlying(analyzer)?
-            .clone();
+        let new_underlying = self.underlying(analyzer)?.clone();
         let node = analyzer.add_node(Node::ContextVar(new_underlying));
         analyzer.add_edge(node, *self, Edge::Context(ContextEdge::Prev));
         let new_self = ContextVarNode::from(node);
@@ -335,7 +347,7 @@ impl ContextVarNode {
             if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
                 new_self.underlying_mut(analyzer)?.ty = new_ty;
             }
-            
+
             if let Some((new_min, new_max)) = self.cast_exprs(&to_ty, analyzer)? {
                 new_self.set_range_min(analyzer, new_min)?;
                 new_self.set_range_max(analyzer, new_max)?;
@@ -391,31 +403,32 @@ impl ContextVarNode {
     ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
         if let Some(to_range) = to_ty.range(analyzer)? {
             let mut min_expr = (*self)
-                    .range_min(analyzer)?.unwrap()
-                    .cast(to_range.min.clone())
-                    .min(
-                        (*self)
-                            .range_max(analyzer)?.unwrap()
-                            .cast(to_range.min.clone())
-                    );
+                .range_min(analyzer)?
+                .unwrap()
+                .cast(to_range.min.clone())
+                .min(
+                    (*self)
+                        .range_max(analyzer)?
+                        .unwrap()
+                        .cast(to_range.min.clone()),
+                );
             let mut max_expr = (*self)
-                    .range_min(analyzer)?.unwrap()
-                    .cast(to_range.min.clone())
-                    .max(
-                        (*self)
-                            .range_max(analyzer)?.unwrap()
-                            .cast(to_range.min)
-                    );
+                .range_min(analyzer)?
+                .unwrap()
+                .cast(to_range.min.clone())
+                .max((*self).range_max(analyzer)?.unwrap().cast(to_range.min));
 
             if let Some(r) = self.ref_range(analyzer)? {
                 let zero = Elem::from(Concrete::from(U256::zero()));
                 if r.contains_elem(&zero, analyzer) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
-                } 
+                }
             }
 
-            if let (VarType::BuiltIn(from_bn, _), VarType::BuiltIn(to_bn, _)) = (self.ty(analyzer)?, to_ty) {
+            if let (VarType::BuiltIn(from_bn, _), VarType::BuiltIn(to_bn, _)) =
+                (self.ty(analyzer)?, to_ty)
+            {
                 match (from_bn.underlying(analyzer)?, to_bn.underlying(analyzer)?) {
                     (Builtin::Uint(_), int @ Builtin::Int(_)) => {
                         // from ty is uint, to ty is int, check if type(int<SIZE>.min).bit_representation()

@@ -266,7 +266,11 @@ impl ContextVar {
     }
 
     // #[tracing::instrument(level = "trace", skip_all)]
-    pub fn set_range_min(&mut self, new_min: Elem<Concrete>, fallback_range: Option<SolcRange>) -> Result<(), GraphError> {
+    pub fn set_range_min(
+        &mut self,
+        new_min: Elem<Concrete>,
+        fallback_range: Option<SolcRange>,
+    ) -> Result<(), GraphError> {
         // tracing::trace!("Setting range min in underlying: {:?}", self.ty);
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
@@ -281,11 +285,16 @@ impl ContextVar {
                     *maybe_range = Some(fr);
                     Ok(())
                 } else {
-                    Err(GraphError::NodeConfusion(format!("No range and no fallback range for type: {:?}", self.ty)))
+                    Err(GraphError::NodeConfusion(format!(
+                        "No range and no fallback range for type: {:?}",
+                        self.ty
+                    )))
                 }
             }
             VarType::Concrete(_) => Ok(()),
-            e => Err(GraphError::NodeConfusion(format!("Expected a type that has a range, but was type: {e:?} that had no range"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Expected a type that has a range, but was type: {e:?} that had no range"
+            ))),
         }
     }
 
@@ -315,7 +324,11 @@ impl ContextVar {
         }
     }
 
-    pub fn set_range_max(&mut self, new_max: Elem<Concrete>, fallback_range: Option<SolcRange>) -> Result<(), GraphError> {
+    pub fn set_range_max(
+        &mut self,
+        new_max: Elem<Concrete>,
+        fallback_range: Option<SolcRange>,
+    ) -> Result<(), GraphError> {
         match &mut self.ty {
             VarType::User(TypeNode::Contract(_), ref mut maybe_range)
             | VarType::User(TypeNode::Enum(_), ref mut maybe_range)
@@ -329,11 +342,16 @@ impl ContextVar {
                     *maybe_range = Some(fr);
                     Ok(())
                 } else {
-                    Err(GraphError::NodeConfusion(format!("No range and no fallback range for type: {:?}", self.ty)))
+                    Err(GraphError::NodeConfusion(format!(
+                        "No range and no fallback range for type: {:?}",
+                        self.ty
+                    )))
                 }
             }
             VarType::Concrete(_) => Ok(()),
-            e => Err(GraphError::NodeConfusion(format!("Expected a type that has a range, but was type: {e:?} that had no range"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Expected a type that has a range, but was type: {e:?} that had no range"
+            ))),
         }
     }
 
@@ -355,11 +373,16 @@ impl ContextVar {
                     *maybe_range = Some(fr);
                     Ok(())
                 } else {
-                    Err(GraphError::NodeConfusion(format!("No range and no fallback range for type: {:?}", self.ty)))
+                    Err(GraphError::NodeConfusion(format!(
+                        "No range and no fallback range for type: {:?}",
+                        self.ty
+                    )))
                 }
             }
             VarType::Concrete(_) => Ok(()),
-            e => Err(GraphError::NodeConfusion(format!("Expected a type that has a range, but was type: {e:?} that had no range"))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Expected a type that has a range, but was type: {e:?} that had no range"
+            ))),
         }
     }
 

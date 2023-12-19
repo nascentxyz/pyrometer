@@ -43,7 +43,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         ctx: ContextNode,
         loc: Loc,
         elem_path: ExprRet,
-        update_len_bound: bool,
+        _update_len_bound: bool,
     ) -> Result<(), ExprErr> {
         match elem_path {
             ExprRet::Null => {
@@ -64,13 +64,9 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         ctx: ContextNode,
         loc: Loc,
         array: ContextVarNode,
-        return_var: bool
+        return_var: bool,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
-        let next_arr = self.advance_var_in_ctx(
-            array.latest_version(self),
-            loc,
-            ctx,
-        )?;
+        let next_arr = self.advance_var_in_ctx(array.latest_version(self), loc, ctx)?;
         // search for latest length
         if let Some(len_var) = next_arr.array_to_len_var(self) {
             let len_node = self.advance_var_in_ctx(len_var.latest_version(self), loc, ctx)?;
@@ -87,8 +83,12 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
             // Create the range from the current length or default to [0, uint256.max]
 
-            let len_min = Elem::from(next_arr).get_length().max(Elem::from(Concrete::from(U256::zero())));
-            let len_max = Elem::from(next_arr).get_length().min(Elem::from(Concrete::from(U256::MAX)));
+            let len_min = Elem::from(next_arr)
+                .get_length()
+                .max(Elem::from(Concrete::from(U256::zero())));
+            let len_max = Elem::from(next_arr)
+                .get_length()
+                .min(Elem::from(Concrete::from(U256::MAX)));
             let range = SolcRange::new(len_min, len_max, vec![]);
 
             let len_var = ContextVar {
@@ -106,22 +106,27 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 ),
             };
             let len_node = ContextVarNode::from(self.add_node(Node::ContextVar(len_var)));
-            self.add_edge(len_node, array, Edge::Context(ContextEdge::AttrAccess("length")));
+            self.add_edge(
+                len_node,
+                array,
+                Edge::Context(ContextEdge::AttrAccess("length")),
+            );
             self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
             ctx.add_var(len_node, self).into_expr_err(loc)?;
 
             // we have to force here to avoid length <-> array recursion
-            let next_next_arr = self.advance_var_in_ctx_forcible(
-                array.latest_version(self),
-                loc,
-                ctx,
-                true
-            )?;
-            let update_array_len = Elem::from(next_arr.latest_version(self)).set_length(len_node.into());
+            let next_next_arr =
+                self.advance_var_in_ctx_forcible(array.latest_version(self), loc, ctx, true)?;
+            let update_array_len =
+                Elem::from(next_arr.latest_version(self)).set_length(len_node.into());
 
             // Update the array
-            next_next_arr.set_range_min(self, update_array_len.clone()).into_expr_err(loc)?;
-            next_next_arr.set_range_max(self, update_array_len.clone()).into_expr_err(loc)?;
+            next_next_arr
+                .set_range_min(self, update_array_len.clone())
+                .into_expr_err(loc)?;
+            next_next_arr
+                .set_range_max(self, update_array_len.clone())
+                .into_expr_err(loc)?;
 
             if !return_var {
                 ctx.push_expr(ExprRet::Single(len_node.into()), self)
@@ -183,7 +188,9 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                     let min = r.simplified_range_min(self).unwrap();
                     let max = r.simplified_range_max(self).unwrap();
                     if let Some(mut rd) = min.maybe_range_dyn() {
-                        ContextVarNode::from(len_node).set_range_min(self, *rd.len.clone()).unwrap();
+                        ContextVarNode::from(len_node)
+                            .set_range_min(self, *rd.len.clone())
+                            .unwrap();
                         rd.len = Box::new(Elem::from(len_node));
                         let res = next_arr
                             .set_range_min(self, Elem::ConcreteDyn(rd))
@@ -192,7 +199,9 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
-                        ContextVarNode::from(len_node).set_range_max(self, *rd.len.clone()).unwrap();
+                        ContextVarNode::from(len_node)
+                            .set_range_max(self, *rd.len.clone())
+                            .unwrap();
                         rd.len = Box::new(Elem::from(len_node));
                         let res = next_arr
                             .set_range_max(self, Elem::ConcreteDyn(rd))
@@ -202,7 +211,11 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 }
             }
 
-            self.add_edge(len_node, arr, Edge::Context(ContextEdge::AttrAccess("length")));
+            self.add_edge(
+                len_node,
+                arr,
+                Edge::Context(ContextEdge::AttrAccess("length")),
+            );
             self.add_edge(len_node, array_ctx, Edge::Context(ContextEdge::Variable));
             array_ctx.add_var(len_node.into(), self).unwrap();
             len_node.into()

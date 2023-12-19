@@ -392,12 +392,8 @@ impl Builtin {
 
     pub fn zero_concrete(&self) -> Option<Concrete> {
         match self {
-            Builtin::Uint(size) => {
-                Some(Concrete::Uint(*size, U256::zero()))
-            }
-            Builtin::Int(size) => {
-                Some(Concrete::Int(*size, I256::from_raw(U256::zero())))
-            }
+            Builtin::Uint(size) => Some(Concrete::Uint(*size, U256::zero())),
+            Builtin::Int(size) => Some(Concrete::Int(*size, I256::from_raw(U256::zero()))),
             Builtin::Bytes(size) => {
                 let h = H256::default();
                 Some(Concrete::Bytes(*size, h))
@@ -443,12 +439,8 @@ impl Builtin {
 
     pub fn min_concrete(&self) -> Option<Concrete> {
         match self {
-            Builtin::Uint(size) => {
-                Some(Concrete::Uint(*size, U256::zero()))
-            }
-            Builtin::Int(size) => {
-                Some(Concrete::Int(*size, I256::MIN))
-            }
+            Builtin::Uint(size) => Some(Concrete::Uint(*size, U256::zero())),
+            Builtin::Int(size) => Some(Concrete::Int(*size, I256::MIN)),
             Builtin::Bytes(size) => {
                 let h = H256::default();
                 Some(Concrete::Bytes(*size, h))

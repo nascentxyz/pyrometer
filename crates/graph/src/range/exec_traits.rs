@@ -1,6 +1,5 @@
-use crate::{range::elem::{Elem}, GraphBackend};
+use crate::{range::elem::Elem, GraphBackend};
 use std::collections::BTreeMap;
-
 
 /// For execution of operations to be performed on range expressions
 pub trait ExecOp<T> {

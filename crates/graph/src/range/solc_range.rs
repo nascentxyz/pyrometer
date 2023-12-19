@@ -686,7 +686,13 @@ impl Range<Concrete> for SolcRange {
         Ok(())
     }
     /// Produce a flattened range or use the cached flattened range
-    fn flattened_range<'a>(&'a self, analyzer: &impl GraphBackend) -> Result<Cow<'a, Self>, Self::GraphError> where Self: Sized + Clone {
+    fn flattened_range<'a>(
+        &'a self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Cow<'a, Self>, Self::GraphError>
+    where
+        Self: Sized + Clone,
+    {
         if let Some(flat) = &self.flattened {
             Ok(Cow::Borrowed(flat))
         } else {

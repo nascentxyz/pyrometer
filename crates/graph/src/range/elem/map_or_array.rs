@@ -54,11 +54,14 @@ impl<T: Ord> RangeDyn<T> {
     }
     pub fn new(len: Elem<T>, val: BTreeMap<Elem<T>, Elem<T>>, loc: Loc) -> Self {
         let mut op_num = 0;
-        let val = val.into_iter().map(|(k, v)| {
-            let res = (k, (v, op_num));
-            op_num += 1;
-            res
-        }).collect();
+        let val = val
+            .into_iter()
+            .map(|(k, v)| {
+                let res = (k, (v, op_num));
+                op_num += 1;
+                res
+            })
+            .collect();
         Self {
             minimized: None,
             maximized: None,
@@ -73,11 +76,14 @@ impl<T: Ord> RangeDyn<T> {
 
     pub fn new_for_indices(vals: Vec<(Elem<T>, Elem<T>)>, loc: Loc) -> Self {
         let mut op_num = 0;
-        let val = vals.into_iter().map(|(k, v)| {
-            let res = (k, (v, op_num));
-            op_num += 1;
-            res
-        }).collect();
+        let val = vals
+            .into_iter()
+            .map(|(k, v)| {
+                let res = (k, (v, op_num));
+                op_num += 1;
+                res
+            })
+            .collect();
         Self {
             minimized: None,
             maximized: None,
@@ -102,9 +108,7 @@ impl<T: Ord> RangeDyn<T> {
     }
 }
 
-impl RangeDyn<Concrete> {
-
-}
+impl RangeDyn<Concrete> {}
 
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
@@ -119,16 +123,20 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 let mut eq = 0;
                 let mut self_lt = 0;
                 let mut self_gt = 0;
-                self.val.iter().zip(other.val.iter()).for_each(|((self_key, self_val), (other_key, other_val))| {
-                    if let Some(std::cmp::Ordering::Equal) = self_key.clone().range_ord(other_key) {
-                        match self_val.0.clone().range_ord(&other_val.0) {
-                            Some(std::cmp::Ordering::Equal) => eq += 1,
-                            Some(std::cmp::Ordering::Less) => self_lt += 1,
-                            Some(std::cmp::Ordering::Greater) => self_gt += 1,
-                            _ => {}
+                self.val.iter().zip(other.val.iter()).for_each(
+                    |((self_key, self_val), (other_key, other_val))| {
+                        if let Some(std::cmp::Ordering::Equal) =
+                            self_key.clone().range_ord(other_key)
+                        {
+                            match self_val.0.clone().range_ord(&other_val.0) {
+                                Some(std::cmp::Ordering::Equal) => eq += 1,
+                                Some(std::cmp::Ordering::Less) => self_lt += 1,
+                                Some(std::cmp::Ordering::Greater) => self_gt += 1,
+                                _ => {}
+                            }
                         }
-                    }
-                });
+                    },
+                );
 
                 if self_lt == self.val.len() {
                     Some(std::cmp::Ordering::Less)
@@ -140,7 +148,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     None
                 }
             }
-            other => other
+            other => other,
         }
     }
 
@@ -215,7 +223,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 for (idx, val) in self.val.clone().into_iter() {
                     map.insert(
                         idx.flatten(maximize, analyzer)?,
-                        (val.0.flatten(maximize, analyzer)?, val.1)
+                        (val.0.flatten(maximize, analyzer)?, val.1),
                     );
                 }
                 map
@@ -277,7 +285,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     // We dont maximize the key so that any subsequent
                     // `get_index` can find potential values
                     let maximized = val.0.maximize(analyzer)?;
-                    map.insert(idx.simplify_maximize(&mut Default::default(), analyzer)?, (maximized, val.1));
+                    map.insert(
+                        idx.simplify_maximize(&mut Default::default(), analyzer)?,
+                        (maximized, val.1),
+                    );
                 }
 
                 // map.into_iter().filter(|(k, (v, op))| {
@@ -302,7 +313,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     // We dont minimize the key so that any subsequent
                     // `get_index` can find potential values
                     let minimized = val.0.minimize(analyzer)?;
-                    map.insert(idx.simplify_minimize(&mut Default::default(), analyzer)?, (minimized, val.1));
+                    map.insert(
+                        idx.simplify_minimize(&mut Default::default(), analyzer)?,
+                        (minimized, val.1),
+                    );
                 }
 
                 // map.into_iter().filter(|(k, (v, op))| {
@@ -336,7 +350,6 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             },
             self.loc,
         )))
-
     }
     fn simplify_minimize(
         &self,

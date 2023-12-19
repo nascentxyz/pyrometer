@@ -76,12 +76,7 @@ impl ToRangeString for Elem<Concrete> {
 
 impl ToRangeString for RangeDyn<Concrete> {
     fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {
-        let displayed_vals = self
-            .val
-            .iter()
-            .take(20)
-            .map(|(key, val)| (key, val))
-            .collect::<BTreeMap<_, _>>();
+        let displayed_vals = self.val.iter().take(20).collect::<BTreeMap<_, _>>();
 
         let val_str = displayed_vals
             .iter()
@@ -111,21 +106,18 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .val
                 .iter()
                 .take(5)
-                .filter(|(key, (val, op))| *val != Elem::Null)
-                .map(|(key, (val, op))| {
-                    (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
+                .filter(|(_key, (val, _op))| *val != Elem::Null)
+                .map(|(key, (val, _op))| {
+                    (
+                        key.to_range_string(maximize, analyzer).s,
+                        val.to_range_string(maximize, analyzer).s,
+                    )
                 })
                 .collect::<BTreeMap<_, _>>();
 
             let val_str_head = displayed_vals
                 .iter()
-                .map(|(key, val)| {
-                    format!(
-                        "{}: {}",
-                        key,
-                        val
-                    )
-                })
+                .map(|(key, val)| format!("{}: {}", key, val))
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -134,22 +126,19 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .iter()
                 .rev()
                 .take(5)
-                .filter(|(key, (val, op))| *val != Elem::Null)
-                .map(|(key, (val, op))| {
+                .filter(|(_key, (val, _op))| *val != Elem::Null)
+                .map(|(key, (val, _op))| {
                     // (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
-                    (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
+                    (
+                        key.to_range_string(maximize, analyzer).s,
+                        val.to_range_string(maximize, analyzer).s,
+                    )
                 })
                 .collect::<BTreeMap<_, _>>();
 
             let val_str_tail = displayed_vals_tail
                 .iter()
-                .map(|(key, val)| {
-                    format!(
-                        "{}: {}",
-                        key,
-                        val
-                    )
-                })
+                .map(|(key, val)| format!("{}: {}", key, val))
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{val_str_head} ... {val_str_tail}")
@@ -158,21 +147,18 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .val
                 .iter()
                 .take(10)
-                .filter(|(key, (val, op))| *val != Elem::Null)
-                .map(|(key, (val, op))| {
-                    (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
+                .filter(|(_key, (val, _op))| *val != Elem::Null)
+                .map(|(key, (val, _op))| {
+                    (
+                        key.to_range_string(maximize, analyzer).s,
+                        val.to_range_string(maximize, analyzer).s,
+                    )
                 })
                 .collect::<BTreeMap<_, _>>();
 
             displayed_vals
                 .iter()
-                .map(|(key, val)| {
-                    format!(
-                        "{}: {}",
-                        key,
-                        val,
-                    )
-                })
+                .map(|(key, val)| format!("{}: {}", key, val,))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
@@ -194,8 +180,10 @@ impl ToRangeString for RangeExpr<Concrete> {
     }
 
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
-        if let MaybeCollapsed::Collapsed(collapsed) = collapse(*self.lhs.clone(), self.op, *self.rhs.clone()) {
-            return collapsed.to_range_string(maximize, analyzer)
+        if let MaybeCollapsed::Collapsed(collapsed) =
+            collapse(*self.lhs.clone(), self.op, *self.rhs.clone())
+        {
+            return collapsed.to_range_string(maximize, analyzer);
         }
         let lhs_r_str = self.lhs.to_range_string(maximize, analyzer);
         let lhs_str = match *self.lhs {
@@ -254,11 +242,17 @@ impl ToRangeString for RangeExpr<Concrete> {
                 _ => RangeElemString::new(format!("~{}", lhs_str.s), lhs_str.loc),
             }
         } else if matches!(self.op, RangeOp::SetIndices) {
-            RangeElemString::new(format!("set_indicies({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
+            RangeElemString::new(
+                format!("set_indicies({}, {})", lhs_str.s, rhs_str.s),
+                lhs_str.loc,
+            )
         } else if matches!(self.op, RangeOp::GetLength) {
             RangeElemString::new(format!("get_length({})", lhs_str.s), lhs_str.loc)
         } else if matches!(self.op, RangeOp::SetLength) {
-            RangeElemString::new(format!("set_length({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
+            RangeElemString::new(
+                format!("set_length({}, {})", lhs_str.s, rhs_str.s),
+                lhs_str.loc,
+            )
         } else if matches!(self.op, RangeOp::Concat) {
             RangeElemString::new(format!("concat({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
         } else {

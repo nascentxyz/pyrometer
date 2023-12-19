@@ -1,9 +1,8 @@
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
-    elem::{Elem, RangeElem},
-    nodes::{Concrete, ContractNode, FunctionNode},
+    nodes::{ContractNode, FunctionNode},
     solvers::{AtomicSolveStatus, BruteBinSearchSolver, SolcSolver},
-    Edge, Range,
+    Edge,
 };
 use pyrometer::{Analyzer, Root, SourcePath};
 use shared::GraphDot;
@@ -11,7 +10,7 @@ use shared::Search;
 
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
-use ethers_core::types::I256;
+
 use tracing_subscriber::prelude::*;
 
 use std::{
@@ -350,15 +349,21 @@ fn main() {
                         let mut all_edges = ctx.all_edges(&analyzer).unwrap();
                         all_edges.push(ctx);
                         all_edges.iter().for_each(|c| {
-                            let rets =  c.return_nodes(&analyzer).unwrap();
+                            let _rets = c.return_nodes(&analyzer).unwrap();
                             // if c.path(&analyzer).starts_with(r#"step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64)"#)
                             // && rets.iter().take(1).any(|ret| {
                             //     let range = ret.1.ref_range(&analyzer).unwrap().unwrap();
                             //     range.evaled_range_min(&analyzer).unwrap().range_eq(&Elem::from(Concrete::from(I256::from(-1))))
                             // })
-                            { // step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64).fork{ false }.fork{ true }.fork{ true }.fork{ false }"#.to_string()) {
+                            {
+                                // step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64).fork{ false }.fork{ true }.fork{ true }.fork{ false }"#.to_string()) {
                                 // println!("{:#?}", c.ctx_deps_as_controllables_str(&analyzer).unwrap());
-                                if let Some(mut solver) = BruteBinSearchSolver::maybe_new(c.ctx_deps(&analyzer).unwrap(), &analyzer).unwrap() {
+                                if let Some(mut solver) = BruteBinSearchSolver::maybe_new(
+                                    c.ctx_deps(&analyzer).unwrap(),
+                                    &analyzer,
+                                )
+                                .unwrap()
+                                {
                                     println!("created solver");
                                     match solver.solve(&analyzer).unwrap() {
                                         AtomicSolveStatus::Unsat => {
@@ -368,7 +373,11 @@ fn main() {
                                             println!("-----------------------");
                                             println!("sat for: {}", c.path(&analyzer));
                                             ranges.iter().for_each(|(atomic, conc)| {
-                                                println!("{}: {}", atomic.idxs[0].display_name(&analyzer).unwrap(), conc.as_human_string());
+                                                println!(
+                                                    "{}: {}",
+                                                    atomic.idxs[0].display_name(&analyzer).unwrap(),
+                                                    conc.as_human_string()
+                                                );
                                             });
                                         }
                                         AtomicSolveStatus::Indeterminate => {

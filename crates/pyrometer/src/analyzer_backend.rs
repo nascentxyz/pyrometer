@@ -227,5 +227,7 @@ impl AnalyzerLike for Analyzer {
         }
     }
 
-    fn debug_panic(&self) -> bool { self.debug_panic }
+    fn debug_panic(&self) -> bool {
+        self.debug_panic
+    }
 }

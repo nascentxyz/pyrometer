@@ -1,9 +1,11 @@
-use crate::{variable::Variable, ListAccess, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use crate::{
+    variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, ListAccess,
+};
 
 use graph::{
-    elem::RangeElem, ContextEdge, Edge,
+    elem::RangeElem,
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, Node, SolcRange, VarType, range_string::ToRangeString,
+    AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
 };
 
 use solang_parser::pt::{Expression, Loc};
@@ -100,20 +102,21 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                     let name = accum_node.display_name(self).into_expr_err(loc)?;
                     let next_var = ContextVarNode::from(var);
                     let next_name = next_var.display_name(self).into_expr_err(loc)?;
-                    accum_node.underlying_mut(self).into_expr_err(loc)?.display_name = format!("concat({name}, {next_name})");
+                    accum_node
+                        .underlying_mut(self)
+                        .into_expr_err(loc)?
+                        .display_name = format!("concat({name}, {next_name})");
 
                     // concat into it
                     self.concat_inner(loc, accum_node, next_var)?;
-                    
+
                     // add it back to the stack
                     ctx.push_expr(ExprRet::Single(accum_node.into()), self)
                         .into_expr_err(loc)?;
-                    
+
                     Ok(())
                 }
-                ExprRet::Null => {
-                    Ok(())
-                }
+                ExprRet::Null => Ok(()),
                 ExprRet::Multi(inner) => inner
                     .into_iter()
                     .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, true)),
@@ -232,8 +235,18 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 Ok(())
             }
             (VarType::BuiltIn(_bn, Some(r)), VarType::BuiltIn(_bn2, Some(r2))) => {
-                let min = r.min.clone().concat(r2.min.clone()).simplify_minimize(&mut Default::default(), self).into_expr_err(loc)?;
-                let max = r.max.clone().concat(r2.max.clone()).simplify_maximize(&mut Default::default(), self).into_expr_err(loc)?;
+                let min = r
+                    .min
+                    .clone()
+                    .concat(r2.min.clone())
+                    .simplify_minimize(&mut Default::default(), self)
+                    .into_expr_err(loc)?;
+                let max = r
+                    .max
+                    .clone()
+                    .concat(r2.max.clone())
+                    .simplify_maximize(&mut Default::default(), self)
+                    .into_expr_err(loc)?;
                 accum.set_range_min(self, min).into_expr_err(loc)?;
                 accum.set_range_max(self, max).into_expr_err(loc)?;
                 Ok(())

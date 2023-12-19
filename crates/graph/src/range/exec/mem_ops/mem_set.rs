@@ -1,6 +1,6 @@
 use crate::{
     nodes::Concrete,
-    range::{elem::*, exec_traits::*}
+    range::{elem::*, exec_traits::*},
 };
 
 use ethers_core::types::{H256, U256};
@@ -43,10 +43,13 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 Concrete::DynBytes(val),
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::Bytes(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::DynBytes(val), None) => {
@@ -58,7 +61,10 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
                         let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (Elem::from(Concrete::from(U256::from(i))), (v, self.op_num + i))
+                        (
+                            Elem::from(Concrete::from(U256::from(i))),
+                            (v, self.op_num + i),
+                        )
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
@@ -72,10 +78,13 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 Concrete::String(val),
                 Some((
                     _,
-                    (Elem::Concrete(RangeConcrete {
-                        val: Concrete::String(..),
-                        ..
-                    }), _),
+                    (
+                        Elem::Concrete(RangeConcrete {
+                            val: Concrete::String(..),
+                            ..
+                        }),
+                        _,
+                    ),
                 )),
             )
             | (Concrete::String(val), None) => {
@@ -87,7 +96,10 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                         let mut bytes = [0x00; 32];
                         v.encode_utf8(&mut bytes[..]);
                         let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (Elem::from(Concrete::from(U256::from(i))), (v, i + self.op_num))
+                        (
+                            Elem::from(Concrete::from(U256::from(i))),
+                            (v, i + self.op_num),
+                        )
                     })
                     .collect::<BTreeMap<_, _>>();
                 existing.extend(new);
@@ -128,7 +140,6 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
         self.val.get_index(&index.val).map(Elem::from)
     }
 
-
     fn range_set_length(&self, _other: &Self) -> Option<Elem<Concrete>> {
         unreachable!()
     }
@@ -146,7 +157,6 @@ impl RangeMemSet<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
     fn range_get_index(&self, _range: &RangeDyn<Concrete>) -> Option<Elem<Concrete>> {
         unreachable!()
     }
-
 
     fn range_set_length(&self, _other: &RangeDyn<Concrete>) -> Option<Elem<Concrete>> {
         unreachable!()
@@ -174,15 +184,13 @@ impl RangeMemSet<Concrete> for Elem<Concrete> {
                 let mut a = a.clone();
                 a.len = b.len.clone();
                 Some(Elem::ConcreteDyn(a.clone()))
-            },
-            (a @ Elem::Concrete(_), _b @ Elem::Concrete(_)) => {
-                Some(a.clone())
-            },
+            }
+            (a @ Elem::Concrete(_), _b @ Elem::Concrete(_)) => Some(a.clone()),
             (Elem::ConcreteDyn(a), _) => {
                 let mut a = a.clone();
                 a.len = Box::new(other.clone());
                 Some(Elem::ConcreteDyn(a.clone()))
-            },
+            }
             _e => None,
         }
     }
@@ -204,7 +212,7 @@ impl RangeMemSet<Concrete> for Elem<Concrete> {
                 } else {
                     None
                 }
-            },
+            }
             (Elem::ConcreteDyn(a), idx @ Elem::Reference(_)) => {
                 if let Some((val, _)) = a.val.get(idx).cloned() {
                     Some(val)

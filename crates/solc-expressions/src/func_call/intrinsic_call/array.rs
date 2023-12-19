@@ -1,12 +1,11 @@
 use crate::{
-    array::Array, bin_op::BinOp, assign::Assign, variable::Variable, ContextBuilder, ExprErr, ExpressionParser,
-    IntoExprErr, ListAccess,
+    array::Array, bin_op::BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, ListAccess,
 };
 
 use graph::{
     elem::*,
-    nodes::{Concrete, ContextVar, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, Node, Edge, ContextEdge,
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    AnalyzerBackend, Node,
 };
 
 use ethers_core::types::U256;
@@ -31,8 +30,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     // empty element onto the expr ret stack
                     self.parse_ctx_expr(&input_exprs[0], ctx)?;
                     self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let Some(array) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoRhs(
                                 loc,
@@ -50,33 +48,41 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         let arr = ContextVarNode::from(arr).latest_version(analyzer);
 
                         // get length
-                        let len = analyzer.get_length(ctx, loc, arr, true)?.unwrap().latest_version(analyzer);
+                        let len = analyzer
+                            .get_length(ctx, loc, arr, true)?
+                            .unwrap()
+                            .latest_version(analyzer);
 
                         // get the index access and add it to the stack
                         let _ = analyzer.index_into_array_raw(ctx, loc, len, arr, false, false)?;
 
                         // create a temporary 1 variable
-                        let cnode = analyzer.add_node(Node::Concrete(Concrete::from(U256::from(1))));
+                        let cnode =
+                            analyzer.add_node(Node::Concrete(Concrete::from(U256::from(1))));
                         let tmp_one = Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode.into(), analyzer)
-                                .into_expr_err(loc)?,
+                            ContextVar::new_from_concrete(
+                                Loc::Implicit,
+                                ctx,
+                                cnode.into(),
+                                analyzer,
+                            )
+                            .into_expr_err(loc)?,
                         );
                         let one = ContextVarNode::from(analyzer.add_node(tmp_one));
 
                         // add 1 to the length
-                        let tmp_len = analyzer.op(
-                            loc,
-                            len,
-                            one,
-                            ctx,
-                            RangeOp::Add(false),
-                            false
-                        )?;
+                        let tmp_len =
+                            analyzer.op(loc, len, one, ctx, RangeOp::Add(false), false)?;
 
                         let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
                         tmp_len.underlying_mut(analyzer).unwrap().is_tmp = false;
 
-                        analyzer.set_var_as_length(ctx, loc, tmp_len, arr.latest_version(analyzer))?;
+                        analyzer.set_var_as_length(
+                            ctx,
+                            loc,
+                            tmp_len,
+                            arr.latest_version(analyzer),
+                        )?;
 
                         Ok(())
                     })
@@ -110,47 +116,60 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                                 ctx.push_expr(new_elem, analyzer).into_expr_err(loc)?;
                                 return Ok(());
                             }
-                            let pushed_value = ContextVarNode::from(new_elem.expect_single().unwrap());
+                            let pushed_value =
+                                ContextVarNode::from(new_elem.expect_single().unwrap());
 
                             // get length
                             let arr = array.expect_single().into_expr_err(loc)?;
                             let arr = ContextVarNode::from(arr).latest_version(analyzer);
 
                             // get length
-                            let len = analyzer.get_length(ctx, loc, arr, true)?.unwrap().latest_version(analyzer);
+                            let len = analyzer
+                                .get_length(ctx, loc, arr, true)?
+                                .unwrap()
+                                .latest_version(analyzer);
 
                             // get the index access for the *previous* length
-                            let index_access = analyzer.index_into_array_raw(ctx, loc, len, arr, false, true)?.unwrap();
+                            let index_access = analyzer
+                                .index_into_array_raw(ctx, loc, len, arr, false, true)?
+                                .unwrap();
                             // create a temporary 1 variable
-                            let cnode = analyzer.add_node(Node::Concrete(Concrete::from(U256::from(1))));
+                            let cnode =
+                                analyzer.add_node(Node::Concrete(Concrete::from(U256::from(1))));
                             let tmp_one = Node::ContextVar(
-                                ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode.into(), analyzer)
-                                    .into_expr_err(loc)?,
+                                ContextVar::new_from_concrete(
+                                    Loc::Implicit,
+                                    ctx,
+                                    cnode.into(),
+                                    analyzer,
+                                )
+                                .into_expr_err(loc)?,
                             );
                             let one = ContextVarNode::from(analyzer.add_node(tmp_one));
 
                             // add 1 to the length
-                            let tmp_len = analyzer.op(
-                                loc,
-                                len,
-                                one,
-                                ctx,
-                                RangeOp::Add(false),
-                                false
-                            )?;
+                            let tmp_len =
+                                analyzer.op(loc, len, one, ctx, RangeOp::Add(false), false)?;
 
                             let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
                             tmp_len.underlying_mut(analyzer).unwrap().is_tmp = false;
 
-
                             // set the new length
-                            analyzer.set_var_as_length(ctx, loc, tmp_len, arr.latest_version(analyzer))?;
-
+                            analyzer.set_var_as_length(
+                                ctx,
+                                loc,
+                                tmp_len,
+                                arr.latest_version(analyzer),
+                            )?;
 
                             // update the index access's range
                             let elem = Elem::from(pushed_value);
-                            index_access.set_range_min(analyzer, elem.clone()).into_expr_err(loc)?;
-                            index_access.set_range_max(analyzer, elem.clone()).into_expr_err(loc)?;
+                            index_access
+                                .set_range_min(analyzer, elem.clone())
+                                .into_expr_err(loc)?;
+                            index_access
+                                .set_range_max(analyzer, elem.clone())
+                                .into_expr_err(loc)?;
 
                             // update the array using the index access
                             analyzer.update_array_from_index_access(
@@ -158,7 +177,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                                 loc,
                                 len,
                                 index_access.latest_version(analyzer),
-                                arr.latest_version(analyzer)
+                                arr.latest_version(analyzer),
                             )
                         })
                     })
@@ -184,9 +203,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 }
                 self.parse_ctx_expr(&input_exprs[0], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(array) =
-                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
+                    let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
                             "array[].pop() was not given an array".to_string(),
@@ -203,7 +220,10 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let arr = ContextVarNode::from(arr).latest_version(analyzer);
 
                     // get length
-                    let len = analyzer.get_length(ctx, loc, arr, true)?.unwrap().latest_version(analyzer);
+                    let len = analyzer
+                        .get_length(ctx, loc, arr, true)?
+                        .unwrap()
+                        .latest_version(analyzer);
 
                     // create a temporary 1 variable
                     let cnode = analyzer.add_node(Node::Concrete(Concrete::from(U256::from(1))));
@@ -214,31 +234,30 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let one = ContextVarNode::from(analyzer.add_node(tmp_one));
 
                     // subtract 1 from the length
-                    let tmp_len = analyzer.op(
-                        loc,
-                        len,
-                        one,
-                        ctx,
-                        RangeOp::Sub(false),
-                        false
-                    )?;
+                    let tmp_len = analyzer.op(loc, len, one, ctx, RangeOp::Sub(false), false)?;
 
                     let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
                     tmp_len.underlying_mut(analyzer).unwrap().is_tmp = false;
 
                     // get the index access
-                    let index_access = analyzer.index_into_array_raw(ctx, loc, tmp_len, arr, false, true)?.unwrap();
+                    let index_access = analyzer
+                        .index_into_array_raw(ctx, loc, tmp_len, arr, false, true)?
+                        .unwrap();
 
                     analyzer.set_var_as_length(ctx, loc, tmp_len, arr.latest_version(analyzer))?;
-                    index_access.set_range_min(analyzer, Elem::Null).into_expr_err(loc)?;
-                    index_access.set_range_max(analyzer, Elem::Null).into_expr_err(loc)?;
+                    index_access
+                        .set_range_min(analyzer, Elem::Null)
+                        .into_expr_err(loc)?;
+                    index_access
+                        .set_range_max(analyzer, Elem::Null)
+                        .into_expr_err(loc)?;
 
                     analyzer.update_array_from_index_access(
                         ctx,
                         loc,
                         tmp_len,
                         index_access.latest_version(analyzer),
-                        arr.latest_version(analyzer)
+                        arr.latest_version(analyzer),
                     )
                     // let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     //     return Err(ExprErr::NoLhs(
