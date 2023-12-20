@@ -1,7 +1,7 @@
 //! Traits & blanket implementations that facilitate performing namespaced function calls.
 
 use crate::{
-    func_call::func_caller::FuncCaller, func_call::helper::CallerHelper,
+    func_call::func_caller::{NamedOrUnnamedArgs, FuncCaller}, func_call::helper::CallerHelper,
     intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr,
     ExpressionParser, IntoExprErr,
 };
@@ -13,7 +13,7 @@ use graph::{
 
 use shared::NodeIdx;
 
-use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
+use solang_parser::pt::{Expression, Identifier, Loc};
 
 impl<T> NameSpaceFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
@@ -24,20 +24,6 @@ pub trait NameSpaceFuncCaller:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
 {
     #[tracing::instrument(level = "trace", skip_all)]
-    /// TODO: Call a namedspaced named input function, i.e. `MyContract.myFunc({a: 1, b: 2})`
-    fn call_name_spaced_named_func(
-        &mut self,
-        ctx: ContextNode,
-        _loc: &Loc,
-        member_expr: &Expression,
-        _ident: &Identifier,
-        _input_args: &[NamedArgument],
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(member_expr, ctx)?;
-        todo!("here");
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
     /// Call a namedspaced function, i.e. `MyContract.myFunc(...)`
     fn call_name_spaced_func(
         &mut self,
@@ -45,7 +31,7 @@ pub trait NameSpaceFuncCaller:
         loc: &Loc,
         member_expr: &Expression,
         ident: &Identifier,
-        input_exprs: &[Expression],
+        input_exprs: NamedOrUnnamedArgs,
     ) -> Result<(), ExprErr> {
         use solang_parser::pt::Expression::*;
         tracing::trace!("Calling name spaced function");
@@ -55,7 +41,7 @@ pub trait NameSpaceFuncCaller:
                 let fn_node = self
                     .builtin_fn_or_maybe_add(&func_name)
                     .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
-                return self.intrinsic_func_call(loc, input_exprs, fn_node, ctx);
+                return self.intrinsic_func_call(loc, &input_exprs, fn_node, ctx);
             } else if name == "super" {
                 if let Some(contract) = ctx.maybe_associated_contract(self).into_expr_err(*loc)? {
                     let supers = contract.super_contracts(self);
@@ -76,7 +62,7 @@ pub trait NameSpaceFuncCaller:
                             "Could not find function in super".to_string(),
                         ));
                     }
-                    self.parse_inputs(ctx, *loc, input_exprs)?;
+                    input_exprs.parse(self, ctx, *loc)?;
                     return self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                         let inputs = if let Some(inputs) =
                             ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
@@ -86,7 +72,11 @@ pub trait NameSpaceFuncCaller:
                             ExprRet::Multi(vec![])
                         };
                         if possible_funcs.len() == 1 {
-                            let mut inputs = inputs.as_vec();
+                            let mut inputs = if let Some(ordered_param_names) = possible_funcs[0].maybe_ordered_param_names(analyzer) {
+                                input_exprs.order(inputs, ordered_param_names).as_vec()
+                            } else {
+                                inputs.as_vec()
+                            };
                             let func = possible_funcs[0];
                             if func.params(analyzer).len() < inputs.len() {
                                 inputs = inputs[1..].to_vec();
@@ -103,6 +93,7 @@ pub trait NameSpaceFuncCaller:
                             let mut lits = vec![false];
                             lits.extend(
                                 input_exprs
+                                    .exprs()
                                     .iter()
                                     .map(|expr| {
                                         match expr {
@@ -155,7 +146,7 @@ pub trait NameSpaceFuncCaller:
                 return Ok(());
             }
 
-            analyzer.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
+            analyzer.match_namespaced_member(ctx, loc, member_expr, ident, &input_exprs, ret)
         })
     }
 
@@ -166,7 +157,7 @@ pub trait NameSpaceFuncCaller:
         loc: Loc,
         member_expr: &Expression,
         ident: &Identifier,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         ret: ExprRet,
     ) -> Result<(), ExprErr> {
         match ret {
@@ -192,7 +183,7 @@ pub trait NameSpaceFuncCaller:
         loc: Loc,
         member_expr: &Expression,
         ident: &Identifier,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         member: NodeIdx,
     ) -> Result<(), ExprErr> {
         use solang_parser::pt::Expression::*;
@@ -217,7 +208,7 @@ pub trait NameSpaceFuncCaller:
         ctx.push_expr(ExprRet::Single(member), self)
             .into_expr_err(loc)?;
 
-        self.parse_inputs(ctx, loc, input_exprs)?;
+        input_exprs.parse(self, ctx, loc)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
@@ -329,13 +320,8 @@ pub trait NameSpaceFuncCaller:
                                     return Ok(());
                                 }
                                 let mut modifier_input_exprs = vec![member_expr.clone()];
-                                modifier_input_exprs.extend(input_exprs.to_vec());
-                                analyzer.match_intrinsic_fallback(
-                                    ctx,
-                                    &loc,
-                                    &modifier_input_exprs,
-                                    ret,
-                                )
+                                modifier_input_exprs.extend(input_exprs.exprs());
+                                analyzer.match_intrinsic_fallback(ctx, &loc, &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs), ret)
                             })
                         } else {
                             // analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
@@ -374,12 +360,16 @@ pub trait NameSpaceFuncCaller:
                             return Ok(());
                         }
                         let mut modifier_input_exprs = vec![member_expr.clone()];
-                        modifier_input_exprs.extend(input_exprs.to_vec());
-                        analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
+                        modifier_input_exprs.extend(input_exprs.exprs());
+                        analyzer.match_intrinsic_fallback(ctx, &loc, &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs), ret)
                     })
                 }
             } else if possible_funcs.len() == 1 {
-                let mut inputs = inputs.as_vec();
+                let mut inputs = if let Some(ordered_param_names) = possible_funcs[0].maybe_ordered_param_names(analyzer) {
+                    input_exprs.order(inputs, ordered_param_names).as_vec()
+                } else {
+                    inputs.as_vec()
+                };
                 let func = possible_funcs[0];
                 if func.params(analyzer).len() > inputs.len() {
                     // Add the member back in if its a context variable
@@ -406,6 +396,7 @@ pub trait NameSpaceFuncCaller:
                 let mut lits = vec![false];
                 lits.extend(
                     input_exprs
+                        .exprs()
                         .iter()
                         .map(|expr| {
                             match expr {

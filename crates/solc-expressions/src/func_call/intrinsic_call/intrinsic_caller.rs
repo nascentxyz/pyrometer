@@ -1,3 +1,9 @@
+use crate::func_call::func_caller::FuncCaller;
+use crate::context_builder::ExpressionParser;
+use graph::nodes::ContextVarNode;
+use crate::func_caller::NamedOrUnnamedArgs;
+use graph::nodes::ContractNode;
+use graph::nodes::ContextVar;
 use crate::{
     func_call::helper::CallerHelper,
     intrinsic_call::{
@@ -55,12 +61,132 @@ impl<T> IntrinsicFuncCaller for T where
 pub trait IntrinsicFuncCaller:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerParts
 {
+    fn new_call(
+        &mut self,
+        loc: &Loc,
+        ty_expr: &Expression,
+        inputs: &[Expression],
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        self.parse_ctx_expr(ty_expr, ctx)?;
+        self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+            let Some(ty) =
+                ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+            else {
+                return Err(ExprErr::NoLhs(
+                    loc,
+                    "No type given for call to `new`".to_string(),
+                ));
+            };
+            let ty_idx = ty.expect_single().into_expr_err(loc)?;
+            match analyzer.node(ty_idx) {
+                Node::Builtin(Builtin::Array(_)) => {
+                    // construct a new list
+                    analyzer.construct_array(ty_idx, &NamedOrUnnamedArgs::Unnamed(inputs), loc, ctx)
+                }
+                Node::Contract(_c) => {
+                    let cnode = ContractNode::from(ty_idx);
+                    if let Some(constructor) = cnode.constructor(analyzer) {
+                        let params = constructor.params(analyzer);
+                        if params.is_empty() {
+                            // call the constructor
+                            let inputs = ExprRet::Multi(vec![]);
+                            analyzer.func_call(
+                                ctx,
+                                loc,
+                                &inputs,
+                                constructor,
+                                None,
+                                None,
+                            )?;
+                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                                let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
+                                    Some(v) => v,
+                                    None => {
+                                        return Err(ExprErr::VarBadType(
+                                            loc,
+                                            format!(
+                                                "Could not create context variable from user type: {:?}",
+                                                analyzer.node(ty_idx)
+                                            ),
+                                        ))
+                                    }
+                                };
+                                let contract_cvar =
+                                    ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                                ctx.push_expr(ExprRet::Single(contract_cvar.into()), analyzer)
+                                    .into_expr_err(loc)
+                            })
+                        } else {
+                            analyzer.parse_inputs(ctx, loc, inputs)?;
+                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                                let Some(input_paths) =
+                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                                else {
+                                    return Err(ExprErr::NoRhs(
+                                        loc,
+                                        "No inputs for constructor and expected some".to_string(),
+                                    ));
+                                };
+                                // call the constructor
+                                analyzer.func_call(
+                                    ctx,
+                                    loc,
+                                    &input_paths,
+                                    constructor,
+                                    None,
+                                    None,
+                                )?;
+                                analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                                    let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
+                                        Some(v) => v,
+                                        None => {
+                                            return Err(ExprErr::VarBadType(
+                                                loc,
+                                                format!(
+                                                    "Could not create context variable from user type: {:?}",
+                                                    analyzer.node(ty_idx)
+                                                ),
+                                            ))
+                                        }
+                                    };
+                                    let contract_cvar =
+                                        ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                                    ctx.push_expr(ExprRet::Single(contract_cvar.into()), analyzer)
+                                        .into_expr_err(loc)
+                                })
+                            })
+                        }
+                    } else {
+                        let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
+                            Some(v) => v,
+                            None => {
+                                return Err(ExprErr::VarBadType(
+                                    loc,
+                                    format!(
+                                        "Could not create context variable from user type: {:?}",
+                                        analyzer.node(ty_idx)
+                                    ),
+                                ))
+                            }
+                        };
+                        let contract_cvar =
+                            ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+                        ctx.push_expr(ExprRet::Single(contract_cvar.into()), analyzer)
+                            .into_expr_err(loc)
+                    }
+                }
+                _ => Err(ExprErr::ParseError(loc, "Tried to construct a new element of a type that doesn't support the `new` keyword".to_string()))
+            }
+        })
+    }
+
     /// Calls an intrinsic/builtin function call (casts, require, etc.)
     #[tracing::instrument(level = "trace", skip_all)]
     fn intrinsic_func_call(
         &mut self,
         loc: &Loc,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         func_idx: NodeIdx,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
@@ -104,7 +230,7 @@ pub trait IntrinsicFuncCaller:
                         }
                         // typing
                         "type" | "wrap" | "unwrap" => {
-                            self.types_call(func_name.name.clone(), input_exprs, *loc, ctx)
+                            self.types_call(func_name.name.clone(), func_idx, input_exprs, *loc, ctx)
                         }
                         e => Err(ExprErr::Todo(
                             *loc,
@@ -139,7 +265,7 @@ pub trait IntrinsicFuncCaller:
             }
             Node::Unresolved(_) => {
                 // Try to give a nice error
-                self.parse_inputs(ctx, *loc, input_exprs)?;
+                input_exprs.parse(self, ctx, *loc)?;
 
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {

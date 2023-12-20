@@ -1,3 +1,4 @@
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
     assign::Assign, func_call::helper::CallerHelper, ContextBuilder, ExprErr, ExpressionParser,
     IntoExprErr,
@@ -25,12 +26,12 @@ pub trait ConstructorCaller:
     fn construct_array(
         &mut self,
         func_idx: NodeIdx,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         // create a new list
-        self.parse_ctx_expr(&input_exprs[0], ctx)?;
+        self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(len_var) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
@@ -113,13 +114,13 @@ pub trait ConstructorCaller:
     fn construct_contract(
         &mut self,
         func_idx: NodeIdx,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         // construct a new contract
         if !input_exprs.is_empty() {
-            self.parse_ctx_expr(&input_exprs[0], ctx)?;
+            self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
         }
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             if !input_exprs.is_empty() {
@@ -161,7 +162,7 @@ pub trait ConstructorCaller:
     fn construct_struct(
         &mut self,
         func_idx: NodeIdx,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
@@ -172,7 +173,7 @@ pub trait ConstructorCaller:
         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
-        self.parse_inputs(ctx, loc, input_exprs)?;
+        input_exprs.parse(self, ctx, loc)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(

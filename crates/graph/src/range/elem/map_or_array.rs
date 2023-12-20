@@ -108,13 +108,32 @@ impl<T: Ord> RangeDyn<T> {
     }
 }
 
-impl RangeDyn<Concrete> {}
+impl RangeDyn<Concrete> {
+    pub fn as_bytes(&self, analyzer: &impl GraphBackend, maximize: bool) -> Option<Vec<u8>> {
+        let len = if maximize {
+            self.len.maximize(analyzer).ok()?.concrete()?.into_u256()?.as_usize()
+        } else {
+            self.len.minimize(analyzer).ok()?.concrete()?.into_u256()?.as_usize()
+        };
+
+        Some(
+            self.val.values().map(|v| {
+                v.0.as_bytes(analyzer, maximize)
+            })
+            .collect::<Option<Vec<Vec<u8>>>>()?
+            .into_iter()
+            .flatten()
+            .take(len)
+            .collect()
+        )
+    }
+}
 
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
 
-    fn range_eq(&self, _other: &Self) -> bool {
-        false
+    fn range_eq(&self, other: &Self) -> bool {
+        matches!(self.range_ord(other), Some(std::cmp::Ordering::Equal))
     }
 
     fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {

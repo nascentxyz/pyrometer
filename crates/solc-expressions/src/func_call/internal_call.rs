@@ -1,5 +1,6 @@
 //! Traits & blanket implementations that facilitate performing locally scoped function calls.
 
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
     assign::Assign, func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder,
     ExprErr, ExpressionParser, IntoExprErr,
@@ -27,7 +28,6 @@ pub trait InternalFuncCaller:
         ctx: ContextNode,
         loc: &Loc,
         ident: &Identifier,
-        // _func_expr: &Expression,
         input_args: &[NamedArgument],
     ) -> Result<(), ExprErr> {
         // It is a function call, check if we have the ident in scope
@@ -192,7 +192,7 @@ pub trait InternalFuncCaller:
         loc: &Loc,
         ident: &Identifier,
         func_expr: &Expression,
-        input_exprs: &[Expression],
+        input_exprs: NamedOrUnnamedArgs,
     ) -> Result<(), ExprErr> {
         tracing::trace!("function call: {}(..)", ident.name);
         // It is a function call, check if we have the ident in scope
@@ -202,9 +202,28 @@ pub trait InternalFuncCaller:
         let possible_funcs = funcs
             .iter()
             .filter(|func| {
-                func.name(self)
+                let named_correctly = func
+                    .name(self)
                     .unwrap()
-                    .starts_with(&format!("{}(", ident.name))
+                    .starts_with(&format!("{}(", ident.name));
+                if !named_correctly {
+                    false
+                } else {
+                    // filter by params
+                    let params = func.params(self);
+                    if params.len() != input_exprs.len() {
+                        false
+                    } else if matches!(input_exprs, NamedOrUnnamedArgs::Named(_)) {
+                        params.iter().all(|param| {
+                            input_exprs.named_args()
+                                .unwrap()
+                                .iter()
+                                .any(|input| input.name.name == param.name(self).unwrap())
+                        })
+                    } else {
+                        true
+                    }
+                }
             })
             .copied()
             .collect::<Vec<_>>();
@@ -223,17 +242,22 @@ pub trait InternalFuncCaller:
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
+                    analyzer.match_intrinsic_fallback(ctx, &loc, &input_exprs, ret)
                 })
             }
             1 => {
                 // there is only a single possible function
-                self.parse_inputs(ctx, *loc, input_exprs)?;
+                input_exprs.parse(self, ctx, *loc)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let inputs = ctx
+                    let mut inputs = ctx
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
                         .unwrap_or_else(|| ExprRet::Multi(vec![]));
+                    inputs = if let Some(ordered_param_names) = possible_funcs[0].maybe_ordered_param_names(analyzer) {
+                        input_exprs.order(inputs, ordered_param_names)
+                    } else {
+                        inputs
+                    };
                     let inputs = inputs.flatten();
                     if matches!(inputs, ExprRet::CtxKilled(_)) {
                         ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
@@ -250,7 +274,7 @@ pub trait InternalFuncCaller:
             }
             _ => {
                 // this is the annoying case due to function overloading & type inference on number literals
-                self.parse_inputs(ctx, *loc, input_exprs)?;
+                input_exprs.parse(self, ctx, *loc)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                     let inputs = ctx
                         .pop_expr_latest(loc, analyzer)

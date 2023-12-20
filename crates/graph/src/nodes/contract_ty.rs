@@ -136,6 +136,15 @@ impl ContractNode {
             .collect()
     }
 
+    pub fn constructor(&self, analyzer: &(impl GraphBackend + Search)) -> Option<FunctionNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Constructor, 1, 0)
+            .into_iter()
+            .map(FunctionNode::from)
+            .take(1)
+            .next()
+    }
+
     /// Gets all associated storage vars from the underlying node data for the [`Contract`]
     pub fn direct_storage_vars(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<VarNode> {
         analyzer

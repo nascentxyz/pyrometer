@@ -314,6 +314,21 @@ impl<T> From<NodeIdx> for Elem<T> {
 }
 
 impl Elem<Concrete> {
+
+    pub fn as_bytes(&self, analyzer: &impl GraphBackend, maximize: bool) -> Option<Vec<u8>> {
+        let evaled = if maximize {
+            self.maximize(analyzer).ok()?
+        } else {
+            self.minimize(analyzer).ok()?
+        };
+
+        match evaled {
+            Elem::Concrete(c) => c.as_bytes(analyzer, maximize),
+            Elem::ConcreteDyn(c) => c.as_bytes(analyzer, maximize),
+            _ => None,
+        }
+    }
+
     pub fn overlaps(
         &self,
         other: &Self,
@@ -529,6 +544,8 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     fn range_eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Concrete(a), Self::Concrete(b)) => a.range_eq(b),
+            (Self::ConcreteDyn(a), Self::ConcreteDyn(b)) => a.range_eq(b),
+            (Self::Reference(a), Self::Reference(b)) => a.idx == b.idx,
             _ => false,
         }
     }

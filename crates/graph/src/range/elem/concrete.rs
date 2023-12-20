@@ -26,6 +26,12 @@ impl From<Concrete> for RangeConcrete<Concrete> {
     }
 }
 
+impl RangeConcrete<Concrete> {
+    pub fn as_bytes(&self, _analyzer: &impl GraphBackend, _maximize: bool) -> Option<Vec<u8>> {
+        Some(self.val.as_bytes())
+    }
+}
+
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     type GraphError = GraphError;
     // fn simplify(&self, _analyzer: &impl GraphBackend) -> Elem<Concrete> {

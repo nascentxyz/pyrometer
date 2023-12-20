@@ -77,6 +77,7 @@ contract Intrinsics {
 	function precompiles() public {
 		bytes memory a = hex"aa";
 		bytes32 hash = keccak256(a);
+		require(hash == 0xdb81b4d58595fbbbb592d3661a34cdca14d7ab379441400cbfa1b78bc447c365);
 		bytes32 shaHash = sha256(a);
 		bytes20 ripmdHash = ripemd160(a);
 		address recoveredAddr = ecrecover(hash, 1, 2, 3);

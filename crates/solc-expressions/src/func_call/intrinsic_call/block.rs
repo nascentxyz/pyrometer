@@ -1,4 +1,5 @@
-use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use crate::func_caller::NamedOrUnnamedArgs;
+use crate::{ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
     nodes::{Builtin, ContextNode, ContextVar, ExprRet},
@@ -15,13 +16,13 @@ pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     fn block_call(
         &mut self,
         func_name: String,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "blockhash" => {
-                self.parse_ctx_expr(&input_exprs[0], ctx)?;
+                input_exprs.parse_n(1, self, ctx, loc)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(

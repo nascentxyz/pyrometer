@@ -1,5 +1,7 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::{
     func_call::modifier::ModifierCaller, helper::CallerHelper, internal_call::InternalFuncCaller,
     intrinsic_call::IntrinsicFuncCaller, namespaced_call::NameSpaceFuncCaller, ContextBuilder,
@@ -18,6 +20,143 @@ use shared::NodeIdx;
 use solang_parser::pt::{Expression, Loc, NamedArgument};
 
 use std::collections::BTreeMap;
+
+
+#[derive(Debug)]
+pub enum NamedOrUnnamedArgs<'a> {
+    Named(&'a [NamedArgument]),
+    Unnamed(&'a [Expression])
+}
+
+impl<'a> NamedOrUnnamedArgs<'a> {
+    pub fn named_args(&self) -> Option<&'a [NamedArgument]> {
+        match self {
+            NamedOrUnnamedArgs::Named(inner) => Some(inner),
+            _ => None
+        }
+    }
+
+    pub fn unnamed_args(&self) -> Option<&'a [Expression]> {
+        match self {
+            NamedOrUnnamedArgs::Unnamed(inner) => Some(inner),
+            _ => None
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            NamedOrUnnamedArgs::Unnamed(inner) => inner.len(),
+            NamedOrUnnamedArgs::Named(inner) => inner.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            NamedOrUnnamedArgs::Unnamed(inner) => inner.len() == 0,
+            NamedOrUnnamedArgs::Named(inner) => inner.len() == 0,
+        }
+    }
+
+    pub fn exprs(&self) -> Vec<Expression> {
+        match self {
+            NamedOrUnnamedArgs::Unnamed(inner) => inner.to_vec(),
+            NamedOrUnnamedArgs::Named(inner) => inner.iter().map(|i| i.expr.clone()).collect(),
+        }
+    }
+
+    pub fn parse(&self, analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend), ctx: ContextNode, loc: Loc) -> Result<(), ExprErr> {
+        match self {
+            NamedOrUnnamedArgs::Unnamed(inner) => analyzer.parse_inputs(ctx, loc, inner),
+            NamedOrUnnamedArgs::Named(inner) => {
+                let append = Rc::new(RefCell::new(false));
+                inner.iter().try_for_each(|arg| {
+                    analyzer.parse_input(ctx, loc, &arg.expr, &append)?;
+                    Ok(())
+                })?;
+                if !inner.is_empty() {
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(
+                                loc,
+                                "Inputs did not have left hand sides".to_string(),
+                            ));
+                        };
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+        }
+    }
+
+    pub fn parse_n(&self, n: usize, analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend), ctx: ContextNode, loc: Loc) -> Result<(), ExprErr> {
+        let append = Rc::new(RefCell::new(false));
+        match self {
+            NamedOrUnnamedArgs::Unnamed(inner) => {
+                inner.iter().take(n).try_for_each(|arg| {
+                    analyzer.parse_input(ctx, loc, arg, &append)?;
+                    Ok(())
+                })?;
+                if !inner.is_empty() {
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(
+                                loc,
+                                "Inputs did not have left hand sides".to_string(),
+                            ));
+                        };
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+            NamedOrUnnamedArgs::Named(inner) => {
+                inner.iter().take(n).try_for_each(|arg| {
+                    analyzer.parse_input(ctx, loc, &arg.expr, &append)?;
+                    Ok(())
+                })?;
+                if !inner.is_empty() {
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
+                            return Err(ExprErr::NoLhs(
+                                loc,
+                                "Inputs did not have left hand sides".to_string(),
+                            ));
+                        };
+                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+        }
+    }
+
+    pub fn order(&self, inputs: ExprRet, ordered_params: Vec<String>) -> ExprRet {
+        if inputs.len() < 2 {
+            inputs
+        } else {
+            match self {
+                NamedOrUnnamedArgs::Unnamed(_inner) => inputs,
+                NamedOrUnnamedArgs::Named(inner) => {
+                    ExprRet::Multi(ordered_params.iter().map(|param| {
+                        let index = inner.iter().enumerate().find(|(_i, arg)| {
+                            &arg.name.name == param
+                        }).unwrap().0;
+                        match &inputs {
+                            ExprRet::Multi(inner) => {
+                                inner[index].clone()
+                            }
+                            _ => panic!("Mismatched ExprRet type")
+                        }
+                    }).collect())
+                },
+            }
+        }
+    }
+}
 
 impl<T> FuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
@@ -39,7 +178,7 @@ pub trait FuncCaller:
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                self.call_name_spaced_named_func(ctx, loc, member_expr, ident, input_exprs)
+                self.call_name_spaced_func(ctx, loc, member_expr, ident, NamedOrUnnamedArgs::Named(input_exprs))
             }
             Variable(ident) => self.call_internal_named_func(ctx, loc, ident, input_exprs),
             e => Err(ExprErr::IntrinsicNamedArgs(
@@ -60,9 +199,9 @@ pub trait FuncCaller:
         use solang_parser::pt::Expression::*;
         match func_expr {
             MemberAccess(loc, member_expr, ident) => {
-                self.call_name_spaced_func(ctx, loc, member_expr, ident, input_exprs)
+                self.call_name_spaced_func(ctx, loc, member_expr, ident, NamedOrUnnamedArgs::Unnamed(input_exprs))
             }
-            Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, input_exprs),
+            Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, NamedOrUnnamedArgs::Unnamed(input_exprs)),
             _ => {
                 self.parse_ctx_expr(func_expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
@@ -76,7 +215,7 @@ pub trait FuncCaller:
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.match_intrinsic_fallback(ctx, &loc, input_exprs, ret)
+                    analyzer.match_intrinsic_fallback(ctx, &loc, &NamedOrUnnamedArgs::Unnamed(input_exprs), ret)
                 })
             }
         }
@@ -87,7 +226,7 @@ pub trait FuncCaller:
         &mut self,
         ctx: ContextNode,
         loc: &Loc,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         ret: ExprRet,
     ) -> Result<(), ExprErr> {
         match ret {

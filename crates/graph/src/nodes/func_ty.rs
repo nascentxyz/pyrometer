@@ -35,6 +35,14 @@ impl FunctionNode {
         }
     }
 
+    pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<FunctionTy, GraphError> {
+        Ok(self.underlying(analyzer)?.ty)
+    }
+
+    pub fn is_constructor(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(matches!(self.ty(analyzer)?, FunctionTy::Constructor))
+    }
+
     pub fn body_loc(&self, analyzer: &impl GraphBackend) -> Result<Option<Loc>, GraphError> {
         if let Some(body_stmt) = &self.underlying(analyzer)?.body {
             Ok(Some(body_stmt.loc()))
@@ -127,6 +135,21 @@ impl FunctionNode {
                 .clone()
                 .expect("Unnamed function")
                 .name),
+        }
+    }
+
+    pub fn prefix_only_name(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
+        match self.underlying(analyzer)?.ty {
+            FunctionTy::Function => Ok(Some(self
+                .underlying(analyzer)?
+                .name
+                .clone()
+                .expect("Unnamed function")
+                .name
+                .chars()
+                .take_while(|&ch| ch != '(')
+                .collect::<String>())),
+            _ => Ok(None)
         }
     }
 
@@ -321,6 +344,21 @@ impl FunctionNode {
                     .cmp(&b.underlying(analyzer).unwrap().order)
             });
             params
+        }
+    }
+
+    pub fn ordered_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
+        let param_nodes = self.params(analyzer);
+        param_nodes.iter().map(|i| i.name(analyzer).unwrap()).collect()
+    }
+
+    pub fn maybe_ordered_param_names(&self, analyzer: &impl GraphBackend) -> Option<Vec<String>> {
+        let param_nodes = self.params(analyzer);
+        let names: Vec<String> = param_nodes.iter().filter_map(|i| i.maybe_name(analyzer).unwrap()).collect();
+        if names.len() == param_nodes.len() {
+            Some(names)
+        } else {
+            None
         }
     }
 

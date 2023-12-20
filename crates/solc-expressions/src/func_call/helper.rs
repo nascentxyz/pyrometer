@@ -13,7 +13,7 @@ use graph::{
 };
 use shared::{NodeIdx, StorageLocation};
 
-use solang_parser::pt::{Expression, Loc};
+use solang_parser::pt::{Expression, Loc, CodeLocation};
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -123,26 +123,9 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         };
 
         inputs.iter().try_for_each(|input| {
-            self.parse_ctx_expr(input, ctx)?;
-            self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
-                        loc,
-                        "Inputs did not have left hand sides".to_string(),
-                    ));
-                };
-                if matches!(ret, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                if *append.borrow() {
-                    ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
-                } else {
-                    *append.borrow_mut() = true;
-                    ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
-                }
-            })
+            self.parse_input(ctx, loc, input, &append)
         })?;
+
         if !inputs.is_empty() {
             self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                 let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
@@ -156,6 +139,34 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         } else {
             Ok(())
         }
+    }
+
+    fn parse_input(
+        &mut self,
+        ctx: ContextNode,
+        _loc: Loc,
+        input: &Expression,
+        append: &Rc<RefCell<bool>>,
+    ) -> Result<(), ExprErr> {
+        self.parse_ctx_expr(input, ctx)?;
+        self.apply_to_edges(ctx, input.loc(), &|analyzer, ctx, loc| {
+            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoLhs(
+                    loc,
+                    "Inputs did not have left hand sides".to_string(),
+                ));
+            };
+            if matches!(ret, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                return Ok(());
+            }
+            if *append.borrow() {
+                ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
+            } else {
+                *append.borrow_mut() = true;
+                ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
+            }
+        })
     }
 
     /// Creates a new context for a call
@@ -311,7 +322,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             .modifier_state
                             .clone(),
                     )
-                    .unwrap();
+                    .into_expr_err(loc)?;
                     let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
                     self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
 

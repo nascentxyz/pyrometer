@@ -1,7 +1,13 @@
 [package]
 name = "cli"
-version = "0.1.0"
-edition = "2021"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -21,9 +27,9 @@ ethers-core.workspace = true
 
 clap = { version = "4.1.4", features = ["derive"] }
 
-# [[bin]]
-# name = "pyrometer"
-# path = "src/main.rs"
+[[bin]]
+name = "pyrometer"
+path = "src/main.rs"
 
 
 # [profile.release]

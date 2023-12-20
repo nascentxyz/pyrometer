@@ -21,3 +21,5 @@ ethers-core.workspace = true
 hex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+keccak-hash = "0.10.0"

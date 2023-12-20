@@ -1,3 +1,5 @@
+use graph::nodes::FunctionNode;
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
     func_call::helper::CallerHelper, variable::Variable, ContextBuilder, ExprErr, ExpressionParser,
     IntoExprErr,
@@ -20,18 +22,19 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     fn types_call(
         &mut self,
         func_name: String,
-        input_exprs: &[Expression],
+        func_idx: NodeIdx,
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match &*func_name {
-            "type" => self.parse_ctx_expr(&input_exprs[0], ctx),
+            "type" => self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx),
             "wrap" => {
                 if input_exprs.len() != 2 {
                     return Err(ExprErr::InvalidFunctionInput(loc, format!("Expected a member type and an input to the wrap function, but got: {:?}", input_exprs)));
                 }
 
-                self.parse_inputs(ctx, loc, input_exprs)?;
+                input_exprs.parse(self, ctx, loc)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
@@ -39,6 +42,13 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             "<type>.wrap(..) did not receive an input".to_string(),
                         ));
                     };
+
+                    let input = if let Some(ordered_param_names) = FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer) {
+                        input_exprs.order(input, ordered_param_names)
+                    } else {
+                        input
+                    };
+
                     input.expect_length(2).into_expr_err(loc)?;
                     let ret = input.as_vec();
                     let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
@@ -61,7 +71,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 })
             }
             "unwrap" => {
-                self.parse_inputs(ctx, loc, input_exprs)?;
+                input_exprs.parse(self, ctx, loc)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
@@ -69,6 +79,13 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             "<type>.unwrap(..) did not receive an input".to_string(),
                         ));
                     };
+
+                    let input = if let Some(ordered_param_names) = FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer) {
+                        input_exprs.order(input, ordered_param_names)
+                    } else {
+                        input
+                    };
+
                     input.expect_length(2).into_expr_err(loc)?;
                     let ret = input.as_vec();
                     let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
@@ -127,7 +144,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         &mut self,
         ty: Builtin,
         func_idx: NodeIdx,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
@@ -172,7 +189,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
             }
         }
 
-        self.parse_ctx_expr(&input_exprs[0], ctx)?;
+        self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Cast had no target type".to_string()));

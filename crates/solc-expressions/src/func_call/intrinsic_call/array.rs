@@ -1,3 +1,4 @@
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
     array::Array, bin_op::BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, ListAccess,
 };
@@ -19,7 +20,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     fn array_call(
         &mut self,
         func_name: String,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
@@ -28,7 +29,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 if input_exprs.len() == 1 {
                     // array.push() is valid syntax. It pushes a new
                     // empty element onto the expr ret stack
-                    self.parse_ctx_expr(&input_exprs[0], ctx)?;
+                    self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
                     self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
@@ -88,7 +89,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     })
                 } else if input_exprs.len() == 2 {
                     // array.push(value)
-                    self.parse_ctx_expr(&input_exprs[0], ctx)?;
+                    self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
                     self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
@@ -101,7 +102,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             ctx.push_expr(array, analyzer).into_expr_err(loc)?;
                             return Ok(());
                         }
-                        analyzer.parse_ctx_expr(&input_exprs[1], ctx)?;
+                        analyzer.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[1], ctx)?;
                         analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                             let Some(new_elem) =
                                 ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
@@ -201,7 +202,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         ),
                     ));
                 }
-                self.parse_ctx_expr(&input_exprs[0], ctx)?;
+                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(

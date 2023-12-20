@@ -1,3 +1,5 @@
+use graph::nodes::FunctionNode;
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
     func_call::helper::CallerHelper, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
 };
@@ -24,13 +26,13 @@ pub trait PrecompileCaller:
         &mut self,
         func_name: String,
         func_idx: NodeIdx,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "sha256" => {
-                self.parse_ctx_expr(&input_exprs[0], ctx)?;
+                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
@@ -55,7 +57,7 @@ pub trait PrecompileCaller:
                 })
             }
             "ripemd160" => {
-                self.parse_ctx_expr(&input_exprs[0], ctx)?;
+                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
@@ -80,8 +82,7 @@ pub trait PrecompileCaller:
                 })
             }
             "ecrecover" => {
-                self.parse_inputs(ctx, loc, input_exprs)?;
-
+                input_exprs.parse(self, ctx, loc)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let cctx = Context::new_subctx(
                         ctx,
@@ -107,6 +108,12 @@ pub trait PrecompileCaller:
                             loc,
                             "ecrecover did not receive inputs".to_string(),
                         ));
+                    };
+
+                    let input = if let Some(ordered_param_names) = FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer) {
+                        input_exprs.order(input, ordered_param_names)
+                    } else {
+                        input
                     };
 
                     if matches!(input, ExprRet::CtxKilled(_)) {

@@ -1,3 +1,4 @@
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 
 use graph::{
@@ -15,7 +16,7 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
     fn abi_call(
         &mut self,
         func_name: String,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
@@ -74,6 +75,7 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
                         )),
                     }
                 }
+                let input_exprs = input_exprs.unnamed_args().unwrap();
                 self.parse_ctx_expr(&input_exprs[1], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {

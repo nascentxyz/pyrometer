@@ -1,3 +1,4 @@
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{ExprErr, IntoExprErr};
 
 use graph::{
@@ -15,7 +16,7 @@ pub trait MsgCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
     fn msg_call(
         &mut self,
         func_name: String,
-        _input_exprs: &[Expression],
+        _input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {

@@ -1,5 +1,5 @@
 use crate::{
-    variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env, ExprErr, IntoExprErr,
+    assign::Assign, variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env, ExprErr, IntoExprErr,
 };
 
 use graph::{
@@ -461,24 +461,60 @@ pub trait YulFuncCaller:
                 Ok(())
             }
             "sstore" => {
-                // TODO: improve this. Right now we are extremely pessimistic and just say we know nothing about storage variables anymore.
-                // We should check if the location is a reference to an existing var and update based on that
-                let vars = ctx.local_vars(self).clone();
-                vars.iter().try_for_each(|(_name, var)| {
-                    // widen to any  max range
-                    let latest_var = var.latest_version(self);
-                    if matches!(
-                        latest_var.underlying(self).into_expr_err(*loc)?.storage,
-                        Some(StorageLocation::Storage(_))
-                    ) {
-                        let res = latest_var.ty(self).into_expr_err(*loc)?;
-                        if let Some(r) = res.default_range(self).unwrap() {
-                            let new_var = self.advance_var_in_ctx(latest_var, *loc, ctx).unwrap();
-                            let res = new_var.set_range_min(self, r.min).into_expr_err(*loc);
-                            let _ = self.add_if_err(res);
-                            let res = new_var.set_range_max(self, r.max).into_expr_err(*loc);
-                            let _ = self.add_if_err(res);
-                        }
+                if arguments.len() != 2 {
+                    return Err(ExprErr::InvalidFunctionInput(
+                        *loc,
+                        format!(
+                            "Yul function: `{}` expects 2 arguments found: {:?}",
+                            id.name,
+                            arguments.len()
+                        ),
+                    ));
+                }
+
+                self.parse_inputs(ctx, *loc, arguments)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Some(mut lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                    else {
+                        return Err(ExprErr::InvalidFunctionInput(
+                            loc,
+                            "Yul `sload` operation had no inputs".to_string(),
+                        ));
+                    };
+
+                    if lhs_paths.expect_length(2).into_expr_err(loc).is_err() {
+                        return Err(ExprErr::NoRhs(
+                            loc,
+                            "Yul `sload` operation had no rhs".to_string(),
+                        ));
+                    }
+                    let value = lhs_paths.take_one().into_expr_err(loc)?.unwrap();
+                    let slot = lhs_paths.take_one().into_expr_err(loc)?.unwrap();
+                    let cvar = ContextVarNode::from(slot.expect_single().unwrap());
+
+                    if cvar.is_storage(analyzer).into_expr_err(loc)? {
+                        analyzer.match_assign_sides(ctx, loc, &slot, &value)?;    
+                    } else {
+                        // TODO: improve this. We now handle `slot` but should try to figure out storage layout
+                        let vars = ctx.local_vars(analyzer).clone();
+                        vars.iter().try_for_each(|(_name, var)| {
+                            // widen to any  max range
+                            let latest_var = var.latest_version(analyzer);
+                            if matches!(
+                                latest_var.underlying(analyzer).into_expr_err(loc)?.storage,
+                                Some(StorageLocation::Storage(_))
+                            ) {
+                                let res = latest_var.ty(analyzer).into_expr_err(loc)?;
+                                if let Some(r) = res.default_range(analyzer).unwrap() {
+                                    let new_var = analyzer.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
+                                    let res = new_var.set_range_min(analyzer, r.min).into_expr_err(loc);
+                                    let _ = analyzer.add_if_err(res);
+                                    let res = new_var.set_range_max(analyzer, r.max).into_expr_err(loc);
+                                    let _ = analyzer.add_if_err(res);
+                                }
+                            }
+                            Ok(())
+                        })?;
                     }
                     Ok(())
                 })?;

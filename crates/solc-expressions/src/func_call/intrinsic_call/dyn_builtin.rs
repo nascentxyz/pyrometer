@@ -1,3 +1,4 @@
+use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
     variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, ListAccess,
 };
@@ -19,7 +20,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     fn dyn_builtin_call(
         &mut self,
         func_name: String,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
@@ -40,10 +41,10 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     fn concat(
         &mut self,
         loc: &Loc,
-        input_exprs: &[Expression],
+        input_exprs: &NamedOrUnnamedArgs,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        input_exprs[1..].iter().try_for_each(|expr| {
+        input_exprs.unnamed_args().unwrap()[1..].iter().try_for_each(|expr| {
             self.parse_ctx_expr(expr, ctx)?;
             self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
                 let input = ctx

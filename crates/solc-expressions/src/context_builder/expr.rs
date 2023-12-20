@@ -1,3 +1,4 @@
+use crate::func_call::intrinsic_call::IntrinsicFuncCaller;
 use crate::{
     context_builder::ContextBuilder, func_call::func_caller::FuncCaller, variable::Variable,
     ExprErr, ExprTyParser, IntoExprErr,
@@ -282,6 +283,11 @@ pub trait ExpressionParser:
                 let updated_func_expr = match **func_expr {
                     FunctionCallBlock(_loc, ref inner_func_expr, ref call_block) => {
                         // we dont currently handle the `{value: .. gas: ..}` msg updating
+                        println!("call block: {call_block:#?}");
+
+                        // let mut tmp_msg = Msg {
+
+                        // }
                         self.add_expr_err(ExprErr::FunctionCallBlockTodo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take effect".to_string()));
                         inner_func_expr.clone()
                     }
@@ -291,7 +297,20 @@ pub trait ExpressionParser:
                 self.fn_call_expr(ctx, loc, &updated_func_expr, input_exprs)
             }
             // member
-            New(_loc, expr) => self.parse_ctx_expr(expr, ctx),
+            New(_loc, expr) => {
+                match &**expr {
+                    Expression::FunctionCall(loc, func, inputs) => {
+                        // parse the type
+                        self.new_call(
+                            loc,
+                            func,
+                            inputs,
+                            ctx
+                        )  
+                    },
+                    _ => panic!("Bad new call")
+                }
+            }
             This(loc) => {
                 let var = ContextVar::new_from_contract(
                     *loc,

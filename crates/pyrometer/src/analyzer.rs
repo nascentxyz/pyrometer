@@ -99,6 +99,8 @@ pub struct Analyzer {
     pub file_no: usize,
     /// The index of the current `msg` node
     pub msg: MsgNode,
+    /// The index of the current `msg` node
+    pub tmp_msg: Option<Msg>,
     /// The index of the current `block` node
     pub block: BlockNode,
     /// The underlying graph holding all of the elements of the contracts
@@ -136,6 +138,7 @@ impl Default for Analyzer {
             final_pass_items: Default::default(),
             file_no: 0,
             msg: MsgNode(0),
+            tmp_msg: None,
             block: BlockNode(0),
             graph: Default::default(),
             entry: NodeIndex::from(0),

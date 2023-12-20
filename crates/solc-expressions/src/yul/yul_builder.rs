@@ -312,10 +312,27 @@ pub trait YulBuilder:
                 })
             }
             FunctionCall(yul_func_call) => self.yul_func_call(yul_func_call, ctx),
-            SuffixAccess(_loc, _yul_member_expr, _ident) => Err(ExprErr::Todo(
-                expr.loc(),
-                "Yul member access not yet supported".to_string(),
-            )),
+            SuffixAccess(loc, yul_member_expr, ident) => {
+                self.parse_inputs(
+                    ctx,
+                    *loc,
+                    &[*yul_member_expr.clone()],
+                )?;
+
+                self.apply_to_edges(ctx, *loc, &|analyzer, _ctx, _loc| {
+                    match &*ident.name {
+                        "slot" => {
+                            Ok(())
+                        }
+                        _ => {
+                            Err(ExprErr::Todo(
+                                expr.loc(),
+                                format!("Yul member access `{}` not yet supported", ident.name),
+                            ))
+                        }
+                    } 
+                })
+            },
         }
     }
 

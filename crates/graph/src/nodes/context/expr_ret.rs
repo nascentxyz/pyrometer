@@ -267,4 +267,13 @@ impl ExprRet {
             _ => self,
         }
     }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ExprRet::Single(_) | ExprRet::SingleLiteral(_) => 1,
+            ExprRet::Multi(inner) => inner.len(),
+            ExprRet::CtxKilled(..) => 0,
+            ExprRet::Null => 0,
+        }
+    }
 }
