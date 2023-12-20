@@ -9,20 +9,6 @@ use crate::range::elem::*;
 use solang_parser::pt::Loc;
 
 impl ContextVarNode {
-    #[tracing::instrument(level = "trace", skip_all)]
-    pub fn update_deps(
-        &mut self,
-        ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
-            range.update_deps(*self, ctx, analyzer);
-            self.set_range_min(analyzer, range.min)?;
-            self.set_range_max(analyzer, range.max)?;
-        }
-        Ok(())
-    }
-
     pub fn range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
         self.underlying(analyzer)?.ty.range(analyzer)
     }
@@ -185,7 +171,7 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_min.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_or_inherited_version(analyzer) {
-                new_min.filter_recursion((*self).into(), prev.into());
+                new_min.filter_recursion((*self).into(), prev.into(), analyzer);
             } else {
                 return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
             }
@@ -230,7 +216,7 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_max.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_or_inherited_version(analyzer) {
-                new_max.filter_recursion((*self).into(), prev.into());
+                new_max.filter_recursion((*self).into(), prev.into(), analyzer);
             }
         }
 
@@ -294,7 +280,7 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_min.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_version(analyzer) {
-                new_min.filter_recursion((*self).into(), prev.into());
+                new_min.filter_recursion((*self).into(), prev.into(), analyzer);
             }
         }
 
@@ -326,7 +312,7 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_max.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_version(analyzer) {
-                new_max.filter_recursion((*self).into(), prev.into());
+                new_max.filter_recursion((*self).into(), prev.into(), analyzer);
             }
         }
 
@@ -372,7 +358,7 @@ impl ContextVarNode {
 
     pub fn range_deps(&self, analyzer: &impl GraphBackend) -> Result<Vec<Self>, GraphError> {
         if let Some(range) = self.ref_range(analyzer)? {
-            Ok(range.dependent_on())
+            Ok(range.dependent_on(analyzer))
         } else {
             Ok(vec![])
         }

@@ -1,3 +1,4 @@
+use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
 use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx};
@@ -7,7 +8,7 @@ use solang_parser::pt::Identifier;
 
 use std::collections::HashMap;
 
-pub trait GraphBackend: GraphLike<Edge = Edge, Node = Node> {}
+pub trait GraphBackend: GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> {}
 pub trait AnalyzerBackend:
     AnalyzerLike<
         Builtin = Builtin,

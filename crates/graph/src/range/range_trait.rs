@@ -60,9 +60,9 @@ pub trait Range<T: Ord> {
     where
         Self: std::marker::Sized;
     /// Replace a potential recursion causing node index with a new index
-    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);
+    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend);
     /// Replace a potential recursion causing node index with a new index
-    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx);
+    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend);
     /// Cache the flattened range
     fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Produce a flattened range or use the cached flattened range

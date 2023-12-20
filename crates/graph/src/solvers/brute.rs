@@ -98,7 +98,7 @@ impl BruteBinSearchSolver {
                 );
             }
             let r = range.flattened_range(analyzer)?;
-            atomic_idxs.extend(r.dependent_on());
+            atomic_idxs.extend(r.dependent_on(analyzer));
             ranges.insert(*dep, r.into_owned());
             Ok(())
         })?;
@@ -225,7 +225,7 @@ impl BruteBinSearchSolver {
         let old_mid_conc = self.lmrs[i].mid.maximize(analyzer).unwrap();
 
         if matches!(
-            new_mid_conc.range_ord(&old_mid_conc),
+            new_mid_conc.range_ord(&old_mid_conc, analyzer),
             Some(std::cmp::Ordering::Equal)
         ) {
             return false;
@@ -254,7 +254,7 @@ impl BruteBinSearchSolver {
         let old_high_conc = self.lmrs[i].high.minimize(analyzer).unwrap();
 
         if matches!(
-            new_high_conc.range_ord(&old_high_conc),
+            new_high_conc.range_ord(&old_high_conc, analyzer),
             Some(std::cmp::Ordering::Equal)
         ) {
             return false;
@@ -298,7 +298,7 @@ impl SolcSolver for BruteBinSearchSolver {
             })
             .collect::<Vec<SolverAtom>>();
 
-        let mut dl_solver = DLSolver::new(atoms);
+        let mut dl_solver = DLSolver::new(atoms, analyzer);
         let mut atomic_solves: BTreeMap<_, _>;
 
         match dl_solver.solve_partial(analyzer)? {
@@ -620,7 +620,7 @@ impl SolcSolver for BruteBinSearchSolver {
                 })
                 .collect::<Vec<SolverAtom>>();
 
-            let mut dl_solver = DLSolver::new(atoms);
+            let mut dl_solver = DLSolver::new(atoms, analyzer);
             let mut atomic_solves: BTreeMap<_, _>;
 
             match dl_solver.solve_partial(analyzer)? {
@@ -736,7 +736,7 @@ impl SolcSolver for BruteBinSearchSolver {
 
                 // check if the new range is dependent on the solved variable
                 let is_dependent_on_solved = new_range
-                    .dependent_on()
+                    .dependent_on(analyzer)
                     .iter()
                     .any(|dep| solved_dep.idxs.contains(dep));
 
@@ -779,8 +779,8 @@ impl SolcSolver for BruteBinSearchSolver {
                 if new_range.unsat(analyzer) {
                     // figure out *where* we need to increase or decrease
                     // work on the unreplace range for now
-                    let min_is_dependent = !range.min.dependent_on().is_empty();
-                    let max_is_dependent = !range.max.dependent_on().is_empty();
+                    let min_is_dependent = !range.min.dependent_on(analyzer).is_empty();
+                    let max_is_dependent = !range.max.dependent_on(analyzer).is_empty();
 
                     match (min_is_dependent, max_is_dependent) {
                         (true, true) => {
@@ -809,10 +809,10 @@ impl SolcSolver for BruteBinSearchSolver {
                     // panic!("here");
                     let min_change = new_range
                         .evaled_range_min(analyzer)?
-                        .range_ord(&range.evaled_range_min(analyzer)?);
+                        .range_ord(&range.evaled_range_min(analyzer)?, analyzer);
                     let max_change = new_range
                         .evaled_range_max(analyzer)?
-                        .range_ord(&range.evaled_range_max(analyzer)?);
+                        .range_ord(&range.evaled_range_max(analyzer)?, analyzer);
                     match (min_change, max_change) {
                         (Some(std::cmp::Ordering::Less), Some(std::cmp::Ordering::Greater)) => {
                             // panic!("initial range must have been unsat to start");

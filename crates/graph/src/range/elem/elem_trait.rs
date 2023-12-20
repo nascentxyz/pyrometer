@@ -17,7 +17,7 @@ pub trait RangeElem<T: Ord> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Returns whether `cache_flatten` has been called
-    fn is_flatten_cached(&self) -> bool;
+    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool;
     /// Flattens an element and caches the result
     fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value
@@ -43,11 +43,11 @@ pub trait RangeElem<T: Ord> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Checks if two range elements are equal
-    fn range_eq(&self, other: &Self) -> bool;
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool;
     /// Tries to compare the ordering of two range elements
-    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering>;
+    fn range_ord(&self, other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering>;
     /// Constructs a range `Elem::Expr` given a lhs, rhs, and operation ([`RangeOp`]).
-    fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp) -> Elem<T>
+    fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp, analyzer: &impl GraphBackend) -> Elem<T>
     where
         Self: Sized,
     {
@@ -55,7 +55,7 @@ pub trait RangeElem<T: Ord> {
     }
     /// Traverses the range expression and finds all nodes that are dynamically pointed to
     /// and returns it in a vector.
-    fn dependent_on(&self) -> Vec<ContextVarNode>;
+    fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode>;
 
     fn recursive_dependent_on(
         &self,
@@ -67,14 +67,6 @@ pub trait RangeElem<T: Ord> {
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
     ) -> Result<bool, Self::GraphError>;
-    /// Traverses the range expression and updates stale pointers from older versions
-    /// of a variable to a newer version.
-    ///
-    /// e.g.: `uint256 z = x + 100`, followed by `require(x < 100)`. Initially,
-    /// without the `require` statement, `z`'s max is `2**256 - 1`, but with
-    /// the introduction of the `require` statement, we do a little backtracking
-    /// and can update `z`'s max to be `200`.
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>);
     /// Attempts to replace range elements that form a cyclic dependency by replacing
     /// it with a new node. Ideally no cyclic dependencies occur in ranges as of now
     /// but in theory it can make sense.
@@ -82,7 +74,7 @@ pub trait RangeElem<T: Ord> {
     /// e.g.: take the basic expression `x + y`, in normal checked solidity math
     /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
     /// cyclic dependency.
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend);
 
     fn contains_op_set(
         &self,
@@ -90,4 +82,7 @@ pub trait RangeElem<T: Ord> {
         op_set: &[RangeOp],
         analyzer: &impl GraphBackend,
     ) -> Result<bool, Self::GraphError>;
+
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend);
+    fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<T>;
 }

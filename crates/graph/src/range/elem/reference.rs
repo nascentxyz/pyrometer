@@ -43,11 +43,17 @@ impl<T> Reference<T> {
 impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
 
-    fn range_eq(&self, _other: &Self) -> bool {
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {}
+
+    fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
+        Elem::Reference(self.clone())
+    }
+
+    fn range_eq(&self, _other: &Self, analyzer: &impl GraphBackend) -> bool {
         false
     }
 
-    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn range_ord(&self, other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
         if self.idx == other.idx {
             Some(std::cmp::Ordering::Equal)
         } else {
@@ -55,7 +61,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn dependent_on(&self) -> Vec<ContextVarNode> {
+    fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         vec![self.idx.into()]
     }
 
@@ -86,12 +92,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             } else {
                 Ok(false)
             }
-        }
-    }
-
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
-        if let Some(new) = mapping.get(&ContextVarNode::from(self.idx)) {
-            self.idx = new.0.into();
         }
     }
 
@@ -126,7 +126,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn is_flatten_cached(&self) -> bool {
+    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
@@ -148,7 +148,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         Ok(())
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
+    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, analyzer: &impl GraphBackend) {}
 
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {

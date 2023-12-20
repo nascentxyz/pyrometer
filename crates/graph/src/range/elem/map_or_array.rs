@@ -150,7 +150,7 @@ impl RangeDyn<Concrete> {
         })
         .collect::<Vec<_>>();
         evaled.sort_by(|a, b| {
-            a.range_ord(b).unwrap_or(std::cmp::Ordering::Less)
+            a.range_ord(b, analyzer).unwrap_or(std::cmp::Ordering::Less)
         });
 
         evaled.iter().take(1).next()?.concrete()
@@ -160,12 +160,43 @@ impl RangeDyn<Concrete> {
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
 
-    fn range_eq(&self, other: &Self) -> bool {
-        matches!(self.range_ord(other), Some(std::cmp::Ordering::Equal))
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+        self.len.arenaize(analyzer);
+        self.val = self.val.iter_mut().map(|(k, (v, op))| {
+            let mut new_k = k.clone();
+            let mut new_v = v.clone();
+            new_k.arenaize(analyzer);
+            new_v.arenaize(analyzer);
+            (new_k, (new_v, *op))
+        }).collect();
     }
 
-    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.len.range_ord(&other.len) {
+    fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
+        Elem::ConcreteDyn(Self::new_w_op_nums(
+            self.len.dearenaize(analyzer),
+            {
+                let mut map: BTreeMap<_, (Elem<Concrete>, usize)> = BTreeMap::default();
+                for (idx, val) in self.val.clone().into_iter() {
+                    // We dont maximize the key so that any subsequent
+                    // `get_index` can find potential values
+                    let dearenaized = val.0.dearenaize(analyzer);
+                    map.insert(
+                        idx.dearenaize(analyzer),
+                        (dearenaized, val.1),
+                    );
+                }
+                map
+            },
+            self.loc,
+        ))
+    }
+
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
+        matches!(self.range_ord(other, analyzer), Some(std::cmp::Ordering::Equal))
+    }
+
+    fn range_ord(&self, other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
+        match self.len.range_ord(&other.len, analyzer) {
             Some(std::cmp::Ordering::Equal) => {
                 let mut eq = 0;
                 let mut self_lt = 0;
@@ -173,9 +204,9 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 self.val.iter().zip(other.val.iter()).for_each(
                     |((self_key, self_val), (other_key, other_val))| {
                         if let Some(std::cmp::Ordering::Equal) =
-                            self_key.clone().range_ord(other_key)
+                            self_key.clone().range_ord(other_key, analyzer)
                         {
-                            match self_val.0.clone().range_ord(&other_val.0) {
+                            match self_val.0.clone().range_ord(&other_val.0, analyzer) {
                                 Some(std::cmp::Ordering::Equal) => eq += 1,
                                 Some(std::cmp::Ordering::Less) => self_lt += 1,
                                 Some(std::cmp::Ordering::Greater) => self_gt += 1,
@@ -199,12 +230,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         }
     }
 
-    fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps: Vec<ContextVarNode> = self.len.dependent_on();
+    fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        let mut deps: Vec<ContextVarNode> = self.len.dependent_on(analyzer);
         deps.extend(
             self.val
                 .iter()
-                .flat_map(|(_, val)| val.0.dependent_on())
+                .flat_map(|(_, val)| val.0.dependent_on(analyzer))
                 .collect::<Vec<_>>(),
         );
         deps
@@ -308,26 +339,19 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         Ok(())
     }
 
-    fn is_flatten_cached(&self) -> bool {
+    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
-        self.len.update_deps(mapping);
-        self.val
-            .iter_mut()
-            .for_each(|(_, val)| val.0.update_deps(mapping));
-    }
-
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
-        self.len.filter_recursion(node_idx, new_idx);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend) {
+        self.len.filter_recursion(node_idx, new_idx, analyzer);
         self.val = self
             .val
             .clone()
             .into_iter()
             .map(|(mut k, mut v)| {
-                k.filter_recursion(node_idx, new_idx);
-                v.0.filter_recursion(node_idx, new_idx);
+                k.filter_recursion(node_idx, new_idx, analyzer);
+                v.0.filter_recursion(node_idx, new_idx, analyzer);
                 (k, v)
             })
             .collect();

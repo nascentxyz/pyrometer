@@ -85,11 +85,13 @@ impl ContextNode {
                 let r = range.flattened_range(analyzer)?.into_owned();
                 // add the atomic constraint
                 if let Some(atom) = r.min.atomize() {
-                    let underlying = self.underlying_mut(analyzer)?;
-                    underlying.dl_solver.add_constraints(vec![atom]);
+                    let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
+                    solver.add_constraints(vec![atom], analyzer);
+                    self.underlying_mut(analyzer)?.dl_solver = solver;
                 } else if let Some(atom) = r.max.atomize() {
-                    let underlying = self.underlying_mut(analyzer)?;
-                    underlying.dl_solver.add_constraints(vec![atom]);
+                    let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
+                    solver.add_constraints(vec![atom], analyzer);
+                    self.underlying_mut(analyzer)?.dl_solver = solver;
                 }
 
                 let underlying = self.underlying_mut(analyzer)?;

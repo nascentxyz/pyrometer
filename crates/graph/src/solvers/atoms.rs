@@ -57,19 +57,11 @@ impl AtomOrPart {
     }
 
     pub fn is_part(&self) -> bool {
-        if let AtomOrPart::Part(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, AtomOrPart::Part(_))
     }
 
     pub fn is_atom(&self) -> bool {
-        if let AtomOrPart::Atom(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, AtomOrPart::Atom(_))
     }
 
     pub fn expect_atom(&self) -> SolverAtom {
@@ -80,10 +72,10 @@ impl AtomOrPart {
         }
     }
 
-    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         match self {
-            AtomOrPart::Part(e) => e.dependent_on(),
-            AtomOrPart::Atom(a) => a.dependent_on(),
+            AtomOrPart::Part(e) => e.dependent_on(analyzer),
+            AtomOrPart::Atom(a) => a.dependent_on(analyzer),
         }
     }
 }
@@ -157,9 +149,9 @@ impl SolverAtom {
         self.ty = self.max_ty();
     }
 
-    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps = self.lhs.dependent_on();
-        deps.extend(self.rhs.dependent_on());
+    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        let mut deps = self.lhs.dependent_on(analyzer);
+        deps.extend(self.rhs.dependent_on(analyzer));
         deps
     }
 
@@ -244,6 +236,7 @@ pub trait Atomize {
 impl Atomize for Elem<Concrete> {
     fn atoms_or_part(&self) -> AtomOrPart {
         match self {
+            Elem::Arena(_) => todo!(),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             Elem::Expr(expr) => {
@@ -251,6 +244,8 @@ impl Atomize for Elem<Concrete> {
                 match (expr.lhs.atoms_or_part(), expr.rhs.atoms_or_part()) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         match (l, r) {
+                            (_, Elem::Arena(_)) => todo!(),
+                            (Elem::Arena(_),_) => todo!(),
                             (Elem::Reference(Reference { .. }), Elem::Concrete(_))
                             | (Elem::Concrete(_), Elem::Reference(Reference { .. })) => {
                                 let ty = OpType::new(expr.op);
@@ -336,6 +331,7 @@ impl Atomize for Elem<Concrete> {
                 a.update_max_ty();
                 Some(a)
             }
+            Arena(_) => todo!(),
         }
     }
 }

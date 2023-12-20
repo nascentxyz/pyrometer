@@ -1,3 +1,5 @@
+use graph::elem::Elem;
+use shared::RangeArena;
 use crate::builtin_fns;
 
 use analyzers::LocStrSpan;
@@ -127,6 +129,9 @@ pub struct Analyzer {
     pub parse_fn: FunctionNode,
     /// Whether to force a panic on first error encountered
     pub debug_panic: bool,
+
+    /// An arena of ranges
+    pub range_arena: RangeArena<Elem<Concrete>>,
 }
 
 impl Default for Analyzer {
@@ -152,6 +157,7 @@ impl Default for Analyzer {
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
+            range_arena: RangeArena { ranges: vec![Elem::Null] }
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 

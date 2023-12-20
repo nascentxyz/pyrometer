@@ -94,7 +94,19 @@ impl<T: Ord> RangeExpr<T> {
 
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
-    fn range_eq(&self, _other: &Self) -> bool {
+
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+        self.lhs.arenaize(analyzer);
+        self.rhs.arenaize(analyzer);
+    }
+
+    fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
+        let lhs = self.lhs.dearenaize(analyzer);
+        let rhs = self.rhs.dearenaize(analyzer);
+        Elem::Expr(RangeExpr::new(lhs, self.op, rhs))
+    }
+
+    fn range_eq(&self, _other: &Self, analyzer: &impl GraphBackend) -> bool {
         false
     }
 
@@ -116,17 +128,17 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         )))
     }
 
-    fn is_flatten_cached(&self) -> bool {
+    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
-    fn range_ord(&self, _other: &Self) -> Option<std::cmp::Ordering> {
+    fn range_ord(&self, _other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
         todo!()
     }
 
-    fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps = self.lhs.dependent_on();
-        deps.extend(self.rhs.dependent_on());
+    fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        let mut deps = self.lhs.dependent_on(analyzer);
+        deps.extend(self.rhs.dependent_on(analyzer));
         deps
     }
 
@@ -149,14 +161,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         Ok(lhs_has_cycle || rhs_has_cycle)
     }
 
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
-        self.lhs.update_deps(mapping);
-        self.rhs.update_deps(mapping);
-    }
-
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
-        self.lhs.filter_recursion(node_idx, new_idx);
-        self.rhs.filter_recursion(node_idx, new_idx);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend) {
+        self.lhs.filter_recursion(node_idx, new_idx, analyzer);
+        self.rhs.filter_recursion(node_idx, new_idx, analyzer);
     }
 
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
@@ -189,7 +196,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
         let l = self.lhs.simplify_maximize(seen_ops, analyzer)?;
         let r = self.rhs.simplify_maximize(seen_ops, analyzer)?;
-        let collapsed = collapse(l, self.op, r);
+        let collapsed = collapse(l, self.op, r, analyzer);
         match collapsed {
             MaybeCollapsed::Concretes(l, r) => {
                 RangeExpr::new(l, self.op, r).exec_op(true, analyzer)
@@ -199,7 +206,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
                 match RangeExpr::new(l, self.op, r).simplify_exec_op(true, seen_ops, analyzer)? {
                     ref e @ Elem::Expr(ref expr) => {
-                        match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                        match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), analyzer) {
                             MaybeCollapsed::Concretes(l, r) => {
                                 RangeExpr::new(l, expr.op, r).exec_op(true, analyzer)
                             }
@@ -223,7 +230,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
         let l = self.lhs.simplify_minimize(seen_ops, analyzer)?;
         let r = self.rhs.simplify_minimize(seen_ops, analyzer)?;
-        let collapsed = collapse(l, self.op, r);
+        let collapsed = collapse(l, self.op, r, analyzer);
         match collapsed {
             MaybeCollapsed::Concretes(l, r) => {
                 RangeExpr::new(l, self.op, r).exec_op(false, analyzer)
@@ -233,7 +240,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
                 match RangeExpr::new(l, self.op, r).simplify_exec_op(false, seen_ops, analyzer)? {
                     ref e @ Elem::Expr(ref expr) => {
-                        match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone()) {
+                        match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), analyzer) {
                             MaybeCollapsed::Concretes(l, r) => {
                                 RangeExpr::new(l, expr.op, r).exec_op(false, analyzer)
                             }
@@ -308,7 +315,7 @@ pub enum MaybeCollapsed {
     Not(Elem<Concrete>, Elem<Concrete>),
 }
 
-pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeCollapsed {
+pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>, analyzer: &impl GraphBackend) -> MaybeCollapsed {
     let zero = Elem::from(Concrete::from(U256::zero()));
     let one = Elem::from(Concrete::from(U256::one()));
     match (l.clone(), r.clone()) {
@@ -321,16 +328,16 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
             let y = expr.rhs;
             let z = d;
 
-            let x_ord_z = x.range_ord(&z);
+            let x_ord_z = x.range_ord(&z, analyzer);
             let x_eq_z = matches!(x_ord_z, Some(std::cmp::Ordering::Equal));
 
-            let y_ord_z = y.range_ord(&z);
+            let y_ord_z = y.range_ord(&z, analyzer);
             let y_eq_z = matches!(y_ord_z, Some(std::cmp::Ordering::Equal));
 
-            let y_eq_zero = matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Equal) | None);
-            let x_eq_zero = matches!(x.range_ord(&zero), Some(std::cmp::Ordering::Equal) | None);
-            let y_eq_one = matches!(y.range_ord(&one), Some(std::cmp::Ordering::Equal) | None);
-            let x_eq_one = matches!(x.range_ord(&one), Some(std::cmp::Ordering::Equal) | None);
+            let y_eq_zero = matches!(y.range_ord(&zero, analyzer), Some(std::cmp::Ordering::Equal) | None);
+            let x_eq_zero = matches!(x.range_ord(&zero, analyzer), Some(std::cmp::Ordering::Equal) | None);
+            let y_eq_one = matches!(y.range_ord(&one, analyzer), Some(std::cmp::Ordering::Equal) | None);
+            let x_eq_one = matches!(x.range_ord(&one, analyzer), Some(std::cmp::Ordering::Equal) | None);
             match (expr.op, op) {
                 (RangeOp::Sub(_), RangeOp::Eq) | (RangeOp::Div(_), RangeOp::Eq) => {
                     if x_eq_z && !y_eq_zero {
@@ -371,10 +378,10 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                     // min{x - y, z}
                     // if x <= z, then x - y will be the minimum if y >= 0
                     if matches!(
-                        x.range_ord(&z),
+                        x.range_ord(&z, analyzer),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Less)
                     ) && matches!(
-                        y.range_ord(&zero),
+                        y.range_ord(&zero, analyzer),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     ) {
                         MaybeCollapsed::Collapsed(l)
@@ -387,16 +394,16 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                     // if x >= z, then x + y will be the maximum if y >= 0
                     // or if y >= z, then x + y will be the maximum if x >= 0
                     if (matches!(
-                        x.range_ord(&z),
+                        x.range_ord(&z, analyzer),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     ) && matches!(
-                        y.range_ord(&zero),
+                        y.range_ord(&zero, analyzer),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     )) || (matches!(
-                        y.range_ord(&z),
+                        y.range_ord(&z, analyzer),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     ) && matches!(
-                        x.range_ord(&zero),
+                        x.range_ord(&zero, analyzer),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     )) {
                         MaybeCollapsed::Collapsed(l)
@@ -407,11 +414,11 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                 (RangeOp::Eq, RangeOp::Eq) => {
                     // ((x == y) == z)
                     // can skip if x and z eq
-                    if let Some(std::cmp::Ordering::Equal) = x.range_ord(&z) {
+                    if let Some(std::cmp::Ordering::Equal) = x.range_ord(&z, analyzer) {
                         MaybeCollapsed::Collapsed(l)
-                    } else if let Some(std::cmp::Ordering::Equal) = y.range_ord(&z) {
+                    } else if let Some(std::cmp::Ordering::Equal) = y.range_ord(&z, analyzer) {
                         MaybeCollapsed::Collapsed(l)
-                    } else if z.range_eq(&Elem::from(Concrete::from(true))) {
+                    } else if z.range_eq(&Elem::from(Concrete::from(true)), analyzer) {
                         MaybeCollapsed::Collapsed(l)
                     } else {
                         MaybeCollapsed::Not(l, r)
@@ -437,7 +444,7 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                 (RangeOp::Add(l_op), RangeOp::Sub(r_op)) => {
                     // ((x + y) - z) => k - y || x + k
                     if l_op == r_op {
-                        match y.range_ord(&z) {
+                        match y.range_ord(&z, analyzer) {
                             Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater) => {
                                 // y and z are concrete && y >= z ==> x + (y - z)
                                 let op_fn = if l_op {
@@ -476,7 +483,7 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                             None => {
                                 // x and z are concrete, if x >= z, just do (x - z) + y
                                 // else do (y - (z - x))
-                                match x.range_ord(&z) {
+                                match x.range_ord(&z, analyzer) {
                                     Some(std::cmp::Ordering::Equal)
                                     | Some(std::cmp::Ordering::Greater) => {
                                         let op_fn = if l_op {
@@ -524,7 +531,7 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                 (RangeOp::Sub(l_op), RangeOp::Add(r_op)) => {
                     // ((x - y) + z) => k - y || x + k
                     if l_op == r_op {
-                        match y.range_ord(&z) {
+                        match y.range_ord(&z, analyzer) {
                             Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater) => {
                                 // y and z are concrete && z <= y ==> x - (y - z)
                                 let op_fn = if l_op {
@@ -651,7 +658,7 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                     // ((x * y) == z) => (x == (z / y)) || (y == (z / x))
                     // ((x * y) != z) => (x != (z / y)) || (y != (z / x))
                     if let Some(new) = div_op(&z, &x) {
-                        let new_op = if matches!(x.range_ord(&zero), Some(std::cmp::Ordering::Less))
+                        let new_op = if matches!(x.range_ord(&zero, analyzer), Some(std::cmp::Ordering::Less))
                             && FLIP_INEQ_OPS.contains(&op)
                         {
                             op.inverse().unwrap()
@@ -660,7 +667,7 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                         };
                         MaybeCollapsed::Collapsed(Elem::Expr(RangeExpr::new(*y, new_op, new)))
                     } else if let Some(new) = div_op(&z, &y) {
-                        let new_op = if matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Less))
+                        let new_op = if matches!(y.range_ord(&zero, analyzer), Some(std::cmp::Ordering::Less))
                             && FLIP_INEQ_OPS.contains(&op)
                         {
                             op.inverse().unwrap()
@@ -688,7 +695,7 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                     // ..
                     // ((x / y) != z) => (x != (z / y)) || (y != (x / z))
                     if let Some(new) = mul_op(&z, &y) {
-                        let new_op = if matches!(y.range_ord(&zero), Some(std::cmp::Ordering::Less))
+                        let new_op = if matches!(y.range_ord(&zero, analyzer), Some(std::cmp::Ordering::Less))
                             && FLIP_INEQ_OPS.contains(&op)
                         {
                             op.inverse().unwrap()
@@ -711,9 +718,9 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                 }
                 (_, RangeOp::Eq) => {
                     // (x _ y) == z ==> (x _ y if z == true)
-                    if z.range_eq(&Elem::from(Concrete::from(true))) {
+                    if z.range_eq(&Elem::from(Concrete::from(true)), analyzer) {
                         MaybeCollapsed::Collapsed(l)
-                    } else if z.range_eq(&Elem::from(Concrete::from(false))) {
+                    } else if z.range_eq(&Elem::from(Concrete::from(false)), analyzer) {
                         // (!x && !y)
                         match (
                             x.inverse_if_boolean(),
@@ -731,10 +738,10 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                 }
                 (_, RangeOp::Neq) => {
                     // (x _ y) != z ==> (x _ y if z != false)
-                    if z.range_eq(&Elem::from(Concrete::from(false))) {
+                    if z.range_eq(&Elem::from(Concrete::from(false)), analyzer) {
                         // != false is == true
                         MaybeCollapsed::Collapsed(l)
-                    } else if z.range_eq(&Elem::from(Concrete::from(true))) {
+                    } else if z.range_eq(&Elem::from(Concrete::from(true)), analyzer) {
                         // != true is == false, to make it == true, inverse everything
                         match (
                             x.inverse_if_boolean(),
@@ -753,21 +760,21 @@ pub fn collapse(l: Elem<Concrete>, op: RangeOp, r: Elem<Concrete>) -> MaybeColla
                 _ => MaybeCollapsed::Not(l, r),
             }
         }
-        (Elem::Concrete(_c), Elem::Expr(_expr)) => match collapse(r.clone(), op, l.clone()) {
+        (Elem::Concrete(_c), Elem::Expr(_expr)) => match collapse(r.clone(), op, l.clone(), analyzer) {
             collapsed @ MaybeCollapsed::Collapsed(_) => collapsed,
             MaybeCollapsed::Not(_, _) => MaybeCollapsed::Not(l, r),
             MaybeCollapsed::Concretes(_, _) => unreachable!(),
         },
         (le @ Elem::Reference(_), c @ Elem::Concrete(_)) => match op {
             RangeOp::Sub(_) | RangeOp::Add(_) => {
-                if matches!(c.range_ord(&zero), Some(std::cmp::Ordering::Equal)) {
+                if matches!(c.range_ord(&zero, analyzer), Some(std::cmp::Ordering::Equal)) {
                     MaybeCollapsed::Collapsed(le)
                 } else {
                     MaybeCollapsed::Not(l, r)
                 }
             }
             RangeOp::Mul(_) | RangeOp::Div(_) => {
-                if matches!(c.range_ord(&one), Some(std::cmp::Ordering::Equal)) {
+                if matches!(c.range_ord(&one, analyzer), Some(std::cmp::Ordering::Equal)) {
                     MaybeCollapsed::Collapsed(le)
                 } else {
                     MaybeCollapsed::Not(l, r)

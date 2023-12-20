@@ -229,7 +229,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             .evaled_range_min(self)
                             .into_expr_err(loc)?
                             .expect("No range?")
-                            .range_eq(&Elem::from(Concrete::from(U256::zero())))
+                            .range_eq(&Elem::from(Concrete::from(U256::zero())), self)
                         {
                             let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
                             let _ = self.add_if_err(res);
@@ -255,7 +255,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 ctx,
                                 loc,
                                 RangeOp::Neq,
-                                RangeOp::Eq,
+                                RangeOp::Neq,
                                 (RangeOp::Eq, RangeOp::Neq),
                             )?
                             .is_none()
@@ -338,7 +338,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 rhs_cvar.evaled_range_min(self).into_expr_err(loc)?,
                             ) {
                                 if matches!(
-                                    lmax.range_ord(&rmin),
+                                    lmax.range_ord(&rmin, self),
                                     Some(std::cmp::Ordering::Less)
                                         | Some(std::cmp::Ordering::Equal)
                                 ) {
@@ -592,7 +592,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 .evaled_range_min(self)
                                 .into_expr_err(loc)?
                                 .expect("No range")
-                                .range_ord(&Elem::from(Concrete::from(U256::zero()))),
+                                .range_ord(&Elem::from(Concrete::from(U256::zero())), self),
                             Some(std::cmp::Ordering::Less)
                         ) {
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;

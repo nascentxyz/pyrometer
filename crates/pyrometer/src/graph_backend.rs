@@ -1,3 +1,6 @@
+use shared::RangeArena;
+use graph::nodes::Concrete;
+use graph::elem::Elem;
 use crate::Analyzer;
 
 use graph::{
@@ -16,12 +19,21 @@ use std::{
 impl GraphLike for Analyzer {
     type Node = Node;
     type Edge = Edge;
+    type RangeElem = Elem<Concrete>;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
         &mut self.graph
     }
 
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         &self.graph
+    }
+
+    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
+        &self.range_arena
+    }
+
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        &mut self.range_arena
     }
 }
 
@@ -573,12 +585,19 @@ struct G<'a> {
 impl GraphLike for G<'_> {
     type Node = Node;
     type Edge = Edge;
+    type RangeElem = Elem<Concrete>;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
-        panic!("Should call this")
+        panic!("Should not call this")
     }
 
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         self.graph
+    }
+    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
+        panic!("Should not call this")
+    }
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        panic!("Should not call this")
     }
 }
 

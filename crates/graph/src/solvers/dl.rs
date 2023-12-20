@@ -60,7 +60,7 @@ pub struct DLSolveResult {
 }
 
 impl DLSolver {
-    pub fn new(mut constraints: Vec<SolverAtom>) -> Self {
+    pub fn new(mut constraints: Vec<SolverAtom>, analyzer: &impl GraphBackend) -> Self {
         constraints.iter_mut().for_each(|c| {
             c.update_max_ty();
         });
@@ -72,7 +72,7 @@ impl DLSolver {
             root_node,
             ..Default::default()
         };
-        s.add_constraints(vec![]);
+        s.add_constraints(vec![], analyzer);
         s
     }
 
@@ -97,10 +97,11 @@ impl DLSolver {
     pub fn add_constraints(
         &mut self,
         constraints: Vec<SolverAtom>,
+        analyzer: &impl GraphBackend,
     ) -> BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>> {
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
-            let deps = constraint.dependent_on();
+            let deps = constraint.dependent_on(analyzer);
             deps.into_iter().for_each(|dep| {
                 if let Some(entry) = dep_to_solve_ty.get_mut(&dep) {
                     if constraint.ty == OpType::Const {
@@ -121,7 +122,7 @@ impl DLSolver {
             .collect();
 
         constraints.iter().for_each(|constraint| {
-            let deps = constraint.dependent_on();
+            let deps = constraint.dependent_on(analyzer);
             deps.into_iter().for_each(|dep| {
                 if let Some(entry) = dep_to_solve_ty.get_mut(&dep) {
                     if constraint.ty == OpType::Const {
@@ -168,7 +169,7 @@ impl DLSolver {
             .clone()
             .into_iter()
             .filter(|constraint| {
-                let deps = constraint.dependent_on();
+                let deps = constraint.dependent_on(analyzer);
                 !deps.iter().all(|dep| const_solves.contains_key(dep))
             })
             .collect();
@@ -180,7 +181,7 @@ impl DLSolver {
         still_unknown_constraints
             .into_iter()
             .filter(|constraint| {
-                let deps = constraint.dependent_on();
+                let deps = constraint.dependent_on(analyzer);
                 deps.iter().all(|dep| {
                     dep_to_solve_ty
                         .get(dep)
@@ -189,7 +190,7 @@ impl DLSolver {
                         .all(|constraint| constraint.ty == OpType::DL)
                 })
             })
-            .map(|constraint| (constraint.clone(), Self::dl_atom_normalize(constraint)))
+            .map(|constraint| (constraint.clone(), Self::dl_atom_normalize(constraint, analyzer)))
             .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
     }
 
@@ -203,7 +204,7 @@ impl DLSolver {
     ) -> Result<SolveStatus, GraphError> {
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
-            let deps = constraint.dependent_on();
+            let deps = constraint.dependent_on(analyzer);
             deps.into_iter().for_each(|dep| {
                 if let Some(entry) = dep_to_solve_ty.get_mut(&dep) {
                     if constraint.ty == OpType::Const {
@@ -222,7 +223,7 @@ impl DLSolver {
             atoms.iter().any(|atom| {
                 atom.op == RangeOp::Neq
                     && atom.lhs == atom.rhs
-                    && !atom.lhs.dependent_on().is_empty()
+                    && !atom.lhs.dependent_on(analyzer).is_empty()
             })
         }) {
             return Ok(SolveStatus::Unsat);
@@ -261,7 +262,7 @@ impl DLSolver {
             .clone()
             .into_iter()
             .filter(|constraint| {
-                let deps = constraint.dependent_on();
+                let deps = constraint.dependent_on(analyzer);
                 !deps.iter().all(|dep| const_solves.contains_key(dep))
             })
             .collect();
@@ -386,8 +387,8 @@ impl DLSolver {
             };
 
             let rhs_atom = constraint.rhs.expect_atom();
-            let rhs_lhs_deps = rhs_atom.lhs.dependent_on();
-            let rhs_rhs_deps = rhs_atom.rhs.dependent_on();
+            let rhs_lhs_deps = rhs_atom.lhs.dependent_on(analyzer);
+            let rhs_rhs_deps = rhs_atom.rhs.dependent_on(analyzer);
             let ((dyn_elem, dep), const_elem) =
                 match (!rhs_lhs_deps.is_empty(), !rhs_rhs_deps.is_empty()) {
                     (true, true) => {
@@ -507,7 +508,7 @@ impl DLSolver {
 
     /// Normalizes a DL atom into x <= y - k, where x and y are variables and k is a constant.
     /// Needed for running negative cycle check. Additionally, if we have an `OR`, we
-    pub fn dl_atom_normalize(constraint: SolverAtom) -> Vec<Vec<SolverAtom>> {
+    pub fn dl_atom_normalize(constraint: SolverAtom, analyzer: &impl GraphBackend,) -> Vec<Vec<SolverAtom>> {
         // println!("normalizing: {}", constraint.into_expr_elem());
         let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
         let false_part = AtomOrPart::Part(Elem::from(Concrete::from(false)));
@@ -527,11 +528,11 @@ impl DLSolver {
             }
             (true, false) => {
                 // lhs is just a boolean, drop it
-                return Self::dl_atom_normalize(constraint.rhs.as_solver_atom());
+                return Self::dl_atom_normalize(constraint.rhs.as_solver_atom(), analyzer);
             }
             (false, true) => {
                 // rhs is just a boolean, drop it
-                return Self::dl_atom_normalize(constraint.lhs.as_solver_atom());
+                return Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer);
             }
             _ => {}
         }
@@ -548,7 +549,7 @@ impl DLSolver {
                         op: RangeOp::Sub(true),
                         rhs: Box::new(zero_part.clone()),
                     })),
-                });
+                }, analyzer);
 
                 assert!(res.len() == 1);
                 res[0].extend(
@@ -562,7 +563,7 @@ impl DLSolver {
                             op: RangeOp::Sub(true),
                             rhs: Box::new(zero_part.clone()),
                         })),
-                    })
+                    }, analyzer)
                     .remove(0),
                 );
                 res
@@ -579,7 +580,7 @@ impl DLSolver {
                         op: RangeOp::Sub(true),
                         rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::from(1))))),
                     })),
-                });
+                }, analyzer);
 
                 assert!(res.len() == 1);
 
@@ -596,14 +597,14 @@ impl DLSolver {
                                 U256::from(1),
                             )))),
                         })),
-                    })
+                    }, analyzer)
                     .remove(0),
                 );
                 res
             }
             RangeOp::Lt => {
-                let lhs_symb = !constraint.lhs.dependent_on().is_empty();
-                let rhs_symb = !constraint.rhs.dependent_on().is_empty();
+                let lhs_symb = !constraint.lhs.dependent_on(analyzer).is_empty();
+                let rhs_symb = !constraint.rhs.dependent_on(analyzer).is_empty();
                 match (lhs_symb, rhs_symb) {
                     (true, true) => {
                         let new_lhs = AtomOrPart::Atom(
@@ -621,7 +622,7 @@ impl DLSolver {
                             rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
                                 I256::from(-1),
                             )))),
-                        })
+                        }, analyzer)
                     }
                     (true, false) => {
                         let new_lhs = AtomOrPart::Atom(
@@ -638,7 +639,7 @@ impl DLSolver {
                             lhs: Box::new(new_lhs),
                             op: RangeOp::Lte,
                             rhs: constraint.rhs,
-                        })
+                        }, analyzer)
                     }
                     (false, true) => {
                         let new_lhs = AtomOrPart::Atom(
@@ -652,7 +653,7 @@ impl DLSolver {
                             lhs: Box::new(new_lhs),
                             op: RangeOp::Lte,
                             rhs: constraint.lhs,
-                        })
+                        }, analyzer)
                     }
                     _ => panic!("here"),
                 }
@@ -661,8 +662,8 @@ impl DLSolver {
                 if constraint.lhs.is_atom() {
                     // some form of (x + k <= y)
                     let lhs_atom = constraint.lhs.expect_atom();
-                    let atom_lhs_is_symb = !lhs_atom.lhs.dependent_on().is_empty();
-                    let atom_rhs_is_symb = !lhs_atom.rhs.dependent_on().is_empty();
+                    let atom_lhs_is_symb = !lhs_atom.lhs.dependent_on(analyzer).is_empty();
+                    let atom_rhs_is_symb = !lhs_atom.rhs.dependent_on(analyzer).is_empty();
 
                     match lhs_atom.op {
                         RangeOp::Sub(_) => {
@@ -681,7 +682,7 @@ impl DLSolver {
                                             op: RangeOp::Sub(true),
                                             rhs: Box::new(*lhs_atom.lhs),
                                         })),
-                                    })
+                                    }, analyzer)
                                 }
                                 _ => {
                                     // (x - k <= y)
@@ -696,7 +697,7 @@ impl DLSolver {
                                             op: RangeOp::Add(true),
                                             rhs: Box::new(*lhs_atom.rhs),
                                         })),
-                                    })
+                                    }, analyzer)
                                 }
                             }
                         }
@@ -713,7 +714,7 @@ impl DLSolver {
                                     op: RangeOp::Sub(true),
                                     rhs: Box::new(*lhs_atom.rhs),
                                 })),
-                            })
+                            }, analyzer)
                         }
                         RangeOp::And => {
                             let mut res = Self::dl_atom_normalize(SolverAtom {
@@ -721,14 +722,14 @@ impl DLSolver {
                                 lhs: Box::new(*lhs_atom.lhs),
                                 op: constraint.op,
                                 rhs: constraint.rhs.clone(),
-                            });
+                            }, analyzer);
 
                             let mut rhs = Self::dl_atom_normalize(SolverAtom {
                                 ty: constraint.ty,
                                 lhs: Box::new(*lhs_atom.rhs),
                                 op: constraint.op,
                                 rhs: constraint.rhs.clone(),
-                            });
+                            }, analyzer);
                             match (res.len() > 1, rhs.len() > 1) {
                                 (true, true) => {
                                     res.extend(rhs);
@@ -796,7 +797,7 @@ impl DLSolver {
                         lhs: constraint.lhs,
                         op: constraint.op,
                         rhs: Box::new(new_rhs),
-                    })
+                    }, analyzer)
                 } else {
                     vec![vec![constraint]]
                 }
@@ -806,21 +807,21 @@ impl DLSolver {
                 lhs: constraint.rhs,
                 op: RangeOp::Lte,
                 rhs: constraint.lhs,
-            }),
+            }, analyzer),
             RangeOp::Gt => Self::dl_atom_normalize(SolverAtom {
                 ty: OpType::DL,
                 lhs: constraint.rhs,
                 op: RangeOp::Lt,
                 rhs: constraint.lhs,
-            }),
+            }, analyzer),
             RangeOp::Or => {
-                let mut res = Self::dl_atom_normalize(constraint.lhs.as_solver_atom());
-                res.extend(Self::dl_atom_normalize(constraint.rhs.as_solver_atom()));
+                let mut res = Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer);
+                res.extend(Self::dl_atom_normalize(constraint.rhs.as_solver_atom(), analyzer));
                 res
             }
             _other => {
                 // println!("other: {}, {}", other.to_string(), constraint.into_expr_elem());
-                Self::dl_atom_normalize(constraint)
+                Self::dl_atom_normalize(constraint, analyzer)
             }
         }
     }
@@ -846,7 +847,7 @@ pub fn find_negative_cycle(
                 .maximize(analyzer)
                 .unwrap();
             let lt = matches!(
-                dist.range_ord(&distance[ix(j)]),
+                dist.range_ord(&distance[ix(j)], analyzer),
                 Some(std::cmp::Ordering::Less)
             );
             if lt {
@@ -922,7 +923,7 @@ fn bellman_ford_initialize_relax(
                     .maximize(analyzer)
                     .unwrap();
                 let lt = matches!(
-                    dist.range_ord(&distance[ix(j)]),
+                    dist.range_ord(&distance[ix(j)], analyzer),
                     Some(std::cmp::Ordering::Less)
                 );
                 if lt {

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use solang_parser::pt::Loc;
 
 /// A concrete value for a range element
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Default, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct RangeConcrete<T> {
     pub val: T,
     pub loc: Loc,
@@ -34,9 +34,13 @@ impl RangeConcrete<Concrete> {
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     type GraphError = GraphError;
-    // fn simplify(&self, _analyzer: &impl GraphBackend) -> Elem<Concrete> {
-    //  Elem::Concrete(self.clone())
-    // }
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+        let _ = analyzer.range_arena_idx_or_upsert(Elem::Concrete(self.clone()));
+    }
+
+    fn dearenaize(&self, _analyzer: &impl GraphBackend) -> Elem<Concrete> {
+        Elem::Concrete(self.clone())
+    }
 
     fn has_cycle(
         &self,
@@ -54,7 +58,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(Elem::Concrete(self.clone()))
     }
 
-    fn is_flatten_cached(&self) -> bool {
+    fn is_flatten_cached(&self, _analyzer: &impl GraphBackend) -> bool {
         true
     }
 
@@ -62,7 +66,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(())
     }
 
-    fn range_eq(&self, other: &Self) -> bool {
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => self_val == other_val,
             _ => match (&self.val, &other.val) {
@@ -84,7 +88,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
                                 loc: other.loc,
                             };
 
-                            a.range_eq(&b)
+                            a.range_eq(&b, analyzer)
                         })
                     } else {
                         false
@@ -95,7 +99,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         }
     }
 
-    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn range_ord(&self, other: &Self, _analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => Some(self_val.cmp(&other_val)),
             (Some(_), _) => {
@@ -129,12 +133,11 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         }
     }
 
-    fn dependent_on(&self) -> Vec<ContextVarNode> {
+    fn dependent_on(&self, _analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         vec![]
     }
-    fn update_deps(&mut self, _mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {}
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
+    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, _analyzer: &impl GraphBackend) {}
 
     fn maximize(&self, _analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
