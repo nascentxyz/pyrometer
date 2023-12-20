@@ -1,3 +1,5 @@
+use crate::ContextEdge;
+use petgraph::graph::Edge;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend, GraphError, Node,
@@ -9,6 +11,33 @@ impl ContextNode {
     /// Query whether this context has a parent
     pub fn has_parent(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.parent_ctx.is_some())
+    }
+
+    /// Sets the continuation context
+    pub fn set_continuation_ctx(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        continuation_ctx: ContextNode,
+    ) -> Result<(), GraphError> {
+        assert!(
+            self.0 > continuation_ctx.0,
+            "{} {}",
+            self.0,
+            continuation_ctx.0
+        );
+        if let Some(cont) = self.underlying_mut(analyzer)?.continuation_of {
+            cont.set_continuation_ctx(analyzer, continuation_ctx)
+        } else {
+            analyzer.add_edge(
+                *self,
+                continuation_ctx,
+                Edge::Context(ContextEdge::Continue),
+            );
+
+            self.underlying_mut(analyzer)?.continuation_of = Some(continuation_ctx);
+            self.underlying_mut(analyzer)?.cache.vars = continuation_ctx.underlying(analyzer)?.cache.vars.clone();
+            Ok(())
+        }
     }
 
     /// Gets the first ancestor of this context

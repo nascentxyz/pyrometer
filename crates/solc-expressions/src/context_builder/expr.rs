@@ -283,12 +283,12 @@ pub trait ExpressionParser:
                 let updated_func_expr = match **func_expr {
                     FunctionCallBlock(_loc, ref inner_func_expr, ref call_block) => {
                         // we dont currently handle the `{value: .. gas: ..}` msg updating
-                        println!("call block: {call_block:#?}");
+                        // println!("call block: {call_block:#?}");
 
                         // let mut tmp_msg = Msg {
 
                         // }
-                        self.add_expr_err(ExprErr::FunctionCallBlockTodo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take effect".to_string()));
+                        // self.add_expr_err(ExprErr::FunctionCallBlockTodo(call_block.loc(), "Function call block is currently unsupported. Relevant changes on `msg` will not take effect".to_string()));
                         inner_func_expr.clone()
                     }
                     _ => func_expr.clone(),

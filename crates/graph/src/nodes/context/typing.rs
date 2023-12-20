@@ -4,6 +4,20 @@ use crate::{
 };
 
 impl ContextNode {
+    /// Checks if its an anonymous function call (i.e. loop)
+    pub fn is_anonymous_fn_call(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+
+        Ok(underlying.fn_call.is_none() && underlying.ext_fn_call.is_none() && !underlying.is_fork)
+    }
+
+    pub fn has_continuation(
+        &self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.continuation_of.is_some())
+    }
+
     /// Returns whether this context is killed or returned
     pub fn killed_or_ret(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;

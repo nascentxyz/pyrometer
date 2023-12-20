@@ -21,6 +21,15 @@ impl ContextNode {
         Ok(())
     }
 
+    /// Returns whether the context's cache contains a variable (by name)
+    pub fn contains_var(
+        &self,
+        var_name: &str,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.cache.vars.contains_key(var_name))
+    }
+
     /// Gets a variable by name in the context
     pub fn var_by_name(&self, analyzer: &impl GraphBackend, name: &str) -> Option<ContextVarNode> {
         self.underlying(analyzer)

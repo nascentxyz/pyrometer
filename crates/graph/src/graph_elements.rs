@@ -349,6 +349,8 @@ pub enum ContextEdge {
     FuncAccess,
     /// A write to a storage variable, connecting the variable that is written to the variable and the storage variable itself
     StorageWrite,
+    /// An access to a storage slot
+    SlotAccess,
 
     // Variable incoming edges
     /// Unused

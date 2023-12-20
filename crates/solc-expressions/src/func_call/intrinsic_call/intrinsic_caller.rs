@@ -80,7 +80,7 @@ pub trait IntrinsicFuncCaller:
             };
             let ty_idx = ty.expect_single().into_expr_err(loc)?;
             match analyzer.node(ty_idx) {
-                Node::Builtin(Builtin::Array(_)) => {
+                Node::Builtin(Builtin::Array(_)) | Node::Builtin(Builtin::DynamicBytes) => {
                     // construct a new list
                     analyzer.construct_array(ty_idx, &NamedOrUnnamedArgs::Unnamed(inputs), loc, ctx)
                 }
@@ -176,7 +176,7 @@ pub trait IntrinsicFuncCaller:
                             .into_expr_err(loc)
                     }
                 }
-                _ => Err(ExprErr::ParseError(loc, "Tried to construct a new element of a type that doesn't support the `new` keyword".to_string()))
+                e => Err(ExprErr::ParseError(loc, format!("Tried to construct a new element of a type ({e:?}) that doesn't support the `new` keyword")))
             }
         })
     }

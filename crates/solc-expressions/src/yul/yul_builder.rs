@@ -5,8 +5,8 @@ use crate::{
 };
 
 use graph::{
-    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
+    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, BuiltInNode},
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType, SolcRange,
 };
 
 use solang_parser::{
@@ -313,26 +313,33 @@ pub trait YulBuilder:
             }
             FunctionCall(yul_func_call) => self.yul_func_call(yul_func_call, ctx),
             SuffixAccess(loc, yul_member_expr, ident) => {
-                self.parse_inputs(
-                    ctx,
-                    *loc,
-                    &[*yul_member_expr.clone()],
-                )?;
+                self.parse_inputs(ctx, *loc, &[*yul_member_expr.clone()])?;
 
-                self.apply_to_edges(ctx, *loc, &|analyzer, _ctx, _loc| {
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let Ok(Some(lhs)) = ctx.pop_expr_latest(loc, analyzer) else {
+                        return Err(ExprErr::NoLhs(
+                            loc,
+                            "`.slot` had no left hand side".to_string(),
+                        ));
+                    };
                     match &*ident.name {
                         "slot" => {
+                            let slot_var = analyzer.slot(
+                                ctx,
+                                loc,
+                                lhs.expect_single().into_expr_err(loc)?.into(),
+                            );
+                            ctx.push_expr(ExprRet::Single(slot_var.into()), analyzer)
+                                .into_expr_err(loc)?;
                             Ok(())
                         }
-                        _ => {
-                            Err(ExprErr::Todo(
-                                expr.loc(),
-                                format!("Yul member access `{}` not yet supported", ident.name),
-                            ))
-                        }
-                    } 
+                        _ => Err(ExprErr::Todo(
+                            expr.loc(),
+                            format!("Yul member access `{}` not yet supported", ident.name),
+                        )),
+                    }
                 })
-            },
+            }
         }
     }
 
@@ -398,5 +405,35 @@ pub trait YulBuilder:
             ExprRet::Null => {}
         }
         Ok(())
+    }
+
+    fn slot(&mut self, ctx: ContextNode, loc: Loc, lhs: ContextVarNode) -> ContextVarNode {
+        let lhs = lhs.first_version(self);
+        let name = format!("{}.slot", lhs.name(self).unwrap());
+        tracing::trace!("Slot access: {}", name);
+        if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name).unwrap() {
+            attr_var.latest_version(self)
+        } else {
+            let slot_var = ContextVar {
+                loc: Some(loc),
+                name: lhs.name(self).unwrap() + ".slot",
+                display_name: lhs.display_name(self).unwrap() + ".slot",
+                storage: None,
+                is_tmp: false,
+                tmp_of: None,
+                is_symbolic: true,
+                is_return: false,
+                ty: VarType::BuiltIn(
+                    BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
+                    SolcRange::try_from_builtin(&Builtin::Uint(256)),
+                ),
+            };
+            let slot_node = self.add_node(Node::ContextVar(slot_var));
+
+            self.add_edge(slot_node, lhs, Edge::Context(ContextEdge::SlotAccess));
+            self.add_edge(slot_node, ctx, Edge::Context(ContextEdge::Variable));
+            ctx.add_var(slot_node.into(), self).unwrap();
+            slot_node.into()
+        }
     }
 }
