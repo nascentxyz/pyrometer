@@ -220,6 +220,17 @@ impl ContextVarNode {
         }
     }
 
+    pub fn slot_to_storage(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        let slot = analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::SlotAccess))
+            .map(|edge| edge.target())
+            .take(1)
+            .next()?;
+        Some(ContextVarNode::from(slot).latest_version(analyzer))
+    }
+
     pub fn index_access_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         if let Some(arr) = analyzer
             .graph()

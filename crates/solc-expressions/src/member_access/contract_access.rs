@@ -111,19 +111,52 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     return Ok(ExprRet::Single(node));
                 }
                 _ => {
-                    return Err(ExprErr::ContractFunctionNotFound(
-                        loc,
-                        format!(
-                        "No function or struct with name {:?} in contract: {:?}. Functions: {:#?}",
-                        ident.name,
-                        con_node.name(self).unwrap(),
-                        con_node
-                            .funcs(self)
-                            .iter()
-                            .map(|func| func.name(self).unwrap())
-                            .collect::<Vec<_>>()
-                    ),
-                    ))
+                    // try to match just prefix
+                    if let Some(func) = con_node.funcs(self).into_iter().find(|func_node| {
+                        if let Some(prefix) = func_node.prefix_only_name(self).unwrap() {
+                            prefix == ident.name
+                        } else {
+                            false
+                        }
+                    }) {
+                        if let Some(func_cvar) =
+                            ContextVar::maybe_from_user_ty(self, loc, func.0.into())
+                        {
+                            let fn_node = self.add_node(Node::ContextVar(func_cvar));
+                            // this prevents attaching a dummy node to the parent which could cause a cycle in the graph
+                            if maybe_parent.is_some() {
+                                self.add_edge(
+                                    fn_node,
+                                    member_idx,
+                                    Edge::Context(ContextEdge::FuncAccess),
+                                );
+                            }
+                            Ok(ExprRet::Single(fn_node))
+                        } else {
+                            Err(ExprErr::MemberAccessNotFound(
+                                loc,
+                                format!(
+                                    "Unable to construct the function \"{}\" in contract \"{}\"",
+                                    ident.name,
+                                    con_node.name(self).into_expr_err(loc)?
+                                ),
+                            ))
+                        }
+                    } else {
+                        return Err(ExprErr::ContractFunctionNotFound(
+                            loc,
+                            format!(
+                            "No function or struct with name {:?} in contract: {:?}. Functions: {:#?}",
+                            ident.name,
+                            con_node.name(self).unwrap(),
+                            con_node
+                                .funcs(self)
+                                .iter()
+                                .map(|func| func.name(self).unwrap())
+                                .collect::<Vec<_>>()
+                        ),
+                        ))
+                    }
                 }
             }
         }

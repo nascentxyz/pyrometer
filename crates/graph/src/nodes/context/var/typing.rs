@@ -16,6 +16,10 @@ impl ContextVarNode {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
+    pub fn ty_eq_ty(&self, other: &VarType, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        self.ty(analyzer)?.ty_eq(other, analyzer)
+    }
+
     pub fn is_mapping(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         self.ty(analyzer)?.is_mapping(analyzer)
     }
@@ -213,11 +217,7 @@ impl ContextVarNode {
     pub fn is_return_node(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         if let Some(ctx) = self.maybe_ctx(analyzer) {
             return Ok(ctx.underlying(analyzer)?.ret.iter().any(|(_, node)| {
-                if let Some(node) = node {
-                    node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
-                } else {
-                    false
-                }
+                node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
             }));
         }
         Ok(false)
@@ -234,11 +234,7 @@ impl ContextVarNode {
                 .ret
                 .iter()
                 .any(|(_, node)| {
-                    if let Some(node) = node {
-                        node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
-                    } else {
-                        false
-                    }
+                    node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
                 })
         })
     }
@@ -332,32 +328,57 @@ impl ContextVarNode {
         Ok(())
     }
 
+    // pub fn cast_from_ty(
+    //     &self,
+    //     to_ty: VarType,
+    //     analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+    // ) -> Result<(), GraphError> {
+    //     let new_underlying = self.underlying(analyzer)?.clone();
+    //     let node = analyzer.add_node(Node::ContextVar(new_underlying));
+    //     analyzer.add_edge(node, *self, Edge::Context(ContextEdge::Prev));
+    //     let new_self = ContextVarNode::from(node);
+
+    //     let from_ty = self.ty(analyzer)?.clone();
+    //     if !from_ty.ty_eq(&to_ty, analyzer)? {
+    //         if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
+    //             new_self.underlying_mut(analyzer)?.ty = new_ty;
+    //         }
+
+    //         if let Some((new_min, new_max)) = self.cast_exprs(&to_ty, analyzer)? {
+    //             new_self.set_range_min(analyzer, new_min)?;
+    //             new_self.set_range_max(analyzer, new_max)?;
+    //         }
+    //     }
+
+    //     if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (new_self.ty(analyzer)?, to_ty) {
+    //         // update name
+    //         let display_name = cnode.underlying(analyzer)?.as_human_string();
+    //         new_self.underlying_mut(analyzer)?.display_name = display_name;
+    //     }
+    //     Ok(())
+    // }
+
     pub fn cast_from_ty(
         &self,
         to_ty: VarType,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
-        let new_underlying = self.underlying(analyzer)?.clone();
-        let node = analyzer.add_node(Node::ContextVar(new_underlying));
-        analyzer.add_edge(node, *self, Edge::Context(ContextEdge::Prev));
-        let new_self = ContextVarNode::from(node);
-
         let from_ty = self.ty(analyzer)?.clone();
         if !from_ty.ty_eq(&to_ty, analyzer)? {
             if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
-                new_self.underlying_mut(analyzer)?.ty = new_ty;
+                self.underlying_mut(analyzer)?.ty = new_ty;
             }
-
-            if let Some((new_min, new_max)) = self.cast_exprs(&to_ty, analyzer)? {
-                new_self.set_range_min(analyzer, new_min)?;
-                new_self.set_range_max(analyzer, new_max)?;
+            if let (Some(mut r), Some(r2)) = (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?) {
+                r.min = r.min.cast(r2.min);
+                r.max = r.max.cast(r2.max);
+                self.set_range(analyzer, r)?;
             }
         }
 
-        if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (new_self.ty(analyzer)?, to_ty) {
+        if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (self.ty(analyzer)?, to_ty) {
             // update name
-            let display_name = cnode.underlying(analyzer)?.as_human_string();
-            new_self.underlying_mut(analyzer)?.display_name = display_name;
+            let display_name = cnode.underlying(analyzer)?.as_string();
+            self.underlying_mut(analyzer)?.display_name = display_name;
         }
         Ok(())
     }

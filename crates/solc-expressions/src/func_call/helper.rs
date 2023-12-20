@@ -46,7 +46,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         let mut new_cvar = self.add_if_err(res)?;
                         new_cvar.loc = Some(param.loc(self).unwrap());
                         new_cvar.name = name.clone();
-                        new_cvar.display_name = name.clone();
+                        new_cvar.display_name = name;
                         new_cvar.is_tmp = false;
                         new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
                             param.underlying(self).unwrap().storage
@@ -56,17 +56,15 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             None
                         };
 
+                        let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+
                         if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap())
                         {
-                            let ty = new_cvar.ty.clone();
-                            if !ty.ty_eq(&param_ty, self).unwrap() {
-                                if let Some(new_ty) = ty.try_cast(&param_ty, self).unwrap() {
-                                    new_cvar.ty = new_ty;
-                                }
+                            if !node.ty_eq_ty(&param_ty, self).unwrap() {
+                                node.cast_from_ty(param_ty, self).unwrap();
                             }
                         }
 
-                        let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
                         self.add_edge(
                             node,
                             input.latest_version(self),
@@ -86,11 +84,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 r.range_min().into_owned().cast(r2.range_min().into_owned());
                             let new_max =
                                 r.range_max().into_owned().cast(r2.range_max().into_owned());
-                            let res = node.try_set_range_min(self, new_min).into_expr_err(loc);
+                            let res = node.latest_version(self).try_set_range_min(self, new_min).into_expr_err(loc);
                             self.add_if_err(res);
-                            let res = node.try_set_range_max(self, new_max).into_expr_err(loc);
+                            let res = node.latest_version(self).try_set_range_max(self, new_max).into_expr_err(loc);
                             self.add_if_err(res);
-                            let res = node
+                            let res = node.latest_version(self)
                                 .try_set_range_exclusions(self, r.exclusions)
                                 .into_expr_err(loc);
                             self.add_if_err(res);
@@ -178,6 +176,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         modifier_state: Option<ModifierState>,
     ) -> Result<ContextNode, ExprErr> {
         let fn_ext = curr_ctx.is_fn_ext(func_node, self).into_expr_err(loc)?;
+        if fn_ext {
+            curr_ctx.add_gas_cost(self, shared::gas::EXT_FUNC_CALL_GAS).into_expr_err(loc)?;
+        } else {
+            curr_ctx.add_gas_cost(self, shared::gas::FUNC_CALL_GAS).into_expr_err(loc)?;
+        }
         let ctx = Context::new_subctx(
             curr_ctx,
             None,
@@ -287,6 +290,27 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             caller_ctx.depth(self),
             callee_ctx.depth(self),
         );
+
+        if callee_ctx
+            .underlying(self)
+            .unwrap()
+            .modifier_state
+            .is_some()
+        {
+            if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx {
+                let ret = ret_ctx.underlying(self).into_expr_err(loc)?.ret.clone();
+                ret.iter().try_for_each(|(loc, ret)| {
+                    let cvar = self.advance_var_in_forced_ctx(*ret, *loc, callee_ctx)?;
+                    callee_ctx
+                        .add_return_node(*loc, cvar, self)
+                        .into_expr_err(*loc)?;
+                    self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
+                    
+                    Ok(())
+                })?;
+            }
+        }
+
         match callee_ctx.underlying(self).into_expr_err(loc)?.child {
             Some(CallFork::Fork(w1, w2)) => {
                 self.ctx_rets(loc, caller_ctx, w1)?;
@@ -302,190 +326,151 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 Ok(())
             }
             _ => {
+                if callee_ctx.is_anonymous_fn_call(self).into_expr_err(loc)? {
+                    return Ok(());
+                }
+
                 if callee_ctx.is_killed(self).into_expr_err(loc)? {
                     return Ok(());
                 }
-                let callee_depth = callee_ctx.underlying(self).into_expr_err(loc)?.depth;
-                let caller_depth = caller_ctx.underlying(self).into_expr_err(loc)?.depth;
-                if callee_depth != caller_depth {
-                    let ctx = Context::new_subctx(
-                        callee_ctx,
-                        Some(caller_ctx),
-                        loc,
-                        None,
-                        None,
-                        false,
-                        self,
-                        caller_ctx
-                            .underlying(self)
-                            .into_expr_err(loc)?
-                            .modifier_state
-                            .clone(),
-                    )
+
+                if callee_ctx
+                    .underlying(self)
+                    .into_expr_err(loc)?
+                    .child
+                    .is_some()
+                {
+                    return Ok(());
+                }
+
+                let ctx = Context::new_subctx(
+                    callee_ctx,
+                    Some(caller_ctx),
+                    loc,
+                    None,
+                    None,
+                    false,
+                    self,
+                    caller_ctx
+                        .underlying(self)
+                        .into_expr_err(loc)?
+                        .modifier_state
+                        .clone(),
+                )
+                .into_expr_err(loc)?;
+                let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
+                ret_subctx
+                    .set_continuation_ctx(self, caller_ctx)
                     .into_expr_err(loc)?;
-                    let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
-                    self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
 
-                    let res = callee_ctx
-                        .set_child_call(ret_subctx, self)
-                        .into_expr_err(loc);
-                    let _ = self.add_if_err(res);
+                let res = callee_ctx
+                    .set_child_call(ret_subctx, self)
+                    .into_expr_err(loc);
+                let _ = self.add_if_err(res);
 
-                    let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
+                let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
 
-                    if rets.is_empty() {
-                        let func_rets: Vec<FunctionReturnNode> = callee_ctx
-                            .associated_fn(self)
-                            .into_expr_err(loc)?
-                            .returns(self)
-                            .collect();
-                        func_rets
-                            .iter()
-                            .filter_map(|ret| {
-                                let n: String = ret.maybe_name(self).ok()??;
-                                let ret_loc: Loc = ret.loc(self).ok()?;
-                                Some((n, ret_loc))
-                            })
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .try_for_each(|(name, ret_loc)| {
-                                if let Some(cvar) = callee_ctx
-                                    .var_by_name_or_recurse(self, &name)
-                                    .into_expr_err(loc)?
-                                {
-                                    let cvar = cvar.latest_version(self);
-                                    // let ret_loc = ret.loc(self).into_expr_err(loc)?;
-                                    callee_ctx
-                                        .add_return_node(ret_loc, cvar, self)
-                                        .into_expr_err(loc)?;
-                                    self.add_edge(
-                                        cvar,
-                                        callee_ctx,
-                                        Edge::Context(ContextEdge::Return),
-                                    );
-                                }
-                                Ok(())
-                            })?;
-
-                        // add unnamed rets
-                        func_rets
-                            .into_iter()
-                            .filter(|ret| ret.maybe_name(self).unwrap().is_none())
-                            .collect::<Vec<_>>()
-                            .iter()
-                            .try_for_each(|ret| {
-                                let ret_loc = ret.loc(self).into_expr_err(loc)?;
-                                let cvar = ContextVar::new_from_func_ret(
-                                    callee_ctx,
-                                    self,
-                                    ret.underlying(self).into_expr_err(loc)?.clone(),
-                                )
+                if rets.is_empty() {
+                    let func_rets: Vec<FunctionReturnNode> = callee_ctx
+                        .associated_fn(self)
+                        .into_expr_err(loc)?
+                        .returns(self)
+                        .collect();
+                    func_rets
+                        .iter()
+                        .filter_map(|ret| {
+                            let n: String = ret.maybe_name(self).ok()??;
+                            let ret_loc: Loc = ret.loc(self).ok()?;
+                            Some((n, ret_loc))
+                        })
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .try_for_each(|(name, ret_loc)| {
+                            if let Some(cvar) = callee_ctx
+                                .var_by_name_or_recurse(self, &name)
                                 .into_expr_err(loc)?
-                                .unwrap();
-                                let cvar =
-                                    ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
-                                callee_ctx.add_var(cvar, self).into_expr_err(loc)?;
-                                self.add_edge(
-                                    cvar,
-                                    callee_ctx,
-                                    Edge::Context(ContextEdge::Variable),
-                                );
+                            {
+                                let cvar = cvar.latest_version(self);
+                                // let ret_loc = ret.loc(self).into_expr_err(loc)?;
                                 callee_ctx
                                     .add_return_node(ret_loc, cvar, self)
                                     .into_expr_err(loc)?;
                                 self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
-                                Ok(())
-                            })?;
-                        rets = callee_ctx.underlying(self).unwrap().ret.clone();
-                    }
+                            }
+                            Ok(())
+                        })?;
 
-                    let handle_rets = rets.iter().all(|(_, node)| node.is_some());
-                    if handle_rets {
-                        let ret = rets
-                            .into_iter()
-                            .enumerate()
-                            .map(|(i, (_, node))| {
-                                let tmp_ret = node
-                                    .unwrap()
-                                    .as_tmp(
-                                        callee_ctx.underlying(self).unwrap().loc,
-                                        ret_subctx,
-                                        self,
-                                    )
-                                    .unwrap();
-                                tmp_ret.underlying_mut(self).into_expr_err(loc)?.is_return = true;
-                                tmp_ret
-                                    .underlying_mut(self)
-                                    .into_expr_err(loc)?
-                                    .display_name = format!(
-                                    "{}.{}",
-                                    callee_ctx.associated_fn_name(self).unwrap(),
-                                    i
-                                );
-                                ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
-                                self.add_edge(
-                                    tmp_ret,
-                                    ret_subctx,
-                                    Edge::Context(ContextEdge::Variable),
-                                );
-                                Ok(ExprRet::Single(tmp_ret.into()))
-                            })
-                            .collect::<Result<_, ExprErr>>()?;
-                        ret_subctx
-                            .push_expr(ExprRet::Multi(ret), self)
-                            .into_expr_err(loc)?;
-                    }
-                    Ok(())
-                } else {
-                    let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
+                    // add unnamed rets
+                    func_rets
+                        .into_iter()
+                        .filter(|ret| ret.maybe_name(self).unwrap().is_none())
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .try_for_each(|ret| {
+                            let ret_loc = ret.loc(self).into_expr_err(loc)?;
+                            let cvar = ContextVar::new_from_func_ret(
+                                callee_ctx,
+                                self,
+                                ret.underlying(self).into_expr_err(loc)?.clone(),
+                            )
+                            .into_expr_err(loc)?
+                            .unwrap();
+                            let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
+                            callee_ctx.add_var(cvar, self).into_expr_err(loc)?;
+                            self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
+                            callee_ctx
+                                .add_return_node(ret_loc, cvar, self)
+                                .into_expr_err(loc)?;
+                            self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
+                            Ok(())
+                        })?;
+                    rets = callee_ctx.underlying(self).unwrap().ret.clone();
+                }
 
-                    if rets.is_empty() {
+                let target_rets =
+                    if let Some(mod_state) = &callee_ctx.underlying(self).unwrap().modifier_state {
+                        mod_state
+                            .parent_ctx
+                            .associated_fn(self)
+                            .into_expr_err(loc)?
+                            .returns(self)
+                            .collect::<Vec<_>>()
+                    } else {
                         callee_ctx
                             .associated_fn(self)
                             .into_expr_err(loc)?
                             .returns(self)
-                            .filter_map(|ret| {
-                                let n: String = ret.maybe_name(self).ok()??;
-                                let ret_loc: Loc = ret.loc(self).ok()?;
-                                Some((n, ret_loc))
-                            })
                             .collect::<Vec<_>>()
-                            .into_iter()
-                            .try_for_each(|(name, ret_loc)| {
-                                if let Some(cvar) = callee_ctx
-                                    .var_by_name_or_recurse(self, &name)
-                                    .into_expr_err(loc)?
-                                {
-                                    let cvar = cvar.latest_version(self);
-                                    // let ret_loc = ret.loc(self).into_expr_err(loc)?;
-                                    callee_ctx
-                                        .add_return_node(ret_loc, cvar, self)
-                                        .into_expr_err(loc)?;
-                                    self.add_edge(
-                                        cvar,
-                                        callee_ctx,
-                                        Edge::Context(ContextEdge::Return),
-                                    );
-                                }
-                                Ok(())
-                            })?;
-                        rets = callee_ctx.underlying(self).unwrap().ret.clone();
-                    }
-                    if rets.iter().all(|(_, node)| node.is_some()) {
-                        callee_ctx
-                            .push_expr(
-                                ExprRet::Multi(
-                                    rets.iter()
-                                        .map(|(_, node)| ExprRet::Single((node.unwrap()).into()))
-                                        .collect(),
-                                ),
-                                self,
-                            )
-                            .into_expr_err(loc)
-                    } else {
-                        Ok(())
-                    }
-                }
+                    };
+
+                let ret = rets
+                    .into_iter()
+                    .zip(target_rets.iter())
+                    .enumerate()
+                    .map(|(i, ((_, node), target_ret))| {
+                        let target_ty = target_ret.ty(self).unwrap();
+                        let target_ty = VarType::try_from_idx(self, target_ty).unwrap();
+
+                        let tmp_ret = node
+                            .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                            .unwrap();
+                        tmp_ret.cast_from_ty(target_ty, self).unwrap();
+                        tmp_ret.underlying_mut(self).into_expr_err(loc)?.is_return = true;
+                        tmp_ret
+                            .underlying_mut(self)
+                            .into_expr_err(loc)?
+                            .display_name =
+                            format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
+                        ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
+                        self.add_edge(tmp_ret, ret_subctx, Edge::Context(ContextEdge::Variable));
+                        Ok(ExprRet::Single(tmp_ret.into()))
+                    })
+                    .collect::<Result<_, ExprErr>>()?;
+
+                ret_subctx
+                    .push_expr(ExprRet::Multi(ret), self)
+                    .into_expr_err(loc)?;
+                Ok(())
             }
         }
     }

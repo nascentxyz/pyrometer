@@ -274,8 +274,8 @@ pub trait YulBuilder:
         use YulExpression::*;
         match expr {
             BoolLiteral(loc, b, _) => self.bool_literal(ctx, *loc, *b),
-            NumberLiteral(loc, int, expr, _unit) => {
-                self.number_literal(ctx, *loc, int, expr, false)
+            NumberLiteral(loc, int, expr, unit) => {
+                self.number_literal(ctx, *loc, int, expr, false, unit)
             }
             HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),

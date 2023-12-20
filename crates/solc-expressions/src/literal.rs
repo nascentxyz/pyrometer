@@ -22,6 +22,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         exponent: &str,
         negative: bool,
+        unit: &Option<Identifier>,
     ) -> Result<(), ExprErr> {
         let int = U256::from_dec_str(integer).unwrap();
         let val = if !exponent.is_empty() {
@@ -29,6 +30,12 @@ pub trait Literal: AnalyzerBackend + Sized {
             int * U256::from(10).pow(exp)
         } else {
             int
+        };
+
+        let val = if let Some(unit) = unit {
+            val * self.unit_to_uint(unit)
+        } else {
+            val
         };
 
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
@@ -55,6 +62,18 @@ pub trait Literal: AnalyzerBackend + Sized {
         Ok(())
     }
 
+    fn unit_to_uint(&self, unit: &Identifier) -> U256 {
+        match &*unit.name {
+            "gwei" => U256::from(10).pow(9.into()),
+            "ether" => U256::from(10).pow(18.into()),
+            "minutes" => U256::from(60),
+            "hours" => U256::from(3600),
+            "days" => U256::from(86400),
+            "weeks" => U256::from(604800),
+            _ => U256::from(1),
+        }
+    }
+
     fn rational_number_literal(
         &mut self,
         ctx: ContextNode,
@@ -62,7 +81,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         fraction: &str,
         exponent: &str,
-        _unit: &Option<Identifier>,
+        unit: &Option<Identifier>,
     ) -> Result<(), ExprErr> {
         let int = U256::from_dec_str(integer).unwrap();
         let exp = if !exponent.is_empty() {
@@ -79,9 +98,14 @@ pub trait Literal: AnalyzerBackend + Sized {
             Elem::from(Concrete::from(U256::from(1))),
         );
         let exp_elem = Elem::from(Concrete::from(exp));
-        let rational_range = (Elem::from(Concrete::from(fraction))
+        let mut rational_range = (Elem::from(Concrete::from(fraction))
             + int_elem * Elem::from(Concrete::from(fraction_denom)))
             * Elem::from(Concrete::from(U256::from(10))).pow(exp_elem);
+
+        if let Some(unit) = unit {
+            rational_range = rational_range * Elem::from(Concrete::from(self.unit_to_uint(unit)))
+        }
+        
         let cvar =
             ContextVar::new_from_builtin(loc, self.builtin_or_add(Builtin::Uint(256)).into(), self)
                 .into_expr_err(loc)?;

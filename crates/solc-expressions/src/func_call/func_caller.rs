@@ -463,7 +463,17 @@ pub trait FuncCaller:
                 });
 
             self.parse_ctx_statement(&body, false, Some(callee_ctx));
-            self.ctx_rets(loc, caller_ctx, callee_ctx)
+            if let Some(mod_state) = &callee_ctx.underlying(self).into_expr_err(loc)?.modifier_state.clone() {
+                if mod_state.num == 0 {
+                    return self.ctx_rets(loc, mod_state.parent_caller_ctx, callee_ctx)    
+                }
+            }
+            
+            if callee_ctx != caller_ctx {
+                self.ctx_rets(loc, caller_ctx, callee_ctx)
+            } else {
+                Ok(())
+            }
         } else {
             let ret_ctx = Context::new_subctx(
                 callee_ctx,
@@ -481,7 +491,7 @@ pub trait FuncCaller:
             )
             .unwrap();
             let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
-            self.add_edge(ret_subctx, caller_ctx, Edge::Context(ContextEdge::Continue));
+            ret_subctx.set_continuation_ctx(self, caller_ctx).into_expr_err(loc)?;
 
             let res = callee_ctx
                 .set_child_call(ret_subctx, self)
@@ -503,6 +513,16 @@ pub trait FuncCaller:
                                 format!("{}_{}", func_call, callee_ctx.new_tmp(analyzer).unwrap());
                             var.display_name = func_call.to_string();
                         }
+
+                        if ctx.contains_var(&var.name, analyzer).into_expr_err(loc)? {
+                            var.name = format!(
+                                "{}_ret{}",
+                                var.name,
+                                ctx.new_tmp(analyzer).into_expr_err(loc)?
+                            );
+                            var.display_name = var.name.clone();
+                        }
+
                         let node = analyzer.add_node(Node::ContextVar(var));
                         ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));

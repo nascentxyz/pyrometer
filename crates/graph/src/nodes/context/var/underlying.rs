@@ -260,7 +260,7 @@ impl ContextVar {
             VarType::User(TypeNode::Contract(_), ref maybe_range)
             | VarType::User(TypeNode::Enum(_), ref maybe_range)
             | VarType::User(TypeNode::Ty(_), ref maybe_range)
-            | VarType::BuiltIn(_, ref maybe_range) => maybe_range.is_some(),
+            | VarType::BuiltIn(_, ref maybe_range) => maybe_range.is_none(),
             _ => false,
         }
     }

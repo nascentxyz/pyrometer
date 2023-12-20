@@ -373,6 +373,7 @@ impl Builtin {
             (DynamicBytes, DynamicBytes) => true,
             (String, String) => true,
             (Uint(from_size), Uint(to_size)) => from_size <= to_size,
+            (Uint(from_size), Address) => *from_size == 160,
             (Int(from_size), Int(to_size)) => from_size <= to_size,
             (Bytes(from_size), Bytes(to_size)) => from_size <= to_size,
             _ => false,

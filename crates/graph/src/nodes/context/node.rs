@@ -28,6 +28,10 @@ impl ContextNode {
         todo!("Joining not supported yet");
     }
 
+    pub fn add_gas_cost(&self, analyzer: &mut impl GraphBackend, cost: u64) -> Result<(), GraphError> {
+        self.associated_fn(analyzer)?.add_gas_cost(analyzer, cost)
+    }
+
     /// Gets the total context width
     pub fn total_width(
         &self,
@@ -98,20 +102,7 @@ impl ContextNode {
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?
             .ret
-            .push((ret_stmt_loc, Some(ret)));
-        self.propogate_end(analyzer)?;
-        Ok(())
-    }
-
-    /// Add an empty/placeholder return to the context
-    pub fn add_empty_return(
-        &self,
-        ret_stmt_loc: Loc,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?
-            .ret
-            .push((ret_stmt_loc, None));
+            .push((ret_stmt_loc, ret));
         self.propogate_end(analyzer)?;
         Ok(())
     }
@@ -137,16 +128,7 @@ impl ContextNode {
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Vec<(Loc, ContextVarNode)>, GraphError> {
-        let rets = &self.underlying(analyzer)?.ret.clone();
-        let all_good = rets.iter().all(|(_, node)| node.is_some());
-        if all_good {
-            Ok(rets
-                .iter()
-                .map(|(loc, node)| (*loc, node.unwrap()))
-                .collect())
-        } else {
-            Ok(vec![])
-        }
+        Ok(self.underlying(analyzer)?.ret.clone())
     }
 
     /// Returns a string for dot-string things

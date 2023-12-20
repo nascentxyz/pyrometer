@@ -1,3 +1,5 @@
+use graph::Edge;
+use graph::ContextEdge;
 use crate::{variable::Variable, ContextBuilder, ExprErr, IntoExprErr, StatementParser};
 
 use graph::{
@@ -44,10 +46,10 @@ pub trait Looper:
     /// Resets all variables referenced in the loop because we don't elegantly handle loops
     fn reset_vars(&mut self, loc: Loc, ctx: ContextNode, body: &Statement) -> Result<(), ExprErr> {
         let og_ctx = ctx;
-        let sctx = Context::new_subctx(ctx, None, loc, None, None, false, self, None)
-            .into_expr_err(loc)?;
+        let sctx = Context::new_loop_subctx(ctx, loc, self).into_expr_err(loc)?;
         let subctx = ContextNode::from(self.add_node(Node::Context(sctx)));
         ctx.set_child_call(subctx, self).into_expr_err(loc)?;
+        self.add_edge(subctx, ctx, Edge::Context(ContextEdge::Loop));
         self.parse_ctx_statement(body, false, Some(subctx));
         self.apply_to_edges(subctx, loc, &|analyzer, ctx, loc| {
             let vars = subctx.local_vars(analyzer).clone();

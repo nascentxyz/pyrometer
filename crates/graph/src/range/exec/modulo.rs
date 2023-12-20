@@ -6,7 +6,7 @@ use ethers_core::types::I256;
 impl RangeMod<Concrete> for RangeConcrete<Concrete> {
     fn range_mod(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
-            (Some(lhs_val), Some(rhs_val)) => Some(Elem::Concrete(RangeConcrete {
+            (Some(lhs_val), Some(rhs_val)) if rhs_val != 0.into() => Some(Elem::Concrete(RangeConcrete {
                 val: self.val.u256_as_original(lhs_val % rhs_val),
                 loc: self.loc,
             })),
@@ -17,7 +17,7 @@ impl RangeMod<Concrete> for RangeConcrete<Concrete> {
                         loc: self.loc,
                     }))
                 }
-                (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
+                (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) if *val != 0.into() => {
                     Some(Elem::Concrete(RangeConcrete {
                         val: Concrete::Int(*lhs_size, *neg_v % I256::from_raw(*val)),
                         loc: self.loc,

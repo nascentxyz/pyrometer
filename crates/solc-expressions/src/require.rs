@@ -47,6 +47,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Handles a require expression
     #[tracing::instrument(level = "trace", skip_all)]
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
+        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS).into_expr_err(inputs[0].loc())?;
         match inputs.first().expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
@@ -87,7 +88,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
@@ -129,7 +130,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Neq,
-                            RangeOp::Eq,
+                            RangeOp::Neq,
                             (RangeOp::Eq, RangeOp::Neq),
                         )
                     })
@@ -336,7 +337,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Neq,
+                        RangeOp::Eq,
                         (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
@@ -401,7 +402,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                     &ExprRet::Single(tmp.lhs.into()),
                                     &ExprRet::Single(tmp.rhs.unwrap().into()),
                                     op,
-                                    inv_op,
+                                    op,
                                     pair,
                                 )?;
                             }
@@ -419,7 +420,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                     &ExprRet::Single(tmp.lhs.into()),
                                     &ExprRet::Single(tmp.rhs.unwrap().into()),
                                     op,
-                                    inv_op,
+                                    op,
                                     pair,
                                 )?;
                             }
@@ -431,7 +432,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
@@ -441,7 +442,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &rhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
@@ -542,7 +543,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &ExprRet::Single(or_var.into()),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Neq,
+                            RangeOp::Eq,
                             (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
@@ -576,7 +577,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Neq,
+                        RangeOp::Eq,
                         (RangeOp::Neq, RangeOp::Eq),
                     )
                 })

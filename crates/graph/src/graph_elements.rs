@@ -323,6 +323,8 @@ pub enum ContextEdge {
     ContextMerge,
     /// A call to a function, a connection from a context to a `FuncCall` node
     Call,
+    /// A loop
+    Loop,
 
     // Context Variables
     /// A new variable in cotext

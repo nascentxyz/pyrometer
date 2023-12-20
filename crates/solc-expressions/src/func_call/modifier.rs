@@ -28,7 +28,7 @@ pub trait ModifierCaller:
     + FuncCaller
     + CallerHelper
 {
-    /// Calls a modifier for a function
+     /// Calls a modifier for a function
     #[tracing::instrument(level = "trace", skip_all)]
     fn call_modifier_for_fn(
         &mut self,
@@ -81,6 +81,7 @@ pub trait ModifierCaller:
         })
     }
 
+
     /// Resumes the parent function of a modifier
     #[tracing::instrument(level = "trace", skip_all)]
     fn resume_from_modifier(
@@ -88,6 +89,12 @@ pub trait ModifierCaller:
         ctx: ContextNode,
         modifier_state: ModifierState,
     ) -> Result<(), ExprErr> {
+        tracing::trace!(
+            "resuming from modifier: {}",
+            ctx.associated_fn_name(self)
+                .into_expr_err(modifier_state.loc)?
+        );
+
         let mods = modifier_state.parent_fn.modifiers(self);
         self.apply_to_edges(ctx, modifier_state.loc, &|analyzer, ctx, loc| {
             if modifier_state.num + 1 < mods.len() {
@@ -113,11 +120,9 @@ pub trait ModifierCaller:
                 .unwrap();
                 let new_parent_subctx = ContextNode::from(analyzer.add_node(Node::Context(pctx)));
 
-                analyzer.add_edge(
-                    new_parent_subctx,
-                    modifier_state.parent_ctx,
-                    Edge::Context(ContextEdge::Continue),
-                );
+                new_parent_subctx
+                    .set_continuation_ctx(analyzer, modifier_state.parent_ctx)
+                    .into_expr_err(loc)?;
                 ctx.set_child_call(new_parent_subctx, analyzer)
                     .into_expr_err(modifier_state.loc)?;
 
@@ -144,12 +149,9 @@ pub trait ModifierCaller:
                 )
                 .unwrap();
                 let new_parent_subctx = ContextNode::from(analyzer.add_node(Node::Context(pctx)));
-
-                analyzer.add_edge(
-                    new_parent_subctx,
-                    modifier_state.parent_ctx,
-                    Edge::Context(ContextEdge::Continue),
-                );
+                new_parent_subctx
+                    .set_continuation_ctx(analyzer, modifier_state.parent_ctx)
+                    .into_expr_err(loc)?;
                 ctx.set_child_call(new_parent_subctx, analyzer)
                     .into_expr_err(modifier_state.loc)?;
 
@@ -161,50 +163,11 @@ pub trait ModifierCaller:
                     modifier_state.parent_fn,
                     &modifier_state.renamed_inputs,
                     None,
-                )?;
-
-                fn inherit_return_from_call(
-                    analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-                    loc: Loc,
-                    ctx: ContextNode,
-                ) -> Result<(), ExprErr> {
-                    let mctx =
-                        Context::new_subctx(ctx, Some(ctx), loc, None, None, false, analyzer, None)
-                            .unwrap();
-                    let modifier_after_subctx =
-                        ContextNode::from(analyzer.add_node(Node::Context(mctx)));
-
-                    ctx.set_child_call(modifier_after_subctx, analyzer)
-                        .into_expr_err(loc)?;
-                    analyzer.add_edge(
-                        modifier_after_subctx,
-                        ctx,
-                        Edge::Context(ContextEdge::Continue),
-                    );
-
-                    let ret = ctx.underlying(analyzer).unwrap().ret.clone();
-                    modifier_after_subctx.underlying_mut(analyzer).unwrap().ret = ret;
-                    Ok(())
-                }
-
-                analyzer.apply_to_edges(new_parent_subctx, loc, &|analyzer, ctx, _loc| {
-                    inherit_return_from_call(analyzer, modifier_state.loc, ctx)
-                })
-
-                // if edges.is_empty() {
-                //     inherit_return_from_call(analyzer, modifier_state.loc, new_parent_subctx)?;
-                // } else {
-                //     edges.iter().try_for_each(|i| {
-                //         inherit_return_from_call(analyzer, modifier_state.loc, *i)?;
-                //         Ok(())
-                //     })?;
-                // }
-                // Ok(())
+                )
             }
         })
     }
 
-    /// Gets the modifiers for a function
     fn modifiers(
         &mut self,
         ctx: ContextNode,
@@ -243,16 +206,11 @@ pub trait ModifierCaller:
                                 self.parse_ctx_expr(expr, callee_ctx)?;
                                 let f: Vec<String> =
                                     self.take_from_edge(ctx, expr.loc(), &|analyzer, ctx, loc| {
-                                        if let Some(ret) =
-                                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                                        {
-                                            Ok(ret.try_as_func_input_str(analyzer))
-                                        } else {
-                                            Err(ExprErr::ParseError(
-                                                loc,
-                                                "Bad modifier parse".to_string(),
-                                            ))
-                                        }
+                                        let ret = ctx
+                                            .pop_expr_latest(loc, analyzer)
+                                            .into_expr_err(loc)?
+                                            .unwrap();
+                                        Ok(ret.try_as_func_input_str(analyzer))
                                     })?;
 
                                 ctx.delete_child(self).into_expr_err(expr.loc())?;

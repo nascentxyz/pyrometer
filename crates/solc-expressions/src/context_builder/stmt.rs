@@ -489,16 +489,6 @@ pub trait StatementParser:
                         );
                         let _ = self.widen_if_limit_hit(parent.into().into(), res);
                     }
-                } else if let Some(parent) = parent_ctx {
-                    let res =
-                        self.apply_to_edges(parent.into().into(), *loc, &|analyzer, ctx, loc| {
-                            let res = ctx.add_empty_return(loc, analyzer).into_expr_err(loc);
-                            analyzer.add_if_err(res);
-                            Ok(())
-                        });
-                    if self.widen_if_limit_hit(parent.into().into(), res) {
-                        return;
-                    }
                 }
             }
             Revert(loc, _maybe_err_path, _exprs) => {

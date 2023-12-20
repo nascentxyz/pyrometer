@@ -31,17 +31,22 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
                     analyzer: &mut impl AnalyzerBackend,
                 ) -> Result<(), ExprErr> {
                     match ret {
-                        ExprRet::Single(expect_builtin) => match analyzer.node(expect_builtin) {
+                        ExprRet::Single(ty) => match analyzer.node(ty) {
                             Node::Builtin(_) => {
                                 let var = ContextVar::new_from_builtin(
                                     *loc,
-                                    expect_builtin.into(),
+                                    ty.into(),
                                     analyzer,
                                 )
                                 .into_expr_err(*loc)?;
                                 let node = analyzer.add_node(Node::ContextVar(var));
-                                ctx.add_var(node.into(), analyzer).into_expr_err(*loc)?;
-                                analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                ctx.add_var(node.into(), analyzer)
+                                    .into_expr_err(*loc)?;
+                                analyzer.add_edge(
+                                    node,
+                                    ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
                                 ctx.push_expr(ExprRet::Single(node), analyzer)
                                     .into_expr_err(*loc)?;
                                 Ok(())
@@ -49,30 +54,74 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
                             Node::ContextVar(cvar) => {
                                 let bn = analyzer
                                     .builtin_or_add(
-                                        cvar.ty.as_builtin(analyzer).into_expr_err(*loc)?,
+                                        cvar.ty
+                                            .as_builtin(analyzer)
+                                            .into_expr_err(*loc)?,
                                     )
                                     .into();
-                                let var = ContextVar::new_from_builtin(*loc, bn, analyzer)
-                                    .into_expr_err(*loc)?;
+                                let var =
+                                    ContextVar::new_from_builtin(*loc, bn, analyzer)
+                                        .into_expr_err(*loc)?;
                                 let node = analyzer.add_node(Node::ContextVar(var));
-                                ctx.add_var(node.into(), analyzer).into_expr_err(*loc)?;
-                                analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                                ctx.add_var(node.into(), analyzer)
+                                    .into_expr_err(*loc)?;
+                                analyzer.add_edge(
+                                    node,
+                                    ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
+                                ctx.push_expr(ExprRet::Single(node), analyzer)
+                                    .into_expr_err(*loc)?;
+                                Ok(())
+                            }
+                            Node::Struct(_) => {
+                                let var = ContextVar::new_from_struct(
+                                    *loc,
+                                    ty.into(),
+                                    ctx,
+                                    analyzer,
+                                )
+                                .into_expr_err(*loc)?;
+                                let node = analyzer.add_node(Node::ContextVar(var));
+                                ctx.add_var(node.into(), analyzer)
+                                    .into_expr_err(*loc)?;
+                                analyzer.add_edge(
+                                    node,
+                                    ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
+                                ctx.push_expr(ExprRet::Single(node), analyzer)
+                                    .into_expr_err(*loc)?;
+                                Ok(())
+                            }
+                            Node::Contract(_) => {
+                                let var = ContextVar::new_from_contract(
+                                    *loc,
+                                    ty.into(),
+                                    analyzer,
+                                )
+                                .into_expr_err(*loc)?;
+                                let node = analyzer.add_node(Node::ContextVar(var));
+                                ctx.add_var(node.into(), analyzer)
+                                    .into_expr_err(*loc)?;
+                                analyzer.add_edge(
+                                    node,
+                                    ctx,
+                                    Edge::Context(ContextEdge::Variable),
+                                );
                                 ctx.push_expr(ExprRet::Single(node), analyzer)
                                     .into_expr_err(*loc)?;
                                 Ok(())
                             }
                             e => todo!("Unhandled type in abi.decode: {e:?}"),
                         },
-                        ExprRet::Multi(inner) => inner
-                            .iter()
-                            .try_for_each(|i| match_decode(ctx, loc, i.clone(), analyzer)),
+                        ExprRet::Multi(inner) => inner.iter().try_for_each(|i| {
+                            match_decode(ctx, loc, i.clone(), analyzer)
+                        }),
                         ExprRet::CtxKilled(kind) => {
                             ctx.kill(analyzer, *loc, kind).into_expr_err(*loc)
                         }
-                        e => Err(ExprErr::ParseError(
-                            *loc,
-                            format!("This is invalid solidity: {:?}", e),
-                        )),
+                        e => panic!("This is invalid solidity: {:?}", e),
                     }
                 }
                 let input_exprs = input_exprs.unnamed_args().unwrap();

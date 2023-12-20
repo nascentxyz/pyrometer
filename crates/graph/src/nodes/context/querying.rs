@@ -149,7 +149,7 @@ impl ContextNode {
             return Ok(vis.clone());
         }
         if let Some(contract) = self.maybe_associated_contract(analyzer)? {
-            let mut mapping = contract.linearized_functions(analyzer);
+            let mut mapping = contract.linearized_functions(analyzer)?;
             // extend with free floating functions
             mapping.extend(
                 analyzer

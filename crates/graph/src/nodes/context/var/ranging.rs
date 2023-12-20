@@ -111,7 +111,7 @@ impl ContextVarNode {
     }
 
     pub fn cache_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_flatten(analyzer)?;
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
@@ -120,7 +120,7 @@ impl ContextVarNode {
     }
 
     pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_flatten(analyzer)?;
             self.set_range(analyzer, range)?;
         }
@@ -128,11 +128,18 @@ impl ContextVarNode {
     }
 
     pub fn cache_eval_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
         }
         Ok(())
+    }
+
+    pub fn ty_mut<'a>(
+        &self,
+        analyzer: &'a mut impl GraphBackend,
+    ) -> Result<&'a mut VarType, GraphError> {
+        Ok(&mut self.underlying_mut(analyzer)?.ty)
     }
 
     pub fn set_range(

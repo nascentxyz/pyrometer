@@ -224,10 +224,43 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
             }
         };
 
-        if let Some(curr_range) = curr.ref_range(self).unwrap() {
+        let (comparator, needs_curr) = if let Some(inherited) = curr.previous_or_inherited_version(self) {
+            (inherited, true)
+        } else {
+            (curr, false)
+        };
+
+        if let Some(curr_range) = comparator.ref_range(self).unwrap() {
             let mut cr_min = curr_range.evaled_range_min(self).unwrap();
             let mut cr_max = curr_range.evaled_range_max(self).unwrap();
             let mut cr_excl = curr_range.range_exclusions();
+
+            if needs_curr {
+                if let Some(next_range) = curr.ref_range(self).unwrap() {
+                    let nr_min = next_range.evaled_range_min(self).unwrap();
+                    let nr_max = next_range.evaled_range_max(self).unwrap();
+                    let nr_excl = &next_range.exclusions;
+
+                    // check if there was a bound change
+                    if report_config.show_all_lines
+                        || nr_min != cr_min
+                        || nr_max != cr_max
+                        || nr_excl != &cr_excl
+                    {
+                        cr_min = nr_min;
+                        cr_max = nr_max;
+                        cr_excl = nr_excl.to_vec();
+                        let new = (
+                            LocStrSpan::new(file_mapping, curr.loc(self).unwrap()),
+                            next_range.into_owned(),
+                        );
+                        if !ba.bound_changes.contains(&new) {
+                            ba.bound_changes.push(new);
+                        }
+                    }
+                }
+            }
+
             while let Some(next) = curr.next_version(self) {
                 if let Some(next_range) = next.ref_range(self).unwrap() {
                     let nr_min = next_range.evaled_range_min(self).unwrap();

@@ -18,6 +18,7 @@ pub struct Context {
     /// An optional parent context (i.e. this context is a fork or subcontext of another previous context)
     pub parent_ctx: Option<ContextNode>,
     pub returning_ctx: Option<ContextNode>,
+    pub continuation_of: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
     pub ctx_deps: Vec<ContextVarNode>,
@@ -39,7 +40,7 @@ pub struct Context {
     /// The location in source of the context
     pub loc: Loc,
     /// The return node and the return location
-    pub ret: Vec<(Loc, Option<ContextVarNode>)>,
+    pub ret: Vec<(Loc, ContextVarNode)>,
     /// Depth tracker
     pub depth: usize,
     /// Width tracker
@@ -65,6 +66,7 @@ impl Context {
             parent_fn,
             parent_ctx: None,
             returning_ctx: None,
+            continuation_of: None,
             path: fn_name,
             tmp_var_ctr: 0,
             killed: None,
@@ -163,6 +165,7 @@ impl Context {
             parent_fn,
             parent_ctx: Some(parent_ctx),
             returning_ctx,
+            continuation_of: None,
             path,
             is_fork: fork_expr.is_some(),
             fn_call,
@@ -225,6 +228,63 @@ impl Context {
                 } else {
                     None
                 },
+                associated_source: None,
+                associated_contract: None,
+            },
+            dl_solver: parent_ctx.underlying(analyzer)?.dl_solver.clone(),
+        })
+    }
+
+    pub fn new_loop_subctx(
+        parent_ctx: ContextNode,
+        loc: Loc,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Self, GraphError> {
+        let depth = parent_ctx.underlying(analyzer)?.depth + 1;
+
+        if analyzer.max_depth() < depth {
+            return Err(GraphError::MaxStackDepthReached(format!(
+                "Stack depth limit reached: {}",
+                depth - 1
+            )));
+        }
+
+        let fn_name = "loop";
+
+        let path = format!("{}.{}", parent_ctx.underlying(analyzer)?.path, fn_name);
+
+        let parent_fn = parent_ctx.associated_fn(analyzer)?;
+
+        parent_ctx.underlying_mut(analyzer)?.number_of_live_edges += 1;
+
+        tracing::trace!("new subcontext path: {path}, depth: {depth}");
+        Ok(Context {
+            parent_fn,
+            parent_ctx: Some(parent_ctx),
+            path,
+            returning_ctx: None,
+            continuation_of: None,
+            is_fork: false,
+            fn_call: None,
+            ext_fn_call: None,
+            ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),
+            killed: None,
+            child: None,
+            tmp_var_ctr: parent_ctx.underlying(analyzer)?.tmp_var_ctr,
+            ret: vec![],
+            loc,
+            modifier_state: None,
+            depth,
+            width: 0,
+            expr_ret_stack: parent_ctx.underlying(analyzer)?.expr_ret_stack.clone(),
+            tmp_expr: parent_ctx.underlying(analyzer)?.tmp_expr.clone(),
+            unchecked: parent_ctx.underlying(analyzer)?.unchecked,
+            number_of_live_edges: 0,
+            cache: ContextCache {
+                vars: parent_ctx.underlying(analyzer)?.cache.vars.clone(),
+                visible_funcs: parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone(),
+                visible_structs: parent_ctx.underlying(analyzer)?.cache.visible_structs.clone(),
+                first_ancestor: parent_ctx.underlying(analyzer)?.cache.first_ancestor,
                 associated_source: None,
                 associated_contract: None,
             },

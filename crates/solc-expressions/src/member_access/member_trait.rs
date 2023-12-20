@@ -1,3 +1,5 @@
+use graph::nodes::ConcreteNode;
+use graph::nodes::Concrete;
 use crate::{
     BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExprErr, ExpressionParser,
     IntoExprErr, ListAccess, StructAccess,
@@ -142,9 +144,10 @@ pub trait MemberAccess:
         let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => match &cvar.ty {
                 VarType::User(TypeNode::Contract(con_node), _) => {
-                    let mut funcs = con_node.linearized_functions(self);
+                    let cnode = *con_node;
+                    let mut funcs = cnode.linearized_functions(self).into_expr_err(loc)?;
                     self
-                    .possible_library_funcs(ctx, con_node.0.into())
+                    .possible_library_funcs(ctx, cnode.0.into())
                     .into_iter()
                     .for_each(|func| {
                         let name = func.name(self).unwrap();
@@ -224,6 +227,9 @@ pub trait MemberAccess:
             VarType::User(TypeNode::Enum(enum_node), _) => {
                 self.enum_member_access(member_idx, *enum_node, ident, ctx, loc)
             }
+            VarType::User(TypeNode::Func(func_node), _) => {
+                self.func_member_access(*func_node, ident, ctx, loc)
+            }
             VarType::User(TypeNode::Ty(ty_node), _) => {
                 self.ty_member_access(member_idx, *ty_node, ident, ctx, loc, Some(cvar))
             }
@@ -283,6 +289,42 @@ pub trait MemberAccess:
                     ty_node.name(self).into_expr_err(loc)?
                 ),
             ))
+        }
+    }
+
+    /// Access function members
+    fn func_member_access(
+        &mut self,
+        func_node: FunctionNode,
+        ident: &Identifier,
+        ctx: ContextNode,
+        loc: Loc,
+    ) -> Result<ExprRet, ExprErr> {
+        let prefix_only_name = func_node
+            .prefix_only_name(self)
+            .into_expr_err(loc)?
+            .unwrap();
+        let name = format!("{}.{}", prefix_only_name, ident.name);
+        tracing::trace!("Function member access: {}", name);
+        match &*ident.name {
+            "selector" => {
+                let mut out = [0; 32];
+                keccak_hash::keccak_256(prefix_only_name.as_bytes(), &mut out);
+                let selector: [u8; 4] = [out[0], out[1], out[2], out[3]];
+                let selector_conc = Node::Concrete(Concrete::from(selector));
+                let selector_node = ConcreteNode::from(self.add_node(selector_conc));
+                let var = ContextVar::new_from_concrete(loc, ctx, selector_node, self)
+                    .into_expr_err(loc)?;
+                let cvar = self.add_node(Node::ContextVar(var));
+                Ok(ExprRet::Single(cvar))
+            }
+            _ => Err(ExprErr::MemberAccessNotFound(
+                loc,
+                format!(
+                    "Unknown member access \"{}\" on function \"{}\"",
+                    ident.name, prefix_only_name
+                ),
+            )),
         }
     }
 }

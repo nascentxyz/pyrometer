@@ -111,9 +111,25 @@ impl<T: Ord> RangeDyn<T> {
 impl RangeDyn<Concrete> {
     pub fn as_bytes(&self, analyzer: &impl GraphBackend, maximize: bool) -> Option<Vec<u8>> {
         let len = if maximize {
-            self.len.maximize(analyzer).ok()?.concrete()?.into_u256()?.as_usize()
+            let as_u256 = self.len.maximize(analyzer).ok()?.concrete()?.into_u256()?;
+            if as_u256 > usize::MAX.into() {
+                usize::MAX
+            } else {
+                as_u256.as_usize()
+            }
         } else {
-            self.len.minimize(analyzer).ok()?.concrete()?.into_u256()?.as_usize()
+            let mut as_u256 = self.len.minimize(analyzer).ok()?.concrete()?.into_u256()?;
+            if let Some(max_key) = self.evaled_max_key(analyzer) {
+                if let Some(max_key) = max_key.into_u256() {
+                    as_u256 = as_u256.max(max_key);
+                }
+            }
+            
+            if as_u256 > usize::MAX.into() {
+                usize::MAX
+            } else {
+                as_u256.as_usize()
+            }
         };
 
         Some(
@@ -126,6 +142,18 @@ impl RangeDyn<Concrete> {
             .take(len)
             .collect()
         )
+    }
+
+    pub fn evaled_max_key(&self, analyzer: &impl GraphBackend) -> Option<Concrete> {
+        let mut evaled = self.val.keys().filter_map(|key| {
+            key.maximize(analyzer).ok()
+        })
+        .collect::<Vec<_>>();
+        evaled.sort_by(|a, b| {
+            a.range_ord(b).unwrap_or(std::cmp::Ordering::Less)
+        });
+
+        evaled.iter().take(1).next()?.concrete()
     }
 }
 

@@ -35,6 +35,11 @@ impl FunctionNode {
         }
     }
 
+    pub fn add_gas_cost(&mut self, analyzer: &mut impl GraphBackend, cost: u64) -> Result<(), GraphError>{
+        self.underlying_mut(analyzer)?.add_gas_cost(cost);
+        Ok(())
+    }
+
     pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<FunctionTy, GraphError> {
         Ok(self.underlying(analyzer)?.ty)
     }
@@ -103,7 +108,7 @@ impl FunctionNode {
 
     pub fn underlying_mut<'a>(
         &self,
-        analyzer: &'a mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &'a mut impl GraphBackend,
     ) -> Result<&'a mut Function, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Function(func) => Ok(func),
@@ -175,7 +180,9 @@ impl FunctionNode {
                 .map(|edge| ContextNode::from(edge.source()))
                 .take(1)
                 .next()
-                .expect("No context for function");
+                .unwrap_or_else(|| {
+                    panic!("No context for function: {}", self.name(analyzer).unwrap())
+                });
 
             self.underlying_mut(analyzer).unwrap().cache.body_ctx = Some(body_ctx);
             body_ctx
@@ -495,11 +502,12 @@ impl AsDotStr for FunctionNode {
             .collect::<Vec<_>>()
             .join(" ");
         format!(
-            "{} {}({}) {}",
+            "{} {}({}) {} -- gas: {}",
             self.underlying(analyzer).unwrap().ty,
             self.name(analyzer).unwrap().split('(').collect::<Vec<_>>()[0],
             inputs,
-            attrs
+            attrs,
+            self.underlying(analyzer).unwrap().estimated_gas
         )
     }
 }
@@ -528,6 +536,7 @@ pub struct Function {
     pub returns: ParameterList,
     pub modifiers_set: bool,
     pub cache: FunctionCache,
+    pub estimated_gas: u64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -554,6 +563,7 @@ impl Default for Function {
             returns: vec![],
             modifiers_set: false,
             cache: Default::default(),
+            estimated_gas: 0,
         }
     }
 }
@@ -567,6 +577,10 @@ impl Function {
                 _ => None,
             })
             .collect()
+    }
+
+    pub fn add_gas_cost(&mut self, cost: u64) {
+        self.estimated_gas += cost;
     }
 }
 
@@ -589,6 +603,7 @@ impl From<FunctionDefinition> for Function {
             returns: func.returns,
             modifiers_set: false,
             cache: Default::default(),
+            estimated_gas: 0,
         }
     }
 }
@@ -711,6 +726,7 @@ impl From<VariableDefinition> for Function {
             returns: vec![ret],
             modifiers_set: true,
             cache: Default::default(),
+            estimated_gas: 0,
         }
     }
 }
@@ -892,6 +908,10 @@ impl FunctionReturnNode {
 
     pub fn loc(&self, analyzer: &impl GraphBackend) -> Result<Loc, GraphError> {
         Ok(self.underlying(analyzer)?.loc)
+    }
+
+    pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<NodeIdx, GraphError> {
+        Ok(self.underlying(analyzer)?.ty)
     }
 }
 

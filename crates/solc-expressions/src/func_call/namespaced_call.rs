@@ -1,5 +1,10 @@
 //! Traits & blanket implementations that facilitate performing namespaced function calls.
 
+use crate::assign::Assign;
+use graph::VarType;
+use graph::ContextEdge;
+use graph::nodes::ContextVar;
+use graph::Edge;
 use crate::{
     func_call::func_caller::{NamedOrUnnamedArgs, FuncCaller}, func_call::helper::CallerHelper,
     intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr,
@@ -7,7 +12,7 @@ use crate::{
 };
 
 use graph::{
-    nodes::{BuiltInNode, ContextNode, ContextVarNode, ExprRet, FunctionNode},
+    nodes::{ContextNode, ContextVarNode, ExprRet, FunctionNode},
     AnalyzerBackend, GraphBackend, Node,
 };
 
@@ -50,6 +55,7 @@ pub trait NameSpaceFuncCaller:
                         .filter_map(|con_node| {
                             con_node
                                 .linearized_functions(self)
+                                .ok()?
                                 .into_iter()
                                 .find(|(func_name, _func_node)| func_name.starts_with(&ident.name))
                                 .map(|(_, node)| node)
@@ -162,7 +168,7 @@ pub trait NameSpaceFuncCaller:
     ) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
-                self.call_name_spaced_func_inner(ctx, loc, member_expr, ident, input_exprs, inner)
+                self.call_name_spaced_func_inner(ctx, loc, member_expr, ident, input_exprs, inner, true)
             }
             ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
                 self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
@@ -185,6 +191,7 @@ pub trait NameSpaceFuncCaller:
         ident: &Identifier,
         input_exprs: &NamedOrUnnamedArgs,
         member: NodeIdx,
+        member_is_lit: bool,
     ) -> Result<(), ExprErr> {
         use solang_parser::pt::Expression::*;
         tracing::trace!(
@@ -210,7 +217,7 @@ pub trait NameSpaceFuncCaller:
 
         input_exprs.parse(self, ctx, loc)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-            let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+            let Some(mut inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,
                     "Namespace function call had no inputs".to_string(),
@@ -222,6 +229,70 @@ pub trait NameSpaceFuncCaller:
                 return Ok(());
             }
             if possible_funcs.is_empty() {
+                // check structs
+                let structs = ctx.visible_structs(analyzer).into_expr_err(loc)?;
+                let possible_structs = structs
+                    .iter()
+                    .filter(|strukt| {
+                        let named_correctly = strukt
+                            .name(analyzer)
+                            .unwrap()
+                            .starts_with(&ident.name.to_string());
+                        if !named_correctly {
+                            false
+                        } else {
+                            // filter by params
+                            let fields = strukt.fields(analyzer);
+                            fields.len() == input_exprs.len()
+                        }
+                    })
+                    .copied()
+                    .collect::<Vec<_>>();
+
+                if possible_structs.len() == 1 {
+                    let strukt = possible_structs[0];
+                    let var = ContextVar::new_from_struct(loc, strukt, ctx, analyzer)
+                        .into_expr_err(loc)?;
+                    let cvar = analyzer.add_node(Node::ContextVar(var));
+                    ctx.add_var(cvar.into(), analyzer).into_expr_err(loc)?;
+                    analyzer.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+
+                    strukt.fields(analyzer).iter().try_for_each(|field| {
+                        let field_cvar = ContextVar::maybe_new_from_field(
+                            analyzer,
+                            loc,
+                            ContextVarNode::from(cvar)
+                                .underlying(analyzer)
+                                .into_expr_err(loc)?,
+                            field.underlying(analyzer).unwrap().clone(),
+                        )
+                        .expect("Invalid struct field");
+
+                        let fc_node = analyzer.add_node(Node::ContextVar(field_cvar));
+                        analyzer.add_edge(fc_node, cvar, Edge::Context(ContextEdge::AttrAccess("field")));
+                        analyzer.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                        ctx.add_var(fc_node.into(), analyzer).into_expr_err(loc)?;
+                        let field_as_ret = ExprRet::Single(fc_node);
+                        let Some(assignment) = inputs.take_one().into_expr_err(loc)? else {
+                            return Err(ExprErr::NoRhs(loc, "Struct creation failed".to_string()));
+                        };
+
+                        if matches!(assignment, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(assignment, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+
+                        analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
+                        let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
+                        Ok(())
+                    })?;
+                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
+                        ctx.push_expr(ExprRet::Single(cvar), analyzer)
+                            .into_expr_err(loc)?;
+                        Ok(())
+                    })?;
+                    return Ok(());
+                }
                 // TODO: this is extremely ugly.
                 if inputs.has_killed() {
                     return ctx
@@ -232,6 +303,13 @@ pub trait NameSpaceFuncCaller:
                 if let Node::ContextVar(_) = analyzer.node(member) {
                     inputs.insert(0, ExprRet::Single(member))
                 }
+                if let Node::ContextVar(_) = analyzer.node(member) {
+                    if member_is_lit {
+                        inputs.insert(0, ExprRet::SingleLiteral(member))
+                    } else {
+                        inputs.insert(0, ExprRet::Single(member))
+                    }
+                }
                 let inputs = ExprRet::Multi(inputs);
 
                 let as_input_str = inputs.try_as_func_input_str(analyzer);
@@ -239,103 +317,107 @@ pub trait NameSpaceFuncCaller:
                 let lits = inputs.literals_list().into_expr_err(loc)?;
                 if lits.iter().any(|i| *i) {
                     // try to disambiguate
-                    if lits[0] {
-                        Err(ExprErr::Todo(
-                            loc,
-                            "First element in function call was literal".to_string(),
-                        ))
+                    let ty = if let Node::ContextVar(cvar) = analyzer.node(member) {
+                        cvar.ty.ty_idx()
                     } else {
-                        let ty = if let Node::ContextVar(cvar) = analyzer.node(member) {
-                            cvar.ty.ty_idx()
-                        } else {
-                            member
-                        };
+                        member
+                    };
 
-                        let possible_builtins: Vec<_> = analyzer
-                            .builtin_fn_inputs()
-                            .iter()
-                            .filter_map(|(func_name, (inputs, _))| {
-                                if func_name.starts_with(&ident.name) {
-                                    if let Some(input) = inputs.first() {
-                                        let Ok(implicitly_castable) = BuiltInNode::from(ty)
-                                            .implicitly_castable_to(
-                                                &BuiltInNode::from(input.ty),
-                                                analyzer,
-                                            )
-                                        else {
-                                            return None;
-                                        };
-                                        if implicitly_castable {
-                                            Some(func_name.clone())
-                                        } else {
-                                            None
-                                        }
+                    let possible_builtins: Vec<_> = analyzer
+                        .builtin_fn_inputs()
+                        .iter()
+                        .filter_map(|(func_name, (inputs, _))| {
+                            if func_name.starts_with(&ident.name) {
+                                if let Some(input) = inputs.first() {
+                                    let try_cast = VarType::try_from_idx(analyzer, ty)?
+                                        .implicitly_castable_to(
+                                            &VarType::try_from_idx(analyzer, input.ty)?,
+                                            analyzer,
+                                        );
+                                    let Ok(implicitly_castable) = try_cast else {
+                                        return None;
+                                    };
+                                    if implicitly_castable {
+                                        Some(func_name.clone())
                                     } else {
                                         None
                                     }
                                 } else {
                                     None
                                 }
-                            })
-                            .collect::<Vec<_>>();
-                        let possible_builtins: Vec<_> = possible_builtins
-                            .into_iter()
-                            .filter_map(|name| {
-                                analyzer
-                                    .builtin_fn_or_maybe_add(&name)
-                                    .map(FunctionNode::from)
-                            })
-                            .collect();
-                        if let Some(func) = analyzer.disambiguate_fn_call(
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    let possible_builtins: Vec<_> = possible_builtins
+                        .into_iter()
+                        .filter_map(|name| {
+                            analyzer
+                                .builtin_fn_or_maybe_add(&name)
+                                .map(FunctionNode::from)
+                        })
+                        .collect();
+
+                    let maybe_func = if possible_builtins.len() == 1 {
+                        Some(possible_builtins[0])
+                    } else {
+                        analyzer.disambiguate_fn_call(
                             &ident.name,
                             lits,
                             &inputs,
                             &possible_builtins,
-                        ) {
-                            let expr = &MemberAccess(
-                                loc,
-                                Box::new(member_expr.clone()),
-                                Identifier {
-                                    loc: ident.loc,
-                                    name: func
-                                        .name(analyzer)
-                                        .into_expr_err(loc)?
-                                        .split('(')
-                                        .collect::<Vec<_>>()[0]
-                                        .to_string(),
-                                },
-                            );
-                            analyzer.parse_ctx_expr(expr, ctx)?;
-                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                let Some(ret) =
-                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                                else {
-                                    return Err(ExprErr::NoLhs(
-                                        loc,
-                                        "Fallback function parse failure".to_string(),
-                                    ));
-                                };
-                                if matches!(ret, ExprRet::CtxKilled(_)) {
-                                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                                    return Ok(());
-                                }
-                                let mut modifier_input_exprs = vec![member_expr.clone()];
-                                modifier_input_exprs.extend(input_exprs.exprs());
-                                analyzer.match_intrinsic_fallback(ctx, &loc, &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs), ret)
-                            })
-                        } else {
-                            // analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
-                            Err(ExprErr::FunctionNotFound(
-                                loc,
-                                format!(
-                                    "Could not disambiguate function, possible functions: {:#?}",
-                                    possible_builtins
-                                        .iter()
-                                        .map(|i| i.name(analyzer).unwrap())
-                                        .collect::<Vec<_>>()
-                                ),
-                            ))
-                        }
+                        )
+                    };
+                    if let Some(func) = maybe_func {
+                        let expr = &MemberAccess(
+                            loc,
+                            Box::new(member_expr.clone()),
+                            Identifier {
+                                loc: ident.loc,
+                                name: func
+                                    .name(analyzer)
+                                    .into_expr_err(loc)?
+                                    .split('(')
+                                    .collect::<Vec<_>>()[0]
+                                    .to_string(),
+                            },
+                        );
+                        analyzer.parse_ctx_expr(expr, ctx)?;
+                        analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                            let Some(ret) =
+                                ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                            else {
+                                return Err(ExprErr::NoLhs(
+                                    loc,
+                                    "Fallback function parse failure".to_string(),
+                                ));
+                            };
+                            if matches!(ret, ExprRet::CtxKilled(_)) {
+                                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+                                return Ok(());
+                            }
+                            let mut modifier_input_exprs = vec![member_expr.clone()];
+                            modifier_input_exprs.extend(input_exprs.exprs());
+                            analyzer.match_intrinsic_fallback(
+                                ctx,
+                                &loc,
+                                &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs),
+                                ret,
+                            )
+                        })
+                    } else {
+                        // analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
+                        Err(ExprErr::FunctionNotFound(
+                            loc,
+                            format!(
+                                "Could not disambiguate function, possible functions: {:#?}",
+                                possible_builtins
+                                    .iter()
+                                    .map(|i| i.name(analyzer).unwrap())
+                                    .collect::<Vec<_>>()
+                            ),
+                        ))
                     }
                 } else {
                     let expr = &MemberAccess(
@@ -361,11 +443,18 @@ pub trait NameSpaceFuncCaller:
                         }
                         let mut modifier_input_exprs = vec![member_expr.clone()];
                         modifier_input_exprs.extend(input_exprs.exprs());
-                        analyzer.match_intrinsic_fallback(ctx, &loc, &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs), ret)
+                        analyzer.match_intrinsic_fallback(
+                            ctx,
+                            &loc,
+                            &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs),
+                            ret,
+                        )
                     })
                 }
             } else if possible_funcs.len() == 1 {
-                let mut inputs = if let Some(ordered_param_names) = possible_funcs[0].maybe_ordered_param_names(analyzer) {
+                let mut inputs = if let Some(ordered_param_names) =
+                    possible_funcs[0].maybe_ordered_param_names(analyzer)
+                {
                     input_exprs.order(inputs, ordered_param_names).as_vec()
                 } else {
                     inputs.as_vec()

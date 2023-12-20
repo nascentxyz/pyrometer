@@ -72,13 +72,11 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 None
             };
 
-            let mut storage_idx = None;
             let var = if let Some(con) = const_var {
                 con
             } else {
                 match self.node(idx) {
-                    Node::Var(_) => {
-                        storage_idx = Some(idx);
+                    Node::Var(_) | Node::Enum(_) => {
                         match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
                             Some(v) => v,
                             None => {
@@ -92,18 +90,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             }
                         }
                     }
-                    Node::Enum(_) => match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
-                        Some(v) => v,
-                        None => {
-                            return Err(ExprErr::VarBadType(
-                                ident.loc,
-                                format!(
-                                    "Could not create context variable from user type: {:?}",
-                                    self.node(idx)
-                                ),
-                            ))
-                        }
-                    },
                     _ => {
                         return target_ctx
                             .push_expr(ExprRet::Single(idx), self)
@@ -116,14 +102,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
             ctx.add_var(new_cvarnode.into(), self)
                 .into_expr_err(ident.loc)?;
-
-            if let Some(store_idx) = storage_idx {
-                self.add_edge(
-                    new_cvarnode,
-                    store_idx,
-                    Edge::Context(ContextEdge::InheritedStorageVariable),
-                );
-            }
             self.add_edge(
                 new_cvarnode,
                 target_ctx,
@@ -346,6 +324,57 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
 
                 new_cvar.loc = Some(loc);
+                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                if old_ctx != ctx {
+                    ctx.add_var(new_cvarnode.into(), self).into_expr_err(loc)?;
+                    self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
+                    self.add_edge(
+                        new_cvarnode,
+                        cvar_node.0,
+                        Edge::Context(ContextEdge::InheritedVariable),
+                    );
+                } else {
+                    self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
+                }
+            } else {
+                new_cvar.loc = Some(loc);
+                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
+            }
+        }
+
+        Ok(ContextVarNode::from(new_cvarnode))
+    }
+
+    fn advance_var_in_forced_ctx(
+        &mut self,
+        cvar_node: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<ContextVarNode, ExprErr> {
+        let mut new_cvar = cvar_node
+            .latest_version(self)
+            .underlying(self)
+            .into_expr_err(loc)?
+            .clone();
+        // get the old context
+        let new_cvarnode;
+
+        'a: {
+            if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
+                // get the previous version to remove and prevent spurious nodes
+                if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
+                    let prev_version = prev.underlying(self).into_expr_err(loc)?;
+                    // check if there was no change between the previous version and the latest version
+                    if prev_version.eq_ignore_loc(&new_cvar) && old_ctx == ctx {
+                        // there was no change in the current context, just give them the current variable
+                        new_cvarnode = cvar_node.into();
+                        break 'a;
+                    }
+                }
+
+                new_cvar.loc = Some(loc);
+                // new_cvar.display_name = format!("{}_{}", new_cvar.name, cvar_node.prev_versions(self));
                 new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
                 if old_ctx != ctx {
                     ctx.add_var(new_cvarnode.into(), self).into_expr_err(loc)?;

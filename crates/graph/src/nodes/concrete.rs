@@ -932,9 +932,10 @@ impl Concrete {
                 val.to_big_endian(&mut bytes);
                 bytes.to_vec()
             },
-            Concrete::Bytes(_, _)
-            | Concrete::Address(_)
-            | Concrete::Bool(_) => {
+            Concrete::Bytes(size, val) => {
+                val[0..(*size as usize)].to_vec()
+            }
+            Concrete::Address(_) | Concrete::Bool(_) => {
                 Concrete::Uint(256, self.into_u256().unwrap()).as_bytes()
             }
             Concrete::DynBytes(inner) => inner.clone(),

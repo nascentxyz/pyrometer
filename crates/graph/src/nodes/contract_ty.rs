@@ -46,6 +46,23 @@ impl ContractNode {
         }
     }
 
+    /// Gets the underlying node data for the [`Contract`] as mutable
+    pub fn underlying_mut<'a>(
+        &self,
+        analyzer: &'a mut impl GraphBackend,
+    ) -> Result<&'a mut Contract, GraphError> {
+        match analyzer.node_mut(*self) {
+            Node::Contract(contract) => Ok(contract),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find variable: {}",
+                ident.name
+            ))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be Contract but it was: {e:?}"
+            ))),
+        }
+    }
+
     pub fn super_contracts(&self, analyzer: &impl GraphBackend) -> Vec<ContractNode> {
         analyzer
             .graph()
@@ -181,22 +198,28 @@ impl ContractNode {
 
     pub fn linearized_functions(
         &self,
-        analyzer: &(impl GraphBackend + Search + AnalyzerBackend),
-    ) -> BTreeMap<String, FunctionNode> {
-        let mut mapping = self.funcs_mapping(analyzer);
-        self.direct_inherited_contracts(analyzer)
-            .iter()
-            .for_each(|inherited| {
-                inherited
-                    .linearized_functions(analyzer)
-                    .iter()
-                    .for_each(|(name, func)| {
-                        if !mapping.contains_key(name) {
-                            mapping.insert(name.to_string(), *func);
-                        }
-                    });
-            });
-        mapping
+        analyzer: &mut (impl Search + AnalyzerBackend),
+    ) -> Result<BTreeMap<String, FunctionNode>, GraphError> {
+        if let Some(funcs) = &self.underlying(analyzer)?.cached_functions {
+            Ok(funcs.clone())
+        } else {
+            let mut mapping = self.funcs_mapping(analyzer);
+            self.direct_inherited_contracts(analyzer)
+                .iter()
+                .for_each(|inherited| {
+                    inherited
+                        .linearized_functions(analyzer)
+                        .unwrap()
+                        .iter()
+                        .for_each(|(name, func)| {
+                            if !mapping.contains_key(name) {
+                                mapping.insert(name.to_string(), *func);
+                            }
+                        });
+                });
+            self.underlying_mut(analyzer)?.cached_functions = Some(mapping.clone());
+            Ok(mapping)
+        }
     }
 
     pub fn structs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<StructNode> {
@@ -270,6 +293,8 @@ pub struct Contract {
     pub name: Option<Identifier>,
     /// A list of contracts that this contract inherits (TODO: inheritance linearization)
     pub inherits: Vec<ContractNode>,
+    /// Cached linearized functions
+    pub cached_functions: Option<BTreeMap<String, FunctionNode>>,
 }
 
 impl From<Contract> for Node {
@@ -329,6 +354,7 @@ impl Contract {
                 ty: con.ty,
                 name: con.name,
                 inherits,
+                cached_functions: None
             },
             unhandled_inherits,
         )

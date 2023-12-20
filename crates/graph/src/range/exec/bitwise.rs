@@ -19,17 +19,11 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     loc: self.loc,
                 }))
             }
-            (Concrete::Uint(s, a), Concrete::Int(s2, b)) => {
+            (Concrete::Uint(s, u), Concrete::Int(s2, i))
+            | (Concrete::Int(s, i), Concrete::Uint(s2, u)) => {
                 let size = if s > s2 { s } else { s2 };
                 Some(Elem::Concrete(RangeConcrete {
-                    val: Concrete::Uint(*size, *a & b.into_raw()),
-                    loc: self.loc,
-                }))
-            }
-            (Concrete::Int(s, a), Concrete::Uint(s2, b)) => {
-                let size = if s > s2 { s } else { s2 };
-                Some(Elem::Concrete(RangeConcrete {
-                    val: Concrete::Uint(*size, a.into_raw() & *b),
+                    val: Concrete::Uint(*size, *u & i.into_raw()),
                     loc: self.loc,
                 }))
             }

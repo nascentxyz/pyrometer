@@ -59,7 +59,7 @@ pub trait ExpressionParser:
         // );
         match expr {
             // literals
-            NumberLiteral(loc, int, exp, _unit) => self.number_literal(ctx, *loc, int, exp, false),
+            NumberLiteral(loc, int, exp, unit) => self.number_literal(ctx, *loc, int, exp, false, unit),
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
             StringLiteral(lits) => lits
                 .iter()
@@ -71,8 +71,8 @@ pub trait ExpressionParser:
                 self.rational_number_literal(ctx, *loc, integer, fraction, exp, unit)
             }
             Negate(_loc, expr) => match &**expr {
-                NumberLiteral(loc, int, exp, _unit) => {
-                    self.number_literal(ctx, *loc, int, exp, true)
+                NumberLiteral(loc, int, exp, unit) => {
+                    self.number_literal(ctx, *loc, int, exp, true, unit)
                 }
                 HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, true),
                 e => {
@@ -297,9 +297,9 @@ pub trait ExpressionParser:
                 self.fn_call_expr(ctx, loc, &updated_func_expr, input_exprs)
             }
             // member
-            New(_loc, expr) => {
+            New(loc, expr) => {
                 match &**expr {
-                    Expression::FunctionCall(loc, func, inputs) => {
+                    Expression::FunctionCall(_loc, func, inputs) => {
                         // parse the type
                         self.new_call(
                             loc,

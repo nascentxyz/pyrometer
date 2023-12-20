@@ -474,7 +474,8 @@ pub trait YulFuncCaller:
 
                 self.parse_inputs(ctx, *loc, arguments)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    let Some(mut lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                    let Some(mut lhs_paths) =
+                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::InvalidFunctionInput(
                             loc,
@@ -492,8 +493,13 @@ pub trait YulFuncCaller:
                     let slot = lhs_paths.take_one().into_expr_err(loc)?.unwrap();
                     let cvar = ContextVarNode::from(slot.expect_single().unwrap());
 
-                    if cvar.is_storage(analyzer).into_expr_err(loc)? {
-                        analyzer.match_assign_sides(ctx, loc, &slot, &value)?;    
+                    if let Some(slot) = cvar.slot_to_storage(analyzer) {
+                        analyzer.match_assign_sides(
+                            ctx,
+                            loc,
+                            &ExprRet::Single(slot.into()),
+                            &value,
+                        )?;
                     } else {
                         // TODO: improve this. We now handle `slot` but should try to figure out storage layout
                         let vars = ctx.local_vars(analyzer).clone();
@@ -506,10 +512,13 @@ pub trait YulFuncCaller:
                             ) {
                                 let res = latest_var.ty(analyzer).into_expr_err(loc)?;
                                 if let Some(r) = res.default_range(analyzer).unwrap() {
-                                    let new_var = analyzer.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
-                                    let res = new_var.set_range_min(analyzer, r.min).into_expr_err(loc);
+                                    let new_var =
+                                        analyzer.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
+                                    let res =
+                                        new_var.set_range_min(analyzer, r.min).into_expr_err(loc);
                                     let _ = analyzer.add_if_err(res);
-                                    let res = new_var.set_range_max(analyzer, r.max).into_expr_err(loc);
+                                    let res =
+                                        new_var.set_range_max(analyzer, r.max).into_expr_err(loc);
                                     let _ = analyzer.add_if_err(res);
                                 }
                             }

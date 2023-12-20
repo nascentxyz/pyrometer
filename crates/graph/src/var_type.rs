@@ -43,6 +43,16 @@ impl VarType {
         }
     }
 
+    pub fn take_range(&mut self) -> Option<SolcRange> {
+        match self {
+            VarType::User(TypeNode::Enum(_), ref mut r)
+            | VarType::User(TypeNode::Contract(_), ref mut r)
+            | VarType::User(TypeNode::Ty(_), ref mut r)
+            | VarType::BuiltIn(_, ref mut r) => r.take(),
+            _ => None,
+        }
+    }
+
     pub fn possible_builtins_from_ty_inf(&self, analyzer: &impl GraphBackend) -> Vec<Builtin> {
         match self {
             Self::BuiltIn(bn, _) => bn
@@ -62,6 +72,14 @@ impl VarType {
             Self::User(ty_node, _) => (*ty_node).into(),
             Self::BuiltIn(bn, _) => (*bn).into(),
             Self::Concrete(c) => (*c).into(),
+        }
+    }
+
+    pub fn empty_ty(&self) -> VarType {
+        match self {
+            Self::User(ty_node, _) => Self::User(*ty_node, None),
+            Self::BuiltIn(bn, _) => Self::BuiltIn(*bn, None),
+            Self::Concrete(c) => Self::Concrete(*c),
         }
     }
 
@@ -90,6 +108,28 @@ impl VarType {
                 }
             },
             _ => Ok(self.clone()),
+        }
+    }
+
+    pub fn resolve_unresolved(&mut self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+        match self {
+            VarType::User(TypeNode::Unresolved(n), _) => match analyzer.node(*n) {
+                Node::Unresolved(ident) => Err(GraphError::NodeConfusion(format!(
+                    "Expected the type \"{}\" to be resolved by now",
+                    ident.name
+                ))),
+                _ => {
+                    if let Some(ty) = VarType::try_from_idx(analyzer, *n) {
+                        *self = ty;
+                        Ok(())
+                    } else {
+                        Err(GraphError::NodeConfusion(
+                            "Tried to type a non-typeable element".to_string(),
+                        ))
+                    }
+                }
+            },
+            _ => Ok(()),
         }
     }
 
@@ -336,8 +376,12 @@ impl VarType {
             (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
                 from_bn.implicitly_castable_to(to_bn, analyzer)
             }
-            (Self::Concrete(from_c), Self::BuiltIn(_to_bn, _)) => {
-                todo!("here, {from_c:?}")
+            (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
+                let to = to_bn.underlying(analyzer)?;
+                Ok(from_c
+                    .underlying(analyzer)?
+                    .as_builtin()
+                    .implicitly_castable_to(to))
             }
             _ => Ok(false),
         }
