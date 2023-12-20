@@ -293,20 +293,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn uncache(&mut self) {
         self.uncache_exec();
     }
-
-    fn contains_op_set(
-        &self,
-        max: bool,
-        op_set: &[RangeOp],
-        analyzer: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        if op_set.contains(&self.op) {
-            Ok(true)
-        } else {
-            self.lhs.contains_op_set(max, op_set, analyzer)?;
-            self.rhs.contains_op_set(max, op_set, analyzer)
-        }
-    }
 }
 
 pub enum MaybeCollapsed {

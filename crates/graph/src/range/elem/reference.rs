@@ -266,31 +266,4 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         self.flattened_min = None;
         self.flattened_max = None;
     }
-
-    fn contains_op_set(
-        &self,
-        max: bool,
-        op_set: &[RangeOp],
-        analyzer: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
-        match &cvar.ty {
-            VarType::User(TypeNode::Contract(_), maybe_range)
-            | VarType::User(TypeNode::Enum(_), maybe_range)
-            | VarType::User(TypeNode::Ty(_), maybe_range)
-            | VarType::BuiltIn(_, maybe_range) => {
-                if let Some(range) = maybe_range {
-                    if max {
-                        range.max.contains_op_set(max, op_set, analyzer)
-                    } else {
-                        range.min.contains_op_set(max, op_set, analyzer)
-                    }
-                } else {
-                    Ok(false)
-                }
-            }
-            VarType::Concrete(_concrete_node) => Ok(false),
-            _e => Ok(false),
-        }
-    }
 }

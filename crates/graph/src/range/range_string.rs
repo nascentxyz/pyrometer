@@ -56,7 +56,7 @@ impl ToRangeString for Elem<Concrete> {
             Elem::ConcreteDyn(rd) => rd.def_string(analyzer),
             Elem::Expr(expr) => expr.def_string(analyzer),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
-            Elem::Arena(_) => todo!(),
+            Elem::Arena(_) => self.dearenaize(analyzer).def_string(analyzer),
         }
     }
 
@@ -71,7 +71,7 @@ impl ToRangeString for Elem<Concrete> {
             Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
             Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
-            Elem::Arena(_) => todo!(),
+            Elem::Arena(_) => self.dearenaize(analyzer).to_range_string(maximize, analyzer),
         }
     }
 }

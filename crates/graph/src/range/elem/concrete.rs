@@ -170,15 +170,6 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     }
     fn uncache(&mut self) {}
 
-    fn contains_op_set(
-        &self,
-        _: bool,
-        _op_set: &[RangeOp],
-        _analyzer: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        Ok(false)
-    }
-
     fn recursive_dependent_on(
         &self,
         _: &impl GraphBackend,

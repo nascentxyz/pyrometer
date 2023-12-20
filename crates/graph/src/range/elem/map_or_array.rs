@@ -495,14 +495,4 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         // self.flattened_min = None;
         // self.flattened_max = None;
     }
-
-    fn contains_op_set(
-        &self,
-        _max: bool,
-        _op_set: &[RangeOp],
-        _: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        // TODO: reevaluate this
-        Ok(false)
-    }
 }

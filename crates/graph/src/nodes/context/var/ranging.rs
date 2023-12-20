@@ -177,6 +177,8 @@ impl ContextVarNode {
             }
         }
 
+        new_min.arenaize(analyzer);
+
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
 
@@ -220,6 +222,7 @@ impl ContextVarNode {
             }
         }
 
+        new_max.arenaize(analyzer);
         // new_max.cache_flatten(analyzer)?;
         // new_max.cache_maximize(analyzer)?;
 

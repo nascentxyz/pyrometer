@@ -539,7 +539,8 @@ impl std::fmt::Display for Elem<Concrete> {
                 }
                 _ => write!(f, "({} {} {})", lhs, op.to_string(), rhs),
             },
-            _ => write!(f, ""),
+            Elem::Arena(idx) => write!(f, "arena_idx_{idx}"),
+            Elem::Null => write!(f, ""),
         }
     }
 }
@@ -583,7 +584,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
     fn range_ord(&self, other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
         match (self, other) {
-            (Self::Arena(_), Self::Arena(_)) => self.dearenaize(analyzer).range_ord(&other.dearenaize(analyzer), analyzer),
+            (Self::Arena(a), Self::Arena(b)) => {
+                if a == b {
+                    Some(std::cmp::Ordering::Equal)
+                } else {
+                    self.dearenaize(analyzer).range_ord(&other.dearenaize(analyzer), analyzer)
+                }
+            },
             (Self::Concrete(a), Self::Concrete(b)) => a.range_ord(b, analyzer),
             (Self::Reference(a), Self::Reference(b)) => a.range_ord(b, analyzer),
             (Elem::Null, Elem::Null) => None,
@@ -604,7 +611,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.flatten(maximize, analyzer),
             Self::ConcreteDyn(d) => d.flatten(maximize, analyzer),
             Self::Null => Ok(Elem::Null),
-            Self::Arena(_) => todo!(),
+            Self::Arena(_) => self.dearenaize(analyzer).flatten(maximize, analyzer),
         }
     }
 
@@ -615,7 +622,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.cache_flatten(analyzer),
             Self::ConcreteDyn(d) => d.cache_flatten(analyzer),
             Self::Null => Ok(()),
-            Self::Arena(_) => todo!(),
+            Self::Arena(idx) => {
+                let idx = *idx;
+                let mut dearenaized = self.dearenaize(analyzer);
+                dearenaized.cache_flatten(analyzer)?;
+                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+                Ok(())
+            },
         }
     }
 
@@ -693,7 +706,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             ConcreteDyn(inner) => inner.maximize(analyzer)?,
             Expr(expr) => expr.maximize(analyzer)?,
             Null => Elem::Null,
-            Arena(_) => todo!(),
+            Arena(_) => self.dearenaize(analyzer).maximize(analyzer)?,
         };
         Ok(res)
     }
@@ -706,7 +719,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             ConcreteDyn(inner) => inner.minimize(analyzer)?,
             Expr(expr) => expr.minimize(analyzer)?,
             Null => Elem::Null,
-            Arena(_) => todo!(),
+            Arena(_) => self.dearenaize(analyzer).minimize(analyzer)?,
         };
         Ok(res)
     }
@@ -732,7 +745,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.simplify_maximize(seen_ops, analyzer),
             },
             Null => Ok(Elem::Null),
-            Arena(_) => todo!(),
+            Arena(_) => self.dearenaize(analyzer).simplify_maximize(seen_ops, analyzer),
         }
     }
 
@@ -757,7 +770,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.simplify_minimize(seen_ops, analyzer),
             },
             Null => Ok(Elem::Null),
-            Arena(_) => todo!(),
+            Arena(_) => self.dearenaize(analyzer).simplify_minimize(seen_ops, analyzer),
         }?;
 
         seen_ops.insert(self.clone(), res.clone());
@@ -779,7 +792,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.cache_maximize(analyzer),
             },
             Null => Ok(()),
-            Arena(_) => todo!(),
+            Arena(idx) => {
+                let idx = *idx;
+                let mut dearenaized = self.dearenaize(analyzer);
+                dearenaized.cache_maximize(analyzer)?;
+                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+                Ok(())
+            },
         }
     }
 
@@ -798,7 +817,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.cache_minimize(analyzer),
             },
             Null => Ok(()),
-            Arena(_) => todo!(),
+            Arena(idx) => {
+                let idx = *idx;
+                let mut dearenaized = self.dearenaize(analyzer);
+                dearenaized.cache_minimize(analyzer)?;
+                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+                Ok(())
+            },
         }
     }
     fn uncache(&mut self) {
@@ -809,24 +834,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             ConcreteDyn(inner) => inner.uncache(),
             Expr(expr) => expr.uncache(),
             Null => {}
-            Arena(_) => todo!(),
-        }
-    }
-
-    fn contains_op_set(
-        &self,
-        max: bool,
-        op_set: &[RangeOp],
-        analyzer: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        use Elem::*;
-        match self {
-            Reference(dy) => dy.contains_op_set(max, op_set, analyzer),
-            Concrete(inner) => inner.contains_op_set(max, op_set, analyzer),
-            ConcreteDyn(inner) => inner.contains_op_set(max, op_set, analyzer),
-            Expr(expr) => expr.contains_op_set(max, op_set, analyzer),
-            Null => Ok(false),
-            Arena(_) => todo!(),
+            Arena(idx) => {},
         }
     }
 }

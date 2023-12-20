@@ -76,13 +76,6 @@ pub trait RangeElem<T: Ord> {
     /// cyclic dependency.
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend);
 
-    fn contains_op_set(
-        &self,
-        max: bool,
-        op_set: &[RangeOp],
-        analyzer: &impl GraphBackend,
-    ) -> Result<bool, Self::GraphError>;
-
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend);
     fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<T>;
 }
