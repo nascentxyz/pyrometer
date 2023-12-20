@@ -343,7 +343,8 @@ pub trait NameSpaceFuncCaller:
                                         None
                                     }
                                 } else {
-                                    None
+                                    // generic builtin function, return it
+                                    Some(func_name.clone())
                                 }
                             } else {
                                 None
@@ -411,7 +412,7 @@ pub trait NameSpaceFuncCaller:
                         Err(ExprErr::FunctionNotFound(
                             loc,
                             format!(
-                                "Could not disambiguate function, possible functions: {:#?}",
+                                "Could not disambiguate builtin function, possible builtin functions: {:#?}",
                                 possible_builtins
                                     .iter()
                                     .map(|i| i.name(analyzer).unwrap())
