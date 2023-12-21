@@ -74,8 +74,7 @@ pub trait RangeElem<T: Ord> {
     /// e.g.: take the basic expression `x + y`, in normal checked solidity math
     /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
     /// cyclic dependency.
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend);
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend);
 
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend);
-    fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<T>;
 }

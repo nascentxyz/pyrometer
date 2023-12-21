@@ -157,7 +157,11 @@ impl Default for Analyzer {
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
-            range_arena: RangeArena { ranges: vec![Elem::Null] }
+            range_arena: RangeArena { ranges: vec![Elem::Null], map: {
+                let mut map: HashMap<Elem<Concrete>, usize> = Default::default();
+                map.insert(Elem::Null, 0);
+                map
+            } }
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 

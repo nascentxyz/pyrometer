@@ -38,10 +38,6 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         let _ = analyzer.range_arena_idx_or_upsert(Elem::Concrete(self.clone()));
     }
 
-    fn dearenaize(&self, _analyzer: &impl GraphBackend) -> Elem<Concrete> {
-        Elem::Concrete(self.clone())
-    }
-
     fn has_cycle(
         &self,
         _seen: &mut Vec<ContextVarNode>,
@@ -137,7 +133,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         vec![]
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, _analyzer: &impl GraphBackend) {}
+    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, _analyzer: &mut impl GraphBackend) {}
 
     fn maximize(&self, _analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))

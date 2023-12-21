@@ -1,3 +1,5 @@
+use std::hash::Hasher;
+use std::hash::Hash;
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{Elem, MinMaxed, RangeElem, RangeOp},
@@ -11,7 +13,7 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 /// A concrete value for a range element
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RangeDyn<T> {
     /// Cached minimized value
     pub minimized: Option<MinMaxed<T>>,
@@ -29,6 +31,14 @@ pub struct RangeDyn<T> {
     // pub filter_null: bool,
     /// Sourcecode location
     pub loc: Loc,
+}
+
+impl Hash for RangeDyn<Concrete> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self.len).hash(state);
+        self.val.hash(state);
+        self.op_num.hash(state);
+    }
 }
 
 impl<T: Ord> RangeDyn<T> {
@@ -169,26 +179,6 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             new_v.arenaize(analyzer);
             (new_k, (new_v, *op))
         }).collect();
-    }
-
-    fn dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
-        Elem::ConcreteDyn(Self::new_w_op_nums(
-            self.len.dearenaize(analyzer),
-            {
-                let mut map: BTreeMap<_, (Elem<Concrete>, usize)> = BTreeMap::default();
-                for (idx, val) in self.val.clone().into_iter() {
-                    // We dont maximize the key so that any subsequent
-                    // `get_index` can find potential values
-                    let dearenaized = val.0.dearenaize(analyzer);
-                    map.insert(
-                        idx.dearenaize(analyzer),
-                        (dearenaized, val.1),
-                    );
-                }
-                map
-            },
-            self.loc,
-        ))
     }
 
     fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
@@ -343,7 +333,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend) {
+    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend) {
         self.len.filter_recursion(node_idx, new_idx, analyzer);
         self.val = self
             .val

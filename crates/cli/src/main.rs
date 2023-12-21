@@ -240,6 +240,8 @@ fn main() {
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
+    // println!("Arena: {:#?}", analyzer.range_arena);
+
     // use self.sources to fill a BTreeMap with the file_no and SourcePath.path_to_solidity_file
     let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
     let mut src_map: HashMap<String, String> = HashMap::new();

@@ -266,7 +266,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         loc: Loc,
         lhs_cvar: ContextVarNode,
     ) -> Result<SolcRange, ExprErr> {
-        if let Some(lhs_range) = lhs_cvar.range(self).into_expr_err(loc)? {
+        if let Some(lhs_range) = lhs_cvar.ref_range(self).into_expr_err(loc)? {
             let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
 
             // invert
@@ -277,7 +277,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     Elem::Null,
                 ));
 
-                return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions));
+                return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions.clone()));
             }
         }
 

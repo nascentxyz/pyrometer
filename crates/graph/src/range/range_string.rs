@@ -183,7 +183,7 @@ impl ToRangeString for RangeExpr<Concrete> {
 
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
         if let MaybeCollapsed::Collapsed(collapsed) =
-            collapse(*self.lhs.clone(), self.op, *self.rhs.clone(), analyzer)
+            collapse(&self.lhs, self.op, &self.rhs, analyzer)
         {
             return collapsed.to_range_string(maximize, analyzer);
         }

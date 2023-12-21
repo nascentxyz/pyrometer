@@ -120,7 +120,7 @@ impl ContextNode {
             mapping.into_iter().for_each(|(_k, tmp)| {
                 if let Some(rhs) = tmp.rhs {
                     let lhs = if let Some(ver) = contains.keys().find(|other| {
-                        other.range(g).unwrap() == tmp.lhs.range(g).unwrap()
+                        other.ref_range(g).unwrap() == tmp.lhs.ref_range(g).unwrap()
                             && tmp.lhs.display_name(g).unwrap() == other.display_name(g).unwrap()
                     }) {
                         *contains.get(ver).unwrap()

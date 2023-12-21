@@ -76,7 +76,6 @@ pub trait SolidityCaller:
                         ctx.push_expr(ExprRet::Single(cvar), analyzer)
                             .into_expr_err(loc)?;
                     } else {
-                        println!("not const: [{}]", cvar.range_string(analyzer).unwrap().unwrap());
                         let var = ContextVar::new_from_builtin(
                             loc,
                             analyzer.builtin_or_add(Builtin::Bytes(32)).into(),

@@ -1,7 +1,8 @@
+
 use crate::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
-    range::RangeEval,
+    range::{elem::RangeElem, RangeEval},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
@@ -370,7 +371,9 @@ impl ContextVarNode {
             }
             if let (Some(mut r), Some(r2)) = (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?) {
                 r.min = r.min.cast(r2.min);
+                r.min.arenaize(analyzer);
                 r.max = r.max.cast(r2.max);
+                r.max.arenaize(analyzer);
                 self.set_range(analyzer, r)?;
             }
         }

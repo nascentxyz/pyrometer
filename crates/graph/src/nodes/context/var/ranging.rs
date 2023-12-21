@@ -223,9 +223,6 @@ impl ContextVarNode {
         }
 
         new_max.arenaize(analyzer);
-        // new_max.cache_flatten(analyzer)?;
-        // new_max.cache_maximize(analyzer)?;
-
 
         tracing::trace!(
             "setting range maximum: {:?}, {}, current: {}, new: {}",
@@ -258,7 +255,7 @@ impl ContextVarNode {
     pub fn set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        new_exclusions: Vec<Elem<Concrete>>,
+        mut new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "setting range exclusions for {}",
@@ -270,6 +267,11 @@ impl ContextVarNode {
         } else {
             None
         };
+
+        new_exclusions.iter_mut().for_each(|excl| {
+            excl.arenaize(analyzer);
+        });
+        
         self.underlying_mut(analyzer)?
             .set_range_exclusions(new_exclusions, fallback)?;
         Ok(())
@@ -287,8 +289,7 @@ impl ContextVarNode {
             }
         }
 
-        new_min.cache_flatten(analyzer)?;
-        new_min.cache_minimize(analyzer)?;
+        new_min.arenaize(analyzer);
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -319,8 +320,7 @@ impl ContextVarNode {
             }
         }
 
-        new_max.cache_flatten(analyzer)?;
-        new_max.cache_maximize(analyzer)?;
+        new_max.arenaize(analyzer);
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -342,7 +342,7 @@ impl ContextVarNode {
     pub fn try_set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        new_exclusions: Vec<Elem<Concrete>>,
+        mut new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         tracing::trace!(
             "setting range exclusions for: {}",
@@ -354,6 +354,11 @@ impl ContextVarNode {
         } else {
             None
         };
+
+        new_exclusions.iter_mut().for_each(|excl| {
+            excl.arenaize(analyzer);
+        });
+
         Ok(self
             .underlying_mut(analyzer)?
             .try_set_range_exclusions(new_exclusions, fallback))

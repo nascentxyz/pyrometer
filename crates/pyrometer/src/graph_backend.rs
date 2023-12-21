@@ -195,7 +195,7 @@ impl GraphDot for Analyzer {
                                 // } else {
                                 //     handled_nodes.lock().unwrap().insert(*child);
                                 // }
-                                mermaid_node(g, &indent, *child, true, Some(&curr_cluster_name))
+                                mermaid_node(self, &indent, *child, true, Some(&curr_cluster_name))
                             })
                             .collect::<Vec<_>>()
                             .join("\n")
@@ -213,7 +213,7 @@ impl GraphDot for Analyzer {
                             handled_nodes.lock().unwrap().insert(*child);
                         }
                         Some(mermaid_node(
-                            g,
+                            self,
                             &indent,
                             *child,
                             true,
@@ -266,7 +266,7 @@ impl GraphDot for Analyzer {
                     {
                         handled_nodes.lock().unwrap().insert(node);
                     }
-                    mermaid_node(g, &indent, node, true, Some(&curr_cluster_name))
+                    mermaid_node(self, &indent, node, true, Some(&curr_cluster_name))
                 }
             };
 

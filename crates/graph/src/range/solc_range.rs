@@ -635,10 +635,10 @@ impl Range<Concrete> for SolcRange {
     fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) {
         self.exclusions = new;
     }
-    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend) {
+    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend) {
         self.min.filter_recursion(self_idx, new_idx, analyzer);
     }
-    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx, analyzer: &impl GraphBackend) {
+    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend) {
         self.max.filter_recursion(self_idx, new_idx, analyzer);
     }
 
