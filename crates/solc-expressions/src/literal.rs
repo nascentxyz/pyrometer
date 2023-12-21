@@ -105,7 +105,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         if let Some(unit) = unit {
             rational_range = rational_range * Elem::from(Concrete::from(self.unit_to_uint(unit)))
         }
-        
+
         let cvar =
             ContextVar::new_from_builtin(loc, self.builtin_or_add(Builtin::Uint(256)).into(), self)
                 .into_expr_err(loc)?;

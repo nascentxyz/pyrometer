@@ -56,6 +56,7 @@ impl ToRangeString for Elem<Concrete> {
             Elem::ConcreteDyn(rd) => rd.def_string(analyzer),
             Elem::Expr(expr) => expr.def_string(analyzer),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
+            Elem::Arena(_) => self.dearenaize(analyzer).def_string(analyzer),
         }
     }
 
@@ -70,6 +71,9 @@ impl ToRangeString for Elem<Concrete> {
             Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
             Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
+            Elem::Arena(_) => self
+                .dearenaize(analyzer)
+                .to_range_string(maximize, analyzer),
         }
     }
 }
@@ -181,7 +185,7 @@ impl ToRangeString for RangeExpr<Concrete> {
 
     fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
         if let MaybeCollapsed::Collapsed(collapsed) =
-            collapse(*self.lhs.clone(), self.op, *self.rhs.clone())
+            collapse(&self.lhs, self.op, &self.rhs, analyzer)
         {
             return collapsed.to_range_string(maximize, analyzer);
         }

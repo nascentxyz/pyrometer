@@ -1,7 +1,7 @@
 use crate::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
-    range::RangeEval,
+    range::{elem::RangeElem, RangeEval},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
@@ -16,7 +16,11 @@ impl ContextVarNode {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
-    pub fn ty_eq_ty(&self, other: &VarType, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn ty_eq_ty(
+        &self,
+        other: &VarType,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         self.ty(analyzer)?.ty_eq(other, analyzer)
     }
 
@@ -216,9 +220,11 @@ impl ContextVarNode {
 
     pub fn is_return_node(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         if let Some(ctx) = self.maybe_ctx(analyzer) {
-            return Ok(ctx.underlying(analyzer)?.ret.iter().any(|(_, node)| {
-                node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
-            }));
+            return Ok(ctx
+                .underlying(analyzer)?
+                .ret
+                .iter()
+                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap()));
         }
         Ok(false)
     }
@@ -233,9 +239,7 @@ impl ContextVarNode {
                 .unwrap()
                 .ret
                 .iter()
-                .any(|(_, node)| {
-                    node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
-                })
+                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap())
         })
     }
 
@@ -365,12 +369,70 @@ impl ContextVarNode {
     ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         if !from_ty.ty_eq(&to_ty, analyzer)? {
-            if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
+            if let Some(new_ty) = from_ty.clone().try_cast(&to_ty, analyzer)? {
                 self.underlying_mut(analyzer)?.ty = new_ty;
             }
-            if let (Some(mut r), Some(r2)) = (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?) {
-                r.min = r.min.cast(r2.min);
-                r.max = r.max.cast(r2.max);
+
+            if let (Some(mut r), Some(r2)) =
+                (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?)
+            {
+                r.min.arenaize(analyzer)?;
+                r.max.arenaize(analyzer)?;
+
+                let mut min_expr = r
+                    .min
+                    .clone()
+                    .cast(r2.min.clone())
+                    .min(r.max.clone().cast(r2.min.clone()));
+                let mut max_expr = r
+                    .min
+                    .clone()
+                    .cast(r2.min.clone())
+                    .max(r.max.clone().cast(r2.min));
+
+                min_expr.arenaize(analyzer)?;
+                max_expr.arenaize(analyzer)?;
+
+                let zero = Elem::from(Concrete::from(U256::zero()));
+                if r.contains_elem(&zero, analyzer) {
+                    min_expr = min_expr.min(zero.clone());
+                    max_expr = max_expr.max(zero);
+                }
+
+                if let (VarType::BuiltIn(from_bn, _), VarType::BuiltIn(to_bn, _)) =
+                    (self.ty(analyzer)?, to_ty.clone())
+                {
+                    match (from_bn.underlying(analyzer)?, to_bn.underlying(analyzer)?) {
+                        (Builtin::Uint(_), int @ Builtin::Int(_)) => {
+                            // from ty is uint, to ty is int, check if type(int<SIZE>.min).bit_representation()
+                            // is in range
+                            if let Some(r) = self.ref_range(analyzer)? {
+                                let int_min = int.min_concrete().unwrap();
+                                let bit_repr = int_min.bit_representation().unwrap();
+                                let bit_repr = bit_repr.into();
+                                if r.contains_elem(&bit_repr, analyzer) {
+                                    min_expr = min_expr.min(int_min.clone().into());
+                                    max_expr = max_expr.max(int_min.into());
+                                }
+                            }
+                        }
+                        (Builtin::Int(_), Builtin::Uint(_size)) => {
+                            // from ty is int, to ty is uint
+                            if let Some(r) = self.ref_range(analyzer)? {
+                                let neg1 = Concrete::from(I256::from(-1i32));
+                                if r.contains_elem(&neg1.clone().into(), analyzer) {
+                                    max_expr =
+                                        max_expr.max(neg1.bit_representation().unwrap().into());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                r.min = min_expr;
+                r.max = max_expr;
+                r.min.arenaize(analyzer)?;
+                r.max.arenaize(analyzer)?;
                 self.set_range(analyzer, r)?;
             }
         }

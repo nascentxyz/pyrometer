@@ -59,7 +59,9 @@ pub trait ExpressionParser:
         // );
         match expr {
             // literals
-            NumberLiteral(loc, int, exp, unit) => self.number_literal(ctx, *loc, int, exp, false, unit),
+            NumberLiteral(loc, int, exp, unit) => {
+                self.number_literal(ctx, *loc, int, exp, false, unit)
+            }
             AddressLiteral(loc, addr) => self.address_literal(ctx, *loc, addr),
             StringLiteral(lits) => lits
                 .iter()
@@ -281,7 +283,7 @@ pub trait ExpressionParser:
             }
             FunctionCall(loc, func_expr, input_exprs) => {
                 let updated_func_expr = match **func_expr {
-                    FunctionCallBlock(_loc, ref inner_func_expr, ref call_block) => {
+                    FunctionCallBlock(_loc, ref inner_func_expr, ref _call_block) => {
                         // we dont currently handle the `{value: .. gas: ..}` msg updating
                         // println!("call block: {call_block:#?}");
 
@@ -301,14 +303,9 @@ pub trait ExpressionParser:
                 match &**expr {
                     Expression::FunctionCall(_loc, func, inputs) => {
                         // parse the type
-                        self.new_call(
-                            loc,
-                            func,
-                            inputs,
-                            ctx
-                        )  
-                    },
-                    _ => panic!("Bad new call")
+                        self.new_call(loc, func, inputs, ctx)
+                    }
+                    _ => panic!("Bad new call"),
                 }
             }
             This(loc) => {

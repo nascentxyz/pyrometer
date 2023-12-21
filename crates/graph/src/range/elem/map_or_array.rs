@@ -1,8 +1,10 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{Elem, MinMaxed, RangeElem, RangeOp},
+    range::elem::{Elem, MinMaxed, RangeElem},
     GraphBackend, GraphError,
 };
+use std::hash::Hash;
+use std::hash::Hasher;
 
 use shared::NodeIdx;
 
@@ -11,7 +13,7 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 /// A concrete value for a range element
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct RangeDyn<T> {
     /// Cached minimized value
     pub minimized: Option<MinMaxed<T>>,
@@ -29,6 +31,14 @@ pub struct RangeDyn<T> {
     // pub filter_null: bool,
     /// Sourcecode location
     pub loc: Loc,
+}
+
+impl Hash for RangeDyn<Concrete> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self.len).hash(state);
+        self.val.hash(state);
+        self.op_num.hash(state);
+    }
 }
 
 impl<T: Ord> RangeDyn<T> {
@@ -124,7 +134,7 @@ impl RangeDyn<Concrete> {
                     as_u256 = as_u256.max(max_key);
                 }
             }
-            
+
             if as_u256 > usize::MAX.into() {
                 usize::MAX
             } else {
@@ -133,25 +143,24 @@ impl RangeDyn<Concrete> {
         };
 
         Some(
-            self.val.values().map(|v| {
-                v.0.as_bytes(analyzer, maximize)
-            })
-            .collect::<Option<Vec<Vec<u8>>>>()?
-            .into_iter()
-            .flatten()
-            .take(len)
-            .collect()
+            self.val
+                .values()
+                .map(|v| v.0.as_bytes(analyzer, maximize))
+                .collect::<Option<Vec<Vec<u8>>>>()?
+                .into_iter()
+                .flatten()
+                .take(len)
+                .collect(),
         )
     }
 
     pub fn evaled_max_key(&self, analyzer: &impl GraphBackend) -> Option<Concrete> {
-        let mut evaled = self.val.keys().filter_map(|key| {
-            key.maximize(analyzer).ok()
-        })
-        .collect::<Vec<_>>();
-        evaled.sort_by(|a, b| {
-            a.range_ord(b).unwrap_or(std::cmp::Ordering::Less)
-        });
+        let mut evaled = self
+            .val
+            .keys()
+            .filter_map(|key| key.maximize(analyzer).ok())
+            .collect::<Vec<_>>();
+        evaled.sort_by(|a, b| a.range_ord(b, analyzer).unwrap_or(std::cmp::Ordering::Less));
 
         evaled.iter().take(1).next()?.concrete()
     }
@@ -160,12 +169,34 @@ impl RangeDyn<Concrete> {
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
 
-    fn range_eq(&self, other: &Self) -> bool {
-        matches!(self.range_ord(other), Some(std::cmp::Ordering::Equal))
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        self.cache_flatten(analyzer)?;
+        self.cache_minimize(analyzer)?;
+        self.cache_maximize(analyzer)?;
+        self.len.arenaize(analyzer);
+        self.val = self
+            .val
+            .iter_mut()
+            .map(|(k, (v, op))| {
+                let mut new_k = k.clone();
+                let mut new_v = v.clone();
+                new_k.arenaize(analyzer);
+                new_v.arenaize(analyzer);
+                (new_k, (new_v, *op))
+            })
+            .collect();
+        Ok(())
     }
 
-    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.len.range_ord(&other.len) {
+    fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
+        matches!(
+            self.range_ord(other, analyzer),
+            Some(std::cmp::Ordering::Equal)
+        )
+    }
+
+    fn range_ord(&self, other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
+        match self.len.range_ord(&other.len, analyzer) {
             Some(std::cmp::Ordering::Equal) => {
                 let mut eq = 0;
                 let mut self_lt = 0;
@@ -173,9 +204,9 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 self.val.iter().zip(other.val.iter()).for_each(
                     |((self_key, self_val), (other_key, other_val))| {
                         if let Some(std::cmp::Ordering::Equal) =
-                            self_key.clone().range_ord(other_key)
+                            self_key.clone().range_ord(other_key, analyzer)
                         {
-                            match self_val.0.clone().range_ord(&other_val.0) {
+                            match self_val.0.clone().range_ord(&other_val.0, analyzer) {
                                 Some(std::cmp::Ordering::Equal) => eq += 1,
                                 Some(std::cmp::Ordering::Less) => self_lt += 1,
                                 Some(std::cmp::Ordering::Greater) => self_gt += 1,
@@ -199,12 +230,12 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         }
     }
 
-    fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps: Vec<ContextVarNode> = self.len.dependent_on();
+    fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        let mut deps: Vec<ContextVarNode> = self.len.dependent_on(analyzer);
         deps.extend(
             self.val
                 .iter()
-                .flat_map(|(_, val)| val.0.dependent_on())
+                .flat_map(|(_, val)| val.0.dependent_on(analyzer))
                 .collect::<Vec<_>>(),
         );
         deps
@@ -284,50 +315,56 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         if self.flattened_max.is_none() {
             self.len.cache_flatten(analyzer)?;
             let mapping = std::mem::take(&mut self.val);
-            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
-                idx.cache_flatten(analyzer).unwrap();
-                val.0.cache_flatten(analyzer).unwrap();
-                (idx, val)
-            }).collect();
+            self.val = mapping
+                .into_iter()
+                .map(|(mut idx, mut val)| {
+                    idx.cache_flatten(analyzer).unwrap();
+                    val.0.cache_flatten(analyzer).unwrap();
+                    (idx, val)
+                })
+                .collect();
             let flat_max = self.flatten(true, analyzer)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), analyzer)?;
+            let simplified_flat_max =
+                flat_max.simplify_maximize(&mut Default::default(), analyzer)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
             self.len.cache_flatten(analyzer)?;
             let mapping = std::mem::take(&mut self.val);
-            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
-                idx.cache_flatten(analyzer).unwrap();
-                val.0.cache_flatten(analyzer).unwrap();
-                (idx, val)
-            }).collect();
+            self.val = mapping
+                .into_iter()
+                .map(|(mut idx, mut val)| {
+                    idx.cache_flatten(analyzer).unwrap();
+                    val.0.cache_flatten(analyzer).unwrap();
+                    (idx, val)
+                })
+                .collect();
             let flat_min = self.flatten(false, analyzer)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), analyzer)?;
+            let simplified_flat_min =
+                flat_min.simplify_minimize(&mut Default::default(), analyzer)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
     }
 
-    fn is_flatten_cached(&self) -> bool {
+    fn is_flatten_cached(&self, _analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
-        self.len.update_deps(mapping);
-        self.val
-            .iter_mut()
-            .for_each(|(_, val)| val.0.update_deps(mapping));
-    }
-
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx) {
-        self.len.filter_recursion(node_idx, new_idx);
+    fn filter_recursion(
+        &mut self,
+        node_idx: NodeIdx,
+        new_idx: NodeIdx,
+        analyzer: &mut impl GraphBackend,
+    ) {
+        self.len.filter_recursion(node_idx, new_idx, analyzer);
         self.val = self
             .val
             .clone()
             .into_iter()
             .map(|(mut k, mut v)| {
-                k.filter_recursion(node_idx, new_idx);
-                v.0.filter_recursion(node_idx, new_idx);
+                k.filter_recursion(node_idx, new_idx, analyzer);
+                v.0.filter_recursion(node_idx, new_idx, analyzer);
                 (k, v)
             })
             .collect();
@@ -441,11 +478,14 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         if self.maximized.is_none() {
             self.len.cache_maximize(g)?;
             let mapping = std::mem::take(&mut self.val);
-            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
-                idx.cache_maximize(g).unwrap();
-                val.0.cache_maximize(g).unwrap();
-                (idx, val)
-            }).collect();
+            self.val = mapping
+                .into_iter()
+                .map(|(mut idx, mut val)| {
+                    idx.cache_maximize(g).unwrap();
+                    val.0.cache_maximize(g).unwrap();
+                    (idx, val)
+                })
+                .collect();
             self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
         }
         Ok(())
@@ -455,11 +495,14 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         if self.minimized.is_none() {
             self.len.cache_minimize(g)?;
             let mapping = std::mem::take(&mut self.val);
-            self.val = mapping.into_iter().map(|(mut idx, mut val)| {
-                idx.cache_minimize(g).unwrap();
-                val.0.cache_minimize(g).unwrap();
-                (idx, val)
-            }).collect();
+            self.val = mapping
+                .into_iter()
+                .map(|(mut idx, mut val)| {
+                    idx.cache_minimize(g).unwrap();
+                    val.0.cache_minimize(g).unwrap();
+                    (idx, val)
+                })
+                .collect();
             self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
         }
         Ok(())
@@ -470,15 +513,5 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         self.maximized = None;
         // self.flattened_min = None;
         // self.flattened_max = None;
-    }
-
-    fn contains_op_set(
-        &self,
-        _max: bool,
-        _op_set: &[RangeOp],
-        _: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        // TODO: reevaluate this
-        Ok(false)
     }
 }

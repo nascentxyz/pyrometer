@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{Concrete, ContextNode, ContextVarNode},
+    nodes::{Concrete, ContextVarNode},
     range::{range_string::ToRangeString, Range, RangeEval},
     AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
 };
@@ -9,20 +9,6 @@ use crate::range::elem::*;
 use solang_parser::pt::Loc;
 
 impl ContextVarNode {
-    #[tracing::instrument(level = "trace", skip_all)]
-    pub fn update_deps(
-        &mut self,
-        ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
-        if let Some(mut range) = self.range(analyzer)? {
-            range.update_deps(*self, ctx, analyzer);
-            self.set_range_min(analyzer, range.min)?;
-            self.set_range_max(analyzer, range.max)?;
-        }
-        Ok(())
-    }
-
     pub fn range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
         self.underlying(analyzer)?.ty.range(analyzer)
     }
@@ -112,14 +98,17 @@ impl ContextVarNode {
 
     pub fn cache_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
-            range.cache_flatten(analyzer)?;
+            // range.cache_flatten(analyzer)?;
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
         }
         Ok(())
     }
 
-    pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+    pub fn cache_flattened_range(
+        &self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<(), GraphError> {
         if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_flatten(analyzer)?;
             self.set_range(analyzer, range)?;
@@ -185,11 +174,13 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_min.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_or_inherited_version(analyzer) {
-                new_min.filter_recursion((*self).into(), prev.into());
+                new_min.filter_recursion((*self).into(), prev.into(), analyzer);
             } else {
                 return Err(GraphError::UnbreakableRecursion(format!("The variable {}'s range is self-referential and we cannot break the recursion.", self.display_name(analyzer)?)));
             }
         }
+
+        new_min.arenaize(analyzer)?;
 
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
@@ -230,13 +221,11 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_max.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_or_inherited_version(analyzer) {
-                new_max.filter_recursion((*self).into(), prev.into());
+                new_max.filter_recursion((*self).into(), prev.into(), analyzer);
             }
         }
 
-        // new_max.cache_flatten(analyzer)?;
-        // new_max.cache_maximize(analyzer)?;
-
+        new_max.arenaize(analyzer)?;
 
         tracing::trace!(
             "setting range maximum: {:?}, {}, current: {}, new: {}",
@@ -269,7 +258,7 @@ impl ContextVarNode {
     pub fn set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        new_exclusions: Vec<Elem<Concrete>>,
+        mut new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "setting range exclusions for {}",
@@ -281,6 +270,11 @@ impl ContextVarNode {
         } else {
             None
         };
+
+        new_exclusions
+            .iter_mut()
+            .try_for_each(|excl| excl.arenaize(analyzer))?;
+
         self.underlying_mut(analyzer)?
             .set_range_exclusions(new_exclusions, fallback)?;
         Ok(())
@@ -294,12 +288,11 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_min.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_version(analyzer) {
-                new_min.filter_recursion((*self).into(), prev.into());
+                new_min.filter_recursion((*self).into(), prev.into(), analyzer);
             }
         }
 
-        new_min.cache_flatten(analyzer)?;
-        new_min.cache_minimize(analyzer)?;
+        new_min.arenaize(analyzer)?;
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -326,12 +319,11 @@ impl ContextVarNode {
         assert!(self.latest_version(analyzer) == *self);
         if new_max.recursive_dependent_on(analyzer)?.contains(self) {
             if let Some(prev) = self.previous_version(analyzer) {
-                new_max.filter_recursion((*self).into(), prev.into());
+                new_max.filter_recursion((*self).into(), prev.into(), analyzer);
             }
         }
 
-        new_max.cache_flatten(analyzer)?;
-        new_max.cache_maximize(analyzer)?;
+        new_max.arenaize(analyzer)?;
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -353,7 +345,7 @@ impl ContextVarNode {
     pub fn try_set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        new_exclusions: Vec<Elem<Concrete>>,
+        mut new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         tracing::trace!(
             "setting range exclusions for: {}",
@@ -365,6 +357,11 @@ impl ContextVarNode {
         } else {
             None
         };
+
+        new_exclusions
+            .iter_mut()
+            .try_for_each(|excl| excl.arenaize(analyzer))?;
+
         Ok(self
             .underlying_mut(analyzer)?
             .try_set_range_exclusions(new_exclusions, fallback))
@@ -372,7 +369,7 @@ impl ContextVarNode {
 
     pub fn range_deps(&self, analyzer: &impl GraphBackend) -> Result<Vec<Self>, GraphError> {
         if let Some(range) = self.ref_range(analyzer)? {
-            Ok(range.dependent_on())
+            Ok(range.dependent_on(analyzer))
         } else {
             Ok(vec![])
         }

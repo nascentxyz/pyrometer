@@ -155,7 +155,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                                 .map(|func| func.name(self).unwrap())
                                 .collect::<Vec<_>>()
                         ),
-                        ))
+                        ));
                     }
                 }
             }

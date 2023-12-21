@@ -1,5 +1,7 @@
 use crate::AnalyzerLike;
 use crate::Heirarchical;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 use petgraph::{
     graph::{EdgeIndex, Graph, NodeIndex},
@@ -12,11 +14,19 @@ use std::{
 
 pub type NodeIdx = NodeIndex<usize>;
 pub type EdgeIdx = EdgeIndex<usize>;
+pub type RangeArenaIdx = usize;
+
+#[derive(Default, Clone, Debug)]
+pub struct RangeArena<T: Hash> {
+    pub ranges: Vec<T>,
+    pub map: HashMap<T, usize>,
+}
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphLike {
     type Node;
     type Edge: Ord + PartialEq + Heirarchical + Copy;
+    type RangeElem: Hash + PartialEq + Eq + PartialOrd + Clone + std::fmt::Display;
     /// Get a mutable reference to the graph
     fn graph_mut(&mut self) -> &mut Graph<Self::Node, Self::Edge, Directed, usize>;
     /// Get a reference to the graph
@@ -52,6 +62,24 @@ pub trait GraphLike {
     ) {
         self.graph_mut()
             .add_edge(from_node.into(), to_node.into(), edge.into());
+    }
+
+    fn range_arena(&self) -> &RangeArena<Self::RangeElem>;
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Self::RangeElem>;
+
+    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+        self.range_arena().map.get(elem).copied()
+    }
+
+    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
+        if let Some(idx) = self.range_arena_idx(&elem) {
+            idx
+        } else {
+            let idx = self.range_arena().ranges.len();
+            self.range_arena_mut().ranges.push(elem.clone());
+            self.range_arena_mut().map.insert(elem, idx);
+            idx
+        }
     }
 }
 

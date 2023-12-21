@@ -1,4 +1,7 @@
 use crate::Analyzer;
+use graph::elem::Elem;
+use graph::nodes::Concrete;
+use shared::RangeArena;
 
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
@@ -16,12 +19,21 @@ use std::{
 impl GraphLike for Analyzer {
     type Node = Node;
     type Edge = Edge;
+    type RangeElem = Elem<Concrete>;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
         &mut self.graph
     }
 
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         &self.graph
+    }
+
+    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
+        &self.range_arena
+    }
+
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        &mut self.range_arena
     }
 }
 
@@ -183,7 +195,7 @@ impl GraphDot for Analyzer {
                                 // } else {
                                 //     handled_nodes.lock().unwrap().insert(*child);
                                 // }
-                                mermaid_node(g, &indent, *child, true, Some(&curr_cluster_name))
+                                mermaid_node(self, &indent, *child, true, Some(&curr_cluster_name))
                             })
                             .collect::<Vec<_>>()
                             .join("\n")
@@ -201,7 +213,7 @@ impl GraphDot for Analyzer {
                             handled_nodes.lock().unwrap().insert(*child);
                         }
                         Some(mermaid_node(
-                            g,
+                            self,
                             &indent,
                             *child,
                             true,
@@ -254,7 +266,7 @@ impl GraphDot for Analyzer {
                     {
                         handled_nodes.lock().unwrap().insert(node);
                     }
-                    mermaid_node(g, &indent, node, true, Some(&curr_cluster_name))
+                    mermaid_node(self, &indent, node, true, Some(&curr_cluster_name))
                 }
             };
 
@@ -573,12 +585,19 @@ struct G<'a> {
 impl GraphLike for G<'_> {
     type Node = Node;
     type Edge = Edge;
+    type RangeElem = Elem<Concrete>;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
-        panic!("Should call this")
+        panic!("Should not call this")
     }
 
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         self.graph
+    }
+    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
+        panic!("Should not call this")
+    }
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        panic!("Should not call this")
     }
 }
 

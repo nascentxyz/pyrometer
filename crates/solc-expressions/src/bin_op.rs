@@ -28,7 +28,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<(), ExprErr> {
-        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS).into_expr_err(loc)?;
+        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
+            .into_expr_err(loc)?;
         self.parse_ctx_expr(rhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
             let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
@@ -229,7 +230,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             .evaled_range_min(self)
                             .into_expr_err(loc)?
                             .expect("No range?")
-                            .range_eq(&Elem::from(Concrete::from(U256::zero())))
+                            .range_eq(&Elem::from(Concrete::from(U256::zero())), self)
                         {
                             let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
                             let _ = self.add_if_err(res);
@@ -255,78 +256,13 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 ctx,
                                 loc,
                                 RangeOp::Neq,
-                                RangeOp::Eq,
+                                RangeOp::Neq,
                                 (RangeOp::Eq, RangeOp::Neq),
                             )?
                             .is_none()
                         {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
-
-                        // let tmp_rhs = tmp_rhs.latest_version(self);
-
-                        // let tmp_var = ContextVar {
-                        //     loc: Some(loc),
-                        //     name: format!(
-                        //         "tmp{}({} != 0)",
-                        //         ctx.new_tmp(self).into_expr_err(loc)?,
-                        //         tmp_rhs.name(self).into_expr_err(loc)?,
-                        //     ),
-                        //     display_name: format!(
-                        //         "({} != 0)",
-                        //         tmp_rhs.display_name(self).into_expr_err(loc)?,
-                        //     ),
-                        //     storage: None,
-                        //     is_tmp: true,
-                        //     tmp_of: Some(TmpConstruction::new(
-                        //         new_lhs,
-                        //         RangeOp::Neq,
-                        //         Some(zero_node.into()),
-                        //     )),
-                        //     is_symbolic: true,
-                        //     is_return: false,
-                        //     ty: VarType::BuiltIn(
-                        //         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                        //         SolcRange::from(Concrete::Bool(true)),
-                        //     ),
-                        // };
-
-                        // let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        // ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
-
-                        // let range = tmp_rhs
-                        //     .ref_range(self)
-                        //     .into_expr_err(loc)?
-                        //     .expect("No range?");
-                        // if range.min_is_negative(self).into_expr_err(loc)? {
-                        //     let mut range_excls = range.range_exclusions();
-                        //     let excl = Elem::from(Concrete::from(I256::zero()));
-                        //     if !range_excls.contains(&excl) {
-                        //         range_excls.push(excl);
-                        //     }
-                        //     tmp_rhs
-                        //         .set_range_exclusions(self, range_excls)
-                        //         .into_expr_err(loc)?;
-                        // } else {
-                        //     // the new min is max(1, rhs.min)
-                        //     let min = Elem::max(
-                        //         Elem::from(Reference::new(new_rhs.into())),
-                        //         // tmp_rhs
-                        //         //     .range_min(self)
-                        //         //     .into_expr_err(loc)?
-                        //         //     .unwrap_or_else(|| {
-                        //         //         panic!("No range minimum: {:?}", tmp_rhs.underlying(self))
-                        //         //     }),
-                        //         Elem::from(Concrete::from(U256::from(1))).cast(
-                        //             Elem::from(Reference::new(tmp_rhs.into())), // .range_min(self)
-                        //                                                         // .into_expr_err(loc)?
-                        //                                                         // .expect("No range minimum?"),
-                        //         ),
-                        //     );
-
-                        //     tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
-                        //     new_rhs = tmp_rhs;
-                        // }
                     }
                 }
                 RangeOp::Sub(..) => {
@@ -338,7 +274,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 rhs_cvar.evaled_range_min(self).into_expr_err(loc)?,
                             ) {
                                 if matches!(
-                                    lmax.range_ord(&rmin),
+                                    lmax.range_ord(&rmin, self),
                                     Some(std::cmp::Ordering::Less)
                                         | Some(std::cmp::Ordering::Equal)
                                 ) {
@@ -373,36 +309,36 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let tmp_lhs = tmp_lhs.latest_version(self);
                         tmp_lhs.set_range_min(self, min).into_expr_err(loc)?;
 
-                        let tmp_var = ContextVar {
-                            loc: Some(loc),
-                            name: format!(
-                                "tmp{}({} >= {})",
-                                ctx.new_tmp(self).into_expr_err(loc)?,
-                                tmp_lhs.name(self).into_expr_err(loc)?,
-                                new_rhs.name(self).into_expr_err(loc)?,
-                            ),
-                            display_name: format!(
-                                "({} >= {})",
-                                tmp_lhs.display_name(self).unwrap(),
-                                new_rhs.display_name(self).unwrap(),
-                            ),
-                            storage: None,
-                            is_tmp: true,
-                            tmp_of: Some(TmpConstruction::new(
-                                tmp_lhs,
-                                RangeOp::Gte,
-                                Some(new_rhs),
-                            )),
-                            is_symbolic: true,
-                            is_return: false,
-                            ty: VarType::BuiltIn(
-                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                                SolcRange::from(Concrete::Bool(true)),
-                            ),
-                        };
+                        // let tmp_var = ContextVar {
+                        //     loc: Some(loc),
+                        //     name: format!(
+                        //         "tmp{}({} >= {})",
+                        //         ctx.new_tmp(self).into_expr_err(loc)?,
+                        //         tmp_lhs.name(self).into_expr_err(loc)?,
+                        //         new_rhs.name(self).into_expr_err(loc)?,
+                        //     ),
+                        //     display_name: format!(
+                        //         "({} >= {})",
+                        //         tmp_lhs.display_name(self).unwrap(),
+                        //         new_rhs.display_name(self).unwrap(),
+                        //     ),
+                        //     storage: None,
+                        //     is_tmp: true,
+                        //     tmp_of: Some(TmpConstruction::new(
+                        //         tmp_lhs,
+                        //         RangeOp::Gte,
+                        //         Some(new_rhs),
+                        //     )),
+                        //     is_symbolic: true,
+                        //     is_return: false,
+                        //     ty: VarType::BuiltIn(
+                        //         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                        //         SolcRange::from(Concrete::Bool(true)),
+                        //     ),
+                        // };
 
-                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+                        // let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        // ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
                 RangeOp::Add(..) => {
@@ -413,9 +349,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // the new max is min(lhs.max, (2**256 - rhs.min))
                         let max = Elem::min(
                             Elem::from(Reference::new(lhs_cvar.into())),
-                            // .range_max(self)
-                            // .into_expr_err(loc)?
-                            // .expect("No range max?"),
                             Elem::from(Concrete::from(U256::MAX)) - Elem::from(rhs_cvar),
                         );
 
@@ -445,6 +378,17 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
 
+                        let tmp_lhs = if new_rhs.latest_version(self) == tmp_lhs {
+                            self.advance_var_in_ctx_forcible(
+                                tmp_lhs.latest_version(self),
+                                loc,
+                                ctx,
+                                true,
+                            )?
+                        } else {
+                            tmp_lhs
+                        };
+
                         if self
                             .require(
                                 tmp_lhs,
@@ -459,37 +403,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
-
-                        let tmp_var = ContextVar {
-                            loc: Some(loc),
-                            name: format!(
-                                "tmp{}({} <= 2**256 - 1 - {})",
-                                ctx.new_tmp(self).into_expr_err(loc)?,
-                                tmp_lhs.name(self).into_expr_err(loc)?,
-                                new_rhs.name(self).into_expr_err(loc)?,
-                            ),
-                            display_name: format!(
-                                "({} <= 2**256 - 1 - {})",
-                                tmp_lhs.display_name(self).unwrap(),
-                                new_rhs.display_name(self).unwrap(),
-                            ),
-                            storage: None,
-                            is_tmp: true,
-                            tmp_of: Some(TmpConstruction::new(
-                                tmp_lhs,
-                                RangeOp::Lte,
-                                Some(tmp_rhs.into()),
-                            )),
-                            is_symbolic: true,
-                            is_return: false,
-                            ty: VarType::BuiltIn(
-                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                                SolcRange::from(Concrete::Bool(true)),
-                            ),
-                        };
-
-                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
                 RangeOp::Mul(..) => {
@@ -500,9 +413,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
                         let max = Elem::min(
                             Elem::from(Reference::new(lhs_cvar.into())),
-                            // .range_max(self)
-                            // .into_expr_err(loc)?
-                            // .expect("No range max?"),
                             Elem::from(Concrete::from(U256::MAX))
                                 / Elem::max(
                                     Elem::from(Concrete::from(U256::from(1))),
@@ -536,6 +446,17 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
 
+                        let tmp_lhs = if new_rhs.latest_version(self) == tmp_lhs {
+                            self.advance_var_in_ctx_forcible(
+                                tmp_lhs.latest_version(self),
+                                loc,
+                                ctx,
+                                true,
+                            )?
+                        } else {
+                            tmp_lhs
+                        };
+
                         if self
                             .require(
                                 tmp_lhs,
@@ -551,38 +472,38 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             return Ok(ExprRet::CtxKilled(KilledKind::Revert));
                         }
 
-                        let tmp_rhs = ContextVarNode::from(tmp_rhs).latest_version(self);
+                        // let tmp_rhs = ContextVarNode::from(tmp_rhs).latest_version(self);
 
-                        let tmp_var = ContextVar {
-                            loc: Some(loc),
-                            name: format!(
-                                "tmp{}({} <= (2**256 - 1) / {})",
-                                ctx.new_tmp(self).into_expr_err(loc)?,
-                                tmp_lhs.name(self).into_expr_err(loc)?,
-                                new_rhs.name(self).into_expr_err(loc)?,
-                            ),
-                            display_name: format!(
-                                "({} <= (2**256 - 1) / {})",
-                                tmp_lhs.display_name(self).unwrap(),
-                                new_rhs.display_name(self).unwrap(),
-                            ),
-                            storage: None,
-                            is_tmp: true,
-                            tmp_of: Some(TmpConstruction::new(
-                                tmp_lhs,
-                                RangeOp::Lte,
-                                Some(tmp_rhs),
-                            )),
-                            is_symbolic: true,
-                            is_return: false,
-                            ty: VarType::BuiltIn(
-                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                                SolcRange::from(Concrete::Bool(true)),
-                            ),
-                        };
+                        // let tmp_var = ContextVar {
+                        //     loc: Some(loc),
+                        //     name: format!(
+                        //         "tmp{}({} <= (2**256 - 1) / {})",
+                        //         ctx.new_tmp(self).into_expr_err(loc)?,
+                        //         tmp_lhs.name(self).into_expr_err(loc)?,
+                        //         new_rhs.name(self).into_expr_err(loc)?,
+                        //     ),
+                        //     display_name: format!(
+                        //         "({} <= (2**256 - 1) / {})",
+                        //         tmp_lhs.display_name(self).unwrap(),
+                        //         new_rhs.display_name(self).unwrap(),
+                        //     ),
+                        //     storage: None,
+                        //     is_tmp: true,
+                        //     tmp_of: Some(TmpConstruction::new(
+                        //         tmp_lhs,
+                        //         RangeOp::Lte,
+                        //         Some(tmp_rhs),
+                        //     )),
+                        //     is_symbolic: true,
+                        //     is_return: false,
+                        //     ty: VarType::BuiltIn(
+                        //         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
+                        //         SolcRange::from(Concrete::Bool(true)),
+                        //     ),
+                        // };
 
-                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+                        // let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+                        // ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
                     }
                 }
                 RangeOp::Exp => {
@@ -592,7 +513,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 .evaled_range_min(self)
                                 .into_expr_err(loc)?
                                 .expect("No range")
-                                .range_ord(&Elem::from(Concrete::from(U256::zero()))),
+                                .range_ord(&Elem::from(Concrete::from(U256::zero())), self),
                             Some(std::cmp::Ordering::Less)
                         ) {
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;

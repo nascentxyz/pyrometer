@@ -3,8 +3,7 @@ use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 use graph::{
     elem::*,
     nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
-        TmpConstruction,
+        BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction,
     },
     AnalyzerBackend, GraphError, Node, Range, SolcRange, VarType,
 };
@@ -45,7 +44,16 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
                 tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
-                let range = self.not_eval(ctx, loc, lhs_cvar)?;
+
+                let mut elem = Elem::Expr(RangeExpr::new(
+                    Elem::from(lhs_cvar),
+                    RangeOp::Not,
+                    Elem::Null,
+                ));
+                elem.arenaize(self);
+                let mut range = SolcRange::new(elem.clone(), elem, vec![]);
+
+                range.cache_eval(self).into_expr_err(loc)?;
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(
@@ -260,42 +268,42 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
     }
 
-    fn not_eval(
-        &self,
-        _ctx: ContextNode,
-        loc: Loc,
-        lhs_cvar: ContextVarNode,
-    ) -> Result<SolcRange, ExprErr> {
-        if let Some(lhs_range) = lhs_cvar.range(self).into_expr_err(loc)? {
-            let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
+    // fn not_eval(
+    //     &mut self,
+    //     _ctx: ContextNode,
+    //     loc: Loc,
+    //     lhs_cvar: ContextVarNode,
+    // ) -> Result<SolcRange, ExprErr> {
+    //     if let Some(lhs_range) = lhs_cvar.ref_range(self).into_expr_err(loc)? {
+    //         let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
 
-            // invert
-            if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?) {
-                let val = Elem::Expr(RangeExpr::new(
-                    lhs_range.range_min().into_owned(),
-                    RangeOp::Not,
-                    Elem::Null,
-                ));
+    //         // invert
+    //         if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?, self) {
+    //             let val = Elem::Expr(RangeExpr::new(
+    //                 lhs_range.range_min().into_owned(),
+    //                 RangeOp::Not,
+    //                 Elem::Null,
+    //             ));
 
-                return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions));
-            }
-        }
+    //             return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions.clone()));
+    //         }
+    //     }
 
-        let min = RangeConcrete {
-            val: Concrete::Bool(false),
-            loc,
-        };
+    //     let min = Elem::Concrete(RangeConcrete {
+    //         val: Concrete::Bool(false),
+    //         loc,
+    //     }).arenaize(self);
 
-        let max = RangeConcrete {
-            val: Concrete::Bool(true),
-            loc,
-        };
-        Ok(SolcRange::new(
-            Elem::Concrete(min),
-            Elem::Concrete(max),
-            vec![],
-        ))
-    }
+    //     let max = Elem::Concrete(RangeConcrete {
+    //         val: Concrete::Bool(true),
+    //         loc,
+    //     }).arenaize(self);
+    //     Ok(SolcRange::new(
+    //         min,
+    //         max,
+    //         vec![],
+    //     ))
+    // }
 
     fn range_eval(
         &self,
@@ -313,7 +321,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         let lhs_max = lhs_range.evaled_range_max(self)?;
                         let rhs_min = rhs_range.evaled_range_min(self)?;
-                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
+                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min, self) {
                             return Ok(true.into());
                         }
 
@@ -321,7 +329,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // false
                         let lhs_min = lhs_range.evaled_range_min(self)?;
                         let rhs_max = rhs_range.evaled_range_max(self)?;
-                        match lhs_min.range_ord(&rhs_max) {
+                        match lhs_min.range_ord(&rhs_max, self) {
                             Some(Ordering::Greater) => {
                                 return Ok(false.into());
                             }
@@ -336,7 +344,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // true
                         let lhs_min = lhs_range.evaled_range_min(self)?;
                         let rhs_max = rhs_range.evaled_range_max(self)?;
-                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
+                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max, self) {
                             return Ok(true.into());
                         }
 
@@ -344,7 +352,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // false
                         let lhs_max = lhs_range.evaled_range_max(self)?;
                         let rhs_min = rhs_range.evaled_range_min(self)?;
-                        match lhs_max.range_ord(&rhs_min) {
+                        match lhs_max.range_ord(&rhs_min, self) {
                             Some(Ordering::Less) => {
                                 return Ok(false.into());
                             }
@@ -359,7 +367,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // true
                         let lhs_max = lhs_range.evaled_range_max(self)?;
                         let rhs_min = rhs_range.evaled_range_min(self)?;
-                        match lhs_max.range_ord(&rhs_min) {
+                        match lhs_max.range_ord(&rhs_min, self) {
                             Some(Ordering::Less) => {
                                 return Ok(true.into());
                             }
@@ -373,7 +381,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // false
                         let lhs_min = lhs_range.evaled_range_min(self)?;
                         let rhs_max = rhs_range.evaled_range_max(self)?;
-                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max) {
+                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max, self) {
                             return Ok(false.into());
                         }
                     }
@@ -382,7 +390,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // true
                         let lhs_min = lhs_range.evaled_range_min(self)?;
                         let rhs_max = rhs_range.evaled_range_max(self)?;
-                        match lhs_min.range_ord(&rhs_max) {
+                        match lhs_min.range_ord(&rhs_max, self) {
                             Some(Ordering::Greater) => {
                                 return Ok(true.into());
                             }
@@ -396,7 +404,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // false
                         let lhs_max = lhs_range.evaled_range_max(self)?;
                         let rhs_min = rhs_range.evaled_range_min(self)?;
-                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min) {
+                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min, self) {
                             return Ok(false.into());
                         }
                     }
@@ -413,11 +421,11 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Some(Ordering::Equal),
                         ) = (
                             // check lhs_min == lhs_max, ensures lhs is const
-                            lhs_min.range_ord(&lhs_max),
+                            lhs_min.range_ord(&lhs_max, self),
                             // check lhs_min == rhs_min, checks if lhs == rhs
-                            lhs_min.range_ord(&rhs_min),
+                            lhs_min.range_ord(&rhs_min, self),
                             // check rhs_min == rhs_max, ensures rhs is const
-                            rhs_min.range_ord(&rhs_max),
+                            rhs_min.range_ord(&rhs_max, self),
                         ) {
                             return Ok(true.into());
                         }
@@ -435,11 +443,11 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Some(Ordering::Equal),
                         ) = (
                             // check lhs_min == lhs_max, ensures lhs is const
-                            lhs_min.range_ord(&lhs_max),
+                            lhs_min.range_ord(&lhs_max, self),
                             // check lhs_min == rhs_min, checks if lhs == rhs
-                            lhs_min.range_ord(&rhs_min),
+                            lhs_min.range_ord(&rhs_min, self),
                             // check rhs_min == rhs_max, ensures rhs is const
-                            rhs_min.range_ord(&rhs_max),
+                            rhs_min.range_ord(&rhs_max, self),
                         ) {
                             return Ok(false.into());
                         }

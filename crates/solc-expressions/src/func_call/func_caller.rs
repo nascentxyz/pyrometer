@@ -1,12 +1,12 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::{
     func_call::modifier::ModifierCaller, helper::CallerHelper, internal_call::InternalFuncCaller,
     intrinsic_call::IntrinsicFuncCaller, namespaced_call::NameSpaceFuncCaller, ContextBuilder,
     ExprErr, ExpressionParser, IntoExprErr, StatementParser,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use graph::{
     nodes::{
@@ -21,25 +21,24 @@ use solang_parser::pt::{Expression, Loc, NamedArgument};
 
 use std::collections::BTreeMap;
 
-
 #[derive(Debug)]
 pub enum NamedOrUnnamedArgs<'a> {
     Named(&'a [NamedArgument]),
-    Unnamed(&'a [Expression])
+    Unnamed(&'a [Expression]),
 }
 
 impl<'a> NamedOrUnnamedArgs<'a> {
     pub fn named_args(&self) -> Option<&'a [NamedArgument]> {
         match self {
             NamedOrUnnamedArgs::Named(inner) => Some(inner),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn unnamed_args(&self) -> Option<&'a [Expression]> {
         match self {
             NamedOrUnnamedArgs::Unnamed(inner) => Some(inner),
-            _ => None
+            _ => None,
         }
     }
 
@@ -64,7 +63,14 @@ impl<'a> NamedOrUnnamedArgs<'a> {
         }
     }
 
-    pub fn parse(&self, analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend), ctx: ContextNode, loc: Loc) -> Result<(), ExprErr> {
+    pub fn parse(
+        &self,
+        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
+                  + Sized
+                  + GraphBackend),
+        ctx: ContextNode,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
         match self {
             NamedOrUnnamedArgs::Unnamed(inner) => analyzer.parse_inputs(ctx, loc, inner),
             NamedOrUnnamedArgs::Named(inner) => {
@@ -86,11 +92,19 @@ impl<'a> NamedOrUnnamedArgs<'a> {
                 } else {
                     Ok(())
                 }
-            },
+            }
         }
     }
 
-    pub fn parse_n(&self, n: usize, analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend), ctx: ContextNode, loc: Loc) -> Result<(), ExprErr> {
+    pub fn parse_n(
+        &self,
+        n: usize,
+        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
+                  + Sized
+                  + GraphBackend),
+        ctx: ContextNode,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
         let append = Rc::new(RefCell::new(false));
         match self {
             NamedOrUnnamedArgs::Unnamed(inner) => {
@@ -111,7 +125,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
                 } else {
                     Ok(())
                 }
-            },
+            }
             NamedOrUnnamedArgs::Named(inner) => {
                 inner.iter().take(n).try_for_each(|arg| {
                     analyzer.parse_input(ctx, loc, &arg.expr, &append)?;
@@ -130,7 +144,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
                 } else {
                     Ok(())
                 }
-            },
+            }
         }
     }
 
@@ -140,19 +154,23 @@ impl<'a> NamedOrUnnamedArgs<'a> {
         } else {
             match self {
                 NamedOrUnnamedArgs::Unnamed(_inner) => inputs,
-                NamedOrUnnamedArgs::Named(inner) => {
-                    ExprRet::Multi(ordered_params.iter().map(|param| {
-                        let index = inner.iter().enumerate().find(|(_i, arg)| {
-                            &arg.name.name == param
-                        }).unwrap().0;
-                        match &inputs {
-                            ExprRet::Multi(inner) => {
-                                inner[index].clone()
+                NamedOrUnnamedArgs::Named(inner) => ExprRet::Multi(
+                    ordered_params
+                        .iter()
+                        .map(|param| {
+                            let index = inner
+                                .iter()
+                                .enumerate()
+                                .find(|(_i, arg)| &arg.name.name == param)
+                                .unwrap()
+                                .0;
+                            match &inputs {
+                                ExprRet::Multi(inner) => inner[index].clone(),
+                                _ => panic!("Mismatched ExprRet type"),
                             }
-                            _ => panic!("Mismatched ExprRet type")
-                        }
-                    }).collect())
-                },
+                        })
+                        .collect(),
+                ),
             }
         }
     }
@@ -177,9 +195,13 @@ pub trait FuncCaller:
     ) -> Result<(), ExprErr> {
         use solang_parser::pt::Expression::*;
         match func_expr {
-            MemberAccess(loc, member_expr, ident) => {
-                self.call_name_spaced_func(ctx, loc, member_expr, ident, NamedOrUnnamedArgs::Named(input_exprs))
-            }
+            MemberAccess(loc, member_expr, ident) => self.call_name_spaced_func(
+                ctx,
+                loc,
+                member_expr,
+                ident,
+                NamedOrUnnamedArgs::Named(input_exprs),
+            ),
             Variable(ident) => self.call_internal_named_func(ctx, loc, ident, input_exprs),
             e => Err(ExprErr::IntrinsicNamedArgs(
                 *loc,
@@ -198,10 +220,20 @@ pub trait FuncCaller:
     ) -> Result<(), ExprErr> {
         use solang_parser::pt::Expression::*;
         match func_expr {
-            MemberAccess(loc, member_expr, ident) => {
-                self.call_name_spaced_func(ctx, loc, member_expr, ident, NamedOrUnnamedArgs::Unnamed(input_exprs))
-            }
-            Variable(ident) => self.call_internal_func(ctx, loc, ident, func_expr, NamedOrUnnamedArgs::Unnamed(input_exprs)),
+            MemberAccess(loc, member_expr, ident) => self.call_name_spaced_func(
+                ctx,
+                loc,
+                member_expr,
+                ident,
+                NamedOrUnnamedArgs::Unnamed(input_exprs),
+            ),
+            Variable(ident) => self.call_internal_func(
+                ctx,
+                loc,
+                ident,
+                func_expr,
+                NamedOrUnnamedArgs::Unnamed(input_exprs),
+            ),
             _ => {
                 self.parse_ctx_expr(func_expr, ctx)?;
                 self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
@@ -215,7 +247,12 @@ pub trait FuncCaller:
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.match_intrinsic_fallback(ctx, &loc, &NamedOrUnnamedArgs::Unnamed(input_exprs), ret)
+                    analyzer.match_intrinsic_fallback(
+                        ctx,
+                        &loc,
+                        &NamedOrUnnamedArgs::Unnamed(input_exprs),
+                        ret,
+                    )
                 })
             }
         }
@@ -435,7 +472,7 @@ pub trait FuncCaller:
     }
 
     /// Actually executes the function
-    #[tracing::instrument(level = "trace", skip_all)]
+    // #[tracing::instrument(level = "trace", skip_all)]
     fn execute_call_inner(
         &mut self,
         loc: Loc,
@@ -445,6 +482,7 @@ pub trait FuncCaller:
         _renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
         func_call_str: Option<&str>,
     ) -> Result<(), ExprErr> {
+        tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
             func_node
@@ -462,13 +500,19 @@ pub trait FuncCaller:
                     }
                 });
 
+            // parse the function body
             self.parse_ctx_statement(&body, false, Some(callee_ctx));
-            if let Some(mod_state) = &callee_ctx.underlying(self).into_expr_err(loc)?.modifier_state.clone() {
+            if let Some(mod_state) = &callee_ctx
+                .underlying(self)
+                .into_expr_err(loc)?
+                .modifier_state
+                .clone()
+            {
                 if mod_state.num == 0 {
-                    return self.ctx_rets(loc, mod_state.parent_caller_ctx, callee_ctx)    
+                    return self.ctx_rets(loc, mod_state.parent_caller_ctx, callee_ctx);
                 }
             }
-            
+
             if callee_ctx != caller_ctx {
                 self.ctx_rets(loc, caller_ctx, callee_ctx)
             } else {
@@ -491,7 +535,9 @@ pub trait FuncCaller:
             )
             .unwrap();
             let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
-            ret_subctx.set_continuation_ctx(self, caller_ctx).into_expr_err(loc)?;
+            ret_subctx
+                .set_continuation_ctx(self, caller_ctx, "execute_call_inner")
+                .into_expr_err(loc)?;
 
             let res = callee_ctx
                 .set_child_call(ret_subctx, self)

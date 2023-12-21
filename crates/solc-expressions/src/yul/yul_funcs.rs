@@ -1,5 +1,6 @@
 use crate::{
-    assign::Assign, variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env, ExprErr, IntoExprErr,
+    assign::Assign, variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env, ExprErr,
+    IntoExprErr,
 };
 
 use graph::{

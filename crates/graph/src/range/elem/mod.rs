@@ -12,7 +12,7 @@ pub use expr::*;
 pub use map_or_array::*;
 pub use reference::*;
 
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum MinMaxed<T> {
     Minimized(Box<Elem<T>>),
     Maximized(Box<Elem<T>>),

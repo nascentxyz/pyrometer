@@ -74,7 +74,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 // we can drop the cast if the max of the dynamic lhs is less than the cast
                 let concretized_lhs = self.lhs.maximize(analyzer)?;
                 if matches!(
-                    concretized_lhs.range_ord(&self.rhs),
+                    concretized_lhs.range_ord(&self.rhs, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 ) {
                     return Ok(*self.lhs.clone());
@@ -124,7 +124,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                         ) {
                                             if acc.is_none()
                                                 || matches!(
-                                                    acc.clone().unwrap().range_ord(val),
+                                                    acc.clone().unwrap().range_ord(val, analyzer),
                                                     Some(std::cmp::Ordering::Greater)
                                                 )
                                             {
@@ -155,7 +155,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                         ) {
                                             if acc.is_none()
                                                 || matches!(
-                                                    acc.clone().unwrap().range_ord(val),
+                                                    acc.clone().unwrap().range_ord(val, analyzer),
                                                     Some(std::cmp::Ordering::Less)
                                                 )
                                             {
@@ -264,8 +264,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let rhs_max_neg = rhs_max.pre_evaled_is_negative();
 
         let consts = (
-            matches!(lhs_min.range_ord(&lhs_max), Some(std::cmp::Ordering::Equal)),
-            matches!(rhs_min.range_ord(&rhs_max), Some(std::cmp::Ordering::Equal)),
+            matches!(
+                lhs_min.range_ord(&lhs_max, analyzer),
+                Some(std::cmp::Ordering::Equal)
+            ),
+            matches!(
+                rhs_min.range_ord(&rhs_max, analyzer),
+                Some(std::cmp::Ordering::Equal)
+            ),
         );
 
         fn fallback(
@@ -285,7 +291,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let res = match self.op {
             RangeOp::GetLength => {
                 if maximize {
-                    let mut new = lhs_max.clone();
+                    let new = lhs_max.clone();
                     let new_max = new.simplify_minimize(&mut Default::default(), analyzer)?;
                     let res = new_max.range_get_length();
                     res.unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
@@ -326,7 +332,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                         ) {
                                             if acc.is_none()
                                                 || matches!(
-                                                    acc.clone().unwrap().range_ord(val),
+                                                    acc.clone().unwrap().range_ord(val, analyzer),
                                                     Some(std::cmp::Ordering::Greater)
                                                 )
                                             {
@@ -374,7 +380,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                         ) {
                                             if acc.is_none()
                                                 || matches!(
-                                                    acc.clone().unwrap().range_ord(val),
+                                                    acc.clone().unwrap().range_ord(val, analyzer),
                                                     Some(std::cmp::Ordering::Less)
                                                 )
                                             {
@@ -450,7 +456,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     }
 
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                    candidates.sort_by(|a, b| match a.range_ord(b) {
+                    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                         Some(r) => r,
                         _ => std::cmp::Ordering::Less,
                     });
@@ -484,12 +490,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     let one = Elem::from(Concrete::from(U256::from(1)));
                     let zero = Elem::from(Concrete::from(U256::from(0)));
                     let rhs_min_contains_zero = matches!(
-                        rhs_min.range_ord(&zero),
+                        rhs_min.range_ord(&zero, analyzer),
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                     );
 
                     let rhs_max_contains_zero = matches!(
-                        rhs_max.range_ord(&zero),
+                        rhs_max.range_ord(&zero, analyzer),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                     );
 
@@ -505,7 +511,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     //     zero   min                          max  uint256.max
                     // lhs:  | - - |----------------------------| - - |
                     // rhs:  | - - |--| - - - - - - - - - - - - - - - |
-                    match lhs_max.range_ord(&rhs_min) {
+                    match lhs_max.range_ord(&rhs_min, analyzer) {
                         Some(std::cmp::Ordering::Less) => {
                             // We are going to overflow, zero not possible
                         }
@@ -520,7 +526,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         }
                         Some(std::cmp::Ordering::Greater) => {
                             // No guarantees on overflow, check lhs_min
-                            match lhs_min.range_ord(&rhs_min) {
+                            match lhs_min.range_ord(&rhs_min, analyzer) {
                                 Some(std::cmp::Ordering::Less) => {
                                     // fully contained, add zero and max
                                     candidates.push(Some(zero.clone()));
@@ -541,7 +547,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                     // lhs:  | - - |----------------------------| - - |
                                     // rhs:  | - |----? - - - - - - - - - - - - - - - |
                                     // figure out where rhs max is
-                                    match lhs_min.range_ord(&rhs_max) {
+                                    match lhs_min.range_ord(&rhs_max, analyzer) {
                                         Some(std::cmp::Ordering::Less) => {
                                             //     zero   min
                                             // lhs:  | - - |---?
@@ -582,7 +588,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         lhs_max.range_wrapping_sub(&rhs_max),
                     ]);
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                    candidates.sort_by(|a, b| match a.range_ord(b) {
+                    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                         Some(r) => r,
                         _ => std::cmp::Ordering::Less,
                     });
@@ -619,8 +625,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (rhs_min.range_ord(&one), rhs_max.range_ord(&one))
-                    {
+                    ) = (
+                        rhs_min.range_ord(&one, analyzer),
+                        rhs_max.range_ord(&one, analyzer),
+                    ) {
                         candidates.push(Some(lhs_max.clone()));
                         candidates.push(Some(lhs_min.clone()));
                     }
@@ -629,8 +637,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (lhs_min.range_ord(&one), lhs_max.range_ord(&one))
-                    {
+                    ) = (
+                        lhs_min.range_ord(&one, analyzer),
+                        lhs_max.range_ord(&one, analyzer),
+                    ) {
                         candidates.push(Some(rhs_max.clone()));
                         candidates.push(Some(rhs_min.clone()));
                     }
@@ -640,8 +650,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
                     ) = (
-                        rhs_min.range_ord(&negative_one),
-                        rhs_max.range_ord(&negative_one),
+                        rhs_min.range_ord(&negative_one, analyzer),
+                        rhs_max.range_ord(&negative_one, analyzer),
                     ) {
                         candidates.push(lhs_max.range_mul(&negative_one));
                         candidates.push(lhs_min.range_mul(&negative_one));
@@ -652,8 +662,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
                     ) = (
-                        lhs_min.range_ord(&negative_one),
-                        lhs_max.range_ord(&negative_one),
+                        lhs_min.range_ord(&negative_one, analyzer),
+                        lhs_max.range_ord(&negative_one, analyzer),
                     ) {
                         candidates.push(rhs_max.range_mul(&negative_one));
                         candidates.push(rhs_min.range_mul(&negative_one));
@@ -663,16 +673,20 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (rhs_min.range_ord(&zero), rhs_max.range_ord(&zero))
-                    {
+                    ) = (
+                        rhs_min.range_ord(&zero, analyzer),
+                        rhs_max.range_ord(&zero, analyzer),
+                    ) {
                         candidates.push(Some(zero.clone()));
                     }
                     // check if lhs contains zero
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (lhs_min.range_ord(&zero), lhs_max.range_ord(&zero))
-                    {
+                    ) = (
+                        lhs_min.range_ord(&zero, analyzer),
+                        lhs_max.range_ord(&zero, analyzer),
+                    ) {
                         candidates.push(Some(zero.clone()));
                     }
                     candidates.extend(vec![
@@ -683,7 +697,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     ]);
                     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
 
-                    candidates.sort_by(|a, b| match a.range_ord(b) {
+                    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                         Some(r) => r,
                         _ => std::cmp::Ordering::Less,
                     });
@@ -712,7 +726,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             // we dont know if lhs_max * rhs_min is larger or lhs_min * rhs_max is smaller
                             match (lhs_min.range_mul(&rhs_min), lhs_max.range_mul(&rhs_max)) {
                                 (Some(min_expr), Some(max_expr)) => {
-                                    match min_expr.range_ord(&max_expr) {
+                                    match min_expr.range_ord(&max_expr, analyzer) {
                                         Some(std::cmp::Ordering::Less) => max_expr,
                                         Some(std::cmp::Ordering::Greater) => min_expr,
                                         _ => max_expr,
@@ -767,7 +781,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             // we dont know if lhs_max * rhs_min is smaller or lhs_min * rhs_max is smaller
                             match (lhs_max.range_mul(&rhs_min), lhs_min.range_mul(&rhs_max)) {
                                 (Some(min_expr), Some(max_expr)) => {
-                                    match min_expr.range_ord(&max_expr) {
+                                    match min_expr.range_ord(&max_expr, analyzer) {
                                         Some(std::cmp::Ordering::Less) => min_expr,
                                         Some(std::cmp::Ordering::Greater) => max_expr,
                                         _ => min_expr,
@@ -811,12 +825,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&one),
+                    rhs_min.range_ord(&one, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&one),
+                    rhs_max.range_ord(&one, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -826,12 +840,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&negative_one),
+                    rhs_min.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&negative_one),
+                    rhs_max.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -841,7 +855,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -972,7 +986,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_min(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1029,7 +1043,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_max(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1124,10 +1138,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
             RangeOp::Eq => {
                 // prevent trying to eval when we have dependents
-                if !lhs_min.dependent_on().is_empty()
-                    || !lhs_max.dependent_on().is_empty()
-                    || !rhs_min.dependent_on().is_empty()
-                    || !rhs_max.dependent_on().is_empty()
+                if !lhs_min.dependent_on(analyzer).is_empty()
+                    || !lhs_max.dependent_on(analyzer).is_empty()
+                    || !rhs_min.dependent_on(analyzer).is_empty()
+                    || !rhs_max.dependent_on(analyzer).is_empty()
                 {
                     return Ok(fallback(self, lhs_min, rhs_min, consts));
                 }
@@ -1146,8 +1160,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 
                 if maximize {
                     // check for any overlap
-                    let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min);
-                    let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max);
+                    let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min, analyzer);
+                    let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max, analyzer);
 
                     // if lhs max is less than the rhs min, it has to be false
                     if matches!(lhs_max_rhs_min_ord, Some(std::cmp::Ordering::Less)) {
@@ -1180,11 +1194,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     // check if either lhs element is *not* contained by rhs
                     match (
                         // check if lhs is constant
-                        lhs_min.range_ord(&lhs_max),
+                        lhs_min.range_ord(&lhs_max, analyzer),
                         // check if rhs is constant
-                        rhs_min.range_ord(&rhs_max),
+                        rhs_min.range_ord(&rhs_max, analyzer),
                         // check if lhs is equal to rhs
-                        lhs_min.range_ord(&rhs_min),
+                        lhs_min.range_ord(&rhs_min, analyzer),
                     ) {
                         (
                             Some(std::cmp::Ordering::Equal),
@@ -1205,10 +1219,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
             RangeOp::Neq => {
                 // prevent trying to eval when we have dependents
-                if !lhs_min.dependent_on().is_empty()
-                    || !lhs_max.dependent_on().is_empty()
-                    || !rhs_min.dependent_on().is_empty()
-                    || !rhs_max.dependent_on().is_empty()
+                if !lhs_min.dependent_on(analyzer).is_empty()
+                    || !lhs_max.dependent_on(analyzer).is_empty()
+                    || !rhs_min.dependent_on(analyzer).is_empty()
+                    || !rhs_max.dependent_on(analyzer).is_empty()
                 {
                     return Ok(fallback(self, lhs_min, rhs_min, consts));
                 }
@@ -1229,7 +1243,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     // true is the maximum is when they are both consts and equal
                     if matches!(consts, (true, true)) {
                         // both are consts, check if they are equal
-                        if matches!(lhs_min.range_ord(&rhs_min), Some(std::cmp::Ordering::Equal)) {
+                        if matches!(
+                            lhs_min.range_ord(&rhs_min, analyzer),
+                            Some(std::cmp::Ordering::Equal)
+                        ) {
                             return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc,
@@ -1246,7 +1263,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if matches!(consts, (true, true)) {
                         // both are consts, check if we are forced to return true
                         if matches!(
-                            lhs_min.range_ord(&rhs_min),
+                            lhs_min.range_ord(&rhs_min, analyzer),
                             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Less)
                         ) {
                             return Ok(Elem::Concrete(RangeConcrete {
@@ -1257,8 +1274,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     }
 
                     // check for any overlap
-                    let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min);
-                    let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max);
+                    let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min, analyzer);
+                    let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max, analyzer);
 
                     // if lhs max is less than the rhs min, it has to be != (true)
                     if matches!(lhs_max_rhs_min_ord, Some(std::cmp::Ordering::Less)) {
@@ -1292,7 +1309,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_shl(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1315,7 +1332,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_shr(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1338,7 +1355,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_and(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1361,7 +1378,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_or(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1380,7 +1397,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 assert!(matches!(rhs_min, Elem::Null) && matches!(rhs_max, Elem::Null));
                 let candidates = vec![lhs_min.range_not(), lhs_min.range_not()];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1405,7 +1422,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_cast(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1429,7 +1446,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_exp(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1456,12 +1473,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&zero),
+                    rhs_min.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&zero),
+                    rhs_max.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1471,12 +1488,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&negative_one),
+                    rhs_min.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&negative_one),
+                    rhs_max.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1486,7 +1503,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1513,12 +1530,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&zero),
+                    rhs_min.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&zero),
+                    rhs_max.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1528,12 +1545,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&negative_one),
+                    rhs_min.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&negative_one),
+                    rhs_max.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1543,7 +1560,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1570,12 +1587,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&zero),
+                    rhs_min.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&zero),
+                    rhs_max.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1585,12 +1602,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let min_contains = matches!(
-                    rhs_min.range_ord(&negative_one),
+                    rhs_min.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    rhs_max.range_ord(&negative_one),
+                    rhs_max.range_ord(&negative_one, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1600,7 +1617,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1621,12 +1638,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 let zero = Elem::from(Concrete::from(U256::from(0)));
 
                 let min_contains = matches!(
-                    lhs_min.range_ord(&zero),
+                    lhs_min.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
                 );
 
                 let max_contains = matches!(
-                    lhs_max.range_ord(&zero),
+                    lhs_max.range_ord(&zero, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 );
 
@@ -1649,7 +1666,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 }
 
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });
@@ -1673,7 +1690,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     lhs_max.range_concat(&rhs_max),
                 ];
                 let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-                candidates.sort_by(|a, b| match a.range_ord(b) {
+                candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
                     Some(r) => r,
                     _ => std::cmp::Ordering::Less,
                 });

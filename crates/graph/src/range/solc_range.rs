@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
+    nodes::{Builtin, Concrete, ContextVarNode},
     range::{elem::*, range_string::*, Range, RangeEval},
     AsDotStr, GraphBackend, GraphError,
 };
@@ -60,9 +60,9 @@ impl From<Elem<Concrete>> for SolcRange {
 
 impl SolcRange {
     /// Get all ContextVarNodes that this range references
-    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps = self.range_min().dependent_on();
-        deps.extend(self.range_max().dependent_on());
+    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        let mut deps = self.range_min().dependent_on(analyzer);
+        deps.extend(self.range_max().dependent_on(analyzer));
         deps.dedup();
 
         deps.into_iter().map(ContextVarNode::from).collect()
@@ -77,42 +77,6 @@ impl SolcRange {
         deps.dedup();
 
         Ok(deps)
-    }
-
-    /// Update a particular context variable with the latest version
-    pub fn update_deps(
-        &mut self,
-        node: ContextVarNode,
-        ctx: ContextNode,
-        analyzer: &impl GraphBackend,
-    ) {
-        assert!(node.latest_version(analyzer) == node);
-        let deps = self.dependent_on();
-        let mapping: BTreeMap<ContextVarNode, ContextVarNode> = deps
-            .into_iter()
-            .filter(|dep| !dep.is_const(analyzer).unwrap())
-            .map(|dep| {
-                let latest = dep.latest_version_in_ctx(ctx, analyzer).unwrap();
-                // let dep_depends_on_node = dep.range(analyzer).unwrap().unwrap().recursive_dependent_on(analyzer).unwrap();
-                // let dep_depends_on_node = dep_depends_on_node.contains(&node) || dep_depends_on_node.contains(&);
-                if latest == node {
-                    if let Some(prev) = latest.previous_version(analyzer) {
-                        (dep, prev)
-                    } else {
-                        (dep, dep)
-                    }
-                } else {
-                    (dep, latest)
-                }
-            })
-            .collect();
-
-        let mut min = self.range_min().into_owned();
-        let mut max = self.range_max().into_owned();
-        min.update_deps(&mapping);
-        max.update_deps(&mapping);
-        self.set_range_min(min);
-        self.set_range_max(max);
     }
 
     pub fn new(min: Elem<Concrete>, max: Elem<Concrete>, exclusions: Vec<Elem<Concrete>>) -> Self {
@@ -136,7 +100,7 @@ impl SolcRange {
     pub fn is_const(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let min = self.evaled_range_min(analyzer)?;
         let max = self.evaled_range_max(analyzer)?;
-        Ok(min.range_eq(&max))
+        Ok(min.range_eq(&max, analyzer))
     }
 
     pub fn min_is_negative(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
@@ -568,13 +532,13 @@ impl SolcRange {
         }
 
         let flattened_min = self.range_min().flatten(false, analyzer)?;
-        let simp_min = if !self.range_min().is_flatten_cached() {
+        let simp_min = if !self.range_min().is_flatten_cached(analyzer) {
             flattened_min.simplify_minimize(&mut Default::default(), analyzer)?
         } else {
             flattened_min
         };
         let flattened_max = self.range_max().flatten(true, analyzer)?;
-        let simp_max = if !self.range_max().is_flatten_cached() {
+        let simp_max = if !self.range_max().is_flatten_cached(analyzer) {
             flattened_max.simplify_maximize(&mut Default::default(), analyzer)?
         } else {
             flattened_max
@@ -601,15 +565,15 @@ impl Range<Concrete> for SolcRange {
     }
 
     fn cache_eval(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        self.min.arenaize(analyzer);
+        self.max.arenaize(analyzer);
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
-            max.cache_flatten(analyzer)?;
             max.cache_maximize(analyzer)?;
             self.max_cached = Some(self.range_max().maximize(analyzer)?);
         }
         if self.min_cached.is_none() {
             let min = self.range_min_mut();
-            min.cache_flatten(analyzer)?;
             min.cache_minimize(analyzer)?;
             self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }
@@ -671,11 +635,21 @@ impl Range<Concrete> for SolcRange {
     fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>) {
         self.exclusions = new;
     }
-    fn filter_min_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx) {
-        self.min.filter_recursion(self_idx, new_idx);
+    fn filter_min_recursion(
+        &mut self,
+        self_idx: NodeIdx,
+        new_idx: NodeIdx,
+        analyzer: &mut impl GraphBackend,
+    ) {
+        self.min.filter_recursion(self_idx, new_idx, analyzer);
     }
-    fn filter_max_recursion(&mut self, self_idx: NodeIdx, new_idx: NodeIdx) {
-        self.max.filter_recursion(self_idx, new_idx);
+    fn filter_max_recursion(
+        &mut self,
+        self_idx: NodeIdx,
+        new_idx: NodeIdx,
+        analyzer: &mut impl GraphBackend,
+    ) {
+        self.max.filter_recursion(self_idx, new_idx, analyzer);
     }
 
     fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError> {
@@ -706,7 +680,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         matches!(
             self.evaled_range_min(analyzer)
                 .unwrap()
-                .range_ord(&self.evaled_range_max(analyzer).unwrap()),
+                .range_ord(&self.evaled_range_max(analyzer).unwrap(), analyzer),
             None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         )
     }
@@ -715,14 +689,14 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         let min_contains = matches!(
             self.evaled_range_min(analyzer)
                 .unwrap()
-                .range_ord(&other.evaled_range_min(analyzer).unwrap()),
+                .range_ord(&other.evaled_range_min(analyzer).unwrap(), analyzer),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
             self.evaled_range_max(analyzer)
                 .unwrap()
-                .range_ord(&other.evaled_range_max(analyzer).unwrap()),
+                .range_ord(&other.evaled_range_max(analyzer).unwrap(), analyzer),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
 
@@ -733,7 +707,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         let min_contains = match self
             .evaled_range_min(analyzer)
             .unwrap()
-            .range_ord(&other.minimize(analyzer).unwrap())
+            .range_ord(&other.minimize(analyzer).unwrap(), analyzer)
         {
             Some(std::cmp::Ordering::Less) => true,
             Some(std::cmp::Ordering::Equal) => return true,
@@ -743,7 +717,7 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         let max_contains = match self
             .evaled_range_max(analyzer)
             .unwrap()
-            .range_ord(&other.maximize(analyzer).unwrap())
+            .range_ord(&other.maximize(analyzer).unwrap(), analyzer)
         {
             Some(std::cmp::Ordering::Greater) => true,
             Some(std::cmp::Ordering::Equal) => return true,
@@ -757,14 +731,14 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         let lhs_min = self.evaled_range_min(analyzer).unwrap();
         let rhs_max = other.evaled_range_max(analyzer).unwrap();
 
-        match lhs_min.range_ord(&rhs_max) {
+        match lhs_min.range_ord(&rhs_max, analyzer) {
             Some(std::cmp::Ordering::Less) => {
                 // we know our min is less than the other max
                 // check that the max is greater than or eq their min
                 let lhs_max = self.evaled_range_max(analyzer).unwrap();
                 let rhs_min = other.evaled_range_min(analyzer).unwrap();
                 matches!(
-                    lhs_max.range_ord(&rhs_min),
+                    lhs_max.range_ord(&rhs_min, analyzer),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 )
             }

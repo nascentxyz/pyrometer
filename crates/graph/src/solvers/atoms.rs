@@ -1,3 +1,4 @@
+use crate::range::exec_traits::ExecOp;
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{
@@ -57,19 +58,11 @@ impl AtomOrPart {
     }
 
     pub fn is_part(&self) -> bool {
-        if let AtomOrPart::Part(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, AtomOrPart::Part(_))
     }
 
     pub fn is_atom(&self) -> bool {
-        if let AtomOrPart::Atom(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, AtomOrPart::Atom(_))
     }
 
     pub fn expect_atom(&self) -> SolverAtom {
@@ -80,10 +73,10 @@ impl AtomOrPart {
         }
     }
 
-    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
+    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         match self {
-            AtomOrPart::Part(e) => e.dependent_on(),
-            AtomOrPart::Atom(a) => a.dependent_on(),
+            AtomOrPart::Part(e) => e.dependent_on(analyzer),
+            AtomOrPart::Atom(a) => a.dependent_on(analyzer),
         }
     }
 }
@@ -157,9 +150,9 @@ impl SolverAtom {
         self.ty = self.max_ty();
     }
 
-    pub fn dependent_on(&self) -> Vec<ContextVarNode> {
-        let mut deps = self.lhs.dependent_on();
-        deps.extend(self.rhs.dependent_on());
+    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        let mut deps = self.lhs.dependent_on(analyzer);
+        deps.extend(self.rhs.dependent_on(analyzer));
         deps
     }
 
@@ -237,20 +230,26 @@ pub static LIA_OPS: &[RangeOp] = &[
 ];
 
 pub trait Atomize {
-    fn atoms_or_part(&self) -> AtomOrPart;
-    fn atomize(&self) -> Option<SolverAtom>;
+    fn atoms_or_part(&self, analyzer: &impl GraphBackend) -> AtomOrPart;
+    fn atomize(&self, analyzer: &impl GraphBackend) -> Option<SolverAtom>;
 }
 
 impl Atomize for Elem<Concrete> {
-    fn atoms_or_part(&self) -> AtomOrPart {
+    fn atoms_or_part(&self, analyzer: &impl GraphBackend) -> AtomOrPart {
         match self {
+            Elem::Arena(_) => todo!(),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             Elem::Expr(expr) => {
                 // println!("atoms or part: was expr: {:?} {} {:?}", expr.lhs.atoms_or_part(), expr.op.to_string(), expr.rhs.atoms_or_part());
-                match (expr.lhs.atoms_or_part(), expr.rhs.atoms_or_part()) {
+                match (
+                    expr.lhs.atoms_or_part(analyzer),
+                    expr.rhs.atoms_or_part(analyzer),
+                ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         match (l, r) {
+                            (_, Elem::Arena(_)) => todo!(),
+                            (Elem::Arena(_), _) => todo!(),
                             (Elem::Reference(Reference { .. }), Elem::Concrete(_))
                             | (Elem::Concrete(_), Elem::Reference(Reference { .. })) => {
                                 let ty = OpType::new(expr.op);
@@ -296,9 +295,10 @@ impl Atomize for Elem<Concrete> {
                             (Elem::Concrete(_), Elem::Expr(_)) => {
                                 todo!("here4");
                             }
-                            (l @ Elem::Concrete(_), r @ Elem::Concrete(_)) => {
-                                todo!("Should have simplified? {l} {} {r}", expr.op.to_string())
-                            }
+                            (Elem::Concrete(_), Elem::Concrete(_)) => expr
+                                .exec_op(true, analyzer)
+                                .unwrap()
+                                .atoms_or_part(analyzer),
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),
                             (_, Elem::ConcreteDyn(_)) => AtomOrPart::Part(Elem::Null),
                             (Elem::Null, _) => AtomOrPart::Part(Elem::Null),
@@ -320,7 +320,7 @@ impl Atomize for Elem<Concrete> {
         }
     }
 
-    fn atomize(&self) -> Option<SolverAtom> {
+    fn atomize(&self, analyzer: &impl GraphBackend) -> Option<SolverAtom> {
         use Elem::*;
 
         match self {
@@ -330,12 +330,13 @@ impl Atomize for Elem<Concrete> {
             ConcreteDyn(_) => None, //{ println!("was concDyn"); None},
             Expr(_) => {
                 // println!("atomized: was expr");
-                let AtomOrPart::Atom(mut a) = self.atoms_or_part() else {
+                let AtomOrPart::Atom(mut a) = self.atoms_or_part(analyzer) else {
                     return None;
                 };
                 a.update_max_ty();
                 Some(a)
             }
+            Arena(_) => todo!(),
         }
     }
 }

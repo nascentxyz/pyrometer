@@ -35,7 +35,11 @@ impl FunctionNode {
         }
     }
 
-    pub fn add_gas_cost(&mut self, analyzer: &mut impl GraphBackend, cost: u64) -> Result<(), GraphError>{
+    pub fn add_gas_cost(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        cost: u64,
+    ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.add_gas_cost(cost);
         Ok(())
     }
@@ -143,18 +147,22 @@ impl FunctionNode {
         }
     }
 
-    pub fn prefix_only_name(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
+    pub fn prefix_only_name(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<String>, GraphError> {
         match self.underlying(analyzer)?.ty {
-            FunctionTy::Function => Ok(Some(self
-                .underlying(analyzer)?
-                .name
-                .clone()
-                .expect("Unnamed function")
-                .name
-                .chars()
-                .take_while(|&ch| ch != '(')
-                .collect::<String>())),
-            _ => Ok(None)
+            FunctionTy::Function => Ok(Some(
+                self.underlying(analyzer)?
+                    .name
+                    .clone()
+                    .expect("Unnamed function")
+                    .name
+                    .chars()
+                    .take_while(|&ch| ch != '(')
+                    .collect::<String>(),
+            )),
+            _ => Ok(None),
         }
     }
 
@@ -356,12 +364,18 @@ impl FunctionNode {
 
     pub fn ordered_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
         let param_nodes = self.params(analyzer);
-        param_nodes.iter().map(|i| i.name(analyzer).unwrap()).collect()
+        param_nodes
+            .iter()
+            .map(|i| i.name(analyzer).unwrap())
+            .collect()
     }
 
     pub fn maybe_ordered_param_names(&self, analyzer: &impl GraphBackend) -> Option<Vec<String>> {
         let param_nodes = self.params(analyzer);
-        let names: Vec<String> = param_nodes.iter().filter_map(|i| i.maybe_name(analyzer).unwrap()).collect();
+        let names: Vec<String> = param_nodes
+            .iter()
+            .filter_map(|i| i.maybe_name(analyzer).unwrap())
+            .collect();
         if names.len() == param_nodes.len() {
             Some(names)
         } else {

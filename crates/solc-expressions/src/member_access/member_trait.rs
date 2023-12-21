@@ -1,9 +1,9 @@
-use graph::nodes::ConcreteNode;
-use graph::nodes::Concrete;
 use crate::{
     BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExprErr, ExpressionParser,
     IntoExprErr, ListAccess, StructAccess,
 };
+use graph::nodes::Concrete;
+use graph::nodes::ConcreteNode;
 
 use graph::{
     nodes::{

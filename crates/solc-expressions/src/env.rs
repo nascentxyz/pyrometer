@@ -20,13 +20,15 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<()>, ExprErr> {
         match &*ident.name {
             "msg" | "tx" => {
-                ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS).into_expr_err(ident.loc)?;
+                ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
+                    .into_expr_err(ident.loc)?;
                 ctx.push_expr(ExprRet::Single(self.msg().into()), self)
                     .into_expr_err(ident.loc)?;
                 Ok(Some(()))
             }
             "block" => {
-                ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS).into_expr_err(ident.loc)?;
+                ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
+                    .into_expr_err(ident.loc)?;
                 ctx.push_expr(ExprRet::Single(self.block().into()), self)
                     .into_expr_err(ident.loc)?;
                 Ok(Some(()))
@@ -40,7 +42,8 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .modifier_state
                     .clone()
                 {
-                    ctx.add_gas_cost(self, shared::gas::FUNC_CALL_GAS).into_expr_err(ident.loc)?;
+                    ctx.add_gas_cost(self, shared::gas::FUNC_CALL_GAS)
+                        .into_expr_err(ident.loc)?;
                     self.resume_from_modifier(ctx, mod_state.clone())?;
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
                     Ok(Some(()))

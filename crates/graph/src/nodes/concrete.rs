@@ -103,6 +103,12 @@ pub enum Concrete {
     Array(Vec<Concrete>),
 }
 
+impl Default for Concrete {
+    fn default() -> Self {
+        Concrete::Uint(0, U256::zero())
+    }
+}
+
 // impl From<usize> for Concrete {
 //     fn from(u: usize) -> Self {
 //         Concrete::Uint(256, U256::from(u))
@@ -926,23 +932,19 @@ impl Concrete {
                 let mut bytes = [0; 32];
                 val.to_big_endian(&mut bytes);
                 bytes.to_vec()
-            },
+            }
             Concrete::Int(_, val) => {
                 let mut bytes = [0; 32];
                 val.to_big_endian(&mut bytes);
                 bytes.to_vec()
-            },
-            Concrete::Bytes(size, val) => {
-                val[0..(*size as usize)].to_vec()
             }
+            Concrete::Bytes(size, val) => val[0..(*size as usize)].to_vec(),
             Concrete::Address(_) | Concrete::Bool(_) => {
                 Concrete::Uint(256, self.into_u256().unwrap()).as_bytes()
             }
             Concrete::DynBytes(inner) => inner.clone(),
             Concrete::String(inner) => inner.as_bytes().to_vec(),
-            Concrete::Array(inner) => {
-                inner.iter().flat_map(|i| i.as_bytes()).collect()
-            },
+            Concrete::Array(inner) => inner.iter().flat_map(|i| i.as_bytes()).collect(),
         }
     }
 

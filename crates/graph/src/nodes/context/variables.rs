@@ -9,14 +9,12 @@ use std::collections::BTreeMap;
 
 impl ContextNode {
     /// Debug print the stack
-    pub fn debug_expr_stack(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<(), GraphError> {
+    pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
         let underlying_mut = self.underlying(analyzer)?;
-        underlying_mut.expr_ret_stack.iter().for_each(|elem| {
-            println!("{}", elem.debug_str(analyzer))
-        });
+        underlying_mut
+            .expr_ret_stack
+            .iter()
+            .for_each(|elem| println!("{}", elem.debug_str(analyzer)));
         Ok(())
     }
 
@@ -60,9 +58,9 @@ impl ContextNode {
     ) -> Result<Option<ContextVarNode>, GraphError> {
         if let Some(var) = self.var_by_name(analyzer, name) {
             Ok(Some(var))
-        } else if let Some(parent) = self.underlying(analyzer)?.continuation_of {
-            parent.var_by_name_or_recurse(analyzer, name)
         } else if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+            parent.var_by_name_or_recurse(analyzer, name)
+        } else if let Some(parent) = self.underlying(analyzer)?.continuation_of {
             parent.var_by_name_or_recurse(analyzer, name)
         } else {
             Ok(None)

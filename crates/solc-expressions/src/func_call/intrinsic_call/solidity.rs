@@ -5,7 +5,7 @@ use crate::{
 };
 
 use graph::{
-    nodes::{Builtin, ContextNode, ContextVar, ExprRet, Concrete, ConcreteNode, ContextVarNode},
+    nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, Node,
 };
 
@@ -33,29 +33,19 @@ pub trait SolidityCaller:
             "keccak256" => {
                 self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
                 self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let Some(input) =
-                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "No input into keccak256"
-                                .to_string(),
-                        ));
+                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                        return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
                     };
 
                     let cvar = if let Ok(var) = input.expect_single() {
                         ContextVarNode::from(var)
                     } else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "No input into keccak256"
-                                .to_string(),
-                        ));
+                        return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
                     };
 
-
                     if cvar.is_const(analyzer).into_expr_err(loc)? {
-                        let bytes = cvar.evaled_range_min(analyzer)
+                        let bytes = cvar
+                            .evaled_range_min(analyzer)
                             .unwrap()
                             .unwrap()
                             .as_bytes(analyzer, true)
@@ -65,18 +55,12 @@ pub trait SolidityCaller:
 
                         let hash = Node::Concrete(Concrete::from(H256(out)));
                         let hash_node = ConcreteNode::from(analyzer.add_node(hash));
-                        let var = ContextVar::new_from_concrete(
-                            loc,
-                            ctx,
-                            hash_node,
-                            analyzer,
-                        )
-                        .into_expr_err(loc)?;
+                        let var = ContextVar::new_from_concrete(loc, ctx, hash_node, analyzer)
+                            .into_expr_err(loc)?;
                         let cvar = analyzer.add_node(Node::ContextVar(var));
                         ctx.push_expr(ExprRet::Single(cvar), analyzer)
                             .into_expr_err(loc)?;
                     } else {
-                        println!("not const: [{}]", cvar.range_string(analyzer).unwrap().unwrap());
                         let var = ContextVar::new_from_builtin(
                             loc,
                             analyzer.builtin_or_add(Builtin::Bytes(32)).into(),
@@ -87,7 +71,7 @@ pub trait SolidityCaller:
                         ctx.push_expr(ExprRet::Single(cvar), analyzer)
                             .into_expr_err(loc)?;
                     }
-                    
+
                     Ok(())
                 })
             }

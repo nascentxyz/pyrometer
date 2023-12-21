@@ -499,7 +499,7 @@ impl VarType {
                 if let Some(range) = self.ref_range(analyzer)? {
                     let min = range.evaled_range_min(analyzer)?;
                     let max = range.evaled_range_max(analyzer)?;
-                    Ok(min.range_eq(&max))
+                    Ok(min.range_eq(&max, analyzer))
                 } else {
                     Ok(false)
                 }

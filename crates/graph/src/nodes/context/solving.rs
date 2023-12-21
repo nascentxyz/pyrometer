@@ -41,10 +41,10 @@ impl ContextNode {
         Ok(ranges
             .iter()
             .filter_map(|(_dep, range)| {
-                if let Some(atom) = range.min.atomize() {
+                if let Some(atom) = range.min.atomize(analyzer) {
                     Some(atom)
                 } else {
-                    range.max.atomize()
+                    range.max.atomize(analyzer)
                 }
             })
             .collect::<Vec<SolverAtom>>())
@@ -84,12 +84,14 @@ impl ContextNode {
                 let range = dep.ref_range(analyzer)?.unwrap();
                 let r = range.flattened_range(analyzer)?.into_owned();
                 // add the atomic constraint
-                if let Some(atom) = r.min.atomize() {
-                    let underlying = self.underlying_mut(analyzer)?;
-                    underlying.dl_solver.add_constraints(vec![atom]);
-                } else if let Some(atom) = r.max.atomize() {
-                    let underlying = self.underlying_mut(analyzer)?;
-                    underlying.dl_solver.add_constraints(vec![atom]);
+                if let Some(atom) = r.min.atomize(analyzer) {
+                    let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
+                    solver.add_constraints(vec![atom], analyzer);
+                    self.underlying_mut(analyzer)?.dl_solver = solver;
+                } else if let Some(atom) = r.max.atomize(analyzer) {
+                    let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
+                    solver.add_constraints(vec![atom], analyzer);
+                    self.underlying_mut(analyzer)?.dl_solver = solver;
                 }
 
                 let underlying = self.underlying_mut(analyzer)?;
@@ -118,7 +120,7 @@ impl ContextNode {
             mapping.into_iter().for_each(|(_k, tmp)| {
                 if let Some(rhs) = tmp.rhs {
                     let lhs = if let Some(ver) = contains.keys().find(|other| {
-                        other.range(g).unwrap() == tmp.lhs.range(g).unwrap()
+                        other.ref_range(g).unwrap() == tmp.lhs.ref_range(g).unwrap()
                             && tmp.lhs.display_name(g).unwrap() == other.display_name(g).unwrap()
                     }) {
                         *contains.get(ver).unwrap()

@@ -215,7 +215,8 @@ pub trait InternalFuncCaller:
                         false
                     } else if matches!(input_exprs, NamedOrUnnamedArgs::Named(_)) {
                         params.iter().all(|param| {
-                            input_exprs.named_args()
+                            input_exprs
+                                .named_args()
                                 .unwrap()
                                 .iter()
                                 .any(|input| input.name.name == param.name(self).unwrap())
@@ -253,7 +254,9 @@ pub trait InternalFuncCaller:
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
                         .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    inputs = if let Some(ordered_param_names) = possible_funcs[0].maybe_ordered_param_names(analyzer) {
+                    inputs = if let Some(ordered_param_names) =
+                        possible_funcs[0].maybe_ordered_param_names(analyzer)
+                    {
                         input_exprs.order(inputs, ordered_param_names)
                     } else {
                         inputs

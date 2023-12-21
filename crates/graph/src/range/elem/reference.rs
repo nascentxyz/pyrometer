@@ -1,11 +1,13 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{
-        elem::{Elem, MinMaxed, RangeConcrete, RangeElem, RangeOp},
+        elem::{Elem, MinMaxed, RangeConcrete, RangeElem},
         Range,
     },
     GraphBackend, GraphError, TypeNode, VarType,
 };
+use std::hash::Hash;
+use std::hash::Hasher;
 
 use shared::NodeIdx;
 
@@ -14,7 +16,7 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 /// A dynamic range element value
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Reference<T> {
     /// Index of the node that is referenced
     pub idx: NodeIdx,
@@ -26,6 +28,12 @@ pub struct Reference<T> {
     pub flattened_min: Option<Box<Elem<T>>>,
     /// Cached maximized flatten value
     pub flattened_max: Option<Box<Elem<T>>>,
+}
+
+impl Hash for Reference<Concrete> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.idx.hash(state);
+    }
 }
 
 impl<T> Reference<T> {
@@ -43,11 +51,15 @@ impl<T> Reference<T> {
 impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
 
-    fn range_eq(&self, _other: &Self) -> bool {
+    fn arenaize(&mut self, _analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        Ok(())
+    }
+
+    fn range_eq(&self, _other: &Self, _analyzer: &impl GraphBackend) -> bool {
         false
     }
 
-    fn range_ord(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn range_ord(&self, other: &Self, _analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
         if self.idx == other.idx {
             Some(std::cmp::Ordering::Equal)
         } else {
@@ -55,7 +67,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn dependent_on(&self) -> Vec<ContextVarNode> {
+    fn dependent_on(&self, _analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         vec![self.idx.into()]
     }
 
@@ -86,12 +98,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             } else {
                 Ok(false)
             }
-        }
-    }
-
-    fn update_deps(&mut self, mapping: &BTreeMap<ContextVarNode, ContextVarNode>) {
-        if let Some(new) = mapping.get(&ContextVarNode::from(self.idx)) {
-            self.idx = new.0.into();
         }
     }
 
@@ -126,7 +132,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn is_flatten_cached(&self) -> bool {
+    fn is_flatten_cached(&self, _analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
@@ -148,7 +154,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         Ok(())
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx) {}
+    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, _analyzer: &mut impl GraphBackend) {}
 
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
@@ -265,32 +271,5 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         self.maximized = None;
         self.flattened_min = None;
         self.flattened_max = None;
-    }
-
-    fn contains_op_set(
-        &self,
-        max: bool,
-        op_set: &[RangeOp],
-        analyzer: &impl GraphBackend,
-    ) -> Result<bool, GraphError> {
-        let cvar = ContextVarNode::from(self.idx).underlying(analyzer)?;
-        match &cvar.ty {
-            VarType::User(TypeNode::Contract(_), maybe_range)
-            | VarType::User(TypeNode::Enum(_), maybe_range)
-            | VarType::User(TypeNode::Ty(_), maybe_range)
-            | VarType::BuiltIn(_, maybe_range) => {
-                if let Some(range) = maybe_range {
-                    if max {
-                        range.max.contains_op_set(max, op_set, analyzer)
-                    } else {
-                        range.min.contains_op_set(max, op_set, analyzer)
-                    }
-                } else {
-                    Ok(false)
-                }
-            }
-            VarType::Concrete(_concrete_node) => Ok(false),
-            _e => Ok(false),
-        }
     }
 }

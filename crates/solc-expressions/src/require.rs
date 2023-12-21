@@ -47,7 +47,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Handles a require expression
     #[tracing::instrument(level = "trace", skip_all)]
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
-        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS).into_expr_err(inputs[0].loc())?;
+        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
+            .into_expr_err(inputs[0].loc())?;
         match inputs.first().expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
@@ -395,7 +396,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
                         let underlying = lhs_cvar.underlying(analyzer).into_expr_err(loc)?;
                         if let Some(tmp) = underlying.tmp_of {
-                            if let Some((op, inv_op, pair)) = tmp.op.require_parts() {
+                            if let Some((op, _inv_op, pair)) = tmp.op.require_parts() {
                                 analyzer.handle_require_inner(
                                     ctx,
                                     loc,
@@ -413,7 +414,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             ContextVarNode::from(rhs_paths.expect_single().into_expr_err(loc)?);
                         let underlying = rhs_cvar.underlying(analyzer).into_expr_err(loc)?;
                         if let Some(tmp) = underlying.tmp_of {
-                            if let Some((op, inv_op, pair)) = tmp.op.require_parts() {
+                            if let Some((op, _inv_op, pair)) = tmp.op.require_parts() {
                                 analyzer.handle_require_inner(
                                     ctx,
                                     loc,
@@ -901,17 +902,17 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             RangeOp::Eq => !lhs_range
                 .evaled_range_min(self)
                 .unwrap()
-                .range_eq(&rhs_range.evaled_range_min(self).unwrap()),
+                .range_eq(&rhs_range.evaled_range_min(self).unwrap(), self),
             RangeOp::Neq => lhs_range
                 .evaled_range_min(self)
                 .unwrap()
-                .range_eq(&rhs_range.evaled_range_min(self).unwrap()),
+                .range_eq(&rhs_range.evaled_range_min(self).unwrap(), self),
             RangeOp::Gt => {
                 matches!(
                     lhs_range
                         .evaled_range_min(self)
                         .unwrap()
-                        .range_ord(&rhs_range.evaled_range_min(self).unwrap()),
+                        .range_ord(&rhs_range.evaled_range_min(self).unwrap(), self),
                     Some(Ordering::Equal) | Some(Ordering::Less)
                 )
             }
@@ -920,7 +921,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_range
                         .evaled_range_min(self)
                         .unwrap()
-                        .range_ord(&rhs_range.evaled_range_min(self).unwrap()),
+                        .range_ord(&rhs_range.evaled_range_min(self).unwrap(), self),
                     Some(Ordering::Less)
                 )
             }
@@ -929,7 +930,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_range
                         .evaled_range_min(self)
                         .unwrap()
-                        .range_ord(&rhs_range.evaled_range_min(self).unwrap()),
+                        .range_ord(&rhs_range.evaled_range_min(self).unwrap(), self),
                     Some(Ordering::Equal) | Some(Ordering::Greater)
                 )
             }
@@ -938,7 +939,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_range
                         .evaled_range_min(self)
                         .unwrap()
-                        .range_ord(&rhs_range.evaled_range_min(self).unwrap()),
+                        .range_ord(&rhs_range.evaled_range_min(self).unwrap(), self),
                     Some(Ordering::Greater)
                 )
             }
@@ -985,7 +986,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 if let Some(Ordering::Equal) = nonconst_range
                     .evaled_range_min(self)
                     .into_expr_err(loc)?
-                    .range_ord(&elem)
+                    .range_ord(&elem, self)
                 {
                     // mins are equivalent, add 1 instead of adding an exclusion
                     let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
@@ -998,7 +999,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 } else if let Some(std::cmp::Ordering::Equal) = nonconst_range
                     .evaled_range_max(self)
                     .into_expr_err(loc)?
-                    .range_ord(&elem)
+                    .range_ord(&elem, self)
                 {
                     // maxs are equivalent, subtract 1 instead of adding an exclusion
                     let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
@@ -1025,7 +1026,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if nonconst max is <= const, we can't make this true
                 let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
                 if matches!(
-                    max.range_ord(&elem.minimize(self).into_expr_err(loc)?),
+                    max.range_ord(&elem.minimize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Less) | Some(Ordering::Equal)
                 ) {
                     return Ok(true);
@@ -1059,7 +1060,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     nonconst_range
                         .evaled_range_max(self)
                         .into_expr_err(loc)?
-                        .range_ord(&elem.minimize(self).into_expr_err(loc)?),
+                        .range_ord(&elem.minimize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Less)
                 ) {
                     return Ok(true);
@@ -1076,7 +1077,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if nonconst min is >= const, we can't make this true
                 let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&elem.minimize(self).into_expr_err(loc)?),
+                    min.range_ord(&elem.minimize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Greater) | Some(Ordering::Equal)
                 ) {
                     return Ok(true);
@@ -1103,7 +1104,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if nonconst min is > const, we can't make this true
                 let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&elem.minimize(self).into_expr_err(loc)?),
+                    min.range_ord(&elem.minimize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Greater)
                 ) {
                     return Ok(true);
@@ -1141,7 +1142,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 match lhs_range
                     .evaled_range_min(self)
                     .into_expr_err(loc)?
-                    .range_ord(&rhs_range.evaled_range_min(self).into_expr_err(loc)?)
+                    .range_ord(&rhs_range.evaled_range_min(self).into_expr_err(loc)?, self)
                 {
                     Some(Ordering::Greater) => {
                         // take lhs range min as its tigher
@@ -1164,7 +1165,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 match lhs_range
                     .evaled_range_max(self)
                     .into_expr_err(loc)?
-                    .range_ord(&rhs_range.evaled_range_max(self).into_expr_err(loc)?)
+                    .range_ord(&rhs_range.evaled_range_max(self).into_expr_err(loc)?, self)
                 {
                     Some(Ordering::Less) => {
                         // take lhs range min as its tigher
@@ -1212,7 +1213,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if lhs.max is <= rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self).into_expr_err(loc)?;
                 if matches!(
-                    max.range_ord(&rhs_elem.minimize(self).into_expr_err(loc)?),
+                    max.range_ord(&rhs_elem.minimize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Less) | Some(Ordering::Equal)
                 ) {
                     return Ok(true);
@@ -1252,7 +1253,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if lhs.max is < rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self).into_expr_err(loc)?;
                 let min = rhs_elem.minimize(self).into_expr_err(loc)?;
-                if let Some(Ordering::Less) = max.range_ord(&min) {
+                if let Some(Ordering::Less) = max.range_ord(&min, self) {
                     return Ok(true);
                 }
 
@@ -1285,7 +1286,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if lhs min is >= rhs.max, we can't make this true
                 let min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&rhs_elem.maximize(self).into_expr_err(loc)?),
+                    min.range_ord(&rhs_elem.maximize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Greater) | Some(Ordering::Equal)
                 ) {
                     return Ok(true);
@@ -1324,7 +1325,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // if nonconst min is > const, we can't make this true
                 let min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
                 if matches!(
-                    min.range_ord(&rhs_elem.maximize(self).into_expr_err(loc)?),
+                    min.range_ord(&rhs_elem.maximize(self).into_expr_err(loc)?, self),
                     Some(Ordering::Greater)
                 ) {
                     return Ok(true);
