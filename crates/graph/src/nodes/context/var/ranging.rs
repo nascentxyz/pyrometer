@@ -177,7 +177,7 @@ impl ContextVarNode {
             }
         }
 
-        new_min.arenaize(analyzer);
+        new_min.arenaize(analyzer)?;
 
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
@@ -222,7 +222,7 @@ impl ContextVarNode {
             }
         }
 
-        new_max.arenaize(analyzer);
+        new_max.arenaize(analyzer)?;
 
         tracing::trace!(
             "setting range maximum: {:?}, {}, current: {}, new: {}",
@@ -268,9 +268,9 @@ impl ContextVarNode {
             None
         };
 
-        new_exclusions.iter_mut().for_each(|excl| {
-            excl.arenaize(analyzer);
-        });
+        new_exclusions.iter_mut().try_for_each(|excl| {
+            excl.arenaize(analyzer)
+        })?;
         
         self.underlying_mut(analyzer)?
             .set_range_exclusions(new_exclusions, fallback)?;
@@ -289,7 +289,7 @@ impl ContextVarNode {
             }
         }
 
-        new_min.arenaize(analyzer);
+        new_min.arenaize(analyzer)?;
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -320,7 +320,7 @@ impl ContextVarNode {
             }
         }
 
-        new_max.arenaize(analyzer);
+        new_max.arenaize(analyzer)?;
 
         if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -355,9 +355,9 @@ impl ContextVarNode {
             None
         };
 
-        new_exclusions.iter_mut().for_each(|excl| {
-            excl.arenaize(analyzer);
-        });
+        new_exclusions.iter_mut().try_for_each(|excl| {
+            excl.arenaize(analyzer)
+        })?;
 
         Ok(self
             .underlying_mut(analyzer)?

@@ -612,7 +612,7 @@ impl DLSolver {
                                 .lhs
                                 .into_elem()
                                 .wrapping_sub(constraint.rhs.into_elem())
-                                .atomize()
+                                .atomize(analyzer)
                                 .expect("unable to atomize?"),
                         );
                         Self::dl_atom_normalize(SolverAtom {
@@ -630,7 +630,7 @@ impl DLSolver {
                                 .lhs
                                 .into_elem()
                                 .wrapping_sub(Elem::from(Concrete::from(U256::zero())))
-                                .atomize()
+                                .atomize(analyzer)
                                 .expect("unable to atomize?"),
                         );
 
@@ -645,7 +645,7 @@ impl DLSolver {
                         let new_lhs = AtomOrPart::Atom(
                             Elem::from(Concrete::from(U256::zero()))
                                 .wrapping_sub(constraint.rhs.into_elem())
-                                .atomize()
+                                .atomize(analyzer)
                                 .expect("unable to atomize?"),
                         );
                         Self::dl_atom_normalize(SolverAtom {

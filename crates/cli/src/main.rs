@@ -96,6 +96,10 @@ struct Args {
     /// Max stack depth to evaluate to
     #[clap(long, default_value = "200")]
     pub max_stack_depth: usize,
+
+    /// Print stats about the IR
+    #[clap(long)]
+    pub stats: bool,
 }
 
 pub fn subscriber() {
@@ -236,10 +240,14 @@ fn main() {
 
     let t0 = std::time::Instant::now();
     let maybe_entry = analyzer.parse(&sol, &current_path, true);
-    let parse_time = t0.elapsed().as_millis();
+    let t_end = t0.elapsed();
+    let parse_time = t_end.as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
+    if args.stats {
+        println!("{}", analyzer.stats(t_end));
+    }
     // println!("Arena: {:#?}", analyzer.range_arena);
 
     // use self.sources to fill a BTreeMap with the file_no and SourcePath.path_to_solidity_file

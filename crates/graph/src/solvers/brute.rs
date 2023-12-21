@@ -290,10 +290,10 @@ impl SolcSolver for BruteBinSearchSolver {
                 // println!("dep: {}", dep.display_name(analyzer).unwrap());
 
                 // println!("atom: {atom:#?}");
-                if let Some(atom) = range.min.atomize() {
+                if let Some(atom) = range.min.atomize(analyzer) {
                     Some(atom)
                 } else {
-                    range.max.atomize()
+                    range.max.atomize(analyzer)
                 }
             })
             .collect::<Vec<SolverAtom>>();
@@ -607,7 +607,7 @@ impl SolcSolver for BruteBinSearchSolver {
                         .min
                         .simplify_minimize(&mut Default::default(), analyzer)
                         .unwrap()
-                        .atomize()
+                        .atomize(analyzer)
                     {
                         Some(atom)
                     } else {
@@ -615,7 +615,7 @@ impl SolcSolver for BruteBinSearchSolver {
                             .max
                             .simplify_maximize(&mut Default::default(), analyzer)
                             .unwrap()
-                            .atomize()
+                            .atomize(analyzer)
                     }
                 })
                 .collect::<Vec<SolverAtom>>();
