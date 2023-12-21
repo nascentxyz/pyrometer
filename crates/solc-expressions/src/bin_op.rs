@@ -440,8 +440,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
 
-                        println!("{}", ContextVarNode::from(tmp_rhs).display_name(self).unwrap());
-
                         let tmp_lhs = if new_rhs.latest_version(self) == tmp_lhs {
                             self.advance_var_in_ctx_forcible(tmp_lhs.latest_version(self), loc, ctx, true)?
                         } else {
