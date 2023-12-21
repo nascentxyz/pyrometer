@@ -13,7 +13,7 @@ use graph::{
 };
 use shared::{NodeIdx, StorageLocation};
 
-use solang_parser::pt::{Expression, Loc, CodeLocation};
+use solang_parser::pt::{CodeLocation, Expression, Loc};
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -84,11 +84,18 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 r.range_min().into_owned().cast(r2.range_min().into_owned());
                             let new_max =
                                 r.range_max().into_owned().cast(r2.range_max().into_owned());
-                            let res = node.latest_version(self).try_set_range_min(self, new_min).into_expr_err(loc);
+                            let res = node
+                                .latest_version(self)
+                                .try_set_range_min(self, new_min)
+                                .into_expr_err(loc);
                             self.add_if_err(res);
-                            let res = node.latest_version(self).try_set_range_max(self, new_max).into_expr_err(loc);
+                            let res = node
+                                .latest_version(self)
+                                .try_set_range_max(self, new_max)
+                                .into_expr_err(loc);
                             self.add_if_err(res);
-                            let res = node.latest_version(self)
+                            let res = node
+                                .latest_version(self)
                                 .try_set_range_exclusions(self, r.exclusions)
                                 .into_expr_err(loc);
                             self.add_if_err(res);
@@ -120,9 +127,9 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             Rc::new(RefCell::new(false))
         };
 
-        inputs.iter().try_for_each(|input| {
-            self.parse_input(ctx, loc, input, &append)
-        })?;
+        inputs
+            .iter()
+            .try_for_each(|input| self.parse_input(ctx, loc, input, &append))?;
 
         if !inputs.is_empty() {
             self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
@@ -177,9 +184,13 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
     ) -> Result<ContextNode, ExprErr> {
         let fn_ext = curr_ctx.is_fn_ext(func_node, self).into_expr_err(loc)?;
         if fn_ext {
-            curr_ctx.add_gas_cost(self, shared::gas::EXT_FUNC_CALL_GAS).into_expr_err(loc)?;
+            curr_ctx
+                .add_gas_cost(self, shared::gas::EXT_FUNC_CALL_GAS)
+                .into_expr_err(loc)?;
         } else {
-            curr_ctx.add_gas_cost(self, shared::gas::FUNC_CALL_GAS).into_expr_err(loc)?;
+            curr_ctx
+                .add_gas_cost(self, shared::gas::FUNC_CALL_GAS)
+                .into_expr_err(loc)?;
         }
         let ctx = Context::new_subctx(
             curr_ctx,
@@ -305,7 +316,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         .add_return_node(*loc, cvar, self)
                         .into_expr_err(*loc)?;
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
-                    
+
                     Ok(())
                 })?;
             }

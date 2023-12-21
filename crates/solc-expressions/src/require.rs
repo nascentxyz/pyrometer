@@ -47,7 +47,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     /// Handles a require expression
     #[tracing::instrument(level = "trace", skip_all)]
     fn handle_require(&mut self, inputs: &[Expression], ctx: ContextNode) -> Result<(), ExprErr> {
-        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS).into_expr_err(inputs[0].loc())?;
+        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
+            .into_expr_err(inputs[0].loc())?;
         match inputs.first().expect("No lhs input for require statement") {
             Expression::Equal(loc, lhs, rhs) => {
                 self.parse_ctx_expr(rhs, ctx)?;
@@ -395,7 +396,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
                         let underlying = lhs_cvar.underlying(analyzer).into_expr_err(loc)?;
                         if let Some(tmp) = underlying.tmp_of {
-                            if let Some((op, inv_op, pair)) = tmp.op.require_parts() {
+                            if let Some((op, _inv_op, pair)) = tmp.op.require_parts() {
                                 analyzer.handle_require_inner(
                                     ctx,
                                     loc,
@@ -413,7 +414,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             ContextVarNode::from(rhs_paths.expect_single().into_expr_err(loc)?);
                         let underlying = rhs_cvar.underlying(analyzer).into_expr_err(loc)?;
                         if let Some(tmp) = underlying.tmp_of {
-                            if let Some((op, inv_op, pair)) = tmp.op.require_parts() {
+                            if let Some((op, _inv_op, pair)) = tmp.op.require_parts() {
                                 analyzer.handle_require_inner(
                                     ctx,
                                     loc,

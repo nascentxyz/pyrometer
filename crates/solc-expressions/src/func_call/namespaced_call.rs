@@ -1,15 +1,17 @@
 //! Traits & blanket implementations that facilitate performing namespaced function calls.
 
 use crate::assign::Assign;
-use graph::VarType;
-use graph::ContextEdge;
-use graph::nodes::ContextVar;
-use graph::Edge;
 use crate::{
-    func_call::func_caller::{NamedOrUnnamedArgs, FuncCaller}, func_call::helper::CallerHelper,
-    intrinsic_call::IntrinsicFuncCaller, member_access::MemberAccess, ContextBuilder, ExprErr,
-    ExpressionParser, IntoExprErr,
+    func_call::func_caller::{FuncCaller, NamedOrUnnamedArgs},
+    func_call::helper::CallerHelper,
+    intrinsic_call::IntrinsicFuncCaller,
+    member_access::MemberAccess,
+    ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
 };
+use graph::nodes::ContextVar;
+use graph::ContextEdge;
+use graph::Edge;
+use graph::VarType;
 
 use graph::{
     nodes::{ContextNode, ContextVarNode, ExprRet, FunctionNode},
@@ -78,7 +80,9 @@ pub trait NameSpaceFuncCaller:
                             ExprRet::Multi(vec![])
                         };
                         if possible_funcs.len() == 1 {
-                            let mut inputs = if let Some(ordered_param_names) = possible_funcs[0].maybe_ordered_param_names(analyzer) {
+                            let mut inputs = if let Some(ordered_param_names) =
+                                possible_funcs[0].maybe_ordered_param_names(analyzer)
+                            {
                                 input_exprs.order(inputs, ordered_param_names).as_vec()
                             } else {
                                 inputs.as_vec()
@@ -167,9 +171,16 @@ pub trait NameSpaceFuncCaller:
         ret: ExprRet,
     ) -> Result<(), ExprErr> {
         match ret {
-            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
-                self.call_name_spaced_func_inner(ctx, loc, member_expr, ident, input_exprs, inner, true)
-            }
+            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => self
+                .call_name_spaced_func_inner(
+                    ctx,
+                    loc,
+                    member_expr,
+                    ident,
+                    input_exprs,
+                    inner,
+                    true,
+                ),
             ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
                 self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
             }),

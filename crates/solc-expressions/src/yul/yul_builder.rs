@@ -5,8 +5,8 @@ use crate::{
 };
 
 use graph::{
-    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, BuiltInNode},
-    AnalyzerBackend, ContextEdge, Edge, Node, VarType, SolcRange,
+    nodes::{BuiltInNode, Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
 };
 
 use solang_parser::{

@@ -285,7 +285,11 @@ impl Context {
             cache: ContextCache {
                 vars: parent_ctx.underlying(analyzer)?.cache.vars.clone(),
                 visible_funcs: parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone(),
-                visible_structs: parent_ctx.underlying(analyzer)?.cache.visible_structs.clone(),
+                visible_structs: parent_ctx
+                    .underlying(analyzer)?
+                    .cache
+                    .visible_structs
+                    .clone(),
                 first_ancestor: parent_ctx.underlying(analyzer)?.cache.first_ancestor,
                 associated_source: None,
                 associated_contract: None,

@@ -11,10 +11,7 @@ impl ContextNode {
         Ok(underlying.fn_call.is_none() && underlying.ext_fn_call.is_none() && !underlying.is_fork)
     }
 
-    pub fn has_continuation(
-        &self,
-        analyzer: &mut impl GraphBackend,
-    ) -> Result<bool, GraphError> {
+    pub fn has_continuation(&self, analyzer: &mut impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.continuation_of.is_some())
     }
 

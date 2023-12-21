@@ -1,5 +1,3 @@
-use graph::elem::RangeElem;
-use graph::Range;
 use crate::{assign::Assign, env::Env, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{

@@ -1,4 +1,3 @@
-
 use crate::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
@@ -17,7 +16,11 @@ impl ContextVarNode {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
-    pub fn ty_eq_ty(&self, other: &VarType, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn ty_eq_ty(
+        &self,
+        other: &VarType,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
         self.ty(analyzer)?.ty_eq(other, analyzer)
     }
 
@@ -217,9 +220,11 @@ impl ContextVarNode {
 
     pub fn is_return_node(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         if let Some(ctx) = self.maybe_ctx(analyzer) {
-            return Ok(ctx.underlying(analyzer)?.ret.iter().any(|(_, node)| {
-                node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
-            }));
+            return Ok(ctx
+                .underlying(analyzer)?
+                .ret
+                .iter()
+                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap()));
         }
         Ok(false)
     }
@@ -234,9 +239,7 @@ impl ContextVarNode {
                 .unwrap()
                 .ret
                 .iter()
-                .any(|(_, node)| {
-                    node.name(analyzer).unwrap() == self.name(analyzer).unwrap()
-                })
+                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap())
         })
     }
 
@@ -370,20 +373,22 @@ impl ContextVarNode {
                 self.underlying_mut(analyzer)?.ty = new_ty;
             }
 
-            if let (Some(mut r), Some(r2)) = (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?) {
+            if let (Some(mut r), Some(r2)) =
+                (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?)
+            {
                 r.min.arenaize(analyzer)?;
                 r.max.arenaize(analyzer)?;
 
-                let mut min_expr = r.min.clone()
+                let mut min_expr = r
+                    .min
+                    .clone()
                     .cast(r2.min.clone())
-                    .min(
-                        r.max.clone().cast(r2.min.clone())
-                    );
-                let mut max_expr = r.min.clone()
+                    .min(r.max.clone().cast(r2.min.clone()));
+                let mut max_expr = r
+                    .min
+                    .clone()
                     .cast(r2.min.clone())
-                    .max(
-                        r.max.clone().cast(r2.min)
-                    );
+                    .max(r.max.clone().cast(r2.min));
 
                 min_expr.arenaize(analyzer)?;
                 max_expr.arenaize(analyzer)?;
@@ -416,7 +421,8 @@ impl ContextVarNode {
                             if let Some(r) = self.ref_range(analyzer)? {
                                 let neg1 = Concrete::from(I256::from(-1i32));
                                 if r.contains_elem(&neg1.clone().into(), analyzer) {
-                                    max_expr = max_expr.max(neg1.bit_representation().unwrap().into());
+                                    max_expr =
+                                        max_expr.max(neg1.bit_representation().unwrap().into());
                                 }
                             }
                         }

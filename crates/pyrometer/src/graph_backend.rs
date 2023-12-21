@@ -1,7 +1,7 @@
-use shared::RangeArena;
-use graph::nodes::Concrete;
-use graph::elem::Elem;
 use crate::Analyzer;
+use graph::elem::Elem;
+use graph::nodes::Concrete;
+use shared::RangeArena;
 
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,

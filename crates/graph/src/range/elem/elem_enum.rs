@@ -1,5 +1,3 @@
-use std::hash::Hasher;
-use std::hash::Hash;
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{
@@ -8,8 +6,10 @@ use crate::{
     GraphBackend, GraphError,
 };
 use solang_parser::pt::Loc;
+use std::hash::Hash;
+use std::hash::Hasher;
 
-use shared::{RangeArenaIdx, NodeIdx};
+use shared::{NodeIdx, RangeArenaIdx};
 
 use ethers_core::types::I256;
 
@@ -65,8 +65,8 @@ impl<T: Clone> Elem<T> {
                 expr.minimized = None;
             }
             Elem::ConcreteDyn(_d) => todo!(),
-            Elem::Null => {},
-            Elem::Arena(_) => todo!()
+            Elem::Null => {}
+            Elem::Arena(_) => todo!(),
         }
     }
 
@@ -128,7 +128,7 @@ impl<T: Ord> Elem<T> {
             Self::Expr(expr) => expr.contains_node(node_idx),
             Self::ConcreteDyn(d) => d.contains_node(node_idx),
             Self::Null => false,
-            Elem::Arena(_) => todo!()
+            Elem::Arena(_) => todo!(),
         }
     }
 
@@ -337,14 +337,14 @@ impl Elem<Concrete> {
     pub fn dearenaize<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a Self {
         match self {
             Self::Arena(arena_idx) => &analyzer.range_arena().ranges[*arena_idx],
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
-    pub fn dearenaize_mut<'a> (&self, analyzer: &'a mut impl GraphBackend) -> &'a mut Self {
+    pub fn dearenaize_mut<'a>(&self, analyzer: &'a mut impl GraphBackend) -> &'a mut Self {
         match self {
             Self::Arena(arena_idx) => &mut analyzer.range_arena_mut().ranges[*arena_idx],
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -354,15 +354,16 @@ impl Elem<Concrete> {
             (Self::Concrete(a), Self::Concrete(b)) => a == b,
             (Self::ConcreteDyn(a), Self::ConcreteDyn(b)) => {
                 a.len == b.len
-                && a.val.len() == b.val.len()
-                && a.val.iter().zip(b.val.iter()).all(|((a, op_a), (b, op_b))| a.arena_eq(b) && op_a == op_b)
-            },
+                    && a.val.len() == b.val.len()
+                    && a.val
+                        .iter()
+                        .zip(b.val.iter())
+                        .all(|((a, op_a), (b, op_b))| a.arena_eq(b) && op_a == op_b)
+            }
             (Self::Reference(a), Self::Reference(b)) => a == b,
             (Self::Expr(a), Self::Expr(b)) => {
-                a.lhs.arena_eq(&b.lhs)
-                && a.rhs.arena_eq(&b.rhs)
-                && a.op == b.op
-            },
+                a.lhs.arena_eq(&b.lhs) && a.rhs.arena_eq(&b.rhs) && a.op == b.op
+            }
             (Elem::Null, Elem::Null) => true,
             _ => false,
         }
@@ -602,7 +603,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.arenaize(analyzer)?,
             Self::Expr(expr) => {
                 expr.arenaize(analyzer)?;
-            },
+            }
             _ => {}
         }
 
@@ -613,9 +614,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
     fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
         match (self, other) {
-            (Self::Arena(a), Self::Arena(b)) => {
-                a == b
-            },
+            (Self::Arena(a), Self::Arena(b)) => a == b,
             (Self::Concrete(a), Self::Concrete(b)) => a.range_eq(b, analyzer),
             (Self::ConcreteDyn(a), Self::ConcreteDyn(b)) => a.range_eq(b, analyzer),
             (Self::Reference(a), Self::Reference(b)) => a.idx == b.idx,
@@ -629,9 +628,10 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 if a == b {
                     Some(std::cmp::Ordering::Equal)
                 } else {
-                    self.dearenaize(analyzer).range_ord(other.dearenaize(analyzer), analyzer)
+                    self.dearenaize(analyzer)
+                        .range_ord(other.dearenaize(analyzer), analyzer)
                 }
-            },
+            }
             (Self::Concrete(a), Self::Concrete(b)) => a.range_ord(b, analyzer),
             (Self::Reference(a), Self::Reference(b)) => a.range_ord(b, analyzer),
             (Elem::Null, Elem::Null) => None,
@@ -658,7 +658,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
     fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.is_flatten_cached(analyzer) {
-            return Ok(())
+            return Ok(());
         }
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer),
@@ -672,11 +672,11 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 dearenaized.cache_flatten(analyzer)?;
                 analyzer.range_arena_mut().ranges[idx] = dearenaized;
                 Ok(())
-            },
+            }
         }
     }
 
-    fn is_flatten_cached(&self, analyzer: &impl GraphBackend,) -> bool {
+    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
         match self {
             Self::Reference(d) => d.is_flatten_cached(analyzer),
             Self::Concrete(c) => c.is_flatten_cached(analyzer),
@@ -727,7 +727,12 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend) {
+    fn filter_recursion(
+        &mut self,
+        node_idx: NodeIdx,
+        new_idx: NodeIdx,
+        analyzer: &mut impl GraphBackend,
+    ) {
         match self {
             Self::Reference(ref mut d) => {
                 if d.idx == node_idx {
@@ -741,9 +746,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Arena(idx) => {
                 let idx = *idx;
                 let mut dearenaized = self.dearenaize(analyzer).clone();
-                dearenaized.filter_recursion(node_idx, new_idx,analyzer);
+                dearenaized.filter_recursion(node_idx, new_idx, analyzer);
                 analyzer.range_arena_mut().ranges[idx] = dearenaized;
-            },
+            }
         }
     }
 
@@ -794,7 +799,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.simplify_maximize(seen_ops, analyzer),
             },
             Null => Ok(Elem::Null),
-            Arena(_) => self.dearenaize(analyzer).simplify_maximize(seen_ops, analyzer),
+            Arena(_) => self
+                .dearenaize(analyzer)
+                .simplify_maximize(seen_ops, analyzer),
         }
     }
 
@@ -819,7 +826,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.simplify_minimize(seen_ops, analyzer),
             },
             Null => Ok(Elem::Null),
-            Arena(_) => self.dearenaize(analyzer).simplify_minimize(seen_ops, analyzer),
+            Arena(_) => self
+                .dearenaize(analyzer)
+                .simplify_minimize(seen_ops, analyzer),
         }?;
 
         seen_ops.insert(self.clone(), res.clone());
@@ -847,7 +856,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 dearenaized.cache_maximize(analyzer)?;
                 analyzer.range_arena_mut().ranges[idx] = dearenaized;
                 Ok(())
-            },
+            }
         }
     }
 
@@ -872,7 +881,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 dearenaized.cache_minimize(analyzer)?;
                 analyzer.range_arena_mut().ranges[idx] = dearenaized;
                 Ok(())
-            },
+            }
         }
     }
     fn uncache(&mut self) {
@@ -883,7 +892,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             ConcreteDyn(inner) => inner.uncache(),
             Expr(expr) => expr.uncache(),
             Null => {}
-            Arena(_idx) => {},
+            Arena(_idx) => {}
         }
     }
 }

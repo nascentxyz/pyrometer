@@ -242,11 +242,14 @@ impl Atomize for Elem<Concrete> {
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             Elem::Expr(expr) => {
                 // println!("atoms or part: was expr: {:?} {} {:?}", expr.lhs.atoms_or_part(), expr.op.to_string(), expr.rhs.atoms_or_part());
-                match (expr.lhs.atoms_or_part(analyzer), expr.rhs.atoms_or_part(analyzer)) {
+                match (
+                    expr.lhs.atoms_or_part(analyzer),
+                    expr.rhs.atoms_or_part(analyzer),
+                ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         match (l, r) {
                             (_, Elem::Arena(_)) => todo!(),
-                            (Elem::Arena(_),_) => todo!(),
+                            (Elem::Arena(_), _) => todo!(),
                             (Elem::Reference(Reference { .. }), Elem::Concrete(_))
                             | (Elem::Concrete(_), Elem::Reference(Reference { .. })) => {
                                 let ty = OpType::new(expr.op);
@@ -292,9 +295,10 @@ impl Atomize for Elem<Concrete> {
                             (Elem::Concrete(_), Elem::Expr(_)) => {
                                 todo!("here4");
                             }
-                            (Elem::Concrete(_), Elem::Concrete(_)) => {
-                                expr.exec_op(true, analyzer).unwrap().atoms_or_part(analyzer)
-                            }
+                            (Elem::Concrete(_), Elem::Concrete(_)) => expr
+                                .exec_op(true, analyzer)
+                                .unwrap()
+                                .atoms_or_part(analyzer),
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),
                             (_, Elem::ConcreteDyn(_)) => AtomOrPart::Part(Elem::Null),
                             (Elem::Null, _) => AtomOrPart::Part(Elem::Null),

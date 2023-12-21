@@ -1,6 +1,6 @@
-use graph::Edge;
-use graph::ContextEdge;
 use crate::{variable::Variable, ContextBuilder, ExprErr, IntoExprErr, StatementParser};
+use graph::ContextEdge;
+use graph::Edge;
 
 use graph::{
     nodes::{Context, ContextNode},

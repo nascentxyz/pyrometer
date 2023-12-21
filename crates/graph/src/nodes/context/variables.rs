@@ -9,14 +9,12 @@ use std::collections::BTreeMap;
 
 impl ContextNode {
     /// Debug print the stack
-    pub fn debug_expr_stack(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<(), GraphError> {
+    pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
         let underlying_mut = self.underlying(analyzer)?;
-        underlying_mut.expr_ret_stack.iter().for_each(|elem| {
-            println!("{}", elem.debug_str(analyzer))
-        });
+        underlying_mut
+            .expr_ret_stack
+            .iter()
+            .for_each(|elem| println!("{}", elem.debug_str(analyzer)));
         Ok(())
     }
 

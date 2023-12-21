@@ -1,6 +1,6 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{Elem, RangeElem, RangeOp},
+    range::elem::{Elem, RangeElem},
     GraphBackend, GraphError,
 };
 

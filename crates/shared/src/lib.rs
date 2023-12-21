@@ -1,7 +1,7 @@
 mod analyzer_like;
+pub mod gas;
 mod graph_like;
 mod search;
-pub mod gas;
 
 pub use analyzer_like::*;
 pub use graph_like::*;

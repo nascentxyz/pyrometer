@@ -44,16 +44,18 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
         input_exprs: &NamedOrUnnamedArgs,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        input_exprs.unnamed_args().unwrap()[1..].iter().try_for_each(|expr| {
-            self.parse_ctx_expr(expr, ctx)?;
-            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                let input = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap_or(ExprRet::Null);
-                ctx.append_tmp_expr(input, analyzer).into_expr_err(loc)
-            })
-        })?;
+        input_exprs.unnamed_args().unwrap()[1..]
+            .iter()
+            .try_for_each(|expr| {
+                self.parse_ctx_expr(expr, ctx)?;
+                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    let input = ctx
+                        .pop_expr_latest(loc, analyzer)
+                        .into_expr_err(loc)?
+                        .unwrap_or(ExprRet::Null);
+                    ctx.append_tmp_expr(input, analyzer).into_expr_err(loc)
+                })
+            })?;
 
         self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
             let Some(inputs) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {

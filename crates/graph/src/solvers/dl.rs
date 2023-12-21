@@ -190,7 +190,12 @@ impl DLSolver {
                         .all(|constraint| constraint.ty == OpType::DL)
                 })
             })
-            .map(|constraint| (constraint.clone(), Self::dl_atom_normalize(constraint, analyzer)))
+            .map(|constraint| {
+                (
+                    constraint.clone(),
+                    Self::dl_atom_normalize(constraint, analyzer),
+                )
+            })
             .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
     }
 
@@ -508,7 +513,10 @@ impl DLSolver {
 
     /// Normalizes a DL atom into x <= y - k, where x and y are variables and k is a constant.
     /// Needed for running negative cycle check. Additionally, if we have an `OR`, we
-    pub fn dl_atom_normalize(constraint: SolverAtom, analyzer: &impl GraphBackend,) -> Vec<Vec<SolverAtom>> {
+    pub fn dl_atom_normalize(
+        constraint: SolverAtom,
+        analyzer: &impl GraphBackend,
+    ) -> Vec<Vec<SolverAtom>> {
         // println!("normalizing: {}", constraint.into_expr_elem());
         let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
         let false_part = AtomOrPart::Part(Elem::from(Concrete::from(false)));
@@ -539,65 +547,79 @@ impl DLSolver {
         match constraint.op {
             RangeOp::Eq => {
                 // convert `x == y` into `x <= y - 0 || y <= x - 0`
-                let mut res = Self::dl_atom_normalize(SolverAtom {
-                    ty: OpType::DL,
-                    lhs: constraint.lhs.clone(),
-                    op: RangeOp::Lte,
-                    rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                let mut res = Self::dl_atom_normalize(
+                    SolverAtom {
                         ty: OpType::DL,
-                        lhs: constraint.rhs.clone(),
-                        op: RangeOp::Sub(true),
-                        rhs: Box::new(zero_part.clone()),
-                    })),
-                }, analyzer);
-
-                assert!(res.len() == 1);
-                res[0].extend(
-                    Self::dl_atom_normalize(SolverAtom {
-                        ty: OpType::DL,
-                        lhs: constraint.rhs,
+                        lhs: constraint.lhs.clone(),
                         op: RangeOp::Lte,
                         rhs: Box::new(AtomOrPart::Atom(SolverAtom {
                             ty: OpType::DL,
-                            lhs: constraint.lhs,
+                            lhs: constraint.rhs.clone(),
                             op: RangeOp::Sub(true),
                             rhs: Box::new(zero_part.clone()),
                         })),
-                    }, analyzer)
+                    },
+                    analyzer,
+                );
+
+                assert!(res.len() == 1);
+                res[0].extend(
+                    Self::dl_atom_normalize(
+                        SolverAtom {
+                            ty: OpType::DL,
+                            lhs: constraint.rhs,
+                            op: RangeOp::Lte,
+                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                ty: OpType::DL,
+                                lhs: constraint.lhs,
+                                op: RangeOp::Sub(true),
+                                rhs: Box::new(zero_part.clone()),
+                            })),
+                        },
+                        analyzer,
+                    )
                     .remove(0),
                 );
                 res
             }
             RangeOp::Neq => {
                 // convert `x != y` into `x <= y - 1 || y <= x - 1`
-                let mut res = Self::dl_atom_normalize(SolverAtom {
-                    ty: OpType::DL,
-                    lhs: constraint.lhs.clone(),
-                    op: RangeOp::Lte,
-                    rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                let mut res = Self::dl_atom_normalize(
+                    SolverAtom {
                         ty: OpType::DL,
-                        lhs: constraint.rhs.clone(),
-                        op: RangeOp::Sub(true),
-                        rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::from(1))))),
-                    })),
-                }, analyzer);
-
-                assert!(res.len() == 1);
-
-                res[0].extend(
-                    Self::dl_atom_normalize(SolverAtom {
-                        ty: OpType::DL,
-                        lhs: constraint.rhs,
+                        lhs: constraint.lhs.clone(),
                         op: RangeOp::Lte,
                         rhs: Box::new(AtomOrPart::Atom(SolverAtom {
                             ty: OpType::DL,
-                            lhs: constraint.lhs,
+                            lhs: constraint.rhs.clone(),
                             op: RangeOp::Sub(true),
                             rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
                                 U256::from(1),
                             )))),
                         })),
-                    }, analyzer)
+                    },
+                    analyzer,
+                );
+
+                assert!(res.len() == 1);
+
+                res[0].extend(
+                    Self::dl_atom_normalize(
+                        SolverAtom {
+                            ty: OpType::DL,
+                            lhs: constraint.rhs,
+                            op: RangeOp::Lte,
+                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                ty: OpType::DL,
+                                lhs: constraint.lhs,
+                                op: RangeOp::Sub(true),
+                                rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
+                                    U256::from(1),
+                                )))),
+                            })),
+                        },
+                        analyzer,
+                    )
                     .remove(0),
                 );
                 res
@@ -615,14 +637,17 @@ impl DLSolver {
                                 .atomize(analyzer)
                                 .expect("unable to atomize?"),
                         );
-                        Self::dl_atom_normalize(SolverAtom {
-                            ty: OpType::DL,
-                            lhs: Box::new(new_lhs),
-                            op: RangeOp::Lte,
-                            rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
-                                I256::from(-1),
-                            )))),
-                        }, analyzer)
+                        Self::dl_atom_normalize(
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: Box::new(new_lhs),
+                                op: RangeOp::Lte,
+                                rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
+                                    I256::from(-1),
+                                )))),
+                            },
+                            analyzer,
+                        )
                     }
                     (true, false) => {
                         let new_lhs = AtomOrPart::Atom(
@@ -634,12 +659,15 @@ impl DLSolver {
                                 .expect("unable to atomize?"),
                         );
 
-                        Self::dl_atom_normalize(SolverAtom {
-                            ty: OpType::DL,
-                            lhs: Box::new(new_lhs),
-                            op: RangeOp::Lte,
-                            rhs: constraint.rhs,
-                        }, analyzer)
+                        Self::dl_atom_normalize(
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: Box::new(new_lhs),
+                                op: RangeOp::Lte,
+                                rhs: constraint.rhs,
+                            },
+                            analyzer,
+                        )
                     }
                     (false, true) => {
                         let new_lhs = AtomOrPart::Atom(
@@ -648,12 +676,15 @@ impl DLSolver {
                                 .atomize(analyzer)
                                 .expect("unable to atomize?"),
                         );
-                        Self::dl_atom_normalize(SolverAtom {
-                            ty: OpType::DL,
-                            lhs: Box::new(new_lhs),
-                            op: RangeOp::Lte,
-                            rhs: constraint.lhs,
-                        }, analyzer)
+                        Self::dl_atom_normalize(
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: Box::new(new_lhs),
+                                op: RangeOp::Lte,
+                                rhs: constraint.lhs,
+                            },
+                            analyzer,
+                        )
                     }
                     _ => panic!("here"),
                 }
@@ -672,64 +703,79 @@ impl DLSolver {
                                     // (k - x <= y)
                                     //   ==> (-k + x >= y)
                                     //   ==> (y <= x - k)
-                                    Self::dl_atom_normalize(SolverAtom {
-                                        ty: constraint.ty,
-                                        lhs: constraint.rhs,
-                                        op: constraint.op,
-                                        rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                    Self::dl_atom_normalize(
+                                        SolverAtom {
                                             ty: constraint.ty,
-                                            lhs: lhs_atom.rhs,
-                                            op: RangeOp::Sub(true),
-                                            rhs: Box::new(*lhs_atom.lhs),
-                                        })),
-                                    }, analyzer)
+                                            lhs: constraint.rhs,
+                                            op: constraint.op,
+                                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                                ty: constraint.ty,
+                                                lhs: lhs_atom.rhs,
+                                                op: RangeOp::Sub(true),
+                                                rhs: Box::new(*lhs_atom.lhs),
+                                            })),
+                                        },
+                                        analyzer,
+                                    )
                                 }
                                 _ => {
                                     // (x - k <= y)
                                     //   ==> (x <= y + k)
-                                    Self::dl_atom_normalize(SolverAtom {
-                                        ty: constraint.ty,
-                                        lhs: Box::new(*lhs_atom.lhs),
-                                        op: constraint.op,
-                                        rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                    Self::dl_atom_normalize(
+                                        SolverAtom {
                                             ty: constraint.ty,
-                                            lhs: constraint.rhs,
-                                            op: RangeOp::Add(true),
-                                            rhs: Box::new(*lhs_atom.rhs),
-                                        })),
-                                    }, analyzer)
+                                            lhs: Box::new(*lhs_atom.lhs),
+                                            op: constraint.op,
+                                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                                ty: constraint.ty,
+                                                lhs: constraint.rhs,
+                                                op: RangeOp::Add(true),
+                                                rhs: Box::new(*lhs_atom.rhs),
+                                            })),
+                                        },
+                                        analyzer,
+                                    )
                                 }
                             }
                         }
                         RangeOp::Add(_) => {
                             // (k + x <= y) || (x + k <= y)
                             //   ==> (x <= y - k)
-                            Self::dl_atom_normalize(SolverAtom {
-                                ty: constraint.ty,
-                                lhs: Box::new(*lhs_atom.lhs),
-                                op: constraint.op,
-                                rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                            Self::dl_atom_normalize(
+                                SolverAtom {
                                     ty: constraint.ty,
-                                    lhs: constraint.rhs,
-                                    op: RangeOp::Sub(true),
-                                    rhs: Box::new(*lhs_atom.rhs),
-                                })),
-                            }, analyzer)
+                                    lhs: Box::new(*lhs_atom.lhs),
+                                    op: constraint.op,
+                                    rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                        ty: constraint.ty,
+                                        lhs: constraint.rhs,
+                                        op: RangeOp::Sub(true),
+                                        rhs: Box::new(*lhs_atom.rhs),
+                                    })),
+                                },
+                                analyzer,
+                            )
                         }
                         RangeOp::And => {
-                            let mut res = Self::dl_atom_normalize(SolverAtom {
-                                ty: constraint.ty,
-                                lhs: Box::new(*lhs_atom.lhs),
-                                op: constraint.op,
-                                rhs: constraint.rhs.clone(),
-                            }, analyzer);
+                            let mut res = Self::dl_atom_normalize(
+                                SolverAtom {
+                                    ty: constraint.ty,
+                                    lhs: Box::new(*lhs_atom.lhs),
+                                    op: constraint.op,
+                                    rhs: constraint.rhs.clone(),
+                                },
+                                analyzer,
+                            );
 
-                            let mut rhs = Self::dl_atom_normalize(SolverAtom {
-                                ty: constraint.ty,
-                                lhs: Box::new(*lhs_atom.rhs),
-                                op: constraint.op,
-                                rhs: constraint.rhs.clone(),
-                            }, analyzer);
+                            let mut rhs = Self::dl_atom_normalize(
+                                SolverAtom {
+                                    ty: constraint.ty,
+                                    lhs: Box::new(*lhs_atom.rhs),
+                                    op: constraint.op,
+                                    rhs: constraint.rhs.clone(),
+                                },
+                                analyzer,
+                            );
                             match (res.len() > 1, rhs.len() > 1) {
                                 (true, true) => {
                                     res.extend(rhs);
@@ -792,31 +838,43 @@ impl DLSolver {
                         rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
                     });
 
-                    Self::dl_atom_normalize(SolverAtom {
-                        ty: constraint.ty,
-                        lhs: constraint.lhs,
-                        op: constraint.op,
-                        rhs: Box::new(new_rhs),
-                    }, analyzer)
+                    Self::dl_atom_normalize(
+                        SolverAtom {
+                            ty: constraint.ty,
+                            lhs: constraint.lhs,
+                            op: constraint.op,
+                            rhs: Box::new(new_rhs),
+                        },
+                        analyzer,
+                    )
                 } else {
                     vec![vec![constraint]]
                 }
             }
-            RangeOp::Gte => Self::dl_atom_normalize(SolverAtom {
-                ty: OpType::DL,
-                lhs: constraint.rhs,
-                op: RangeOp::Lte,
-                rhs: constraint.lhs,
-            }, analyzer),
-            RangeOp::Gt => Self::dl_atom_normalize(SolverAtom {
-                ty: OpType::DL,
-                lhs: constraint.rhs,
-                op: RangeOp::Lt,
-                rhs: constraint.lhs,
-            }, analyzer),
+            RangeOp::Gte => Self::dl_atom_normalize(
+                SolverAtom {
+                    ty: OpType::DL,
+                    lhs: constraint.rhs,
+                    op: RangeOp::Lte,
+                    rhs: constraint.lhs,
+                },
+                analyzer,
+            ),
+            RangeOp::Gt => Self::dl_atom_normalize(
+                SolverAtom {
+                    ty: OpType::DL,
+                    lhs: constraint.rhs,
+                    op: RangeOp::Lt,
+                    rhs: constraint.lhs,
+                },
+                analyzer,
+            ),
             RangeOp::Or => {
                 let mut res = Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer);
-                res.extend(Self::dl_atom_normalize(constraint.rhs.as_solver_atom(), analyzer));
+                res.extend(Self::dl_atom_normalize(
+                    constraint.rhs.as_solver_atom(),
+                    analyzer,
+                ));
                 res
             }
             _other => {

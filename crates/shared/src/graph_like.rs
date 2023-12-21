@@ -1,7 +1,7 @@
-use std::hash::Hash;
-use std::collections::HashMap;
 use crate::AnalyzerLike;
 use crate::Heirarchical;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 use petgraph::{
     graph::{EdgeIndex, Graph, NodeIndex},

@@ -1,6 +1,6 @@
+use crate::builtin_fns;
 use graph::elem::Elem;
 use shared::RangeArena;
-use crate::builtin_fns;
 
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
@@ -157,11 +157,14 @@ impl Default for Analyzer {
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
-            range_arena: RangeArena { ranges: vec![Elem::Null], map: {
-                let mut map: HashMap<Elem<Concrete>, usize> = Default::default();
-                map.insert(Elem::Null, 0);
-                map
-            } }
+            range_arena: RangeArena {
+                ranges: vec![Elem::Null],
+                map: {
+                    let mut map: HashMap<Elem<Concrete>, usize> = Default::default();
+                    map.insert(Elem::Null, 0);
+                    map
+                },
+            },
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -198,73 +201,118 @@ impl Analyzer {
             format!("          Analyzer stats"),
             format!("====================================="),
             format!(""),
-            format!("   Number of nodes: {}, {} nodes/ms", num_nodes, num_nodes as f64 / duration.as_millis() as f64),
-            format!("     Number of Contracts: {}, {} contracts/ms", num_contracts, num_contracts as f64 / duration.as_millis() as f64),
-            format!("     Number of Functions: {}, {} functions/ms", num_funcs, num_funcs as f64 / duration.as_millis() as f64),
-            format!("     Number of Variables: {}, {} variables/ms", num_vars, num_vars as f64 / duration.as_millis() as f64),
+            format!(
+                "   Number of nodes: {}, {} nodes/ms",
+                num_nodes,
+                num_nodes as f64 / duration.as_millis() as f64
+            ),
+            format!(
+                "     Number of Contracts: {}, {} contracts/ms",
+                num_contracts,
+                num_contracts as f64 / duration.as_millis() as f64
+            ),
+            format!(
+                "     Number of Functions: {}, {} functions/ms",
+                num_funcs,
+                num_funcs as f64 / duration.as_millis() as f64
+            ),
+            format!(
+                "     Number of Variables: {}, {} variables/ms",
+                num_vars,
+                num_vars as f64 / duration.as_millis() as f64
+            ),
             format!(""),
-            format!("   Unique Range Elements: {}", self.range_arena.ranges.len()),
+            format!(
+                "   Unique Range Elements: {}",
+                self.range_arena.ranges.len()
+            ),
             format!(""),
-            format!("   Number of Contexts: {}, {} contexts/ms", num_contexts, num_contexts as f64 / duration.as_millis() as f64),
+            format!(
+                "   Number of Contexts: {}, {} contexts/ms",
+                num_contexts,
+                num_contexts as f64 / duration.as_millis() as f64
+            ),
             format!("     Max depth of Contexts: {}", self.max_context_depth()),
             format!("     Max width of Contexts: {}", self.max_context_width()),
             format!(""),
             format!("====================================="),
-        ].join("\n")
+        ]
+        .join("\n")
     }
 
     pub fn number_of_contexts(&self) -> usize {
-        self.graph.node_weights().filter(|n| matches!(n, Node::Context(_))).count()
+        self.graph
+            .node_weights()
+            .filter(|n| matches!(n, Node::Context(_)))
+            .count()
     }
 
     pub fn number_of_forks(&self) -> usize {
-        self.graph.node_weights().filter(|n| matches!(n, Node::ContextFork)).count()
+        self.graph
+            .node_weights()
+            .filter(|n| matches!(n, Node::ContextFork))
+            .count()
     }
 
     pub fn number_of_variables(&self) -> usize {
-        self.graph.node_weights().filter(|n| matches!(n, Node::ContextVar(_))).count()
+        self.graph
+            .node_weights()
+            .filter(|n| matches!(n, Node::ContextVar(_)))
+            .count()
     }
 
     pub fn number_of_functions(&self) -> usize {
-        self.graph.node_weights().filter(|n| matches!(n, Node::Function(_))).count()
+        self.graph
+            .node_weights()
+            .filter(|n| matches!(n, Node::Function(_)))
+            .count()
     }
 
     pub fn number_of_contracts(&self) -> usize {
-        self.graph.node_weights().filter(|n| matches!(n, Node::Contract(_))).count()
+        self.graph
+            .node_weights()
+            .filter(|n| matches!(n, Node::Contract(_)))
+            .count()
     }
 
     pub fn max_context_depth(&self) -> usize {
-        self.graph.node_weights().filter_map(|n| {
-            if let Node::Context(c) = n {
-                Some(c)
-            } else {
-                None
-            }
-        }).fold(0, |mut acc, c| {
-            if c.depth > acc {
-                acc = c.depth;
-                acc
-            } else {
-                acc
-            }
-        })
+        self.graph
+            .node_weights()
+            .filter_map(|n| {
+                if let Node::Context(c) = n {
+                    Some(c)
+                } else {
+                    None
+                }
+            })
+            .fold(0, |mut acc, c| {
+                if c.depth > acc {
+                    acc = c.depth;
+                    acc
+                } else {
+                    acc
+                }
+            })
     }
 
     pub fn max_context_width(&self) -> usize {
-        self.graph.node_weights().filter_map(|n| {
-            if let Node::Context(c) = n {
-                Some(c)
-            } else {
-                None
-            }
-        }).fold(0, |mut acc, c| {
-            if c.width > acc {
-                acc = c.width;
-                acc
-            } else {
-                acc
-            }
-        })
+        self.graph
+            .node_weights()
+            .filter_map(|n| {
+                if let Node::Context(c) = n {
+                    Some(c)
+                } else {
+                    None
+                }
+            })
+            .fold(0, |mut acc, c| {
+                if c.width > acc {
+                    acc = c.width;
+                    acc
+                } else {
+                    acc
+                }
+            })
     }
 
     pub fn complicated_parse(

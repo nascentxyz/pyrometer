@@ -1,11 +1,11 @@
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
 use crate::ContextEdge;
 use crate::Edge;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend, GraphError, Node,
 };
+use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 
 use solang_parser::pt::Loc;
 
@@ -20,7 +20,7 @@ impl ContextNode {
         &self,
         analyzer: &mut impl AnalyzerBackend,
         continuation_of_ctx: ContextNode,
-        ty: &'static str
+        ty: &'static str,
     ) -> Result<(), GraphError> {
         assert!(
             self.0 > continuation_of_ctx.0,
@@ -36,7 +36,7 @@ impl ContextNode {
             .edges_directed(continuation_of_ctx.into(), Direction::Incoming)
             .find(|edge| {
                 matches!(edge.weight(), Edge::Context(ContextEdge::Continue(_)))
-                && parent_list.contains(&ContextNode::from(edge.source()))
+                    && parent_list.contains(&ContextNode::from(edge.source()))
             })
             .map(|edge| ContextNode::from(edge.source()))
         {
@@ -48,7 +48,8 @@ impl ContextNode {
                 Edge::Context(ContextEdge::Continue(ty)),
             );
             self.underlying_mut(analyzer)?.continuation_of = Some(continuation_of_ctx);
-            self.underlying_mut(analyzer)?.cache.vars = continuation_of_ctx.underlying(analyzer)?.cache.vars.clone();
+            self.underlying_mut(analyzer)?.cache.vars =
+                continuation_of_ctx.underlying(analyzer)?.cache.vars.clone();
             Ok(())
         }
     }

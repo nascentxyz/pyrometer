@@ -1,9 +1,6 @@
-use crate::func_call::func_caller::FuncCaller;
 use crate::context_builder::ExpressionParser;
-use graph::nodes::ContextVarNode;
+use crate::func_call::func_caller::FuncCaller;
 use crate::func_caller::NamedOrUnnamedArgs;
-use graph::nodes::ContractNode;
-use graph::nodes::ContextVar;
 use crate::{
     func_call::helper::CallerHelper,
     intrinsic_call::{
@@ -12,6 +9,9 @@ use crate::{
     },
     ContextBuilder, ExprErr, IntoExprErr,
 };
+use graph::nodes::ContextVar;
+use graph::nodes::ContextVarNode;
+use graph::nodes::ContractNode;
 
 use graph::{
     nodes::{Builtin, ContextNode, ExprRet},
@@ -229,9 +229,13 @@ pub trait IntrinsicFuncCaller:
                             self.solidity_call(func_name.name.clone(), input_exprs, *loc, ctx)
                         }
                         // typing
-                        "type" | "wrap" | "unwrap" => {
-                            self.types_call(func_name.name.clone(), func_idx, input_exprs, *loc, ctx)
-                        }
+                        "type" | "wrap" | "unwrap" => self.types_call(
+                            func_name.name.clone(),
+                            func_idx,
+                            input_exprs,
+                            *loc,
+                            ctx,
+                        ),
                         e => Err(ExprErr::Todo(
                             *loc,
                             format!("builtin function: {e:?} doesn't exist or isn't implemented"),

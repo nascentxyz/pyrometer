@@ -1,7 +1,7 @@
 use crate::{
     nodes::ContextVarNode,
     range::elem::{Elem, RangeExpr, RangeOp},
-    GraphBackend, GraphError
+    GraphBackend, GraphError,
 };
 
 use shared::NodeIdx;
@@ -47,7 +47,7 @@ pub trait RangeElem<T: Ord> {
     /// Tries to compare the ordering of two range elements
     fn range_ord(&self, other: &Self, analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering>;
     /// Constructs a range `Elem::Expr` given a lhs, rhs, and operation ([`RangeOp`]).
-    fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp, analyzer: &impl GraphBackend) -> Elem<T>
+    fn range_op(lhs: Elem<T>, rhs: Elem<T>, op: RangeOp, _analyzer: &impl GraphBackend) -> Elem<T>
     where
         Self: Sized,
     {
@@ -74,7 +74,12 @@ pub trait RangeElem<T: Ord> {
     /// e.g.: take the basic expression `x + y`, in normal checked solidity math
     /// both x and y have the requirement `var <= 2**256 - 1 - other_var`, forming a
     /// cyclic dependency.
-    fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend);
+    fn filter_recursion(
+        &mut self,
+        node_idx: NodeIdx,
+        new_idx: NodeIdx,
+        analyzer: &mut impl GraphBackend,
+    );
 
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError>;
 }

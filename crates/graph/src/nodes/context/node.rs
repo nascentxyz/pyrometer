@@ -28,7 +28,11 @@ impl ContextNode {
         todo!("Joining not supported yet");
     }
 
-    pub fn add_gas_cost(&self, analyzer: &mut impl GraphBackend, cost: u64) -> Result<(), GraphError> {
+    pub fn add_gas_cost(
+        &self,
+        analyzer: &mut impl GraphBackend,
+        cost: u64,
+    ) -> Result<(), GraphError> {
         self.associated_fn(analyzer)?.add_gas_cost(analyzer, cost)
     }
 
@@ -100,9 +104,7 @@ impl ContextNode {
         ret: ContextVarNode,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?
-            .ret
-            .push((ret_stmt_loc, ret));
+        self.underlying_mut(analyzer)?.ret.push((ret_stmt_loc, ret));
         self.propogate_end(analyzer)?;
         Ok(())
     }

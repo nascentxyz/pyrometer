@@ -264,8 +264,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let rhs_max_neg = rhs_max.pre_evaled_is_negative();
 
         let consts = (
-            matches!(lhs_min.range_ord(&lhs_max, analyzer), Some(std::cmp::Ordering::Equal)),
-            matches!(rhs_min.range_ord(&rhs_max, analyzer), Some(std::cmp::Ordering::Equal)),
+            matches!(
+                lhs_min.range_ord(&lhs_max, analyzer),
+                Some(std::cmp::Ordering::Equal)
+            ),
+            matches!(
+                rhs_min.range_ord(&rhs_max, analyzer),
+                Some(std::cmp::Ordering::Equal)
+            ),
         );
 
         fn fallback(
@@ -285,7 +291,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let res = match self.op {
             RangeOp::GetLength => {
                 if maximize {
-                    let mut new = lhs_max.clone();
+                    let new = lhs_max.clone();
                     let new_max = new.simplify_minimize(&mut Default::default(), analyzer)?;
                     let res = new_max.range_get_length();
                     res.unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
@@ -619,8 +625,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (rhs_min.range_ord(&one, analyzer), rhs_max.range_ord(&one, analyzer))
-                    {
+                    ) = (
+                        rhs_min.range_ord(&one, analyzer),
+                        rhs_max.range_ord(&one, analyzer),
+                    ) {
                         candidates.push(Some(lhs_max.clone()));
                         candidates.push(Some(lhs_min.clone()));
                     }
@@ -629,8 +637,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (lhs_min.range_ord(&one, analyzer), lhs_max.range_ord(&one, analyzer))
-                    {
+                    ) = (
+                        lhs_min.range_ord(&one, analyzer),
+                        lhs_max.range_ord(&one, analyzer),
+                    ) {
                         candidates.push(Some(rhs_max.clone()));
                         candidates.push(Some(rhs_min.clone()));
                     }
@@ -663,16 +673,20 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (rhs_min.range_ord(&zero, analyzer), rhs_max.range_ord(&zero, analyzer))
-                    {
+                    ) = (
+                        rhs_min.range_ord(&zero, analyzer),
+                        rhs_max.range_ord(&zero, analyzer),
+                    ) {
                         candidates.push(Some(zero.clone()));
                     }
                     // check if lhs contains zero
                     if let (
                         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal),
-                    ) = (lhs_min.range_ord(&zero, analyzer), lhs_max.range_ord(&zero, analyzer))
-                    {
+                    ) = (
+                        lhs_min.range_ord(&zero, analyzer),
+                        lhs_max.range_ord(&zero, analyzer),
+                    ) {
                         candidates.push(Some(zero.clone()));
                     }
                     candidates.extend(vec![
@@ -1229,7 +1243,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     // true is the maximum is when they are both consts and equal
                     if matches!(consts, (true, true)) {
                         // both are consts, check if they are equal
-                        if matches!(lhs_min.range_ord(&rhs_min, analyzer), Some(std::cmp::Ordering::Equal)) {
+                        if matches!(
+                            lhs_min.range_ord(&rhs_min, analyzer),
+                            Some(std::cmp::Ordering::Equal)
+                        ) {
                             return Ok(Elem::Concrete(RangeConcrete {
                                 val: Concrete::Bool(false),
                                 loc,

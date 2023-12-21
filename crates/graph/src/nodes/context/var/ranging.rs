@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{Concrete, ContextNode, ContextVarNode},
+    nodes::{Concrete, ContextVarNode},
     range::{range_string::ToRangeString, Range, RangeEval},
     AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
 };
@@ -105,7 +105,10 @@ impl ContextVarNode {
         Ok(())
     }
 
-    pub fn cache_flattened_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+    pub fn cache_flattened_range(
+        &self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<(), GraphError> {
         if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_flatten(analyzer)?;
             self.set_range(analyzer, range)?;
@@ -268,10 +271,10 @@ impl ContextVarNode {
             None
         };
 
-        new_exclusions.iter_mut().try_for_each(|excl| {
-            excl.arenaize(analyzer)
-        })?;
-        
+        new_exclusions
+            .iter_mut()
+            .try_for_each(|excl| excl.arenaize(analyzer))?;
+
         self.underlying_mut(analyzer)?
             .set_range_exclusions(new_exclusions, fallback)?;
         Ok(())
@@ -355,9 +358,9 @@ impl ContextVarNode {
             None
         };
 
-        new_exclusions.iter_mut().try_for_each(|excl| {
-            excl.arenaize(analyzer)
-        })?;
+        new_exclusions
+            .iter_mut()
+            .try_for_each(|excl| excl.arenaize(analyzer))?;
 
         Ok(self
             .underlying_mut(analyzer)?
@@ -380,5 +383,3 @@ impl ContextVarNode {
         Ok(())
     }
 }
-
-

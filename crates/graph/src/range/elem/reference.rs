@@ -1,13 +1,13 @@
-use std::hash::Hash;
-use std::hash::Hasher;
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{
-        elem::{Elem, MinMaxed, RangeConcrete, RangeElem, RangeOp},
+        elem::{Elem, MinMaxed, RangeConcrete, RangeElem},
         Range,
     },
     GraphBackend, GraphError, TypeNode, VarType,
 };
+use std::hash::Hash;
+use std::hash::Hasher;
 
 use shared::NodeIdx;
 
@@ -51,7 +51,9 @@ impl<T> Reference<T> {
 impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
 
-    fn arenaize(&mut self, _analyzer: &mut impl GraphBackend) -> Result<(), GraphError> { Ok(()) }
+    fn arenaize(&mut self, _analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        Ok(())
+    }
 
     fn range_eq(&self, _other: &Self, _analyzer: &impl GraphBackend) -> bool {
         false

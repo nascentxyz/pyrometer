@@ -3,8 +3,7 @@ use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 use graph::{
     elem::*,
     nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
-        TmpConstruction,
+        BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction,
     },
     AnalyzerBackend, GraphError, Node, Range, SolcRange, VarType,
 };
@@ -45,8 +44,12 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
                 tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
-                
-                let mut elem = Elem::Expr(RangeExpr::new(Elem::from(lhs_cvar), RangeOp::Not, Elem::Null));
+
+                let mut elem = Elem::Expr(RangeExpr::new(
+                    Elem::from(lhs_cvar),
+                    RangeOp::Not,
+                    Elem::Null,
+                ));
                 elem.arenaize(self);
                 let mut range = SolcRange::new(elem.clone(), elem, vec![]);
 

@@ -224,11 +224,12 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
             }
         };
 
-        let (comparator, needs_curr) = if let Some(inherited) = curr.previous_or_inherited_version(self) {
-            (inherited, true)
-        } else {
-            (curr, false)
-        };
+        let (comparator, needs_curr) =
+            if let Some(inherited) = curr.previous_or_inherited_version(self) {
+                (inherited, true)
+            } else {
+                (curr, false)
+            };
 
         if let Some(curr_range) = comparator.ref_range(self).unwrap() {
             let mut cr_min = curr_range.evaled_range_min(self).unwrap();

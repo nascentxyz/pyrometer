@@ -1,9 +1,6 @@
-use graph::nodes::FunctionNode;
 use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{
-    func_call::helper::CallerHelper, variable::Variable, ContextBuilder, ExprErr, ExpressionParser,
-    IntoExprErr,
-};
+use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use graph::nodes::FunctionNode;
 
 use graph::{
     elem::*,
@@ -43,7 +40,9 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         ));
                     };
 
-                    let input = if let Some(ordered_param_names) = FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer) {
+                    let input = if let Some(ordered_param_names) =
+                        FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer)
+                    {
                         input_exprs.order(input, ordered_param_names)
                     } else {
                         input
@@ -80,7 +79,9 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         ));
                     };
 
-                    let input = if let Some(ordered_param_names) = FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer) {
+                    let input = if let Some(ordered_param_names) =
+                        FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer)
+                    {
                         input_exprs.order(input, ordered_param_names)
                     } else {
                         input

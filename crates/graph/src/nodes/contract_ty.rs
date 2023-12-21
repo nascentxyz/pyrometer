@@ -354,7 +354,7 @@ impl Contract {
                 ty: con.ty,
                 name: con.name,
                 inherits,
-                cached_functions: None
+                cached_functions: None,
             },
             unhandled_inherits,
         )
