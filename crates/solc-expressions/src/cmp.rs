@@ -45,7 +45,12 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
                 let lhs_cvar = ContextVarNode::from(lhs);
                 tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
-                let range = self.not_eval(ctx, loc, lhs_cvar)?;
+                
+                let mut elem = Elem::Expr(RangeExpr::new(Elem::from(lhs_cvar), RangeOp::Not, Elem::Null));
+                elem.arenaize(self);
+                let mut range = SolcRange::new(elem.clone(), elem, vec![]);
+
+                range.cache_eval(self).into_expr_err(loc)?;
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(
@@ -260,42 +265,42 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
     }
 
-    fn not_eval(
-        &self,
-        _ctx: ContextNode,
-        loc: Loc,
-        lhs_cvar: ContextVarNode,
-    ) -> Result<SolcRange, ExprErr> {
-        if let Some(lhs_range) = lhs_cvar.ref_range(self).into_expr_err(loc)? {
-            let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
+    // fn not_eval(
+    //     &mut self,
+    //     _ctx: ContextNode,
+    //     loc: Loc,
+    //     lhs_cvar: ContextVarNode,
+    // ) -> Result<SolcRange, ExprErr> {
+    //     if let Some(lhs_range) = lhs_cvar.ref_range(self).into_expr_err(loc)? {
+    //         let lhs_min = lhs_range.evaled_range_min(self).into_expr_err(loc)?;
 
-            // invert
-            if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?, self) {
-                let val = Elem::Expr(RangeExpr::new(
-                    lhs_range.range_min().into_owned(),
-                    RangeOp::Not,
-                    Elem::Null,
-                ));
+    //         // invert
+    //         if lhs_min.range_eq(&lhs_range.evaled_range_max(self).into_expr_err(loc)?, self) {
+    //             let val = Elem::Expr(RangeExpr::new(
+    //                 lhs_range.range_min().into_owned(),
+    //                 RangeOp::Not,
+    //                 Elem::Null,
+    //             ));
 
-                return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions.clone()));
-            }
-        }
+    //             return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions.clone()));
+    //         }
+    //     }
 
-        let min = RangeConcrete {
-            val: Concrete::Bool(false),
-            loc,
-        };
+    //     let min = Elem::Concrete(RangeConcrete {
+    //         val: Concrete::Bool(false),
+    //         loc,
+    //     }).arenaize(self);
 
-        let max = RangeConcrete {
-            val: Concrete::Bool(true),
-            loc,
-        };
-        Ok(SolcRange::new(
-            Elem::Concrete(min),
-            Elem::Concrete(max),
-            vec![],
-        ))
-    }
+    //     let max = Elem::Concrete(RangeConcrete {
+    //         val: Concrete::Bool(true),
+    //         loc,
+    //     }).arenaize(self);
+    //     Ok(SolcRange::new(
+    //         min,
+    //         max,
+    //         vec![],
+    //     ))
+    // }
 
     fn range_eval(
         &self,

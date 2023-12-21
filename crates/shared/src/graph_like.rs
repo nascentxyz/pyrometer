@@ -26,7 +26,7 @@ pub struct RangeArena<T: Hash> {
 pub trait GraphLike {
     type Node;
     type Edge: Ord + PartialEq + Heirarchical + Copy;
-    type RangeElem: Hash + PartialEq + Eq + PartialOrd + Clone;
+    type RangeElem: Hash + PartialEq + Eq + PartialOrd + Clone + std::fmt::Display;
     /// Get a mutable reference to the graph
     fn graph_mut(&mut self) -> &mut Graph<Self::Node, Self::Edge, Directed, usize>;
     /// Get a reference to the graph

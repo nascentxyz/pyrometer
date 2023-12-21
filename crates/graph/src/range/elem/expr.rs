@@ -105,9 +105,10 @@ impl<T: Ord> RangeExpr<T> {
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
 
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         self.lhs.arenaize(analyzer);
         self.rhs.arenaize(analyzer);
+        Ok(())
     }
 
     fn range_eq(&self, _other: &Self, analyzer: &impl GraphBackend) -> bool {
@@ -175,6 +176,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
             self.simplify_exec_op(true, &mut Default::default(), analyzer)
+        } else if let Some(flat_max) = &self.flattened_max {
+            flat_max.maximize(analyzer)
         } else {
             self.exec_op(true, analyzer)
         }
@@ -184,6 +187,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
             self.simplify_exec_op(false, &mut Default::default(), analyzer)
+        } else if let Some(flat_min) = &self.flattened_min {
+            flat_min.minimize(analyzer)
         } else {
             self.exec_op(false, analyzer)
         }

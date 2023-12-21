@@ -34,8 +34,9 @@ impl RangeConcrete<Concrete> {
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     type GraphError = GraphError;
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         let _ = analyzer.range_arena_idx_or_upsert(Elem::Concrete(self.clone()));
+        Ok(())
     }
 
     fn has_cycle(

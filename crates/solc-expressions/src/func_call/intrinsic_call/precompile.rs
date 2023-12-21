@@ -193,7 +193,7 @@ pub trait PrecompileCaller:
 
                     // the return is a continuation of the ctx not the ecrecover ctx
                     ContextNode::from(ret_ctx)
-                        .set_continuation_ctx(analyzer, ctx)
+                        .set_continuation_ctx(analyzer, ctx, "ecrecover")
                         .into_expr_err(loc)?;
 
                     let tmp_ret = ContextVarNode::from(cvar)

@@ -37,10 +37,10 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
                 .into_expr_err(loc)?;
             true_subctx
-                .set_continuation_ctx(analyzer, ctx)
+                .set_continuation_ctx(analyzer, ctx, "fork_true")
                 .into_expr_err(loc)?;
             false_subctx
-                .set_continuation_ctx(analyzer, ctx)
+                .set_continuation_ctx(analyzer, ctx, "fork_false")
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);
             analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
@@ -161,10 +161,10 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
                 .into_expr_err(loc)?;
             true_subctx
-                .set_continuation_ctx(analyzer, ctx)
+                .set_continuation_ctx(analyzer, ctx, "fork_true")
                 .into_expr_err(loc)?;
             false_subctx
-                .set_continuation_ctx(analyzer, ctx)
+                .set_continuation_ctx(analyzer, ctx, "fork_false")
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);
             analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));

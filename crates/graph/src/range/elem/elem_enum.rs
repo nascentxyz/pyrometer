@@ -595,19 +595,20 @@ impl std::fmt::Display for Elem<Concrete> {
 impl RangeElem<Concrete> for Elem<Concrete> {
     type GraphError = GraphError;
 
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         match self {
-            Self::Arena(_) => return,
-            Self::Reference(d) => d.arenaize(analyzer),
-            Self::ConcreteDyn(d) => d.arenaize(analyzer),
+            Self::Arena(_) => return Ok(()),
+            Self::Reference(d) => d.arenaize(analyzer)?,
+            Self::ConcreteDyn(d) => d.arenaize(analyzer)?,
             Self::Expr(expr) => {
-                expr.arenaize(analyzer);
+                expr.arenaize(analyzer)?;
             },
             _ => {}
         }
 
         let self_take = std::mem::take(self);
         *self = Elem::Arena(analyzer.range_arena_idx_or_upsert(self_take));
+        Ok(())
     }
 
     fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
@@ -656,6 +657,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     }
 
     fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        if self.is_flatten_cached(analyzer) {
+            return Ok(())
+        }
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer),
             Self::Concrete(c) => c.cache_flatten(analyzer),

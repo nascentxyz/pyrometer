@@ -98,7 +98,7 @@ impl ContextVarNode {
 
     pub fn cache_range(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
-            range.cache_flatten(analyzer)?;
+            // range.cache_flatten(analyzer)?;
             range.cache_eval(analyzer)?;
             self.set_range(analyzer, range)?;
         }
@@ -380,3 +380,5 @@ impl ContextVarNode {
         Ok(())
     }
 }
+
+

@@ -51,7 +51,7 @@ impl<T> Reference<T> {
 impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
 
-    fn arenaize(&mut self, _analyzer: &mut impl GraphBackend) {}
+    fn arenaize(&mut self, _analyzer: &mut impl GraphBackend) -> Result<(), GraphError> { Ok(()) }
 
     fn range_eq(&self, _other: &Self, _analyzer: &impl GraphBackend) -> bool {
         false

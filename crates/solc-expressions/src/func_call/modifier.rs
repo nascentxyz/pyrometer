@@ -121,7 +121,7 @@ pub trait ModifierCaller:
                 let new_parent_subctx = ContextNode::from(analyzer.add_node(Node::Context(pctx)));
 
                 new_parent_subctx
-                    .set_continuation_ctx(analyzer, modifier_state.parent_ctx)
+                    .set_continuation_ctx(analyzer, modifier_state.parent_ctx, "resume_from_modifier_nonfinal")
                     .into_expr_err(loc)?;
                 ctx.set_child_call(new_parent_subctx, analyzer)
                     .into_expr_err(modifier_state.loc)?;
@@ -150,7 +150,7 @@ pub trait ModifierCaller:
                 .unwrap();
                 let new_parent_subctx = ContextNode::from(analyzer.add_node(Node::Context(pctx)));
                 new_parent_subctx
-                    .set_continuation_ctx(analyzer, modifier_state.parent_ctx)
+                    .set_continuation_ctx(analyzer, modifier_state.parent_ctx, "resume_from_modifier_final")
                     .into_expr_err(loc)?;
                 ctx.set_child_call(new_parent_subctx, analyzer)
                     .into_expr_err(modifier_state.loc)?;

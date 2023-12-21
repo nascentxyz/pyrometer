@@ -1,7 +1,7 @@
 use crate::{
     nodes::ContextVarNode,
     range::elem::{Elem, RangeExpr, RangeOp},
-    GraphBackend,
+    GraphBackend, GraphError
 };
 
 use shared::NodeIdx;
@@ -76,5 +76,5 @@ pub trait RangeElem<T: Ord> {
     /// cyclic dependency.
     fn filter_recursion(&mut self, node_idx: NodeIdx, new_idx: NodeIdx, analyzer: &mut impl GraphBackend);
 
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend);
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError>;
 }

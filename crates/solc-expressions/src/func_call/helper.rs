@@ -360,7 +360,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .into_expr_err(loc)?;
                 let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
                 ret_subctx
-                    .set_continuation_ctx(self, caller_ctx)
+                    .set_continuation_ctx(self, caller_ctx, "ctx_rets")
                     .into_expr_err(loc)?;
 
                 let res = callee_ctx

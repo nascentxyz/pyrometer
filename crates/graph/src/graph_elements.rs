@@ -369,7 +369,7 @@ pub enum ContextEdge {
     /// A connection between a variable and the context denoting that the variable is returned
     Return,
     /// A continuation of a context
-    Continue,
+    Continue(&'static str),
     /// A connection between a brand new created variable for a function's context and the variable
     InputVariable,
     /// A connection to a return variable that should be assigned

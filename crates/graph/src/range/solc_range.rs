@@ -565,15 +565,15 @@ impl Range<Concrete> for SolcRange {
     }
 
     fn cache_eval(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        self.min.arenaize(analyzer);
+        self.max.arenaize(analyzer);
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
-            max.cache_flatten(analyzer)?;
             max.cache_maximize(analyzer)?;
             self.max_cached = Some(self.range_max().maximize(analyzer)?);
         }
         if self.min_cached.is_none() {
             let min = self.range_min_mut();
-            min.cache_flatten(analyzer)?;
             min.cache_minimize(analyzer)?;
             self.min_cached = Some(self.range_min().minimize(analyzer)?);
         }

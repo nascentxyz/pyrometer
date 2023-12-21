@@ -435,7 +435,7 @@ pub trait FuncCaller:
     }
 
     /// Actually executes the function
-    #[tracing::instrument(level = "trace", skip_all)]
+    // #[tracing::instrument(level = "trace", skip_all)]
     fn execute_call_inner(
         &mut self,
         loc: Loc,
@@ -445,6 +445,7 @@ pub trait FuncCaller:
         _renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
         func_call_str: Option<&str>,
     ) -> Result<(), ExprErr> {
+        tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
             func_node
@@ -462,6 +463,7 @@ pub trait FuncCaller:
                     }
                 });
 
+            // parse the function body
             self.parse_ctx_statement(&body, false, Some(callee_ctx));
             if let Some(mod_state) = &callee_ctx.underlying(self).into_expr_err(loc)?.modifier_state.clone() {
                 if mod_state.num == 0 {
@@ -491,7 +493,7 @@ pub trait FuncCaller:
             )
             .unwrap();
             let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
-            ret_subctx.set_continuation_ctx(self, caller_ctx).into_expr_err(loc)?;
+            ret_subctx.set_continuation_ctx(self, caller_ctx, "execute_call_inner").into_expr_err(loc)?;
 
             let res = callee_ctx
                 .set_child_call(ret_subctx, self)

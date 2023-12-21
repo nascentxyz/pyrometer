@@ -1,3 +1,5 @@
+use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 use crate::ContextEdge;
 use crate::Edge;
 use crate::{
@@ -17,25 +19,36 @@ impl ContextNode {
     pub fn set_continuation_ctx(
         &self,
         analyzer: &mut impl AnalyzerBackend,
-        continuation_ctx: ContextNode,
+        continuation_of_ctx: ContextNode,
+        ty: &'static str
     ) -> Result<(), GraphError> {
         assert!(
-            self.0 > continuation_ctx.0,
+            self.0 > continuation_of_ctx.0,
             "{} {}",
             self.0,
-            continuation_ctx.0
+            continuation_of_ctx.0
         );
-        if let Some(cont) = self.underlying_mut(analyzer)?.continuation_of {
-            cont.set_continuation_ctx(analyzer, continuation_ctx)
+
+        let parent_list = self.parent_list(analyzer)?;
+        // if `continuation_of` already has a continuation, build off that continuation if it is in the parent list
+        if let Some(cont) = analyzer
+            .graph()
+            .edges_directed(continuation_of_ctx.into(), Direction::Incoming)
+            .find(|edge| {
+                matches!(edge.weight(), Edge::Context(ContextEdge::Continue(_)))
+                && parent_list.contains(&ContextNode::from(edge.source()))
+            })
+            .map(|edge| ContextNode::from(edge.source()))
+        {
+            self.set_continuation_ctx(analyzer, cont, ty)
         } else {
             analyzer.add_edge(
                 *self,
-                continuation_ctx,
-                Edge::Context(ContextEdge::Continue),
+                continuation_of_ctx,
+                Edge::Context(ContextEdge::Continue(ty)),
             );
-
-            self.underlying_mut(analyzer)?.continuation_of = Some(continuation_ctx);
-            self.underlying_mut(analyzer)?.cache.vars = continuation_ctx.underlying(analyzer)?.cache.vars.clone();
+            self.underlying_mut(analyzer)?.continuation_of = Some(continuation_of_ctx);
+            self.underlying_mut(analyzer)?.cache.vars = continuation_of_ctx.underlying(analyzer)?.cache.vars.clone();
             Ok(())
         }
     }

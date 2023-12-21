@@ -170,7 +170,10 @@ impl RangeDyn<Concrete> {
 impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
 
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) {
+    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        self.cache_flatten(analyzer)?;
+        self.cache_minimize(analyzer)?;
+        self.cache_maximize(analyzer)?;
         self.len.arenaize(analyzer);
         self.val = self.val.iter_mut().map(|(k, (v, op))| {
             let mut new_k = k.clone();
@@ -179,6 +182,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             new_v.arenaize(analyzer);
             (new_k, (new_v, *op))
         }).collect();
+        Ok(())
     }
 
     fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {

@@ -108,8 +108,10 @@ impl Context {
 
         let modifier_state = if let Some(mstate) = modifier_state {
             Some(mstate)
-        } else {
+        } else if fn_call.is_none() || parent_ctx.associated_fn(analyzer)? == fn_call.unwrap() {
             parent_ctx.underlying(analyzer)?.modifier_state.clone()
+        } else {
+            None
         };
 
         if analyzer.max_depth() < depth {
