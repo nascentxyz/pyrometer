@@ -3,7 +3,7 @@ use crate::Analyzer;
 use graph::{
     nodes::{
         BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionParam, FunctionParamNode,
-        FunctionReturn, MsgNode,
+        FunctionReturn, MsgNode, FunctionNode,
     },
     AnalyzerBackend, Edge, Node, VarType,
 };
@@ -13,7 +13,7 @@ use solc_expressions::{ExprErr, IntoExprErr};
 use ethers_core::types::U256;
 use solang_parser::{helpers::CodeLocation, pt::Expression};
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 impl AnalyzerBackend for Analyzer {}
 
@@ -24,6 +24,7 @@ impl AnalyzerLike for Analyzer {
     type BlockNode = BlockNode;
 
     type Function = Function;
+    type FunctionNode = FunctionNode;
     type FunctionParam = FunctionParam;
     type FunctionReturn = FunctionReturn;
     type Builtin = Builtin;
@@ -59,6 +60,10 @@ impl AnalyzerLike for Analyzer {
 
     fn entry(&self) -> NodeIdx {
         self.entry
+    }
+
+    fn parse_fn(&self) -> FunctionNode {
+        self.parse_fn
     }
 
     fn msg(&mut self) -> MsgNode {
@@ -229,5 +234,12 @@ impl AnalyzerLike for Analyzer {
 
     fn debug_panic(&self) -> bool {
         self.debug_panic
+    }
+
+    fn fn_calls_fns(&self) -> &BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>> {
+        &self.fn_calls_fns
+    }
+    fn fn_calls_fns_mut(&mut self) -> &mut BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>> {
+        &mut self.fn_calls_fns
     }
 }

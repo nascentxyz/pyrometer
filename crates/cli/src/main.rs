@@ -243,6 +243,7 @@ fn main() {
     let t_end = t0.elapsed();
     let parse_time = t_end.as_millis();
 
+
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
     if args.stats {

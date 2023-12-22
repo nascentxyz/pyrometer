@@ -365,7 +365,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     atomic
                         .idxs
                         .iter()
-                        .for_each(|idx| r.replace_dep(idx.0.into(), Elem::from(val.clone())));
+                        .for_each(|idx| r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer));
                 });
             });
 
@@ -406,7 +406,7 @@ impl SolcSolver for BruteBinSearchSolver {
                         .iter()
                         .for_each(|(atomic, range)| {
                             atomic.idxs.iter().for_each(|idx| {
-                                new_range.replace_dep(idx.0.into(), range.min.clone());
+                                new_range.replace_dep(idx.0.into(), range.min.clone(), analyzer);
                             });
                         });
                     new_range.cache_eval(analyzer).unwrap();
@@ -680,7 +680,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     atomic
                         .idxs
                         .iter()
-                        .for_each(|idx| r.replace_dep(idx.0.into(), Elem::from(val.clone())));
+                        .for_each(|idx| r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer));
                 });
             });
 
@@ -766,7 +766,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     .idxs
                     .iter()
                     .for_each(|atomic_alias| {
-                        new_range.replace_dep(atomic_alias.0.into(), conc.clone());
+                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer);
                     });
                 new_range.cache_eval(analyzer)?;
 

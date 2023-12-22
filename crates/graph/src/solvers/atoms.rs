@@ -37,16 +37,16 @@ impl AtomOrPart {
         }
     }
 
-    pub fn replace_deps(&self, solves: &BTreeMap<ContextVarNode, Elem<Concrete>>) -> Self {
+    pub fn replace_deps(&self, solves: &BTreeMap<ContextVarNode, Elem<Concrete>>, analyzer: &mut impl GraphBackend) -> Self {
         match self {
             AtomOrPart::Part(part) => {
                 let mut new_part = part.clone();
                 solves.iter().for_each(|(dep, replacement)| {
-                    new_part.replace_dep(dep.0.into(), replacement.clone())
+                    new_part.replace_dep(dep.0.into(), replacement.clone(), analyzer)
                 });
                 AtomOrPart::Part(new_part)
             }
-            AtomOrPart::Atom(atom) => AtomOrPart::Atom(atom.replace_deps(solves)),
+            AtomOrPart::Atom(atom) => AtomOrPart::Atom(atom.replace_deps(solves, analyzer)),
         }
     }
 
@@ -122,12 +122,12 @@ impl ToRangeString for SolverAtom {
 }
 
 impl SolverAtom {
-    pub fn replace_deps(&self, solves: &BTreeMap<ContextVarNode, Elem<Concrete>>) -> Self {
+    pub fn replace_deps(&self, solves: &BTreeMap<ContextVarNode, Elem<Concrete>>, analyzer: &mut impl GraphBackend) -> Self {
         SolverAtom {
             ty: self.ty,
-            lhs: Box::new(self.lhs.clone().replace_deps(solves)),
+            lhs: Box::new(self.lhs.clone().replace_deps(solves, analyzer)),
             op: self.op,
-            rhs: Box::new(self.rhs.clone().replace_deps(solves)),
+            rhs: Box::new(self.rhs.clone().replace_deps(solves, analyzer)),
         }
     }
 

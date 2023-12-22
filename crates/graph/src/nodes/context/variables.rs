@@ -8,6 +8,19 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 impl ContextNode {
+    pub fn input_variables(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        self.vars(analyzer)
+            .iter()
+            .filter_map(|(_, var)| {
+                if var.is_func_input(analyzer) {
+                    Some(var.first_version(analyzer))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     /// Debug print the stack
     pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
         let underlying_mut = self.underlying(analyzer)?;

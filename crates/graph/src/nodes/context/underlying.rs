@@ -8,6 +8,7 @@ use crate::{
 };
 
 use solang_parser::pt::Loc;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
@@ -21,7 +22,7 @@ pub struct Context {
     pub continuation_of: Option<ContextNode>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
-    pub ctx_deps: Vec<ContextVarNode>,
+    pub ctx_deps: BTreeSet<ContextVarNode>,
     /// A string that represents the path taken from the root context (i.e. `fn_entry.fork.1`)
     pub path: String,
     /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement

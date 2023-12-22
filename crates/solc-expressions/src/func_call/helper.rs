@@ -58,6 +58,12 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
                         let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
 
+                        self.add_edge(
+                            node,
+                            input.latest_version(self),
+                            Edge::Context(ContextEdge::InputVariable),
+                        );
+                        
                         if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap())
                         {
                             if !node.ty_eq_ty(&param_ty, self).unwrap() {

@@ -400,6 +400,23 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: Option<ModifierState>,
     ) -> Result<(), ExprErr> {
+        if !entry_call {
+            let mapping = params
+                .iter()
+                .zip(inputs.iter())
+                .filter_map(|(param, input)| {
+                    if let Ok(Some(name)) = param.maybe_name(self) {
+                        Some((name, (*param, *input)))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<BTreeMap<_, _>>();
+            if let Ok(true) = ctx.join(func_node, &mapping, self) {
+                return Ok(())
+            }
+        }
+
         // pseudocode:
         //  1. Create context for the call
         //  2. Check for modifiers
@@ -411,16 +428,6 @@ pub trait FuncCaller:
         } else {
             self.create_call_ctx(ctx, loc, func_node, modifier_state)?
         };
-
-        // TODO: implement joining
-        // if !entry_call {
-        //     let mapping = params
-        //         .iter()
-        //         .zip(inputs.iter())
-        //         .map(|(param, input)| (*input, *param))
-        //         .collect::<BTreeMap<_, _>>();
-        //     ctx.join(func_node, &mapping, self);
-        // }
 
         // handle remapping of variable names and bringing variables into the new context
         let renamed_inputs =

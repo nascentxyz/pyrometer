@@ -1,3 +1,4 @@
+use graph::elem::RangeElem;
 use crate::Analyzer;
 use graph::elem::Elem;
 use graph::nodes::Concrete;
@@ -34,6 +35,47 @@ impl GraphLike for Analyzer {
 
     fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
         &mut self.range_arena
+    }
+
+    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
+        if let Some(idx) = self.range_arena_idx(&elem) {
+            let existing = &self.range_arena().ranges[idx];
+            let (min_cached, max_cached) = existing.is_min_max_cached(self);
+            let mut existing_count = 0;
+            if min_cached {
+                existing_count += 1;
+            }
+            if max_cached {
+                existing_count += 1;
+            }
+            if existing.is_flatten_cached(self) {
+                existing_count += 1;
+            }
+
+
+            let (min_cached, max_cached) = elem.is_min_max_cached(self);
+            let mut new_count = 0;
+            if min_cached {
+                new_count += 1;
+            }
+            if max_cached {
+                new_count += 1;
+            }
+            if elem.is_flatten_cached(self) {
+                new_count += 1;
+            }
+            
+            if new_count >= existing_count {
+                self.range_arena_mut().ranges[idx] = elem;
+            }
+
+            idx
+        } else {
+            let idx = self.range_arena().ranges.len();
+            self.range_arena_mut().ranges.push(elem.clone());
+            self.range_arena_mut().map.insert(elem, idx);
+            idx
+        }
     }
 }
 
@@ -597,6 +639,10 @@ impl GraphLike for G<'_> {
         panic!("Should not call this")
     }
     fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        panic!("Should not call this")
+    }
+
+    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
         panic!("Should not call this")
     }
 }

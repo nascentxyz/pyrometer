@@ -81,6 +81,10 @@ impl RangeExpr<Concrete> {
             None
         }
     }
+
+    pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
+        Elem::Expr(Self::new(self.lhs.recurse_dearenaize(analyzer).clone(), self.op, self.rhs.recurse_dearenaize(analyzer).clone()))
+    }
 }
 
 impl<T: Ord> RangeExpr<T> {
@@ -135,6 +139,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
     fn is_flatten_cached(&self, _analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
+    }
+
+    fn is_min_max_cached(&self, _analyzer: &impl GraphBackend) -> (bool, bool) {
+        (self.minimized.is_some(), self.maximized.is_some())
     }
 
     fn range_ord(
@@ -270,26 +278,46 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
 
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+        if let Some(idx) = g.range_arena_idx(&Elem::Expr(self.clone())) {
+            if Elem::Arena(idx).is_flatten_cached(g) {
+                panic!("here");
+            }
+        }
+
         if self.flattened_max.is_none() {
+            self.lhs.arenaize(g)?;
             self.lhs.cache_flatten(g)?;
+            self.rhs.arenaize(g)?;
             self.rhs.cache_flatten(g)?;
-            let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
+            let mut flat_max = self.flatten(true, g)?;
+            flat_max.arenaize(g)?;
+            let mut simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
+            simplified_flat_max.arenaize(g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
+            let mut s = Elem::Expr(self.clone());
+            s.arenaize(g)?;
         }
         if self.flattened_min.is_none() {
+            self.lhs.arenaize(g)?;
             self.lhs.cache_flatten(g)?;
+            self.rhs.arenaize(g)?;
             self.rhs.cache_flatten(g)?;
-            let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
+            let mut flat_min = self.flatten(false, g)?;
+            flat_min.arenaize(g)?;
+            let mut simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
+            simplified_flat_min.arenaize(g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
+            let mut s = Elem::Expr(self.clone());
+            s.arenaize(g)?;
         }
         Ok(())
     }
 
     fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.maximized.is_none() {
+            self.lhs.arenaize(g)?;
             self.lhs.cache_maximize(g)?;
+            self.rhs.arenaize(g)?;
             self.rhs.cache_maximize(g)?;
             self.cache_exec_op(true, g)?;
         }
@@ -298,7 +326,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
     fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.minimized.is_none() {
+            self.lhs.arenaize(g)?;
             self.lhs.cache_minimize(g)?;
+            self.rhs.arenaize(g)?;
             self.rhs.cache_minimize(g)?;
             self.cache_exec_op(false, g)?;
         }

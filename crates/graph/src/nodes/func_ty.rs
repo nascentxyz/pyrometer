@@ -11,7 +11,7 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{
         Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc,
-        Parameter, ParameterList, Statement, Type, VariableDefinition, Visibility,
+        Parameter, ParameterList, Statement, Type, VariableDefinition, Visibility, Mutability
     },
 };
 use std::collections::BTreeMap;
@@ -450,6 +450,15 @@ impl FunctionNode {
                 attr,
                 FunctionAttribute::Visibility(Visibility::Public(_))
                     | FunctionAttribute::Visibility(Visibility::External(_))
+            )
+        }))
+    }
+
+    pub fn is_pure(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.attributes.iter().any(|attr| {
+            matches!(
+                attr,
+                FunctionAttribute::Mutability(Mutability::Pure(_))
             )
         }))
     }

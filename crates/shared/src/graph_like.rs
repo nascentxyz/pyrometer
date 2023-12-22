@@ -71,16 +71,7 @@ pub trait GraphLike {
         self.range_arena().map.get(elem).copied()
     }
 
-    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
-        if let Some(idx) = self.range_arena_idx(&elem) {
-            idx
-        } else {
-            let idx = self.range_arena().ranges.len();
-            self.range_arena_mut().ranges.push(elem.clone());
-            self.range_arena_mut().map.insert(elem, idx);
-            idx
-        }
-    }
+    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize;
 }
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use crate::{GraphLike, NodeIdx};
 use std::collections::HashMap;
 
@@ -14,6 +15,8 @@ pub trait AnalyzerLike: GraphLike {
 
     /// Type of a function
     type Function;
+    /// Node of a function type
+    type FunctionNode;
     /// Type of a function input parameter
     type FunctionParam;
     /// Type of a function return paramter
@@ -38,6 +41,7 @@ pub trait AnalyzerLike: GraphLike {
     fn msg(&mut self) -> Self::MsgNode;
     fn block(&mut self) -> Self::BlockNode;
     fn entry(&self) -> NodeIdx;
+    fn parse_fn(&self) -> Self::FunctionNode;
     fn add_expr_err(&mut self, err: Self::ExprErr);
     fn expr_errs(&self) -> Vec<Self::ExprErr>;
 
@@ -52,6 +56,20 @@ pub trait AnalyzerLike: GraphLike {
         Self: std::marker::Sized;
 
     fn debug_panic(&self) -> bool;
+
+    fn fn_calls_fns(&self) -> &BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>>;
+    fn fn_calls_fns_mut(&mut self) -> &mut BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>>;
+    fn add_fn_call(&mut self, caller: Self::FunctionNode, callee: Self::FunctionNode)
+        where Self::FunctionNode: Ord
+    {
+        let calls = self.fn_calls_fns_mut();
+        let entry = calls.entry(caller).or_default();
+        if !entry.contains(&callee) {
+            entry.push(callee)
+        }
+    }
+    
+
     fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T>
     where
         Self::ExprErr: std::fmt::Debug,

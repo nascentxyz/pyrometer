@@ -136,6 +136,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
+    fn is_min_max_cached(&self, _analyzer: &impl GraphBackend) -> (bool, bool) {
+        (self.minimized.is_some(), self.maximized.is_some())
+    }
+
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         if self.flattened_max.is_none() {
             let cvar = ContextVarNode::from(self.idx);
@@ -143,6 +147,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             let flat_max = self.flatten(true, g)?;
             let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
+            let mut s = Elem::Reference(self.clone());
+            s.arenaize(g)?;
         }
         if self.flattened_min.is_none() {
             let cvar = ContextVarNode::from(self.idx);
@@ -150,6 +156,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             let flat_min = self.flatten(false, g)?;
             let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
+            let mut s = Elem::Reference(self.clone());
+            s.arenaize(g)?;
         }
         Ok(())
     }
@@ -253,6 +261,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             let cvar = ContextVarNode::from(self.idx);
             cvar.cache_eval_range(g)?;
             self.maximized = Some(MinMaxed::Maximized(Box::new(self.maximize(g)?)));
+            let mut s = Elem::Reference(self.clone());
+            s.arenaize(g)?;
         }
         Ok(())
     }
@@ -262,6 +272,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             let cvar = ContextVarNode::from(self.idx);
             cvar.cache_eval_range(g)?;
             self.minimized = Some(MinMaxed::Minimized(Box::new(self.minimize(g)?)));
+            let mut s = Elem::Reference(self.clone());
+            s.arenaize(g)?;
         }
         Ok(())
     }

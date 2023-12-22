@@ -63,7 +63,12 @@ impl ContextNode {
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        Ok(self.underlying(analyzer)?.ctx_deps.clone())
+        let deps = self.underlying(analyzer)?
+            .ctx_deps
+            .clone()
+            .into_iter()
+            .collect::<Vec<_>>();
+        Ok(deps)
     }
 
     /// Adds a dependency for this context to exit successfully
@@ -95,7 +100,7 @@ impl ContextNode {
                 }
 
                 let underlying = self.underlying_mut(analyzer)?;
-                underlying.ctx_deps.push(dep);
+                underlying.ctx_deps.insert(dep);
             }
         }
         Ok(())

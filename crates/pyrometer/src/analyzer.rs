@@ -1,3 +1,4 @@
+
 use crate::builtin_fns;
 use graph::elem::Elem;
 use shared::RangeArena;
@@ -5,10 +6,10 @@ use shared::RangeArena;
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use shared::{AnalyzerLike, GraphLike, NodeIdx, Search};
-use solc_expressions::{ExprErr, IntoExprErr, StatementParser};
+use solc_expressions::{ExprErr, IntoExprErr, StatementParser, FnCallBuilder};
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
-use petgraph::{graph::*, Directed};
+use petgraph::{graph::*, Directed, stable_graph::StableGraph};
 use serde_json::Value;
 use solang_parser::{
     diagnostics::Diagnostic,
@@ -129,6 +130,8 @@ pub struct Analyzer {
     pub parse_fn: FunctionNode,
     /// Whether to force a panic on first error encountered
     pub debug_panic: bool,
+    /// Per function, a list of functions that are called
+    pub fn_calls_fns: BTreeMap<FunctionNode, Vec<FunctionNode>>,
 
     /// An arena of ranges
     pub range_arena: RangeArena<Elem<Concrete>>,
@@ -157,6 +160,7 @@ impl Default for Analyzer {
             max_width: 2_i32.pow(14) as usize,
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
+            fn_calls_fns: Default::default(),
             range_arena: RangeArena {
                 ranges: vec![Elem::Null],
                 map: {
@@ -513,11 +517,69 @@ impl Analyzer {
         });
 
         elems.into_iter().for_each(|final_pass_item| {
-            final_pass_item.funcs.into_iter().for_each(|func| {
-                if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                    self.parse_ctx_statement(body, false, Some(func));
+            final_pass_item.funcs.iter().for_each(|func| {
+                self.analyze_fn_calls(*func)
+            });
+            let mut handled_funcs = vec![];
+            let mut func_mapping = BTreeMap::default();
+            let mut call_dep_graph: StableGraph<FunctionNode, usize> = StableGraph::default();
+            let fn_calls_fns = std::mem::take(&mut self.fn_calls_fns);
+            fn_calls_fns.iter().for_each(|(func, calls)| {
+                if !calls.is_empty() {
+                    let func_idx = if let Some(idx) = func_mapping.get(func) {
+                        *idx
+                    } else {
+                        let idx = call_dep_graph.add_node(*func);
+                        func_mapping.insert(func, idx);
+                        idx
+                    };
+
+                    calls.iter().for_each(|call| {
+                        let call_idx = if let Some(idx) = func_mapping.get(call) {
+                            *idx
+                        } else {
+                            let idx = call_dep_graph.add_node(*call);
+                            func_mapping.insert(call, idx);
+                            idx
+                        };
+
+                        call_dep_graph.add_edge(func_idx, call_idx, 0);
+                    });
+                } else {
+                    handled_funcs.push(func);
+                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+                        self.parse_ctx_statement(body, false, Some(*func));
+                    }
                 }
             });
+
+            let mut res = petgraph::algo::toposort(&call_dep_graph, None);
+            while let Err(cycle) = res {
+                call_dep_graph.remove_node(cycle.node_id());
+                res = petgraph::algo::toposort(&call_dep_graph, None);
+            }
+
+            let indices = res.unwrap();
+            
+            indices.iter().for_each(|idx| {
+                let func = call_dep_graph.node_weight(*idx).unwrap();
+                if !handled_funcs.contains(&func) {
+                    handled_funcs.push(func);
+                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+                        self.parse_ctx_statement(body, false, Some(*func));
+                    }
+                }
+            });
+
+            final_pass_item.funcs.into_iter().for_each(|func| {
+                if !handled_funcs.contains(&&func) {
+                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+                        self.parse_ctx_statement(body, false, Some(func));
+                    }
+                }
+            });
+
+            self.fn_calls_fns = fn_calls_fns;
         });
     }
 

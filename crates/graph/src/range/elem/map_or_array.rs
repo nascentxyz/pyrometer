@@ -351,6 +351,10 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
 
+    fn is_min_max_cached(&self, _analyzer: &impl GraphBackend) -> (bool, bool) {
+        (self.minimized.is_some(), self.maximized.is_some())
+    }
+
     fn filter_recursion(
         &mut self,
         node_idx: NodeIdx,

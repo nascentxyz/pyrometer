@@ -14,6 +14,7 @@ pub trait AnalyzerBackend:
         Builtin = Builtin,
         MsgNode = MsgNode,
         BlockNode = BlockNode,
+        FunctionNode = FunctionNode,
         FunctionParam = FunctionParam,
         FunctionReturn = FunctionReturn,
         Function = Function,

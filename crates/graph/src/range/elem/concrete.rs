@@ -59,6 +59,10 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         true
     }
 
+    fn is_min_max_cached(&self, _analyzer: &impl GraphBackend) -> (bool, bool) {
+        (true, true)
+    }
+
     fn cache_flatten(&mut self, _: &mut impl GraphBackend) -> Result<(), GraphError> {
         Ok(())
     }

@@ -18,6 +18,7 @@ pub trait RangeElem<T: Ord> {
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Returns whether `cache_flatten` has been called
     fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool;
+    fn is_min_max_cached(&self, analyzer: &impl GraphBackend) -> (bool, bool);
     /// Flattens an element and caches the result
     fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Tries to evaluate a range element down to a concrete or maximally simplified expression to its maximum value

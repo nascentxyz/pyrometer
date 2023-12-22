@@ -131,31 +131,36 @@ pub trait PrePostIncDecrement:
                 Ok(())
             }
             ExprRet::SingleLiteral(var) => {
-                let res = ContextVarNode::from(*var)
+                ContextVarNode::from(*var)
                     .try_increase_size(self)
-                    .into_expr_err(loc);
-                let _ = self.add_if_err(res);
+                    .into_expr_err(loc)?;
                 self.match_in_de_crement(ctx, pre, increment, loc, &ExprRet::Single(*var))
             }
             ExprRet::Single(var) => {
-                let cvar = ContextVarNode::from(*var);
+                let cvar = ContextVarNode::from(*var).latest_version(self);
                 let elem = Elem::from(cvar);
                 let one = Elem::from(Concrete::from(U256::from(1))).cast(elem.clone());
+
+
                 // if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                 if increment {
                     if pre {
+                        let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                        dup.set_range_min(self, elem.clone() + one.clone());
+                        dup.set_range_max(self, elem.clone() + one.clone());
                         let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
-                        let res = new_cvar
+                        new_cvar
                             .set_range_min(self, elem.clone() + one.clone())
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        let res = new_cvar.set_range_max(self, elem + one).into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        ctx.push_expr(ExprRet::Single(new_cvar.into()), self)
+                            .into_expr_err(loc)?;
+                        new_cvar
+                            .set_range_max(self, elem + one).into_expr_err(loc)?;
+                        ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
                             .into_expr_err(loc)?;
                         Ok(())
                     } else {
                         let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                        dup.set_range_min(self, elem.clone());
+                        dup.set_range_max(self, elem.clone());
                         let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
                         let res = new_cvar
                             .set_range_min(self, elem.clone() + one.clone())
@@ -164,29 +169,32 @@ pub trait PrePostIncDecrement:
                         new_cvar
                             .set_range_max(self, elem + one)
                             .into_expr_err(loc)?;
-                        ctx.push_expr(ExprRet::Single(dup.into()), self)
+                        ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
                             .into_expr_err(loc)?;
                         Ok(())
                     }
                 } else if pre {
+                    let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                    dup.set_range_min(self, elem.clone() - one.clone());
+                    dup.set_range_max(self, elem.clone() - one.clone());
                     let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
-                    let res = new_cvar
+                    new_cvar
                         .set_range_min(self, elem.clone() - one.clone())
-                        .into_expr_err(loc);
-                    let _ = self.add_if_err(res);
+                        .into_expr_err(loc)?;
                     new_cvar
                         .set_range_max(self, elem - one)
                         .into_expr_err(loc)?;
-                    ctx.push_expr(ExprRet::Single(new_cvar.into()), self)
+                    ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
                         .into_expr_err(loc)?;
                     Ok(())
                 } else {
                     let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                    dup.set_range_min(self, elem.clone());
+                    dup.set_range_max(self, elem.clone());
                     let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
-                    let res = new_cvar
+                    new_cvar
                         .set_range_min(self, elem.clone() - one.clone())
-                        .into_expr_err(loc);
-                    let _ = self.add_if_err(res);
+                        .into_expr_err(loc)?;
                     new_cvar
                         .set_range_max(self, elem - one)
                         .into_expr_err(loc)?;

@@ -50,26 +50,6 @@ impl Hash for Elem<Concrete> {
 }
 
 impl<T: Clone> Elem<T> {
-    pub fn replace_dep(&mut self, to_replace: NodeIdx, replacement: Self) {
-        match self {
-            Elem::Reference(Reference { idx, .. }) => {
-                if *idx == to_replace {
-                    *self = replacement;
-                }
-            }
-            Elem::Concrete(_) => {}
-            Elem::Expr(expr) => {
-                expr.lhs.replace_dep(to_replace, replacement.clone());
-                expr.rhs.replace_dep(to_replace, replacement);
-                expr.maximized = None;
-                expr.minimized = None;
-            }
-            Elem::ConcreteDyn(_d) => todo!(),
-            Elem::Null => {}
-            Elem::Arena(_) => todo!(),
-        }
-    }
-
     pub fn node_idx(&self) -> Option<NodeIdx> {
         match self {
             Self::Reference(Reference { idx, .. }) => Some(*idx),
@@ -334,6 +314,39 @@ impl<T> From<NodeIdx> for Elem<T> {
 }
 
 impl Elem<Concrete> {
+    pub fn replace_dep(&mut self, to_replace: NodeIdx, replacement: Self, analyzer: &mut impl GraphBackend) {
+        match self {
+            Elem::Reference(Reference { idx, .. }) => {
+                if *idx == to_replace {
+                    *self = replacement;
+                }
+            }
+            Elem::Concrete(_) => {}
+            Elem::Expr(expr) => {
+                expr.lhs.replace_dep(to_replace, replacement.clone(), analyzer);
+                expr.rhs.replace_dep(to_replace, replacement, analyzer);
+                expr.maximized = None;
+                expr.minimized = None;
+            }
+            Elem::ConcreteDyn(_d) => todo!(),
+            Elem::Null => {}
+            Elem::Arena(_) => {
+                let mut s = self.dearenaize(analyzer).clone();
+                s.replace_dep(to_replace, replacement, analyzer);
+                s.arenaize(analyzer).unwrap();
+                *self = s;
+            },
+        }
+    }
+
+    pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Self {
+        match self {
+            Self::Arena(arena_idx) => analyzer.range_arena().ranges[*arena_idx].clone().recurse_dearenaize(analyzer),
+            Self::Expr(expr) => expr.recurse_dearenaize(analyzer),
+            e => e.clone(),
+        }
+    }
+
     pub fn dearenaize<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a Self {
         match self {
             Self::Arena(arena_idx) => &analyzer.range_arena().ranges[*arena_idx],
@@ -660,6 +673,13 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         if self.is_flatten_cached(analyzer) {
             return Ok(());
         }
+
+        if let Some(idx) = analyzer.range_arena_idx(self) {
+            if Elem::Arena(idx).is_flatten_cached(analyzer) {
+                panic!("here");
+            }
+        }
+
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer),
             Self::Concrete(c) => c.cache_flatten(analyzer),
@@ -684,6 +704,17 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.is_flatten_cached(analyzer),
             Self::Null => true,
             Self::Arena(_) => self.dearenaize(analyzer).is_flatten_cached(analyzer),
+        }
+    }
+
+    fn is_min_max_cached(&self, analyzer: &impl GraphBackend) -> (bool, bool) {
+        match self {
+            Self::Reference(d) => d.is_min_max_cached(analyzer),
+            Self::Concrete(c) => c.is_min_max_cached(analyzer),
+            Self::Expr(expr) => expr.is_min_max_cached(analyzer),
+            Self::ConcreteDyn(d) => d.is_min_max_cached(analyzer),
+            Self::Null => (true, true),
+            Self::Arena(_) => self.dearenaize(analyzer).is_min_max_cached(analyzer),
         }
     }
 
