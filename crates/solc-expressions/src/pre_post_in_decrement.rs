@@ -141,7 +141,6 @@ pub trait PrePostIncDecrement:
                 let elem = Elem::from(cvar);
                 let one = Elem::from(Concrete::from(U256::from(1))).cast(elem.clone());
 
-
                 // if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                 if increment {
                     if pre {
@@ -153,7 +152,8 @@ pub trait PrePostIncDecrement:
                             .set_range_min(self, elem.clone() + one.clone())
                             .into_expr_err(loc)?;
                         new_cvar
-                            .set_range_max(self, elem + one).into_expr_err(loc)?;
+                            .set_range_max(self, elem + one)
+                            .into_expr_err(loc)?;
                         ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
                             .into_expr_err(loc)?;
                         Ok(())

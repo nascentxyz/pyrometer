@@ -2,8 +2,8 @@ use crate::Analyzer;
 
 use graph::{
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionParam, FunctionParamNode,
-        FunctionReturn, MsgNode, FunctionNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionNode, FunctionParam,
+        FunctionParamNode, FunctionReturn, MsgNode,
     },
     AnalyzerBackend, Edge, Node, VarType,
 };

@@ -63,7 +63,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             input.latest_version(self),
                             Edge::Context(ContextEdge::InputVariable),
                         );
-                        
+
                         if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap())
                         {
                             if !node.ty_eq_ty(&param_ty, self).unwrap() {

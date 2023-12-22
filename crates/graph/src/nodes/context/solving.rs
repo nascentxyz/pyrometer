@@ -63,7 +63,8 @@ impl ContextNode {
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        let deps = self.underlying(analyzer)?
+        let deps = self
+            .underlying(analyzer)?
             .ctx_deps
             .clone()
             .into_iter()

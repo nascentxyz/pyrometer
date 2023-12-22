@@ -1,6 +1,6 @@
-use graph::elem::RangeElem;
 use crate::Analyzer;
 use graph::elem::Elem;
+use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use shared::RangeArena;
 
@@ -52,7 +52,6 @@ impl GraphLike for Analyzer {
                 existing_count += 1;
             }
 
-
             let (min_cached, max_cached) = elem.is_min_max_cached(self);
             let mut new_count = 0;
             if min_cached {
@@ -64,7 +63,7 @@ impl GraphLike for Analyzer {
             if elem.is_flatten_cached(self) {
                 new_count += 1;
             }
-            
+
             if new_count >= existing_count {
                 self.range_arena_mut().ranges[idx] = elem;
             }
@@ -642,7 +641,7 @@ impl GraphLike for G<'_> {
         panic!("Should not call this")
     }
 
-    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
+    fn range_arena_idx_or_upsert(&mut self, _elem: Self::RangeElem) -> usize {
         panic!("Should not call this")
     }
 }

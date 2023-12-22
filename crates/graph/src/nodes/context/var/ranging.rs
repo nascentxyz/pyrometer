@@ -31,7 +31,10 @@ impl ContextVarNode {
         }
     }
 
-    pub fn simplified_range_string(&self, analyzer: &impl GraphBackend) -> Result<Option<String>, GraphError> {
+    pub fn simplified_range_string(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<String>, GraphError> {
         if let Some(range) = self.ref_range(analyzer)? {
             Ok(Some(format!(
                 "[ {}, {} ]",

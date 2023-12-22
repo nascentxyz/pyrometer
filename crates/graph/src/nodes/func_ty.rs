@@ -11,7 +11,7 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{
         Base, Expression, FunctionAttribute, FunctionDefinition, FunctionTy, Identifier, Loc,
-        Parameter, ParameterList, Statement, Type, VariableDefinition, Visibility, Mutability
+        Mutability, Parameter, ParameterList, Statement, Type, VariableDefinition, Visibility,
     },
 };
 use std::collections::BTreeMap;
@@ -455,12 +455,11 @@ impl FunctionNode {
     }
 
     pub fn is_pure(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.attributes.iter().any(|attr| {
-            matches!(
-                attr,
-                FunctionAttribute::Mutability(Mutability::Pure(_))
-            )
-        }))
+        Ok(self
+            .underlying(analyzer)?
+            .attributes
+            .iter()
+            .any(|attr| matches!(attr, FunctionAttribute::Mutability(Mutability::Pure(_)))))
     }
 
     pub fn get_overriding(

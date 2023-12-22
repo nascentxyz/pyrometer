@@ -83,7 +83,11 @@ impl RangeExpr<Concrete> {
     }
 
     pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
-        Elem::Expr(Self::new(self.lhs.recurse_dearenaize(analyzer).clone(), self.op, self.rhs.recurse_dearenaize(analyzer).clone()))
+        Elem::Expr(Self::new(
+            self.lhs.recurse_dearenaize(analyzer).clone(),
+            self.op,
+            self.rhs.recurse_dearenaize(analyzer).clone(),
+        ))
     }
 }
 

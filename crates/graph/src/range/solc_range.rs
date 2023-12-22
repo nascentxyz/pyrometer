@@ -90,12 +90,22 @@ impl SolcRange {
         }
     }
 
-    pub fn replace_dep(&mut self, to_replace: NodeIdx, replacement: Elem<Concrete>, analyzer: &mut impl GraphBackend) {
+    pub fn replace_dep(
+        &mut self,
+        to_replace: NodeIdx,
+        replacement: Elem<Concrete>,
+        analyzer: &mut impl GraphBackend,
+    ) {
         if let Some(ref mut flattened) = &mut self.flattened {
-            flattened.min.replace_dep(to_replace, replacement.clone(), analyzer);
-            flattened.max.replace_dep(to_replace, replacement.clone(), analyzer);
+            flattened
+                .min
+                .replace_dep(to_replace, replacement.clone(), analyzer);
+            flattened
+                .max
+                .replace_dep(to_replace, replacement.clone(), analyzer);
         }
-        self.min.replace_dep(to_replace, replacement.clone(), analyzer);
+        self.min
+            .replace_dep(to_replace, replacement.clone(), analyzer);
         self.max.replace_dep(to_replace, replacement, analyzer);
         self.min_cached = None;
         self.max_cached = None;

@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use crate::{GraphLike, NodeIdx};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 pub trait AnalyzerLike: GraphLike {
@@ -60,7 +60,8 @@ pub trait AnalyzerLike: GraphLike {
     fn fn_calls_fns(&self) -> &BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>>;
     fn fn_calls_fns_mut(&mut self) -> &mut BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>>;
     fn add_fn_call(&mut self, caller: Self::FunctionNode, callee: Self::FunctionNode)
-        where Self::FunctionNode: Ord
+    where
+        Self::FunctionNode: Ord,
     {
         let calls = self.fn_calls_fns_mut();
         let entry = calls.entry(caller).or_default();
@@ -68,7 +69,6 @@ pub trait AnalyzerLike: GraphLike {
             entry.push(callee)
         }
     }
-    
 
     fn add_if_err<T>(&mut self, err: Result<T, Self::ExprErr>) -> Option<T>
     where

@@ -362,10 +362,9 @@ impl SolcSolver for BruteBinSearchSolver {
         } else {
             atomic_solves.iter().for_each(|(atomic, val)| {
                 self.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
-                    atomic
-                        .idxs
-                        .iter()
-                        .for_each(|idx| r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer));
+                    atomic.idxs.iter().for_each(|idx| {
+                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer)
+                    });
                 });
             });
 
@@ -677,10 +676,9 @@ impl SolcSolver for BruteBinSearchSolver {
 
             atomic_solves.iter().for_each(|(atomic, val)| {
                 this.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
-                    atomic
-                        .idxs
-                        .iter()
-                        .for_each(|idx| r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer));
+                    atomic.idxs.iter().for_each(|idx| {
+                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer)
+                    });
                 });
             });
 

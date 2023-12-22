@@ -413,7 +413,7 @@ pub trait FuncCaller:
                 })
                 .collect::<BTreeMap<_, _>>();
             if let Ok(true) = ctx.join(func_node, &mapping, self) {
-                return Ok(())
+                return Ok(());
             }
         }
 

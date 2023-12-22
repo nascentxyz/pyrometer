@@ -314,7 +314,12 @@ impl<T> From<NodeIdx> for Elem<T> {
 }
 
 impl Elem<Concrete> {
-    pub fn replace_dep(&mut self, to_replace: NodeIdx, replacement: Self, analyzer: &mut impl GraphBackend) {
+    pub fn replace_dep(
+        &mut self,
+        to_replace: NodeIdx,
+        replacement: Self,
+        analyzer: &mut impl GraphBackend,
+    ) {
         match self {
             Elem::Reference(Reference { idx, .. }) => {
                 if *idx == to_replace {
@@ -323,7 +328,8 @@ impl Elem<Concrete> {
             }
             Elem::Concrete(_) => {}
             Elem::Expr(expr) => {
-                expr.lhs.replace_dep(to_replace, replacement.clone(), analyzer);
+                expr.lhs
+                    .replace_dep(to_replace, replacement.clone(), analyzer);
                 expr.rhs.replace_dep(to_replace, replacement, analyzer);
                 expr.maximized = None;
                 expr.minimized = None;
@@ -335,13 +341,15 @@ impl Elem<Concrete> {
                 s.replace_dep(to_replace, replacement, analyzer);
                 s.arenaize(analyzer).unwrap();
                 *self = s;
-            },
+            }
         }
     }
 
     pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Self {
         match self {
-            Self::Arena(arena_idx) => analyzer.range_arena().ranges[*arena_idx].clone().recurse_dearenaize(analyzer),
+            Self::Arena(arena_idx) => analyzer.range_arena().ranges[*arena_idx]
+                .clone()
+                .recurse_dearenaize(analyzer),
             Self::Expr(expr) => expr.recurse_dearenaize(analyzer),
             e => e.clone(),
         }

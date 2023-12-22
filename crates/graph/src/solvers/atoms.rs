@@ -37,7 +37,11 @@ impl AtomOrPart {
         }
     }
 
-    pub fn replace_deps(&self, solves: &BTreeMap<ContextVarNode, Elem<Concrete>>, analyzer: &mut impl GraphBackend) -> Self {
+    pub fn replace_deps(
+        &self,
+        solves: &BTreeMap<ContextVarNode, Elem<Concrete>>,
+        analyzer: &mut impl GraphBackend,
+    ) -> Self {
         match self {
             AtomOrPart::Part(part) => {
                 let mut new_part = part.clone();
@@ -122,7 +126,11 @@ impl ToRangeString for SolverAtom {
 }
 
 impl SolverAtom {
-    pub fn replace_deps(&self, solves: &BTreeMap<ContextVarNode, Elem<Concrete>>, analyzer: &mut impl GraphBackend) -> Self {
+    pub fn replace_deps(
+        &self,
+        solves: &BTreeMap<ContextVarNode, Elem<Concrete>>,
+        analyzer: &mut impl GraphBackend,
+    ) -> Self {
         SolverAtom {
             ty: self.ty,
             lhs: Box::new(self.lhs.clone().replace_deps(solves, analyzer)),

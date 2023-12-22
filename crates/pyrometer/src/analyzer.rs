@@ -1,4 +1,3 @@
-
 use crate::builtin_fns;
 use graph::elem::Elem;
 use shared::RangeArena;
@@ -6,10 +5,10 @@ use shared::RangeArena;
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use shared::{AnalyzerLike, GraphLike, NodeIdx, Search};
-use solc_expressions::{ExprErr, IntoExprErr, StatementParser, FnCallBuilder};
+use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
-use petgraph::{graph::*, Directed, stable_graph::StableGraph};
+use petgraph::{graph::*, stable_graph::StableGraph, Directed};
 use serde_json::Value;
 use solang_parser::{
     diagnostics::Diagnostic,
@@ -517,9 +516,10 @@ impl Analyzer {
         });
 
         elems.into_iter().for_each(|final_pass_item| {
-            final_pass_item.funcs.iter().for_each(|func| {
-                self.analyze_fn_calls(*func)
-            });
+            final_pass_item
+                .funcs
+                .iter()
+                .for_each(|func| self.analyze_fn_calls(*func));
             let mut handled_funcs = vec![];
             let mut func_mapping = BTreeMap::default();
             let mut call_dep_graph: StableGraph<FunctionNode, usize> = StableGraph::default();
@@ -560,7 +560,7 @@ impl Analyzer {
             }
 
             let indices = res.unwrap();
-            
+
             indices.iter().for_each(|idx| {
                 let func = call_dep_graph.node_weight(*idx).unwrap();
                 if !handled_funcs.contains(&func) {
