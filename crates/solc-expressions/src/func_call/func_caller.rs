@@ -1,6 +1,8 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
+
 use crate::{
+    func_call::join::FuncJoiner,
     func_call::modifier::ModifierCaller, helper::CallerHelper, internal_call::InternalFuncCaller,
     intrinsic_call::IntrinsicFuncCaller, namespaced_call::NameSpaceFuncCaller, ContextBuilder,
     ExprErr, ExpressionParser, IntoExprErr, StatementParser,
@@ -331,16 +333,19 @@ pub trait FuncCaller:
             ExprRet::Single(input_var) | ExprRet::SingleLiteral(input_var) => {
                 // if we get a single var, we expect the func to only take a single
                 // variable
-                self.func_call_inner(
-                    false,
-                    ctx,
-                    func,
-                    loc,
-                    vec![ContextVarNode::from(input_var).latest_version(self)],
-                    params,
-                    func_call_str,
-                    modifier_state,
-                )
+                let inputs = vec![ContextVarNode::from(input_var).latest_version(self)];
+                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    analyzer.func_call_inner(
+                        false,
+                        ctx,
+                        func,
+                        loc,
+                        &inputs,
+                        &params,
+                        func_call_str,
+                        &modifier_state,
+                    )
+                })
             }
             ExprRet::Multi(ref inputs) => {
                 if ExprRet::Multi(inputs.to_vec()).flatten().has_killed() {
@@ -362,16 +367,18 @@ pub trait FuncCaller:
                             Ok(ContextVarNode::from(var).latest_version(self))
                         })
                         .collect::<Result<Vec<_>, ExprErr>>()?;
-                    self.func_call_inner(
-                        false,
-                        ctx,
-                        func,
-                        loc,
-                        input_vars,
-                        params,
-                        func_call_str,
-                        modifier_state,
-                    )
+                    self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        analyzer.func_call_inner(
+                            false,
+                            ctx,
+                            func,
+                            loc,
+                            &input_vars,
+                            &params,
+                            func_call_str,
+                            &modifier_state,
+                        )
+                    })
                 } else {
                     Err(ExprErr::InvalidFunctionInput(
                         loc,
@@ -395,24 +402,14 @@ pub trait FuncCaller:
         ctx: ContextNode,
         func_node: FunctionNode,
         loc: Loc,
-        inputs: Vec<ContextVarNode>,
-        params: Vec<FunctionParamNode>,
+        inputs: &[ContextVarNode],
+        params: &[FunctionParamNode],
         func_call_str: Option<&str>,
-        modifier_state: Option<ModifierState>,
+        modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
+        
         if !entry_call {
-            let mapping = params
-                .iter()
-                .zip(inputs.iter())
-                .filter_map(|(param, input)| {
-                    if let Ok(Some(name)) = param.maybe_name(self) {
-                        Some((name, (*param, *input)))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<BTreeMap<_, _>>();
-            if let Ok(true) = ctx.join(func_node, &mapping, self) {
+            if let Ok(true) = self.join(ctx, loc, func_node, params, inputs) {
                 return Ok(());
             }
         }
@@ -426,7 +423,7 @@ pub trait FuncCaller:
         let callee_ctx = if entry_call {
             ctx
         } else {
-            self.create_call_ctx(ctx, loc, func_node, modifier_state)?
+            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone())?
         };
 
         // handle remapping of variable names and bringing variables into the new context

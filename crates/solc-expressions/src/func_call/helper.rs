@@ -26,8 +26,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         &mut self,
         loc: Loc,
         entry_call: bool,
-        params: Vec<FunctionParamNode>,
-        inputs: Vec<ContextVarNode>,
+        params: &[FunctionParamNode],
+        inputs: &[ContextVarNode],
         callee_ctx: ContextNode,
     ) -> Result<BTreeMap<ContextVarNode, ContextVarNode>, ExprErr> {
         Ok(params

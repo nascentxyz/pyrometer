@@ -215,10 +215,10 @@ pub trait StatementParser:
                         ctx_node.into(),
                         parent.into().into(),
                         fn_loc,
-                        inputs,
-                        params,
+                        &inputs,
+                        &params,
                         None,
-                        None,
+                        &None,
                     );
                     if self.widen_if_limit_hit(ctx_node.into(), res) {
                         return;
