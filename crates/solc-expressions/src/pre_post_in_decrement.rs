@@ -145,8 +145,10 @@ pub trait PrePostIncDecrement:
                 if increment {
                     if pre {
                         let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
-                        dup.set_range_min(self, elem.clone() + one.clone()).into_expr_err(loc)?;
-                        dup.set_range_max(self, elem.clone() + one.clone()).into_expr_err(loc)?;
+                        dup.set_range_min(self, elem.clone() + one.clone())
+                            .into_expr_err(loc)?;
+                        dup.set_range_max(self, elem.clone() + one.clone())
+                            .into_expr_err(loc)?;
                         let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
                         new_cvar
                             .set_range_min(self, elem.clone() + one.clone())
@@ -175,8 +177,10 @@ pub trait PrePostIncDecrement:
                     }
                 } else if pre {
                     let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
-                    dup.set_range_min(self, elem.clone() - one.clone()).into_expr_err(loc)?;
-                    dup.set_range_max(self, elem.clone() - one.clone()).into_expr_err(loc)?;
+                    dup.set_range_min(self, elem.clone() - one.clone())
+                        .into_expr_err(loc)?;
+                    dup.set_range_max(self, elem.clone() - one.clone())
+                        .into_expr_err(loc)?;
                     let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
                     new_cvar
                         .set_range_min(self, elem.clone() - one.clone())

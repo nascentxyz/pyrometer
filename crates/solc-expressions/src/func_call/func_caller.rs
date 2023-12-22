@@ -1,11 +1,10 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
-
 use crate::{
-    func_call::join::FuncJoiner,
-    func_call::modifier::ModifierCaller, helper::CallerHelper, internal_call::InternalFuncCaller,
-    intrinsic_call::IntrinsicFuncCaller, namespaced_call::NameSpaceFuncCaller, ContextBuilder,
-    ExprErr, ExpressionParser, IntoExprErr, StatementParser,
+    func_call::join::FuncJoiner, func_call::modifier::ModifierCaller, helper::CallerHelper,
+    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
+    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    StatementParser,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -407,7 +406,6 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
-        
         if !entry_call {
             if let Ok(true) = self.join(ctx, loc, func_node, params, inputs) {
                 return Ok(());

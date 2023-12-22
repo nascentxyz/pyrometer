@@ -1,19 +1,11 @@
-use crate::elem::Elem;
-use crate::nodes::ExprRet;
-use crate::range::elem::RangeElem;
-use crate::range::Range;
-use crate::ContextEdge;
-use crate::Edge;
-use crate::VarType;
 use crate::{
-    nodes::{Context, ContextVarNode, FunctionNode, FunctionParamNode, KilledKind},
+    nodes::{Context, ContextVarNode, KilledKind},
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
 
 use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
-use std::collections::BTreeMap;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 /// A wrapper of a node index that corresponds to a [`Context`]
