@@ -28,11 +28,11 @@ impl ContextNode {
     }
 
     /// Get the dependencies as normalized solver atoms
-    pub fn dep_atoms(&self, analyzer: &impl GraphBackend) -> Result<Vec<SolverAtom>, GraphError> {
+    pub fn dep_atoms(&self, analyzer: &mut impl GraphBackend) -> Result<Vec<SolverAtom>, GraphError> {
         let deps: Vec<_> = self.ctx_deps(analyzer)?;
         let mut ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
-            let range = dep.ref_range(analyzer)?.unwrap();
+            let mut range = dep.range(analyzer)?.unwrap();
             let r: Cow<'_, SolcRange> = range.flattened_range(analyzer)?;
             ranges.insert(*dep, r.into_owned());
             Ok(())
@@ -87,7 +87,7 @@ impl ContextNode {
             // let underlying = self.underlying_mut(analyzer)?;
             if !self.underlying(analyzer)?.ctx_deps.contains(&dep) {
                 // dep.cache_flattened_range(analyzer)?;
-                let range = dep.ref_range(analyzer)?.unwrap();
+                let mut range = dep.range(analyzer)?.unwrap();
                 let r = range.flattened_range(analyzer)?.into_owned();
                 // add the atomic constraint
                 if let Some(atom) = r.min.atomize(analyzer) {

@@ -1,3 +1,4 @@
+use graph::elem::RangeElem;
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
     nodes::{ContractNode, FunctionNode},
@@ -11,7 +12,7 @@ use shared::Search;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{Registry, prelude::*};
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -109,8 +110,24 @@ pub fn subscriber() {
         .init()
 }
 
+pub fn tree_subscriber() {
+    let subscriber = Registry::default().with(
+        tracing_tree::HierarchicalLayer::default()
+            .with_indent_lines(true)
+            .with_indent_amount(2)
+            .with_thread_names(true)
+            // .with_thread_ids(true)
+            // .with_verbose_exit(true)
+            // .with_verbose_entry(true)
+            // .with_targets(true)
+    )
+        .with(tracing_subscriber::filter::EnvFilter::from_default_env());
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
+}
+
 fn main() {
-    subscriber();
+    tree_subscriber();
     let args = Args::parse();
     let verbosity = args.verbosity;
     let config = match verbosity {
@@ -289,6 +306,15 @@ fn main() {
     if args.open_mermaid {
         analyzer.open_mermaid();
     }
+
+    // println!("{}", analyzer.range_arena.ranges.iter().map(|i| {
+    //     let j = i.borrow();
+    //     let (min_cached, max_cached) = j.is_min_max_cached(&analyzer);
+    //     format!("\t{j}, is cached: {min_cached}, {max_cached}\n")
+    // }).collect::<Vec<_>>().join(""));
+    // println!("{}", analyzer.range_arena.map.iter().map(|(k, v)| {
+    //     format!("\t{}: {}\n", k, v)
+    // }).collect::<Vec<_>>().join(""));
 
     if args.debug {
         return;

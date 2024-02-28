@@ -9,7 +9,7 @@ use crate::{
 };
 
 use ethers_core::types::U256;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, cell::RefCell, rc::Rc};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum AtomOrPart {
@@ -29,9 +29,9 @@ impl AtomOrPart {
         match self {
             AtomOrPart::Part(_) => SolverAtom {
                 ty: OpType::DL,
-                lhs: Box::new(self.clone()),
+                lhs: Rc::new(self.clone()),
                 op: RangeOp::Sub(false),
-                rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
+                rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
             },
             AtomOrPart::Atom(atom) => atom.clone(),
         }
@@ -111,9 +111,9 @@ impl OpType {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct SolverAtom {
     pub ty: OpType,
-    pub lhs: Box<AtomOrPart>,
+    pub lhs: Rc<AtomOrPart>,
     pub op: RangeOp,
-    pub rhs: Box<AtomOrPart>,
+    pub rhs: Rc<AtomOrPart>,
 }
 
 impl ToRangeString for SolverAtom {
@@ -133,9 +133,9 @@ impl SolverAtom {
     ) -> Self {
         SolverAtom {
             ty: self.ty,
-            lhs: Box::new(self.lhs.clone().replace_deps(solves, analyzer)),
+            lhs: Rc::new(self.lhs.clone().replace_deps(solves, analyzer)),
             op: self.op,
-            rhs: Box::new(self.rhs.clone().replace_deps(solves, analyzer)),
+            rhs: Rc::new(self.rhs.clone().replace_deps(solves, analyzer)),
         }
     }
 
@@ -178,16 +178,16 @@ impl SolverAtom {
             // keep ty
             Self {
                 ty: self.ty,
-                lhs: Box::new(AtomOrPart::Atom(self.clone())),
+                lhs: Rc::new(AtomOrPart::Atom(self.clone())),
                 op,
-                rhs: Box::new(rhs),
+                rhs: Rc::new(rhs),
             }
         } else {
             Self {
                 ty: new_ty,
-                lhs: Box::new(AtomOrPart::Atom(self.clone())),
+                lhs: Rc::new(AtomOrPart::Atom(self.clone())),
                 op,
-                rhs: Box::new(rhs),
+                rhs: Rc::new(rhs),
             }
         }
     }
@@ -199,16 +199,16 @@ impl SolverAtom {
             // keep ty
             Self {
                 ty: self.ty,
-                lhs: Box::new(lhs),
+                lhs: Rc::new(lhs),
                 op,
-                rhs: Box::new(AtomOrPart::Atom(self.clone())),
+                rhs: Rc::new(AtomOrPart::Atom(self.clone())),
             }
         } else {
             Self {
                 ty: new_ty,
-                lhs: Box::new(lhs),
+                lhs: Rc::new(lhs),
                 op,
-                rhs: Box::new(AtomOrPart::Atom(self.clone())),
+                rhs: Rc::new(AtomOrPart::Atom(self.clone())),
             }
         }
     }
@@ -243,9 +243,10 @@ pub trait Atomize {
 }
 
 impl Atomize for Elem<Concrete> {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn atoms_or_part(&self, analyzer: &impl GraphBackend) -> AtomOrPart {
         match self {
-            Elem::Arena(_) => todo!(),
+            Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             Elem::Expr(expr) => {
@@ -263,9 +264,9 @@ impl Atomize for Elem<Concrete> {
                                 let ty = OpType::new(expr.op);
                                 let atom = SolverAtom {
                                     ty,
-                                    lhs: Box::new(lp.clone()),
+                                    lhs: Rc::new(lp.clone()),
                                     op: expr.op,
-                                    rhs: Box::new(rp.clone()),
+                                    rhs: Rc::new(rp.clone()),
                                 };
                                 AtomOrPart::Atom(atom)
                             }
@@ -282,9 +283,9 @@ impl Atomize for Elem<Concrete> {
                                 };
                                 let atom = SolverAtom {
                                     ty,
-                                    lhs: Box::new(lp.clone()),
+                                    lhs: Rc::new(lp.clone()),
                                     op: expr.op,
-                                    rhs: Box::new(rp.clone()),
+                                    rhs: Rc::new(rp.clone()),
                                 };
                                 AtomOrPart::Atom(atom)
                             }
@@ -303,10 +304,23 @@ impl Atomize for Elem<Concrete> {
                             (Elem::Concrete(_), Elem::Expr(_)) => {
                                 todo!("here4");
                             }
-                            (Elem::Concrete(_), Elem::Concrete(_)) => expr
-                                .exec_op(true, analyzer)
-                                .unwrap()
-                                .atoms_or_part(analyzer),
+                            (Elem::Concrete(_), Elem::Concrete(_)) => {
+                                let res = expr
+                                    .exec_op(true, analyzer)
+                                    .unwrap();
+                                let ty = if DL_OPS.contains(&expr.op) {
+                                    OpType::DL
+                                } else if CONST_OPS.contains(&expr.op) {
+                                    OpType::Const
+                                } else {
+                                    OpType::Other
+                                };
+                                if res == Elem::Expr(expr.clone()) {
+                                    AtomOrPart::Part(res)
+                                } else {
+                                    res.atoms_or_part(analyzer)
+                                }
+                            },
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),
                             (_, Elem::ConcreteDyn(_)) => AtomOrPart::Part(Elem::Null),
                             (Elem::Null, _) => AtomOrPart::Part(Elem::Null),
@@ -328,6 +342,7 @@ impl Atomize for Elem<Concrete> {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn atomize(&self, analyzer: &impl GraphBackend) -> Option<SolverAtom> {
         use Elem::*;
 

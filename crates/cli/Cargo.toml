@@ -21,6 +21,7 @@ graph.workspace = true
 ariadne.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tracing-tree.workspace = true
 petgraph.workspace = true
 ethers-core.workspace = true
 

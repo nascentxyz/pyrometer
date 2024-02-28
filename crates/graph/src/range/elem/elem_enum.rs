@@ -1,3 +1,7 @@
+use std::borrow::Cow;
+use crate::elem::MinMaxed;
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{
@@ -334,13 +338,19 @@ impl Elem<Concrete> {
                 expr.maximized = None;
                 expr.minimized = None;
             }
-            Elem::ConcreteDyn(_d) => todo!(),
+            Elem::ConcreteDyn(d) => {
+                d.len.replace_dep(to_replace, replacement.clone(), analyzer);
+                let vals = std::mem::take(&mut d.val);
+                d.val = vals.into_iter().map(|(mut k, (mut v, op))| {
+                    k.replace_dep(to_replace, replacement.clone(), analyzer);
+                    v.replace_dep(to_replace, replacement.clone(), analyzer);
+                    (k, (v, op))
+                }).collect();
+            },
             Elem::Null => {}
             Elem::Arena(_) => {
-                let mut s = self.dearenaize(analyzer).clone();
-                s.replace_dep(to_replace, replacement, analyzer);
-                s.arenaize(analyzer).unwrap();
-                *self = s;
+                let s = self.dearenaize(analyzer).clone();
+                s.borrow_mut().replace_dep(to_replace, replacement, analyzer);
             }
         }
     }
@@ -348,6 +358,7 @@ impl Elem<Concrete> {
     pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Self {
         match self {
             Self::Arena(arena_idx) => analyzer.range_arena().ranges[*arena_idx]
+                .borrow()
                 .clone()
                 .recurse_dearenaize(analyzer),
             Self::Expr(expr) => expr.recurse_dearenaize(analyzer),
@@ -355,16 +366,11 @@ impl Elem<Concrete> {
         }
     }
 
-    pub fn dearenaize<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a Self {
+    pub fn dearenaize(&self, analyzer: &impl GraphBackend) -> Rc<RefCell<Self>> {
         match self {
-            Self::Arena(arena_idx) => &analyzer.range_arena().ranges[*arena_idx],
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn dearenaize_mut<'a>(&self, analyzer: &'a mut impl GraphBackend) -> &'a mut Self {
-        match self {
-            Self::Arena(arena_idx) => &mut analyzer.range_arena_mut().ranges[*arena_idx],
+            Self::Arena(arena_idx) => {
+                analyzer.range_arena().ranges[*arena_idx].clone()
+            },
             _ => unreachable!(),
         }
     }
@@ -620,12 +626,15 @@ impl RangeElem<Concrete> for Elem<Concrete> {
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         match self {
             Self::Arena(_) => return Ok(()),
-            Self::Reference(d) => d.arenaize(analyzer)?,
+            Self::Reference(d) => {
+                d.arenaize(analyzer)?
+            },
             Self::ConcreteDyn(d) => d.arenaize(analyzer)?,
             Self::Expr(expr) => {
                 expr.arenaize(analyzer)?;
             }
-            _ => {}
+            Self::Concrete(c) => c.arenaize(analyzer)?,
+            Self::Null => {},
         }
 
         let self_take = std::mem::take(self);
@@ -650,7 +659,8 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                     Some(std::cmp::Ordering::Equal)
                 } else {
                     self.dearenaize(analyzer)
-                        .range_ord(other.dearenaize(analyzer), analyzer)
+                        .borrow()
+                        .range_ord(&other.dearenaize(analyzer).borrow(), analyzer)
                 }
             }
             (Self::Concrete(a), Self::Concrete(b)) => a.range_ord(b, analyzer),
@@ -673,7 +683,35 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.flatten(maximize, analyzer),
             Self::ConcreteDyn(d) => d.flatten(maximize, analyzer),
             Self::Null => Ok(Elem::Null),
-            Self::Arena(_) => self.dearenaize(analyzer).flatten(maximize, analyzer),
+            Self::Arena(_) => {
+                let de = self.dearenaize(analyzer);
+                let res = de.borrow().flatten(maximize, analyzer)?;
+                match &mut *de.borrow_mut() {
+                    Self::Reference(ref mut d) => {
+                        if maximize {
+                            d.flattened_max = Some(Box::new(res.clone()));
+                        } else {
+                            d.flattened_min = Some(Box::new(res.clone()));
+                        }
+                    }
+                    Self::Expr(ref mut expr) => {
+                        if maximize {
+                            expr.flattened_max = Some(Box::new(res.clone()));
+                        } else {
+                            expr.flattened_min = Some(Box::new(res.clone()));
+                        }
+                    }
+                    Self::ConcreteDyn(ref mut d) => {
+                        if maximize {
+                            d.flattened_max = Some(Box::new(res.clone()));
+                        } else {
+                            d.flattened_min = Some(Box::new(res.clone()));
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(res)
+            },
         }
     }
 
@@ -682,23 +720,16 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             return Ok(());
         }
 
-        if let Some(idx) = analyzer.range_arena_idx(self) {
-            if Elem::Arena(idx).is_flatten_cached(analyzer) {
-                panic!("here");
-            }
-        }
-
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer),
             Self::Concrete(c) => c.cache_flatten(analyzer),
             Self::Expr(expr) => expr.cache_flatten(analyzer),
             Self::ConcreteDyn(d) => d.cache_flatten(analyzer),
             Self::Null => Ok(()),
-            Self::Arena(idx) => {
-                let idx = *idx;
-                let mut dearenaized = self.dearenaize(analyzer).clone();
+            Self::Arena(_idx) => {
+                let mut dearenaized = self.dearenaize(analyzer).borrow().clone();
                 dearenaized.cache_flatten(analyzer)?;
-                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+                *self.dearenaize(analyzer).borrow_mut() = dearenaized;
                 Ok(())
             }
         }
@@ -711,7 +742,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.is_flatten_cached(analyzer),
             Self::ConcreteDyn(d) => d.is_flatten_cached(analyzer),
             Self::Null => true,
-            Self::Arena(_) => self.dearenaize(analyzer).is_flatten_cached(analyzer),
+            Self::Arena(_) => self.dearenaize(analyzer).borrow().is_flatten_cached(analyzer),
         }
     }
 
@@ -722,7 +753,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.is_min_max_cached(analyzer),
             Self::ConcreteDyn(d) => d.is_min_max_cached(analyzer),
             Self::Null => (true, true),
-            Self::Arena(_) => self.dearenaize(analyzer).is_min_max_cached(analyzer),
+            Self::Arena(_) => self.dearenaize(analyzer).borrow().is_min_max_cached(analyzer),
         }
     }
 
@@ -733,7 +764,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.dependent_on(analyzer),
             Self::ConcreteDyn(d) => d.dependent_on(analyzer),
             Self::Null => vec![],
-            Self::Arena(_) => self.dearenaize(analyzer).dependent_on(analyzer),
+            Self::Arena(_) => self.dearenaize(analyzer).borrow().dependent_on(analyzer),
         }
     }
 
@@ -747,7 +778,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.recursive_dependent_on(analyzer),
             Self::ConcreteDyn(d) => d.recursive_dependent_on(analyzer),
             Self::Null => Ok(vec![]),
-            Self::Arena(_) => self.dearenaize(analyzer).recursive_dependent_on(analyzer),
+            Self::Arena(_) => self.dearenaize(analyzer).borrow().recursive_dependent_on(analyzer),
         }
     }
 
@@ -762,7 +793,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.has_cycle(seen, analyzer),
             Self::ConcreteDyn(d) => d.has_cycle(seen, analyzer),
             Self::Null => Ok(false),
-            Self::Arena(_) => self.dearenaize(analyzer).has_cycle(seen, analyzer),
+            Self::Arena(_) => self.dearenaize(analyzer).borrow().has_cycle(seen, analyzer),
         }
     }
 
@@ -782,16 +813,28 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Expr(expr) => expr.filter_recursion(node_idx, new_idx, analyzer),
             Self::ConcreteDyn(d) => d.filter_recursion(node_idx, new_idx, analyzer),
             Self::Null => {}
-            Self::Arena(idx) => {
-                let idx = *idx;
-                let mut dearenaized = self.dearenaize(analyzer).clone();
-                dearenaized.filter_recursion(node_idx, new_idx, analyzer);
-                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+            Self::Arena(_idx) => {
+                let dearenaized = self.dearenaize(analyzer);
+                dearenaized.borrow_mut().filter_recursion(node_idx, new_idx, analyzer);
             }
         }
     }
 
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+        if let Some(idx) = analyzer.range_arena_idx(self) {
+            let (_min, max) = Elem::Arena(idx).is_min_max_cached(analyzer);
+            if max {
+                match &*analyzer.range_arena().ranges[idx].borrow() {
+                    Reference(dy) => return dy.maximize(analyzer),
+                    Concrete(inner) => return inner.maximize(analyzer),
+                    ConcreteDyn(inner) => return inner.maximize(analyzer),
+                    Expr(expr) => return expr.maximize(analyzer),
+                    Null => return Ok(Elem::Null),
+                    _ => {}
+                }
+            }
+        }
+
         use Elem::*;
         let res = match self {
             Reference(dy) => dy.maximize(analyzer)?,
@@ -799,78 +842,183 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             ConcreteDyn(inner) => inner.maximize(analyzer)?,
             Expr(expr) => expr.maximize(analyzer)?,
             Null => Elem::Null,
-            Arena(_) => self.dearenaize(analyzer).maximize(analyzer)?,
+            Arena(_) => {
+                let dearenaized = self.dearenaize(analyzer);
+                let res = dearenaized.borrow().maximize(analyzer)?;
+                match &mut *dearenaized.borrow_mut() {
+                    Self::Reference(ref mut d) => {
+                        d.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                    }
+                    Self::Expr(ref mut expr) => {
+                        expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                    }
+                    Self::ConcreteDyn(ref mut d) => {
+                        d.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                    }
+                    _ => {}
+                }
+                res
+            },
         };
         Ok(res)
     }
 
     fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
+
+        if let Some(idx) = analyzer.range_arena_idx(self) {
+            let (min, _max) = Elem::Arena(idx).is_min_max_cached(analyzer);
+            if min {
+                match &*analyzer.range_arena().ranges[idx].borrow() {
+                    Reference(dy) => return dy.minimize(analyzer),
+                    Concrete(inner) => return inner.minimize(analyzer),
+                    ConcreteDyn(inner) => return inner.minimize(analyzer),
+                    Expr(expr) => return expr.minimize(analyzer),
+                    Null => return Ok(Elem::Null),
+                    _ => {}
+                }
+            }
+        }
+
         let res = match self {
             Reference(dy) => dy.minimize(analyzer)?,
             Concrete(inner) => inner.minimize(analyzer)?,
             ConcreteDyn(inner) => inner.minimize(analyzer)?,
             Expr(expr) => expr.minimize(analyzer)?,
             Null => Elem::Null,
-            Arena(_) => self.dearenaize(analyzer).minimize(analyzer)?,
+            Arena(_) => {
+                let dearenaized = self.dearenaize(analyzer);
+                let res = dearenaized.borrow().minimize(analyzer)?;
+                match &mut *dearenaized.borrow_mut() {
+                    Self::Reference(ref mut d) => {
+                        d.maximized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                    }
+                    Self::Expr(ref mut expr) => {
+                        expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                    }
+                    Self::ConcreteDyn(ref mut d) => {
+                        d.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                    }
+                    _ => {}
+                }
+                res
+            },
         };
         Ok(res)
     }
 
     fn simplify_maximize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(res) = seen_ops.get(self) {
-            return Ok(res.clone());
-        }
-
         use Elem::*;
+
         match self {
-            Reference(dy) => dy.simplify_maximize(seen_ops, analyzer),
-            Concrete(inner) => inner.simplify_maximize(seen_ops, analyzer),
-            ConcreteDyn(inner) => inner.simplify_maximize(seen_ops, analyzer),
+            Arena(_) => {}
+            _ => {
+                if let Some(idx) = analyzer.range_arena_idx(self) {
+                    if Elem::Arena(idx).is_flatten_cached(analyzer) {
+                        match &*analyzer.range_arena().ranges[idx].borrow() {
+                            Reference(dy) => return dy.simplify_maximize(analyzer),
+                            Concrete(inner) => return inner.simplify_maximize(analyzer),
+                            ConcreteDyn(inner) => return inner.simplify_maximize(analyzer),
+                            Expr(expr) => return expr.simplify_maximize(analyzer),
+                            Null => return Ok(Elem::Null),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        
+        
+        match self {
+            Reference(dy) => dy.simplify_maximize(analyzer),
+            Concrete(inner) => inner.simplify_maximize(analyzer),
+            ConcreteDyn(inner) => inner.simplify_maximize(analyzer),
             Expr(expr) => match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
                 MaybeCollapsed::Collapsed(collapsed) => {
-                    collapsed.simplify_maximize(seen_ops, analyzer)
+                    collapsed.simplify_maximize(analyzer)
                 }
-                _ => expr.simplify_maximize(seen_ops, analyzer),
+                _ => expr.simplify_maximize(analyzer),
             },
             Null => Ok(Elem::Null),
-            Arena(_) => self
-                .dearenaize(analyzer)
-                .simplify_maximize(seen_ops, analyzer),
+            Arena(_) => {
+                let dearenaized = self.dearenaize(analyzer);
+                let flat = dearenaized.borrow().flatten(true, analyzer)?;
+                let res = flat.simplify_maximize(analyzer)?;
+                match &mut *dearenaized.borrow_mut() {
+                    Self::Reference(ref mut d) => {
+                        d.flattened_max = Some(Box::new(res.clone()));
+                    }
+                    Self::Expr(ref mut expr) => {
+                        expr.flattened_max = Some(Box::new(res.clone()));
+                    }
+                    Self::ConcreteDyn(ref mut d) => {
+                        d.flattened_max = Some(Box::new(res.clone()));
+                    }
+                    _ => {}
+                }
+                Ok(res)
+            }
         }
     }
 
     fn simplify_minimize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
-        if let Some(res) = seen_ops.get(self) {
-            return Ok(res.clone());
+        use Elem::*;
+
+        match self {
+            Arena(_) => {}
+            _ => {
+                if let Some(idx) = analyzer.range_arena_idx(self) {
+                    if Elem::Arena(idx).is_flatten_cached(analyzer) {
+                        match &*analyzer.range_arena().ranges[idx].borrow() {
+                            Reference(dy) => return dy.simplify_minimize(analyzer),
+                            Concrete(inner) => return inner.simplify_minimize(analyzer),
+                            ConcreteDyn(inner) => return inner.simplify_minimize(analyzer),
+                            Expr(expr) => return expr.simplify_minimize(analyzer),
+                            Null => return Ok(Elem::Null),
+                            _ => {}
+                        }
+                    }
+                }
+            }
         }
 
-        use Elem::*;
         let res = match self {
-            Reference(dy) => dy.simplify_minimize(seen_ops, analyzer),
-            Concrete(inner) => inner.simplify_minimize(seen_ops, analyzer),
-            ConcreteDyn(inner) => inner.simplify_minimize(seen_ops, analyzer),
+            Reference(dy) => dy.simplify_minimize(analyzer),
+            Concrete(inner) => inner.simplify_minimize(analyzer),
+            ConcreteDyn(inner) => inner.simplify_minimize(analyzer),
             Expr(expr) => match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
                 MaybeCollapsed::Collapsed(collapsed) => {
-                    collapsed.simplify_minimize(seen_ops, analyzer)
+                    collapsed.simplify_minimize(analyzer)
                 }
-                _ => expr.simplify_minimize(seen_ops, analyzer),
+                _ => expr.simplify_minimize(analyzer),
             },
             Null => Ok(Elem::Null),
-            Arena(_) => self
-                .dearenaize(analyzer)
-                .simplify_minimize(seen_ops, analyzer),
+            Arena(_) => {
+                let dearenaized = self.dearenaize(analyzer);
+                let flat = dearenaized.borrow().flatten(true, analyzer)?;
+                let res = flat.simplify_minimize(analyzer)?;
+                match &mut *dearenaized.borrow_mut() {
+                    Self::Reference(ref mut d) => {
+                        d.flattened_min = Some(Box::new(res.clone()));
+                    }
+                    Self::Expr(ref mut expr) => {
+                        expr.flattened_min = Some(Box::new(res.clone()));
+                    }
+                    Self::ConcreteDyn(d) => {
+                        d.flattened_min = Some(Box::new(res.clone()));
+                    }
+                    _ => {}
+                }
+                Ok(res)
+            }
         }?;
 
-        seen_ops.insert(self.clone(), res.clone());
         Ok(res)
     }
 
@@ -889,11 +1037,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.cache_maximize(analyzer),
             },
             Null => Ok(()),
-            Arena(idx) => {
-                let idx = *idx;
-                let mut dearenaized = self.dearenaize(analyzer).clone();
-                dearenaized.cache_maximize(analyzer)?;
-                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+            Arena(_idx) => {
+                let dearenaized = self.dearenaize(analyzer);
+                dearenaized.borrow_mut().cache_maximize(analyzer)?;
                 Ok(())
             }
         }
@@ -914,11 +1060,9 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 _ => expr.cache_minimize(analyzer),
             },
             Null => Ok(()),
-            Arena(idx) => {
-                let idx = *idx;
-                let mut dearenaized = self.dearenaize(analyzer).clone();
-                dearenaized.cache_minimize(analyzer)?;
-                analyzer.range_arena_mut().ranges[idx] = dearenaized;
+            Arena(_idx) => {
+                let dearenaized = self.dearenaize(analyzer);
+                dearenaized.borrow_mut().cache_minimize(analyzer)?;
                 Ok(())
             }
         }

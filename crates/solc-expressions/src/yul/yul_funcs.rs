@@ -698,7 +698,7 @@ pub trait YulFuncCaller:
             }
             _ => Err(ExprErr::Todo(
                 *loc,
-                format!("Unhandled builtin yul function: {id:?}"),
+                format!("Unhandled yul function: \"{}\"", id.name),
             )),
         }
     }

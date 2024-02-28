@@ -17,3 +17,4 @@ ethers-core.workspace = true
 hex.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+ahash.workspace = true

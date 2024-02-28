@@ -433,15 +433,26 @@ impl FunctionNode {
         Ok(())
     }
 
+    // fn returns_inner(
+    //     &self,
+    //     analyzer: &impl GraphBackend,
+    // ) -> Vec<FunctionReturnNode> {
+    //     self.underlying(analyzer).unwrap().cache.returns.iter()
+    //     // } else {
+    //     //     analyzer
+    //     //         .graph()
+    //     //         .edges_directed(self.0.into(), Direction::Incoming)
+    //     //         .filter(|edge| Edge::FunctionReturn == *edge.weight())
+    //     //         .map(|edge| FunctionReturnNode::from(edge.source()))
+    //     //         .collect()
+    //     // }   
+    // }
+
     pub fn returns<'a>(
         &self,
         analyzer: &'a impl GraphBackend,
-    ) -> impl Iterator<Item = FunctionReturnNode> + 'a {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::FunctionReturn == *edge.weight())
-            .map(|edge| FunctionReturnNode::from(edge.source()))
+    ) -> &'a [FunctionReturnNode] {
+        self.underlying(analyzer).unwrap().cache.returns.as_ref().unwrap()
     }
 
     pub fn is_public_or_ext(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
@@ -460,6 +471,14 @@ impl FunctionNode {
             .attributes
             .iter()
             .any(|attr| matches!(attr, FunctionAttribute::Mutability(Mutability::Pure(_)))))
+    }
+
+    pub fn is_view(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self
+            .underlying(analyzer)?
+            .attributes
+            .iter()
+            .any(|attr| matches!(attr, FunctionAttribute::Mutability(Mutability::View(_)))))
     }
 
     pub fn get_overriding(

@@ -37,7 +37,7 @@ pub static EQ_OPS: &[RangeOp] = &[
 pub static FLIP_INEQ_OPS: &[RangeOp] = &[RangeOp::Lt, RangeOp::Lte, RangeOp::Gt, RangeOp::Gte];
 
 /// A range expression composed of other range [`Elem`]
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Ord, PartialOrd)]
 pub struct RangeExpr<T> {
     pub maximized: Option<MinMaxed<T>>,
     pub minimized: Option<MinMaxed<T>>,
@@ -47,6 +47,16 @@ pub struct RangeExpr<T> {
     pub op: RangeOp,
     pub rhs: Box<Elem<T>>,
 }
+
+
+impl<T: std::cmp::PartialEq> PartialEq for RangeExpr<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.lhs == other.lhs
+        && self.rhs == other.rhs
+        && self.op == other.op
+    }
+}
+impl<T: std::cmp::PartialEq> Eq for RangeExpr<T> {}
 
 impl Hash for RangeExpr<Concrete> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -89,6 +99,60 @@ impl RangeExpr<Concrete> {
             self.rhs.recurse_dearenaize(analyzer).clone(),
         ))
     }
+
+    pub fn arena_idx(&self, analyzer: &impl GraphBackend) -> Option<usize> {
+        let expr = Elem::Expr(RangeExpr::new(
+            Elem::Arena(analyzer.range_arena_idx(&self.lhs)?),
+            self.op,
+            Elem::Arena(analyzer.range_arena_idx(&self.rhs)?),
+        ));
+        analyzer.range_arena_idx(&expr)
+    } 
+
+    pub fn arenaized_cache(&self, max: bool, analyzer: &impl GraphBackend) -> Option<MinMaxed<Concrete>> {
+        if let Some(idx) = self.arena_idx(analyzer) {
+            let Elem::Expr(ref arenaized) = *analyzer.range_arena().ranges[idx].borrow() else {
+                return None;
+            };
+            return if max {
+                arenaized.maximized.clone()
+            } else {
+                arenaized.minimized.clone()
+            };
+        }
+        None
+    }
+
+    pub fn arenaized_flat_cache(&self, max: bool, analyzer: &impl GraphBackend) -> Option<Box<Elem<Concrete>>> {
+        if let Some(idx) = self.arena_idx(analyzer) {
+            let Elem::Expr(ref arenaized) = *analyzer.range_arena().ranges[idx].borrow() else {
+                return None;
+            };
+            return if max {
+                arenaized.flattened_max.clone()
+            } else {
+                arenaized.flattened_min.clone()
+            };
+        }
+        None
+    }
+
+    pub fn set_arenaized_flattened(&self, max: bool, elem: Elem<Concrete>, analyzer: &impl GraphBackend) {
+        if let Some(idx) = self.arena_idx(analyzer) {
+            if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
+                let Elem::Expr(arenaized) = &mut *t else {
+                    return;
+                };
+
+                if max {
+                    arenaized.flattened_max = Some(Box::new(elem));
+                } else {
+                    arenaized.flattened_min = Some(Box::new(elem));
+                }
+            }
+        }
+    }
+
 }
 
 impl<T: Ord> RangeExpr<T> {
@@ -113,9 +177,16 @@ impl<T: Ord> RangeExpr<T> {
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        self.lhs.arenaize(analyzer);
-        self.rhs.arenaize(analyzer);
+        // self.lhs.clone().arenaize(analyzer)?;
+        // self.rhs.clone().arenaize(analyzer)?;
+        if self.arena_idx(analyzer).is_none() {
+            let mut self_copy = self.clone();
+            *self_copy.lhs = *Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*self.lhs.clone())));
+            *self_copy.rhs = *Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*self.rhs.clone())));
+            let _ = analyzer.range_arena_idx_or_upsert(Elem::Expr(self_copy));
+        }
         Ok(())
     }
 
@@ -123,6 +194,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         false
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn flatten(
         &self,
         maximize: bool,
@@ -134,6 +206,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             }
             _ => {}
         }
+
+        if let Some(arenaized) = self.arenaized_flat_cache(maximize, analyzer) {
+            return Ok(*arenaized)
+        }
+
         Ok(Elem::Expr(RangeExpr::new(
             self.lhs.flatten(maximize, analyzer)?,
             self.op,
@@ -163,6 +240,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         deps
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn recursive_dependent_on(
         &self,
         analyzer: &impl GraphBackend,
@@ -172,6 +250,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         Ok(deps)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn has_cycle(
         &self,
         seen: &mut Vec<ContextVarNode>,
@@ -182,6 +261,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         Ok(lhs_has_cycle || rhs_has_cycle)
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn filter_recursion(
         &mut self,
         node_idx: NodeIdx,
@@ -192,40 +272,47 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         self.rhs.filter_recursion(node_idx, new_idx, analyzer);
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
             Ok(*cached)
+        } else if let Some(MinMaxed::Maximized(cached)) = self.arenaized_cache(true, analyzer) {
+            Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
-            self.simplify_exec_op(true, &mut Default::default(), analyzer)
-        } else if let Some(flat_max) = &self.flattened_max {
-            flat_max.maximize(analyzer)
+            self.simplify_exec_op(true, analyzer)
         } else {
             self.exec_op(true, analyzer)
         }
     }
+
+    #[tracing::instrument(level = "trace", skip_all)]
     fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
             Ok(*cached)
-        } else if self.op == RangeOp::SetIndices {
-            self.simplify_exec_op(false, &mut Default::default(), analyzer)
-        } else if let Some(flat_min) = &self.flattened_min {
-            flat_min.minimize(analyzer)
+        } else if let Some(MinMaxed::Minimized(cached)) = self.arenaized_cache(false, analyzer) {
+            Ok(*cached)
+        }  else if self.op == RangeOp::SetIndices {
+            self.simplify_exec_op(false, analyzer)
         } else {
             self.exec_op(false, analyzer)
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn simplify_maximize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_max) = &self.flattened_max {
             return Ok(*simp_max.clone());
         }
 
-        let l = self.lhs.simplify_maximize(seen_ops, analyzer)?;
-        let r = self.rhs.simplify_maximize(seen_ops, analyzer)?;
+        if let Some(arenaized) = self.arenaized_flat_cache(true, analyzer) {
+            return Ok(*arenaized)
+        }
+
+        let l = self.lhs.simplify_maximize(analyzer)?;
+        let r = self.rhs.simplify_maximize(analyzer)?;
         let collapsed = collapse(&l, self.op, &r, analyzer);
         match collapsed {
             MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(true, analyzer),
@@ -233,7 +320,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             MaybeCollapsed::Not(..) => {
                 // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
                 let res =
-                    RangeExpr::new(l, self.op, r).simplify_exec_op(true, seen_ops, analyzer)?;
+                    RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer)?;
                 match res {
                     Elem::Expr(expr) => {
                         match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
@@ -248,24 +335,29 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             }
         }
     }
+
+    #[tracing::instrument(level = "trace", skip_all)]
     fn simplify_minimize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_min) = &self.flattened_min {
             return Ok(*simp_min.clone());
         }
 
-        let l = self.lhs.simplify_minimize(seen_ops, analyzer)?;
-        let r = self.rhs.simplify_minimize(seen_ops, analyzer)?;
+        if let Some(arenaized) = self.arenaized_flat_cache(false, analyzer) {
+            return Ok(*arenaized)
+        }
+
+        let l = self.lhs.simplify_minimize(analyzer)?;
+        let r = self.rhs.simplify_minimize(analyzer)?;
         let collapsed = collapse(&l, self.op, &r, analyzer);
         match collapsed {
             MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(false, analyzer),
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
                 let res =
-                    RangeExpr::new(l, self.op, r).simplify_exec_op(false, seen_ops, analyzer)?;
+                    RangeExpr::new(l, self.op, r).simplify_exec_op(false, analyzer)?;
                 match res {
                     Elem::Expr(expr) => {
                         match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
@@ -281,60 +373,55 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
-        if let Some(idx) = g.range_arena_idx(&Elem::Expr(self.clone())) {
-            if Elem::Arena(idx).is_flatten_cached(g) {
-                panic!("here");
-            }
-        }
-
         if self.flattened_max.is_none() {
-            self.lhs.arenaize(g)?;
             self.lhs.cache_flatten(g)?;
-            self.rhs.arenaize(g)?;
             self.rhs.cache_flatten(g)?;
-            let mut flat_max = self.flatten(true, g)?;
-            flat_max.arenaize(g)?;
-            let mut simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
-            simplified_flat_max.arenaize(g)?;
+            // self.arenaize(g)?;
+            let flat_max = self.flatten(true, g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(g)?;
+            simplified_flat_max.clone().arenaize(g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
-            let mut s = Elem::Expr(self.clone());
-            s.arenaize(g)?;
+            self.arenaize(g)?;
+            // let mut s = Elem::Expr(self.clone());
+            // s.arenaize(g)?;
         }
         if self.flattened_min.is_none() {
-            self.lhs.arenaize(g)?;
             self.lhs.cache_flatten(g)?;
-            self.rhs.arenaize(g)?;
             self.rhs.cache_flatten(g)?;
-            let mut flat_min = self.flatten(false, g)?;
-            flat_min.arenaize(g)?;
-            let mut simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
-            simplified_flat_min.arenaize(g)?;
+            // self.arenaize(g)?;
+            let flat_min = self.flatten(false, g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(g)?;
+            simplified_flat_min.clone().arenaize(g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
-            let mut s = Elem::Expr(self.clone());
-            s.arenaize(g)?;
+            self.arenaize(g)?;
+            // let mut s = Elem::Expr(self.clone());
+            // s.arenaize(g)?;
         }
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+        tracing::trace!("cache maximizing: {}", Elem::Expr(self.clone()));
         if self.maximized.is_none() {
-            self.lhs.arenaize(g)?;
             self.lhs.cache_maximize(g)?;
-            self.rhs.arenaize(g)?;
             self.rhs.cache_maximize(g)?;
             self.cache_exec_op(true, g)?;
+            self.arenaize(g)?;
         }
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+        tracing::trace!("cache minimizing: {}", Elem::Expr(self.clone()));
         if self.minimized.is_none() {
-            self.lhs.arenaize(g)?;
             self.lhs.cache_minimize(g)?;
-            self.rhs.arenaize(g)?;
             self.rhs.cache_minimize(g)?;
             self.cache_exec_op(false, g)?;
+            self.arenaize(g)?;
         }
         Ok(())
     }
@@ -359,8 +446,20 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
     let zero = Elem::from(Concrete::from(U256::zero()));
     let one = Elem::from(Concrete::from(U256::one()));
     match (l, r) {
-        (Elem::Arena(_), r) => collapse(l.dearenaize(analyzer), op, r, analyzer),
-        (l, Elem::Arena(_)) => collapse(l, op, r.dearenaize(analyzer), analyzer),
+        (Elem::Arena(_), r) => {
+            match collapse(&l.dearenaize(analyzer).borrow().clone(), op, r, analyzer) {
+                MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
+                MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
+                MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+            }
+        },
+        (l, Elem::Arena(_)) => {
+            match collapse(l, op, &r.dearenaize(analyzer).borrow().clone(), analyzer) {
+                MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
+                MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
+                MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+            }
+        },
         (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
         (Elem::Expr(expr), d @ Elem::Reference(_)) => {
             // try to collapse the expression

@@ -1,3 +1,8 @@
+use std::hash::Hasher;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::Analyzer;
 use graph::elem::Elem;
 use graph::elem::RangeElem;
@@ -37,9 +42,17 @@ impl GraphLike for Analyzer {
         &mut self.range_arena
     }
 
-    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
+    fn range_arena_idx_or_upsert(&mut self, mut elem: Self::RangeElem) -> usize {
+        // tracing::trace!("arenaizing: {}", elem);
+        if let Elem::Arena(idx) = elem {
+            return idx;
+        }
+
         if let Some(idx) = self.range_arena_idx(&elem) {
             let existing = &self.range_arena().ranges[idx];
+            let Ok(existing) = existing.try_borrow() else {
+                return idx;
+            };
             let (min_cached, max_cached) = existing.is_min_max_cached(self);
             let mut existing_count = 0;
             if min_cached {
@@ -64,18 +77,28 @@ impl GraphLike for Analyzer {
                 new_count += 1;
             }
 
+            drop(existing);
+
             if new_count >= existing_count {
-                self.range_arena_mut().ranges[idx] = elem;
+                self.range_arena_mut().ranges[idx] = Rc::new(RefCell::new(elem));
             }
 
             idx
         } else {
             let idx = self.range_arena().ranges.len();
-            self.range_arena_mut().ranges.push(elem.clone());
+            self.range_arena_mut().ranges.push(Rc::new(RefCell::new(elem.clone())));
             self.range_arena_mut().map.insert(elem, idx);
             idx
         }
     }
+}
+
+
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
 }
 
 impl GraphBackend for Analyzer {}

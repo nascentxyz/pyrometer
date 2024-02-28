@@ -78,63 +78,131 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 Ok(Some(len_node))
             }
         } else {
+            self.create_length(ctx, loc, array, next_arr, return_var)
             // no length variable, create one
-            let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
+            // let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
 
-            // Create the range from the current length or default to [0, uint256.max]
+            // // Create the range from the current length or default to [0, uint256.max]
 
-            let len_min = Elem::from(next_arr)
-                .get_length()
-                .max(Elem::from(Concrete::from(U256::zero())));
-            let len_max = Elem::from(next_arr)
-                .get_length()
-                .min(Elem::from(Concrete::from(U256::MAX)));
-            let range = SolcRange::new(len_min, len_max, vec![]);
+            // let len_min = Elem::from(next_arr)
+            //     .get_length()
+            //     .max(Elem::from(Concrete::from(U256::zero())));
+            // let len_max = Elem::from(next_arr)
+            //     .get_length()
+            //     .min(Elem::from(Concrete::from(U256::MAX)));
+            // let range = SolcRange::new(len_min, len_max, vec![]);
 
-            let len_var = ContextVar {
-                loc: Some(loc),
-                name,
-                display_name: array.display_name(self).into_expr_err(loc)? + ".length",
-                storage: None,
-                is_tmp: false,
-                tmp_of: None,
-                is_symbolic: true,
-                is_return: false,
-                ty: VarType::BuiltIn(
-                    BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
-                    Some(range),
-                ),
-            };
-            let len_node = ContextVarNode::from(self.add_node(Node::ContextVar(len_var)));
-            self.add_edge(
-                len_node,
-                array,
-                Edge::Context(ContextEdge::AttrAccess("length")),
-            );
-            self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
-            ctx.add_var(len_node, self).into_expr_err(loc)?;
+            // let len_var = ContextVar {
+            //     loc: Some(loc),
+            //     name,
+            //     display_name: array.display_name(self).into_expr_err(loc)? + ".length",
+            //     storage: None,
+            //     is_tmp: false,
+            //     tmp_of: None,
+            //     is_symbolic: true,
+            //     is_return: false,
+            //     ty: VarType::BuiltIn(
+            //         BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
+            //         Some(range),
+            //     ),
+            // };
+            // let len_node = ContextVarNode::from(self.add_node(Node::ContextVar(len_var)));
+            // self.add_edge(
+            //     len_node,
+            //     array,
+            //     Edge::Context(ContextEdge::AttrAccess("length")),
+            // );
+            // self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
+            // ctx.add_var(len_node, self).into_expr_err(loc)?;
 
-            // we have to force here to avoid length <-> array recursion
-            let next_next_arr =
-                self.advance_var_in_ctx_forcible(array.latest_version(self), loc, ctx, true)?;
-            let update_array_len =
-                Elem::from(next_arr.latest_version(self)).set_length(len_node.into());
+            // // we have to force here to avoid length <-> array recursion
+            // let next_next_arr =
+            //     self.advance_var_in_ctx_forcible(array.latest_version(self), loc, ctx, true)?;
+            // let update_array_len =
+            //     Elem::from(next_arr.latest_version(self)).set_length(len_node.into());
 
-            // Update the array
-            next_next_arr
-                .set_range_min(self, update_array_len.clone())
+            // // Update the array
+            // next_next_arr
+            //     .set_range_min(self, update_array_len.clone())
+            //     .into_expr_err(loc)?;
+            // next_next_arr
+            //     .set_range_max(self, update_array_len.clone())
+            //     .into_expr_err(loc)?;
+
+            // if !return_var {
+            //     ctx.push_expr(ExprRet::Single(len_node.into()), self)
+            //         .into_expr_err(loc)?;
+            //     Ok(None)
+            // } else {
+            //     Ok(Some(len_node))
+            // }
+        }
+    }
+
+    fn create_length(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        array: ContextVarNode,
+        target_array: ContextVarNode,
+        return_var: bool,
+    ) -> Result<Option<ContextVarNode>, ExprErr> {
+        // no length variable, create one
+        let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
+
+        // Create the range from the current length or default to [0, uint256.max]
+
+        let len_min = Elem::from(array)
+            .get_length()
+            .max(Elem::from(Concrete::from(U256::zero())));
+        let len_max = Elem::from(array)
+            .get_length()
+            .min(Elem::from(Concrete::from(U256::MAX)));
+        let range = SolcRange::new(len_min, len_max, vec![]);
+
+        let len_var = ContextVar {
+            loc: Some(loc),
+            name,
+            display_name: array.display_name(self).into_expr_err(loc)? + ".length",
+            storage: None,
+            is_tmp: false,
+            tmp_of: None,
+            is_symbolic: true,
+            is_return: false,
+            ty: VarType::BuiltIn(
+                BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
+                Some(range),
+            ),
+        };
+        let len_node = ContextVarNode::from(self.add_node(Node::ContextVar(len_var)));
+        self.add_edge(
+            len_node,
+            target_array,
+            Edge::Context(ContextEdge::AttrAccess("length")),
+        );
+        self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
+        ctx.add_var(len_node, self).into_expr_err(loc)?;
+
+        // we have to force here to avoid length <-> array recursion
+        let next_target_arr =
+            self.advance_var_in_ctx_forcible(target_array.latest_version(self), loc, ctx, true)?;
+        let update_array_len =
+            Elem::from(target_array.latest_version(self)).set_length(len_node.into());
+
+        // Update the array
+        next_target_arr
+            .set_range_min(self, update_array_len.clone())
+            .into_expr_err(loc)?;
+        next_target_arr
+            .set_range_max(self, update_array_len.clone())
+            .into_expr_err(loc)?;
+
+        if !return_var {
+            ctx.push_expr(ExprRet::Single(len_node.into()), self)
                 .into_expr_err(loc)?;
-            next_next_arr
-                .set_range_max(self, update_array_len.clone())
-                .into_expr_err(loc)?;
-
-            if !return_var {
-                ctx.push_expr(ExprRet::Single(len_node.into()), self)
-                    .into_expr_err(loc)?;
-                Ok(None)
-            } else {
-                Ok(Some(len_node))
-            }
+            Ok(None)
+        } else {
+            Ok(Some(len_node))
         }
     }
 

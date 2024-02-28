@@ -242,13 +242,13 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                     .min
                     .clone()
                     .concat(r2.min.clone())
-                    .simplify_minimize(&mut Default::default(), self)
+                    .simplify_minimize(self)
                     .into_expr_err(loc)?;
                 let max = r
                     .max
                     .clone()
                     .concat(r2.max.clone())
-                    .simplify_maximize(&mut Default::default(), self)
+                    .simplify_maximize(self)
                     .into_expr_err(loc)?;
                 accum.set_range_min(self, min).into_expr_err(loc)?;
                 accum.set_range_max(self, max).into_expr_err(loc)?;

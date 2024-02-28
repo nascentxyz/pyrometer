@@ -74,14 +74,21 @@ pub trait Range<T: Ord> {
         analyzer: &mut impl GraphBackend,
     );
     /// Cache the flattened range
-    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError>;
+    fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError>;
     /// Produce a flattened range or use the cached flattened range
     fn flattened_range<'a>(
-        &'a self,
-        analyzer: &impl GraphBackend,
+        &'a mut self,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<Cow<'a, Self>, Self::GraphError>
     where
         Self: Sized + Clone;
+
+    fn take_flattened_range(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<Self, Self::GraphError>
+    where
+        Self: Sized;
 }
 
 pub trait RangeEval<E: Ord, T: RangeElem<E>>: Range<E, ElemTy = T> {

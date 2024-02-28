@@ -6,7 +6,7 @@ use crate::{
 use graph::{
     elem::Elem,
     nodes::{ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphError,
+    AnalyzerBackend, ContextEdge, Edge, GraphError, Node,
 };
 
 use solang_parser::pt::{Expression, Loc};
@@ -214,6 +214,23 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         }
 
         self.update_array_if_index_access(ctx, loc, lhs_cvar, rhs_cvar)?;
+
+        // handle struct assignment
+        if let Ok(fields) = rhs_cvar.struct_to_fields(self) {
+            if !fields.is_empty() {
+                fields.into_iter().for_each(|field| {
+                    let mut new_var = field.underlying(self).unwrap().clone();
+                    let field_name = field.name(self).unwrap();
+                    let field_name = field_name.split('.').collect::<Vec<_>>()[1];
+                    let new_name = format!("{}.{field_name}", lhs_cvar.name(self).unwrap());
+                    new_var.name = new_name.clone();
+                    new_var.display_name = new_name;
+                    let new_field =
+                        ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                    self.add_edge(new_field, lhs_cvar.first_version(self), Edge::Context(ContextEdge::AttrAccess("field")));
+                })
+            }
+        }
 
         // advance the rhs variable to avoid recursion issues
         self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;

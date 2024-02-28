@@ -146,13 +146,13 @@ impl ContextVarNode {
         if let Some(ref_range) = self.ref_range(analyzer)? {
             let min_name = ref_range
                 .range_min()
-                .simplify_minimize(&mut Default::default(), analyzer)?
+                .simplify_minimize(analyzer)?
                 .to_range_string(false, analyzer)
                 .s;
 
             let max_name = ref_range
                 .range_max()
-                .simplify_maximize(&mut Default::default(), analyzer)?
+                .simplify_maximize(analyzer)?
                 .to_range_string(true, analyzer)
                 .s;
             if max_name == min_name {
@@ -203,6 +203,20 @@ impl ContextVarNode {
         analyzer: &impl GraphBackend,
     ) -> Result<Option<TmpConstruction>, GraphError> {
         Ok(self.underlying(analyzer)?.tmp_of())
+    }
+
+    pub fn struct_to_fields(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+        if self.ref_range(analyzer)?.is_none() {
+            let fields = analyzer
+                .graph()
+                .edges_directed(self.first_version(analyzer).into(), Direction::Incoming)
+                .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("field")))
+                .map(|edge| ContextVarNode::from(edge.source()).latest_version(analyzer))
+                .collect::<Vec<_>>();
+            Ok(fields)
+        } else {
+            Ok(vec![])
+        }
     }
 
     pub fn array_to_len_var(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {

@@ -16,7 +16,7 @@ use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
 /// A dynamic range element value
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Debug, Ord, PartialOrd)]
 pub struct Reference<T> {
     /// Index of the node that is referenced
     pub idx: NodeIdx,
@@ -36,6 +36,14 @@ impl Hash for Reference<Concrete> {
     }
 }
 
+impl<T> PartialEq for Reference<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.idx == other.idx
+    }
+}
+impl<T> Eq for Reference<T> {}
+
+
 impl<T> Reference<T> {
     pub fn new(idx: NodeIdx) -> Self {
         Self {
@@ -52,6 +60,9 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
 
     fn arenaize(&mut self, _analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        // self.cache_flatten(analyzer)?;
+        // self.cache_minimize(analyzer)?;
+        // self.cache_maximize(analyzer)?;
         Ok(())
     }
 
@@ -141,11 +152,17 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     }
 
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+        if let Some(idx) = g.range_arena_idx(&Elem::Reference(self.clone())) {
+            if Elem::Arena(idx).is_flatten_cached(g) {
+                return Ok(())
+            }
+        }
+
         if self.flattened_max.is_none() {
             let cvar = ContextVarNode::from(self.idx);
             cvar.cache_flattened_range(g)?;
             let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(&mut Default::default(), g)?;
+            let simplified_flat_max = flat_max.simplify_maximize(g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
             let mut s = Elem::Reference(self.clone());
             s.arenaize(g)?;
@@ -154,7 +171,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             let cvar = ContextVarNode::from(self.idx);
             cvar.cache_flattened_range(g)?;
             let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(&mut Default::default(), g)?;
+            let simplified_flat_min = flat_min.simplify_minimize(g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
             let mut s = Elem::Reference(self.clone());
             s.arenaize(g)?;
@@ -216,7 +233,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
     fn simplify_maximize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_max) = &self.flattened_max {
@@ -232,13 +248,12 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             )))
         } else {
             self.flatten(true, analyzer)?
-                .simplify_maximize(seen_ops, analyzer)
+                .simplify_maximize(analyzer)
         }
     }
 
     fn simplify_minimize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_min) = &self.flattened_min {
@@ -252,7 +267,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             )))
         } else {
             self.flatten(false, analyzer)?
-                .simplify_minimize(seen_ops, analyzer)
+                .simplify_minimize(analyzer)
         }
     }
 

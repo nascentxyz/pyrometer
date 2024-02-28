@@ -1,3 +1,4 @@
+
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{Elem, RangeElem},
@@ -7,14 +8,28 @@ use crate::{
 use shared::NodeIdx;
 
 use std::collections::BTreeMap;
+use std::hash::{Hash, Hasher};
 
 use solang_parser::pt::Loc;
 
 /// A concrete value for a range element
-#[derive(Default, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Default, Clone, Debug, Ord, PartialOrd)]
 pub struct RangeConcrete<T> {
     pub val: T,
     pub loc: Loc,
+}
+
+impl<T: std::cmp::PartialEq> PartialEq for RangeConcrete<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.val == other.val
+    }
+}
+impl<T: std::cmp::PartialEq> Eq for RangeConcrete<T> {}
+
+impl Hash for RangeConcrete<Concrete> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.val.hash(state);
+    }
 }
 
 impl From<Concrete> for RangeConcrete<Concrete> {
@@ -149,14 +164,12 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
 
     fn simplify_maximize(
         &self,
-        _seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         _analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
     fn simplify_minimize(
         &self,
-        _seen_ops: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
         _analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))

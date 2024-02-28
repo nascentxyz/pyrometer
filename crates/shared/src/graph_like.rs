@@ -1,15 +1,16 @@
-use crate::AnalyzerLike;
-use crate::Heirarchical;
-use std::collections::HashMap;
-use std::hash::Hash;
+use crate::{Heirarchical, AnalyzerLike};
+
 
 use petgraph::{
     graph::{EdgeIndex, Graph, NodeIndex},
     Directed,
 };
+use ahash::AHashMap;
+
 use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex},
+    cell::RefCell, rc::Rc, hash::Hash,
 };
 
 pub type NodeIdx = NodeIndex<usize>;
@@ -18,8 +19,8 @@ pub type RangeArenaIdx = usize;
 
 #[derive(Default, Clone, Debug)]
 pub struct RangeArena<T: Hash> {
-    pub ranges: Vec<T>,
-    pub map: HashMap<T, usize>,
+    pub ranges: Vec<Rc<RefCell<T>>>,
+    pub map: AHashMap<T, usize>,
 }
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)

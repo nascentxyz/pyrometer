@@ -14,7 +14,7 @@ use petgraph::{
     Directed,
 };
 
-use std::collections::BTreeMap;
+use std::{rc::Rc, collections::BTreeMap};
 
 pub type DLGraph = StableGraph<AtomOrPart, AtomOrPart, Directed, usize>;
 
@@ -382,12 +382,12 @@ impl DLSolver {
         let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
         let mut indeterminate = false;
         normalized_constraints.iter().for_each(|constraint| {
-            let a = if let Some(idx) = self.graph_map.get(&constraint.lhs.clone()) {
+            let a = if let Some(idx) = self.graph_map.get(&constraint.lhs) {
                 *idx
             } else {
-                let idx = self.graph.add_node(*constraint.lhs.clone());
-                self.graph_map.insert(*constraint.lhs.clone(), idx);
-                added_atoms.push(*constraint.lhs.clone());
+                let idx = self.graph.add_node((*constraint.lhs).clone());
+                self.graph_map.insert((*constraint.lhs).clone(), idx);
+                added_atoms.push((*constraint.lhs).clone());
                 idx
             };
 
@@ -409,7 +409,7 @@ impl DLSolver {
                             .unwrap();
                             (
                                 (rhs_atom.lhs, Some(rhs_lhs_deps[0])),
-                                Box::new(AtomOrPart::Part(const_elem)),
+                                Rc::new(AtomOrPart::Part(const_elem)),
                             )
                         } else {
                             ((rhs_atom.lhs, Some(rhs_lhs_deps[0])), rhs_atom.rhs)
@@ -423,7 +423,7 @@ impl DLSolver {
                             .unwrap();
                             (
                                 (rhs_atom.rhs, Some(rhs_rhs_deps[0])),
-                                Box::new(AtomOrPart::Part(const_elem)),
+                                Rc::new(AtomOrPart::Part(const_elem)),
                             )
                         } else {
                             ((rhs_atom.rhs, Some(rhs_rhs_deps[0])), rhs_atom.lhs)
@@ -441,9 +441,9 @@ impl DLSolver {
             let b = if let Some(idx) = self.graph_map.get(&dyn_elem) {
                 *idx
             } else {
-                let idx = self.graph.add_node(*dyn_elem.clone());
-                added_atoms.push(*dyn_elem.clone());
-                self.graph_map.insert(*dyn_elem, idx);
+                let idx = self.graph.add_node((*dyn_elem).clone());
+                added_atoms.push((*dyn_elem).clone());
+                self.graph_map.insert((*dyn_elem).clone(), idx);
                 if let Some(dep) = dep {
                     if self.var_to_atom_idx.get(&dep).is_none() {
                         added_deps.push(dep);
@@ -453,7 +453,7 @@ impl DLSolver {
                 idx
             };
 
-            self.graph.add_edge(a, b, *const_elem);
+            self.graph.add_edge(a, b, (*const_elem).clone());
         });
 
         let root_node = self.root_node;
@@ -552,11 +552,11 @@ impl DLSolver {
                         ty: OpType::DL,
                         lhs: constraint.lhs.clone(),
                         op: RangeOp::Lte,
-                        rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                        rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                             ty: OpType::DL,
                             lhs: constraint.rhs.clone(),
                             op: RangeOp::Sub(true),
-                            rhs: Box::new(zero_part.clone()),
+                            rhs: Rc::new(zero_part.clone()),
                         })),
                     },
                     analyzer,
@@ -569,11 +569,11 @@ impl DLSolver {
                             ty: OpType::DL,
                             lhs: constraint.rhs,
                             op: RangeOp::Lte,
-                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                            rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                                 ty: OpType::DL,
                                 lhs: constraint.lhs,
                                 op: RangeOp::Sub(true),
-                                rhs: Box::new(zero_part.clone()),
+                                rhs: Rc::new(zero_part.clone()),
                             })),
                         },
                         analyzer,
@@ -589,11 +589,11 @@ impl DLSolver {
                         ty: OpType::DL,
                         lhs: constraint.lhs.clone(),
                         op: RangeOp::Lte,
-                        rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                        rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                             ty: OpType::DL,
                             lhs: constraint.rhs.clone(),
                             op: RangeOp::Sub(true),
-                            rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
+                            rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(
                                 U256::from(1),
                             )))),
                         })),
@@ -609,11 +609,11 @@ impl DLSolver {
                             ty: OpType::DL,
                             lhs: constraint.rhs,
                             op: RangeOp::Lte,
-                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                            rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                                 ty: OpType::DL,
                                 lhs: constraint.lhs,
                                 op: RangeOp::Sub(true),
-                                rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
+                                rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(
                                     U256::from(1),
                                 )))),
                             })),
@@ -640,9 +640,9 @@ impl DLSolver {
                         Self::dl_atom_normalize(
                             SolverAtom {
                                 ty: OpType::DL,
-                                lhs: Box::new(new_lhs),
+                                lhs: Rc::new(new_lhs),
                                 op: RangeOp::Lte,
-                                rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(
+                                rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(
                                     I256::from(-1),
                                 )))),
                             },
@@ -662,7 +662,7 @@ impl DLSolver {
                         Self::dl_atom_normalize(
                             SolverAtom {
                                 ty: OpType::DL,
-                                lhs: Box::new(new_lhs),
+                                lhs: Rc::new(new_lhs),
                                 op: RangeOp::Lte,
                                 rhs: constraint.rhs,
                             },
@@ -679,7 +679,7 @@ impl DLSolver {
                         Self::dl_atom_normalize(
                             SolverAtom {
                                 ty: OpType::DL,
-                                lhs: Box::new(new_lhs),
+                                lhs: Rc::new(new_lhs),
                                 op: RangeOp::Lte,
                                 rhs: constraint.lhs,
                             },
@@ -708,11 +708,11 @@ impl DLSolver {
                                             ty: constraint.ty,
                                             lhs: constraint.rhs,
                                             op: constraint.op,
-                                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                            rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                                                 ty: constraint.ty,
                                                 lhs: lhs_atom.rhs,
                                                 op: RangeOp::Sub(true),
-                                                rhs: Box::new(*lhs_atom.lhs),
+                                                rhs: lhs_atom.lhs,
                                             })),
                                         },
                                         analyzer,
@@ -724,13 +724,13 @@ impl DLSolver {
                                     Self::dl_atom_normalize(
                                         SolverAtom {
                                             ty: constraint.ty,
-                                            lhs: Box::new(*lhs_atom.lhs),
+                                            lhs: lhs_atom.lhs,
                                             op: constraint.op,
-                                            rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                            rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                                                 ty: constraint.ty,
                                                 lhs: constraint.rhs,
                                                 op: RangeOp::Add(true),
-                                                rhs: Box::new(*lhs_atom.rhs),
+                                                rhs: lhs_atom.rhs,
                                             })),
                                         },
                                         analyzer,
@@ -744,13 +744,13 @@ impl DLSolver {
                             Self::dl_atom_normalize(
                                 SolverAtom {
                                     ty: constraint.ty,
-                                    lhs: Box::new(*lhs_atom.lhs),
+                                    lhs: lhs_atom.lhs,
                                     op: constraint.op,
-                                    rhs: Box::new(AtomOrPart::Atom(SolverAtom {
+                                    rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
                                         ty: constraint.ty,
                                         lhs: constraint.rhs,
                                         op: RangeOp::Sub(true),
-                                        rhs: Box::new(*lhs_atom.rhs),
+                                        rhs: lhs_atom.rhs,
                                     })),
                                 },
                                 analyzer,
@@ -760,7 +760,7 @@ impl DLSolver {
                             let mut res = Self::dl_atom_normalize(
                                 SolverAtom {
                                     ty: constraint.ty,
-                                    lhs: Box::new(*lhs_atom.lhs),
+                                    lhs: lhs_atom.lhs,
                                     op: constraint.op,
                                     rhs: constraint.rhs.clone(),
                                 },
@@ -770,7 +770,7 @@ impl DLSolver {
                             let mut rhs = Self::dl_atom_normalize(
                                 SolverAtom {
                                     ty: constraint.ty,
-                                    lhs: Box::new(*lhs_atom.rhs),
+                                    lhs: lhs_atom.rhs,
                                     op: constraint.op,
                                     rhs: constraint.rhs.clone(),
                                 },
@@ -835,7 +835,7 @@ impl DLSolver {
                         ty: OpType::DL,
                         lhs: constraint.rhs,
                         op: RangeOp::Sub(true),
-                        rhs: Box::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
+                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
                     });
 
                     Self::dl_atom_normalize(
@@ -843,7 +843,7 @@ impl DLSolver {
                             ty: constraint.ty,
                             lhs: constraint.lhs,
                             op: constraint.op,
-                            rhs: Box::new(new_rhs),
+                            rhs: Rc::new(new_rhs),
                         },
                         analyzer,
                     )

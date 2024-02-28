@@ -1,5 +1,6 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
+use crate::join::JoinStatTracker;
 use crate::{
     func_call::join::FuncJoiner, func_call::modifier::ModifierCaller, helper::CallerHelper,
     internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
@@ -489,7 +490,7 @@ pub trait FuncCaller:
             // add return nodes into the subctx
             func_node
                 .returns(self)
-                .collect::<Vec<_>>()
+                .to_vec()
                 .into_iter()
                 .for_each(|ret| {
                     if let Some(var) = ContextVar::maybe_new_from_func_ret(
@@ -548,7 +549,7 @@ pub trait FuncCaller:
             self.apply_to_edges(callee_ctx, loc, &|analyzer, ctx, loc| {
                 func_node
                     .returns(analyzer)
-                    .collect::<Vec<_>>()
+                    .to_vec()
                     .into_iter()
                     .try_for_each(|ret| {
                         let underlying = ret.underlying(analyzer).unwrap();

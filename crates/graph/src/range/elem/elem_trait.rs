@@ -34,13 +34,11 @@ pub trait RangeElem<T: Ord> {
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_maximize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
     fn simplify_minimize(
         &self,
-        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Checks if two range elements are equal

@@ -388,11 +388,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 let mut rets = callee_ctx.underlying(self).unwrap().ret.clone();
 
                 if rets.is_empty() {
-                    let func_rets: Vec<FunctionReturnNode> = callee_ctx
+                    let func_rets = callee_ctx
                         .associated_fn(self)
                         .into_expr_err(loc)?
                         .returns(self)
-                        .collect();
+                        .to_vec();
                     func_rets
                         .iter()
                         .filter_map(|ret| {
@@ -451,13 +451,13 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             .associated_fn(self)
                             .into_expr_err(loc)?
                             .returns(self)
-                            .collect::<Vec<_>>()
+                            .to_vec()
                     } else {
                         callee_ctx
                             .associated_fn(self)
                             .into_expr_err(loc)?
                             .returns(self)
-                            .collect::<Vec<_>>()
+                            .to_vec()
                     };
 
                 let ret = rets

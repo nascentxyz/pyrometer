@@ -22,6 +22,7 @@ ethers-core.workspace = true
 ariadne.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+ahash.workspace = true
 serde_json = "1"
 
 

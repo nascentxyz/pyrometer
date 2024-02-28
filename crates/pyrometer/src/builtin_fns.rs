@@ -3,7 +3,7 @@ use shared::{AnalyzerLike, GraphLike, StorageLocation};
 
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, Visibility};
 
-use std::collections::HashMap;
+use ahash::AHashMap;
 
 macro_rules! builtin_fn {
     ($($field:ident : $value:expr),* $(,)?) => {
@@ -17,7 +17,7 @@ macro_rules! builtin_fn {
 }
 
 // A list of all Solidity builtins functions
-pub fn builtin_fns() -> HashMap<String, Function> {
+pub fn builtin_fns() -> AHashMap<String, Function> {
     let funcs = [
         builtin_fn!(
              name: Some(Identifier {
@@ -326,7 +326,7 @@ pub fn builtin_fns() -> HashMap<String, Function> {
 
 pub fn builtin_fns_inputs(
     analyzer: &mut (impl GraphLike + AnalyzerLike<Builtin = graph::nodes::Builtin>),
-) -> HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
+) -> AHashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
         ("wrap", vec![], vec![]),
         ("unwrap", vec![], vec![]),

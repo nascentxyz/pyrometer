@@ -766,6 +766,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     )
                 ));
             }
+            tracing::trace!("done range updating");
             new_rhs = new_rhs.latest_version(self);
             new_lhs = new_lhs.latest_version(self);
 
@@ -865,6 +866,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
             tmp_cvar = Some(cvar);
 
+            tracing::trace!("checking unsat");
             any_unsat |= new_var_range.unsat(self);
             if any_unsat || ctx.unreachable(self).into_expr_err(loc)? {
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -965,7 +967,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let elem = Elem::from(const_var.latest_version(self));
                 let evaled_min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                 if evaled_min.maybe_concrete().is_none() {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", evaled_min.to_range_string(false, self).s)));
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from const: Eq). Min: {}", evaled_min.to_range_string(false, self).s)));
                 }
 
                 if !nonconst_range.contains_elem(&elem, self) {
@@ -991,7 +993,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     // mins are equivalent, add 1 instead of adding an exclusion
                     let min = nonconst_range.evaled_range_min(self).into_expr_err(loc)?;
                     let Some(min) = min.maybe_concrete() else {
-                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(false, self).s)));
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from const: Neq). Min: {}", min.to_range_string(false, self).s)));
                     };
                     let one = Concrete::one(&min.val).expect("Cannot increment range elem by one");
                     let min = nonconst_range.range_min().into_owned() + Elem::from(one);
@@ -1005,7 +1007,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     let max = nonconst_range.evaled_range_max(self).into_expr_err(loc)?;
 
                     let Some(max) = max.maybe_concrete() else {
-                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                        return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from const: Neq 2). Max: {}", max.to_range_string(true, self).s)));
                     };
                     let one = Concrete::one(&max.val).expect("Cannot decrement range elem by one");
                     let max = nonconst_range.range_max().into_owned() - Elem::from(one);
@@ -1033,14 +1035,16 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let Some(max_conc) = max.maybe_concrete() else {
+                let Some(max_conc) = const_var.evaled_range_min(self).unwrap().unwrap().maybe_concrete()
+                 else {
                     return Err(ExprErr::BadRange(loc, format!(
-                        "Expected {} to have a concrete range by now. This is likely a bug. Max: {}, expr: {} {} {}",
+                        "Expected {} to have a concrete range by now. This is likely a bug (update nonconst from const: Gt). Max: {}, expr: {} {} {}, const value: {}",
                         nonconst_var.display_name(self).unwrap(),
                         nonconst_range.max,
                         nonconst_var.display_name(self).unwrap(),
                         op.to_string(),
                         const_var.display_name(self).unwrap(),
+                        const_var.evaled_range_min(self).unwrap().unwrap()
                     )));
                 };
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
@@ -1086,7 +1090,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // we add one to the element because its strict >
 
                 let Some(min_conc) = min.maybe_concrete() else {
-                    return Err(ExprErr::BadRange(loc, format!("Expected {} to have a concrete range by now. This is likely a bug. Min: {}", nonconst_var.display_name(self).unwrap(), nonconst_range.min)));
+                    return Err(ExprErr::BadRange(loc, format!("Expected {} to have a concrete range by now. This is likely a bug (update nonconst from const: Lt). Min: {}", nonconst_var.display_name(self).unwrap(), nonconst_range.min)));
                 };
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
@@ -1220,7 +1224,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
 
                 let Some(max_conc) = max.maybe_concrete() else {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Max: {}", max.to_range_string(true, self).s)));
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from nonconst: Gt). Max: {}", max.to_range_string(true, self).s)));
                 };
 
                 let one = Concrete::one(&max_conc.val).expect("Cannot decrement range elem by one");
@@ -1294,7 +1298,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 // we add/sub one to the element because its strict >
                 let Some(min_conc) = min.maybe_concrete() else {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug. Min: {}", min.to_range_string(false, self).s)));
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from const: Lt). Min: {}", min.to_range_string(false, self).s)));
                 };
 
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");

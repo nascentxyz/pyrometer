@@ -32,7 +32,6 @@ pub trait ExecOp<T> {
 
     fn simplify_spread(
         &self,
-        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), Self::GraphError>;
 
@@ -41,7 +40,6 @@ pub trait ExecOp<T> {
     fn simplify_exec_op(
         &self,
         maximize: bool,
-        seen_ops: &mut BTreeMap<Elem<T>, Elem<T>>,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<T>, Self::GraphError>;
 

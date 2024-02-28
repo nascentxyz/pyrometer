@@ -1,3 +1,4 @@
+use crate::ListAccess;
 use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 use graph::nodes::FunctionNode;
@@ -153,7 +154,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         fn cast_match(
             ctx: ContextNode,
             loc: Loc,
-            analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+            analyzer: &mut (impl GraphBackend + AnalyzerBackend + ListAccess),
             ty: &Builtin,
             ret: ExprRet,
             func_idx: NodeIdx,
@@ -167,6 +168,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         .as_cast_tmp(loc, ctx, ty.clone(), analyzer)
                         .into_expr_err(loc)?;
 
+
                     let v_ty = VarType::try_from_idx(analyzer, func_idx).expect("");
                     let maybe_new_range = cvar.cast_exprs(&v_ty, analyzer).into_expr_err(loc)?;
                     new_var.underlying_mut(analyzer).into_expr_err(loc)?.ty = v_ty;
@@ -178,6 +180,11 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         new_var
                             .set_range_max(analyzer, new_max)
                             .into_expr_err(loc)?;
+                    }
+
+                    if cvar.is_indexable(analyzer).into_expr_err(loc)? {
+                        // input is indexable. get the length attribute, create a new length for the casted type
+                        let _ = analyzer.create_length(ctx, loc, cvar, new_var.latest_version(analyzer), false)?;
                     }
 
                     ctx.push_expr(ExprRet::Single(new_var.into()), analyzer)

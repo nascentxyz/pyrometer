@@ -8,6 +8,7 @@ use shared::NodeIdx;
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::Loc;
+use tracing::instrument;
 
 use std::{borrow::Cow, collections::BTreeMap};
 
@@ -540,25 +541,19 @@ impl SolcRange {
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 
-    pub fn into_flattened_range(&self, analyzer: &impl GraphBackend) -> Result<Self, GraphError> {
+    pub fn into_flattened_range(&mut self, analyzer: &mut impl GraphBackend) -> Result<Self, GraphError> {
         if let Some(cached) = &self.flattened {
             return Ok(*cached.clone());
         }
 
-        let flattened_min = self.range_min().flatten(false, analyzer)?;
-        let simp_min = if !self.range_min().is_flatten_cached(analyzer) {
-            flattened_min.simplify_minimize(&mut Default::default(), analyzer)?
-        } else {
-            flattened_min
-        };
-        let flattened_max = self.range_max().flatten(true, analyzer)?;
-        let simp_max = if !self.range_max().is_flatten_cached(analyzer) {
-            flattened_max.simplify_maximize(&mut Default::default(), analyzer)?
-        } else {
-            flattened_max
-        };
+        self.min.cache_flatten(analyzer)?;
+        self.max.cache_flatten(analyzer)?;
+        let simp_min = self.min.simplify_minimize(analyzer)?;
+        let simp_max = self.max.simplify_maximize(analyzer)?;
+        let flat_range = SolcRange::new(simp_min, simp_max, self.exclusions.clone());
+        self.flattened = Some(Box::new(flat_range.clone()));
 
-        Ok(SolcRange::new(simp_min, simp_max, self.exclusions.clone()))
+        Ok(flat_range)
     }
 }
 
@@ -579,8 +574,8 @@ impl Range<Concrete> for SolcRange {
     }
 
     fn cache_eval(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        self.min.arenaize(analyzer);
-        self.max.arenaize(analyzer);
+        self.min.arenaize(analyzer)?;
+        self.max.arenaize(analyzer)?;
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
             max.cache_maximize(analyzer)?;
@@ -616,7 +611,7 @@ impl Range<Concrete> for SolcRange {
     ) -> Result<Self::ElemTy, GraphError> {
         self.range_min()
             .flatten(false, analyzer)?
-            .simplify_minimize(&mut Default::default(), analyzer)
+            .simplify_minimize(analyzer)
     }
     fn simplified_range_max(
         &self,
@@ -624,7 +619,7 @@ impl Range<Concrete> for SolcRange {
     ) -> Result<Self::ElemTy, GraphError> {
         self.range_max()
             .flatten(true, analyzer)?
-            .simplify_maximize(&mut Default::default(), analyzer)
+            .simplify_maximize(analyzer)
     }
 
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
@@ -666,30 +661,53 @@ impl Range<Concrete> for SolcRange {
         self.max.filter_recursion(self_idx, new_idx, analyzer);
     }
 
-    fn cache_flatten(&mut self, analyzer: &impl GraphBackend) -> Result<(), Self::GraphError> {
+    fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError> {
         if self.flattened.is_none() {
-            let flat = self.into_flattened_range(analyzer)?;
-            self.flattened = Some(Box::new(flat))
+            self.into_flattened_range(analyzer)?;
         }
         Ok(())
     }
     /// Produce a flattened range or use the cached flattened range
     fn flattened_range<'a>(
-        &'a self,
-        analyzer: &impl GraphBackend,
+        &'a mut self,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<Cow<'a, Self>, Self::GraphError>
     where
         Self: Sized + Clone,
     {
-        if let Some(flat) = &self.flattened {
-            Ok(Cow::Borrowed(flat))
+        if self.flattened.is_none() {
+            self.cache_flatten(analyzer)?;
+            let Some(flat) = &self.flattened else {
+                unreachable!();
+            };
+            return Ok(Cow::Borrowed(flat))
+        } else if let Some(flat) = &self.flattened {
+            return Ok(Cow::Borrowed(flat))
         } else {
-            Ok(Cow::Owned(self.into_flattened_range(analyzer)?))
+            unreachable!()
+        }
+    }
+
+    /// Produce a flattened range or use the cached flattened range
+    fn take_flattened_range(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<Self, Self::GraphError>
+    where
+        Self: Sized,
+    {
+        let taken = std::mem::take(&mut self.flattened);
+        if let Some(flat) = taken {
+            Ok(*flat)
+        } else {
+            self.cache_flatten(analyzer)?;
+            self.take_flattened_range(analyzer)
         }
     }
 }
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
+    #[tracing::instrument(level = "trace", skip_all)]
     fn sat(&self, analyzer: &impl GraphBackend) -> bool {
         matches!(
             self.evaled_range_min(analyzer)

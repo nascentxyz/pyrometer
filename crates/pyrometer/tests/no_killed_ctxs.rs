@@ -173,3 +173,15 @@ fn test_remapping_import() {
         sol,
     );
 }
+
+#[test]
+fn test_repros() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/repros/");
+    let paths = std::fs::read_dir(path_str).unwrap();
+    for path in paths {
+        let path_str = path.unwrap().path().display().to_string();
+        println!("checking parse errors in: {path_str}");
+        assert_no_parse_errors(path_str);
+    }
+}

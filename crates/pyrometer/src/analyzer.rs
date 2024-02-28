@@ -4,7 +4,7 @@ use shared::RangeArena;
 
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
-use shared::{AnalyzerLike, GraphLike, NodeIdx, Search};
+use shared::{AnalyzerLike, GraphLike, NodeIdx, Search, JoinStats};
 use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
@@ -19,11 +19,14 @@ use solang_parser::{
         StructDefinition, TypeDefinition, Using, UsingList, VariableDefinition,
     },
 };
+use ahash::AHashMap;
 
 use std::{
     collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
+    cell::RefCell,
+    rc::Rc,
 };
 
 /// A path to either a single solidity file or a Solc Standard JSON file
@@ -110,15 +113,15 @@ pub struct Analyzer {
     /// The entry node - this is the root of the dag, all relevant things should eventually point back to this (otherwise can be discarded)
     pub entry: NodeIdx,
     /// A mapping of a solidity builtin to the index in the graph
-    pub builtins: HashMap<Builtin, NodeIdx>,
+    pub builtins: AHashMap<Builtin, NodeIdx>,
     /// A mapping of a user type's name to the index in the graph (i.e. `struct A` would mapped `A` -> index)
-    pub user_types: HashMap<String, NodeIdx>,
+    pub user_types: AHashMap<String, NodeIdx>,
     /// A mapping of solidity builtin function to a [Function] struct, i.e. `ecrecover` -> `Function { name: "ecrecover", ..}`
-    pub builtin_fns: HashMap<String, Function>,
+    pub builtin_fns: AHashMap<String, Function>,
     /// A mapping of solidity builtin functions to their indices in the graph
-    pub builtin_fn_nodes: HashMap<String, NodeIdx>,
+    pub builtin_fn_nodes: AHashMap<String, NodeIdx>,
     /// A mapping of solidity builtin function names to their parameters and returns, i.e. `ecrecover` -> `([hash, r, s, v], [signer])`
-    pub builtin_fn_inputs: HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
+    pub builtin_fn_inputs: AHashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
     /// Accumulated errors that happened while analyzing
     pub expr_errs: Vec<ExprErr>,
     /// The maximum depth to analyze to (i.e. call depth)
@@ -132,6 +135,7 @@ pub struct Analyzer {
     /// Per function, a list of functions that are called
     pub fn_calls_fns: BTreeMap<FunctionNode, Vec<FunctionNode>>,
 
+    pub join_stats: JoinStats,
     /// An arena of ranges
     pub range_arena: RangeArena<Elem<Concrete>>,
 }
@@ -160,10 +164,11 @@ impl Default for Analyzer {
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
             fn_calls_fns: Default::default(),
+            join_stats: JoinStats::default(),
             range_arena: RangeArena {
-                ranges: vec![Elem::Null],
+                ranges: vec![Rc::new(RefCell::new(Elem::Null))],
                 map: {
-                    let mut map: HashMap<Elem<Concrete>, usize> = Default::default();
+                    let mut map: AHashMap<Elem<Concrete>, usize> = Default::default();
                     map.insert(Elem::Null, 0);
                     map
                 },
@@ -199,6 +204,7 @@ impl Analyzer {
         let num_funcs = self.number_of_functions();
         let num_vars = self.number_of_variables();
         let num_contexts = self.number_of_contexts();
+
         vec![
             format!(""),
             format!("          Analyzer stats"),
@@ -237,6 +243,20 @@ impl Analyzer {
             ),
             format!("     Max depth of Contexts: {}", self.max_context_depth()),
             format!("     Max width of Contexts: {}", self.max_context_width()),
+            format!(""),
+            format!("   Number of joins: {}, {} completed, {} variables reduced", self.join_stats.total_joins(), self.join_stats.completed_joins(), self.join_stats.reduced_vars()),
+            format!("      Number of pure joins: {}, {} completed, {} variables reduced", self.join_stats.total_pure_joins(), self.join_stats.completed_pure_joins(), self.join_stats.pure_reduced_vars()),
+            format!("           Number of simple pure joins: {}, {} completed, {} variables reduced", self.join_stats.pure_no_children_joins.num_joins, self.join_stats.pure_no_children_joins.completed_joins, self.join_stats.pure_no_children_joins.vars_reduced),
+            format!("           Number of children pure joins: {}, {} completed, {} variables reduced", self.join_stats.pure_children_no_forks_joins.num_joins, self.join_stats.pure_children_no_forks_joins.completed_joins, self.join_stats.pure_children_no_forks_joins.vars_reduced),
+            format!("           Number of fork children pure joins: {}, {} completed, {} variables reduced", self.join_stats.pure_children_forks_joins.num_joins, self.join_stats.pure_children_forks_joins.completed_joins, self.join_stats.pure_children_forks_joins.vars_reduced),
+            format!("      Number of view joins: {}, {} completed, {} variables reduced", self.join_stats.total_view_joins(), self.join_stats.completed_view_joins(), self.join_stats.view_reduced_vars()),
+            format!("           Number of simple view joins: {}, {} completed, {} variables reduced", self.join_stats.view_no_children_joins.num_joins, self.join_stats.view_no_children_joins.completed_joins, self.join_stats.view_no_children_joins.vars_reduced),
+            format!("           Number of children view joins: {}, {} completed, {} variables reduced", self.join_stats.view_children_no_forks_joins.num_joins, self.join_stats.view_children_no_forks_joins.completed_joins, self.join_stats.view_children_no_forks_joins.vars_reduced),
+            format!("           Number of fork children view joins: {}, {} completed, {} variables reduced", self.join_stats.view_children_forks_joins.num_joins, self.join_stats.view_children_forks_joins.completed_joins, self.join_stats.view_children_forks_joins.vars_reduced),
+            format!("      Number of mut joins: {}, {} completed, {} variables reduced", self.join_stats.total_mut_joins(), self.join_stats.completed_mut_joins(), self.join_stats.mut_reduced_vars()),
+            format!("           Number of simple mut joins: {}, {} completed, {} variables reduced", self.join_stats.mut_no_children_joins.num_joins, self.join_stats.mut_no_children_joins.completed_joins, self.join_stats.mut_no_children_joins.vars_reduced),
+            format!("           Number of children mut joins: {}, {} completed, {} variables reduced", self.join_stats.mut_children_no_forks_joins.num_joins, self.join_stats.mut_children_no_forks_joins.completed_joins, self.join_stats.mut_children_no_forks_joins.vars_reduced),
+            format!("           Number of fork children mut joins: {}, {} completed, {} variables reduced", self.join_stats.mut_children_forks_joins.num_joins, self.join_stats.mut_children_forks_joins.completed_joins, self.join_stats.mut_children_forks_joins.vars_reduced),
             format!(""),
             format!("====================================="),
         ]

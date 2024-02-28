@@ -7,11 +7,12 @@ use graph::{
     },
     AnalyzerBackend, Edge, Node, VarType,
 };
-use shared::{AnalyzerLike, GraphLike, NodeIdx};
+use shared::{AnalyzerLike, GraphLike, NodeIdx, JoinStats};
 use solc_expressions::{ExprErr, IntoExprErr};
 
 use ethers_core::types::U256;
 use solang_parser::{helpers::CodeLocation, pt::Expression};
+use ahash::AHashMap;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -29,11 +30,11 @@ impl AnalyzerLike for Analyzer {
     type FunctionReturn = FunctionReturn;
     type Builtin = Builtin;
 
-    fn builtin_fn_nodes(&self) -> &HashMap<String, NodeIdx> {
+    fn builtin_fn_nodes(&self) -> &AHashMap<String, NodeIdx> {
         &self.builtin_fn_nodes
     }
 
-    fn builtin_fn_nodes_mut(&mut self) -> &mut HashMap<String, NodeIdx> {
+    fn builtin_fn_nodes_mut(&mut self) -> &mut AHashMap<String, NodeIdx> {
         &mut self.builtin_fn_nodes
     }
 
@@ -74,24 +75,24 @@ impl AnalyzerLike for Analyzer {
         self.block
     }
 
-    fn builtin_fns(&self) -> &HashMap<String, Function> {
+    fn builtin_fns(&self) -> &AHashMap<String, Function> {
         &self.builtin_fns
     }
 
-    fn builtin_fn_inputs(&self) -> &HashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
+    fn builtin_fn_inputs(&self) -> &AHashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
         &self.builtin_fn_inputs
     }
 
-    fn builtins(&self) -> &HashMap<Builtin, NodeIdx> {
+    fn builtins(&self) -> &AHashMap<Builtin, NodeIdx> {
         &self.builtins
     }
-    fn builtins_mut(&mut self) -> &mut HashMap<Builtin, NodeIdx> {
+    fn builtins_mut(&mut self) -> &mut AHashMap<Builtin, NodeIdx> {
         &mut self.builtins
     }
-    fn user_types(&self) -> &HashMap<String, NodeIdx> {
+    fn user_types(&self) -> &AHashMap<String, NodeIdx> {
         &self.user_types
     }
-    fn user_types_mut(&mut self) -> &mut HashMap<String, NodeIdx> {
+    fn user_types_mut(&mut self) -> &mut AHashMap<String, NodeIdx> {
         &mut self.user_types
     }
 
@@ -241,5 +242,9 @@ impl AnalyzerLike for Analyzer {
     }
     fn fn_calls_fns_mut(&mut self) -> &mut BTreeMap<Self::FunctionNode, Vec<Self::FunctionNode>> {
         &mut self.fn_calls_fns
+    }
+
+    fn join_stats_mut(&mut self) -> &mut JoinStats {
+        &mut self.join_stats
     }
 }

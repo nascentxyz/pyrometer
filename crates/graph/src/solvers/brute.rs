@@ -90,7 +90,7 @@ impl BruteBinSearchSolver {
         let mut ranges = BTreeMap::default();
         let mut atomic_ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
-            let range = dep.ref_range(analyzer)?.unwrap();
+            let mut range = dep.range(analyzer)?.unwrap();
             if range.unsat(analyzer) {
                 panic!(
                     "initial range for {} not sat",
@@ -604,7 +604,7 @@ impl SolcSolver for BruteBinSearchSolver {
                 .filter_map(|(_, range)| {
                     if let Some(atom) = range
                         .min
-                        .simplify_minimize(&mut Default::default(), analyzer)
+                        .simplify_minimize(analyzer)
                         .unwrap()
                         .atomize(analyzer)
                     {
@@ -612,7 +612,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     } else {
                         range
                             .max
-                            .simplify_maximize(&mut Default::default(), analyzer)
+                            .simplify_maximize(analyzer)
                             .unwrap()
                             .atomize(analyzer)
                     }
