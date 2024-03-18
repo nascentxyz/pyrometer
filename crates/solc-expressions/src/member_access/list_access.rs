@@ -167,6 +167,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             storage: None,
             is_tmp: false,
             tmp_of: None,
+            dep_on: None,
             is_symbolic: true,
             is_return: false,
             ty: VarType::BuiltIn(
@@ -233,6 +234,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 storage: None,
                 is_tmp: false,
                 tmp_of: None,
+                dep_on: None,
                 is_symbolic: true,
                 is_return: false,
                 ty: VarType::BuiltIn(

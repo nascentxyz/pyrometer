@@ -172,6 +172,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,
+                    dep_on: None,
                     is_return: false,
                     ty,
                 };
@@ -199,6 +200,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,
+                    dep_on: None,
                     is_return: false,
                     ty,
                 };

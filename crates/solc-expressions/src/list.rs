@@ -68,6 +68,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         is_tmp: false,
                         is_symbolic: false,
                         tmp_of: None,
+                        dep_on: None,
                         is_return: false,
                         ty,
                     };
@@ -93,6 +94,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 is_tmp: true,
                                 is_symbolic: false,
                                 tmp_of: None,
+                                dep_on: None,
                                 is_return: false,
                                 ty,
                             };

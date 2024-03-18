@@ -146,6 +146,7 @@ impl VarNode {
                         display_name: self.name(analyzer)?,
                         storage: None,
                         is_tmp: false,
+                        dep_on: None,
                         tmp_of: None,
                         is_symbolic: true,
                         is_return: false,

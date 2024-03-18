@@ -348,8 +348,9 @@ impl Elem<Concrete> {
             },
             Elem::Null => {}
             Elem::Arena(_) => {
-                let s = self.dearenaize(analyzer).clone();
-                s.borrow_mut().replace_dep(to_replace, replacement, analyzer);
+                let mut s = self.dearenaize(analyzer).borrow().clone();
+                s.replace_dep(to_replace, replacement, analyzer);
+                *self = Elem::Arena(analyzer.range_arena_idx_or_upsert(s));
             }
         }
     }

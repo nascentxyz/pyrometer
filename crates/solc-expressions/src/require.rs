@@ -519,6 +519,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                 RangeOp::Or,
                                 Some(rhs_cvar),
                             )),
+                            dep_on: {
+                                let mut deps = lhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?;
+                                deps.extend(rhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?);
+                                Some(deps)
+                            },
                             ty: VarType::BuiltIn(
                                 analyzer.builtin_or_add(Builtin::Bool).into(),
                                 Some(range),
@@ -802,6 +807,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 storage: None,
                 is_tmp: true,
                 tmp_of: Some(TmpConstruction::new(new_lhs, op, Some(new_rhs))),
+                dep_on: {
+                    let mut deps = new_lhs.dependent_on(self, true).into_expr_err(loc)?;
+                    deps.extend(new_rhs.dependent_on(self, true).into_expr_err(loc)?);
+                    Some(deps)
+                },
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,
@@ -845,6 +855,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     RangeOp::Eq,
                     Some(conditional_cvar),
                 )),
+                dep_on: {
+                    let mut deps = tmp_true.dependent_on(self, true).into_expr_err(loc)?;
+                    deps.extend(conditional_cvar.dependent_on(self, true).into_expr_err(loc)?);
+                    Some(deps)
+                },
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,

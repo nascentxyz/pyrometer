@@ -309,41 +309,74 @@ impl ContextVarNode {
             .collect()
     }
 
+    pub fn set_dependent_on(
+        &self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<(), GraphError> {
+        let mut return_self = false;
+        let mut first_iter = true;
+        let mut stack = vec![*self];
+        let mut result = vec![];
+
+        while let Some(node) = stack.pop() {
+            if result.contains(&node) {
+                continue;
+            }
+
+            let underlying = node.underlying(analyzer)?;
+            if let Some(tmp) = underlying.tmp_of() {
+                stack.push(tmp.lhs);
+                if let Some(rhs) = tmp.rhs {
+                    stack.push(rhs);
+                }
+            } else if return_self {
+                result.push(node);
+            }
+
+            if first_iter {
+                first_iter = false;
+                return_self = true;    
+            }
+        }
+
+        self.underlying_mut(analyzer)?.dep_on = Some(result);
+        Ok(())
+    }
+
     pub fn dependent_on(
         &self,
         analyzer: &impl GraphBackend,
-        return_self: bool,
+        mut return_self: bool,
     ) -> Result<Vec<Self>, GraphError> {
-        self.dependent_on_no_recursion(analyzer, &mut vec![*self], return_self)
-    }
-
-    fn dependent_on_no_recursion(
-        &self,
-        analyzer: &impl GraphBackend,
-        seen: &mut Vec<Self>,
-        return_self: bool,
-    ) -> Result<Vec<Self>, GraphError> {
-        let underlying = self.underlying(analyzer)?;
-        if let Some(tmp) = underlying.tmp_of() {
-            let mut nodes = if !seen.contains(&tmp.lhs) {
-                seen.push(tmp.lhs);
-                tmp.lhs.dependent_on(analyzer, true)?
-            } else {
-                vec![]
-            };
-
-            if let Some(rhs) = tmp.rhs {
-                if !seen.contains(&rhs) {
-                    seen.push(rhs);
-                    nodes.extend(rhs.dependent_on(analyzer, true)?);
-                }
-            }
-            Ok(nodes)
-        } else if return_self {
-            Ok(vec![*self])
-        } else {
-            Ok(vec![])
+        if let Some(dep_on) = &self.underlying(analyzer)?.dep_on {
+            return Ok(dep_on.to_vec());
         }
+        let mut first_iter = true;
+        let mut stack = vec![*self];
+        let mut result = vec![];
+
+        while let Some(node) = stack.pop() {
+            if result.contains(&node) {
+                continue;
+            }
+
+            let underlying = node.underlying(analyzer)?;
+            if let Some(tmp) = underlying.tmp_of() {
+                stack.push(tmp.lhs);
+                if let Some(rhs) = tmp.rhs {
+                    stack.push(rhs);
+                }
+            } else if return_self {
+                result.push(node);
+            }
+
+            if first_iter {
+                first_iter = false;
+                return_self = true;    
+            }
+        }
+
+        Ok(result)
     }
 
     pub fn graph_dependent_on(

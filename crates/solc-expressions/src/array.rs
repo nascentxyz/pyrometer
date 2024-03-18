@@ -209,6 +209,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     RangeOp::SetIndices,
                     Some(index),
                 )),
+                dep_on: {
+                    let mut deps = parent.dependent_on(self, true).into_expr_err(loc)?;
+                    deps.extend(index.dependent_on(self, true).into_expr_err(loc)?);
+                    Some(deps)
+                },
                 is_symbolic: true,
                 is_return: false,
                 ty,

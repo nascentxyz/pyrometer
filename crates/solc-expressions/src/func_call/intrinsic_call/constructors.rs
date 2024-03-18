@@ -54,6 +54,7 @@ pub trait ConstructorCaller:
                 is_symbolic: false,
                 is_return: false,
                 tmp_of: None,
+                dep_on: None,
                 ty: ty.expect("No type for node"),
             };
 
@@ -66,6 +67,7 @@ pub trait ConstructorCaller:
                 storage: None,
                 is_tmp: true,
                 tmp_of: None,
+                dep_on: None,
                 is_symbolic: true,
                 is_return: false,
                 ty: ContextVarNode::from(len_cvar)

@@ -144,6 +144,13 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         
         new_lhs.underlying_mut(self).into_expr_err(loc)?.tmp_of =
             rhs_cvar.tmp_of(self).into_expr_err(loc)?;
+        
+        if let Some(ref mut dep_on) =  new_lhs.underlying_mut(self).into_expr_err(loc)?.dep_on {
+            dep_on.push(rhs_cvar)
+        } else {
+            new_lhs.set_dependent_on(self).into_expr_err(loc)?;
+        }
+
         if lhs_cvar.is_storage(self).into_expr_err(loc)? {
             self.add_edge(new_lhs, rhs_cvar, Edge::Context(ContextEdge::StorageWrite));
         }

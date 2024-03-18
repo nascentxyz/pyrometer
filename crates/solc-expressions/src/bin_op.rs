@@ -163,8 +163,16 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         let new_lhs = if assign {
             let new = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
-            new.underlying_mut(self).into_expr_err(loc)?.tmp_of =
+            let underlying = new.underlying_mut(self).into_expr_err(loc)?;
+            underlying.tmp_of =
                 Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
+            
+            if let Some(ref mut dep_on) = underlying.dep_on {
+                dep_on.push(rhs_cvar)
+            } else {
+                new.set_dependent_on(self).into_expr_err(loc)?;
+            }
+
             new
         } else {
             let mut new_lhs_underlying = ContextVar {
@@ -188,6 +196,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     || rhs_cvar.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,
                 tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
+                dep_on: {
+                    let mut deps = lhs_cvar.dependent_on(self, true).into_expr_err(loc)?;
+                    deps.extend(rhs_cvar.dependent_on(self, true).into_expr_err(loc)?);
+                    Some(deps)
+                },
                 ty: lhs_cvar.underlying(self).into_expr_err(loc)?.ty.clone(),
             };
 
@@ -575,6 +588,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 RangeOp::Gte,
                                 Some(zero_node.into()),
                             )),
+                            dep_on: {
+                                let mut deps = tmp_rhs.dependent_on(self, true).into_expr_err(loc)?;
+                                deps.push(zero_node.into());
+                                Some(deps)
+                            },
                             is_symbolic: true,
                             is_return: false,
                             ty: VarType::BuiltIn(
@@ -703,6 +721,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     storage: None,
                     is_tmp: true,
                     tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::BitNot, None)),
+                    dep_on: Some(lhs_cvar.dependent_on(self, true).into_expr_err(loc)?),
                     is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
                     is_return: false,
                     ty: lhs_cvar.underlying(self).into_expr_err(loc)?.ty.clone(),
