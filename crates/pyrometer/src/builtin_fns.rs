@@ -1,5 +1,5 @@
 use graph::nodes::{Builtin, Function, FunctionParam, FunctionReturn};
-use shared::{AnalyzerLike, GraphLike, StorageLocation};
+use shared::{AnalyzerLike, StorageLocation};
 
 use solang_parser::pt::{FunctionAttribute, Identifier, Loc, Visibility};
 
@@ -325,7 +325,7 @@ pub fn builtin_fns() -> AHashMap<String, Function> {
 }
 
 pub fn builtin_fns_inputs(
-    analyzer: &mut (impl GraphLike + AnalyzerLike<Builtin = graph::nodes::Builtin>),
+    analyzer: &mut impl AnalyzerLike<Builtin = graph::nodes::Builtin>,
 ) -> AHashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)> {
     let funcs = [
         ("wrap", vec![], vec![]),

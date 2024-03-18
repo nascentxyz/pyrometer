@@ -27,10 +27,7 @@ impl ContextNode {
     }
 
     /// Gets the total context width
-    pub fn total_width(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<usize, GraphError> {
+    pub fn total_width(&self, analyzer: &mut impl AnalyzerBackend) -> Result<usize, GraphError> {
         self.first_ancestor(analyzer)?
             .number_of_live_edges(analyzer)
     }
@@ -48,7 +45,7 @@ impl ContextNode {
     /// Gets a mutable reference to the underlying context in the graph
     pub fn underlying_mut<'a>(
         &self,
-        analyzer: &'a mut (impl GraphBackend<Node = Node> + AnalyzerBackend),
+        analyzer: &'a mut impl AnalyzerBackend<Node = Node>,
     ) -> Result<&'a mut Context, GraphError> {
         match analyzer.node_mut(*self) {
             Node::Context(c) => Ok(c),
@@ -92,7 +89,7 @@ impl ContextNode {
         &self,
         ret_stmt_loc: Loc,
         ret: ContextVarNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.ret.push((ret_stmt_loc, ret));
         self.propogate_end(analyzer)?;
@@ -100,10 +97,7 @@ impl ContextNode {
     }
 
     /// Propogate that this context has ended up the context graph
-    pub fn propogate_end(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
+    pub fn propogate_end(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
         let underlying = &mut self.underlying_mut(analyzer)?;
         let curr_live = underlying.number_of_live_edges;
         underlying.number_of_live_edges = 0;

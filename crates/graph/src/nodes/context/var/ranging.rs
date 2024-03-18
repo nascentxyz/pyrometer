@@ -189,7 +189,7 @@ impl ContextVarNode {
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         mut new_min: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         assert!(self.latest_version(analyzer) == *self);
@@ -202,8 +202,6 @@ impl ContextVarNode {
         }
 
         new_min.arenaize(analyzer)?;
-
-
 
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
@@ -238,7 +236,7 @@ impl ContextVarNode {
     // #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_max(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         mut new_max: Elem<Concrete>,
     ) -> Result<(), GraphError> {
         assert!(self.latest_version(analyzer) == *self);
@@ -281,7 +279,7 @@ impl ContextVarNode {
     pub fn set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        mut new_exclusions: Vec<usize>,
+        new_exclusions: Vec<usize>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "setting range exclusions for {}",
@@ -297,7 +295,7 @@ impl ContextVarNode {
         // let new_exclusions = new_exclusions
         //     .into_iter()
         //     .map(|excl| analyzer.range_arena_idx_or_upsert(excl))
-            // .collect();
+        // .collect();
 
         self.underlying_mut(analyzer)?
             .set_range_exclusions(new_exclusions, fallback)?;
@@ -306,7 +304,7 @@ impl ContextVarNode {
 
     pub fn try_set_range_min(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         mut new_min: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
         assert!(self.latest_version(analyzer) == *self);
@@ -337,7 +335,7 @@ impl ContextVarNode {
 
     pub fn try_set_range_max(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         mut new_max: Elem<Concrete>,
     ) -> Result<bool, GraphError> {
         assert!(self.latest_version(analyzer) == *self);
@@ -369,7 +367,7 @@ impl ContextVarNode {
     pub fn try_set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        mut new_exclusions: Vec<usize>,
+        new_exclusions: Vec<usize>,
     ) -> Result<bool, GraphError> {
         tracing::trace!(
             "setting range exclusions for: {}",

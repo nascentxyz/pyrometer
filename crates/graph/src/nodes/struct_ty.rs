@@ -197,7 +197,7 @@ impl From<Field> for Node {
 
 impl Field {
     pub fn new(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
         var_def: VariableDeclaration,
     ) -> Field {
         let ty_idx = analyzer.parse_expr(&var_def.ty, None);

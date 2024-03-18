@@ -4,7 +4,7 @@ use crate::{
 };
 
 use graph::{
-    elem::{RangeElem, Elem},
+    elem::{Elem, RangeElem},
     nodes::{ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, GraphError, Node,
 };
@@ -131,21 +131,23 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             Elem::from(rhs_cvar.latest_version(self)),
         );
 
-
-
-        let needs_forcible = new_lower_bound.depends_on(lhs_cvar, &mut vec![], self).into_expr_err(loc)?
-        || new_upper_bound.depends_on(lhs_cvar, &mut vec![], self).into_expr_err(loc)?;
+        let needs_forcible = new_lower_bound
+            .depends_on(lhs_cvar, &mut vec![], self)
+            .into_expr_err(loc)?
+            || new_upper_bound
+                .depends_on(lhs_cvar, &mut vec![], self)
+                .into_expr_err(loc)?;
 
         let new_lhs = if needs_forcible {
             self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?
         } else {
-            self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?    
+            self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?
         };
-        
+
         new_lhs.underlying_mut(self).into_expr_err(loc)?.tmp_of =
             rhs_cvar.tmp_of(self).into_expr_err(loc)?;
-        
-        if let Some(ref mut dep_on) =  new_lhs.underlying_mut(self).into_expr_err(loc)?.dep_on {
+
+        if let Some(ref mut dep_on) = new_lhs.underlying_mut(self).into_expr_err(loc)?.dep_on {
             dep_on.push(rhs_cvar)
         } else {
             new_lhs.set_dependent_on(self).into_expr_err(loc)?;
@@ -240,11 +242,14 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                     let field_name = field.name(self).unwrap();
                     let field_name = field_name.split('.').collect::<Vec<_>>()[1];
                     let new_name = format!("{}.{field_name}", lhs_cvar.name(self).unwrap());
-                    new_var.name = new_name.clone();
+                    new_var.name.clone_from(&new_name);
                     new_var.display_name = new_name;
-                    let new_field =
-                        ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
-                    self.add_edge(new_field, lhs_cvar.first_version(self), Edge::Context(ContextEdge::AttrAccess("field")));
+                    let new_field = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                    self.add_edge(
+                        new_field,
+                        lhs_cvar.first_version(self),
+                        Edge::Context(ContextEdge::AttrAccess("field")),
+                    );
                 })
             }
         }

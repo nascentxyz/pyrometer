@@ -1,4 +1,3 @@
-use graph::elem::RangeElem;
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
     nodes::{ContractNode, FunctionNode},
@@ -12,7 +11,7 @@ use shared::Search;
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 
-use tracing_subscriber::{Registry, prelude::*};
+use tracing_subscriber::{prelude::*, Registry};
 
 use std::{
     collections::{BTreeMap, HashMap},
@@ -111,19 +110,18 @@ pub fn subscriber() {
 }
 
 pub fn tree_subscriber() {
-    let subscriber = Registry::default().with(
-        tracing_tree::HierarchicalLayer::default()
-            .with_indent_lines(true)
-            .with_indent_amount(2)
-            .with_thread_names(true)
-            // .with_thread_ids(true)
-            // .with_verbose_exit(true)
-            // .with_verbose_entry(true)
-            // .with_targets(true)
-    )
+    let subscriber = Registry::default()
+        .with(
+            tracing_tree::HierarchicalLayer::default()
+                .with_indent_lines(true)
+                .with_indent_amount(2)
+                .with_thread_names(true), // .with_thread_ids(true)
+                                          // .with_verbose_exit(true)
+                                          // .with_verbose_entry(true)
+                                          // .with_targets(true)
+        )
         .with(tracing_subscriber::filter::EnvFilter::from_default_env());
     tracing::subscriber::set_global_default(subscriber).unwrap();
-
 }
 
 fn main() {

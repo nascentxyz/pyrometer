@@ -96,7 +96,7 @@ impl From<ErrorParam> for Node {
 
 impl ErrorParam {
     pub fn new(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
         param: ErrorParameter,
     ) -> Self {
         ErrorParam {

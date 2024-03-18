@@ -182,7 +182,7 @@ impl RangeMemSet<Concrete> for Elem<Concrete> {
         match (self, other) {
             (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => {
                 let mut a = a.clone();
-                a.len = b.len.clone();
+                a.len.clone_from(&b.len);
                 Some(Elem::ConcreteDyn(a.clone()))
             }
             (a @ Elem::Concrete(_), _b @ Elem::Concrete(_)) => Some(a.clone()),

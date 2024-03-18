@@ -46,10 +46,7 @@ impl BuiltInNode {
     }
 
     /// Gets the maximum size version of this builtin, i.e. uint16 -> uint256
-    pub fn max_size(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<Self, GraphError> {
+    pub fn max_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<Self, GraphError> {
         let m = self.underlying(analyzer)?.max_size();
         Ok(analyzer.builtin_or_add(m).into())
     }
@@ -57,7 +54,7 @@ impl BuiltInNode {
     /// Gets the underlying type of the dynamic builtin backing it. i.e. uint256[] -> uint256
     pub fn dynamic_underlying_ty(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<VarType, GraphError> {
         match self.underlying(analyzer)? {
             Builtin::Array(v_ty) | Builtin::SizedArray(_, v_ty) => {
@@ -172,7 +169,7 @@ impl Builtin {
     /// `mapping (uint => MyType)`, we may not have parsed `MyType`, so we now try to resolve it
     pub fn unresolved_as_resolved(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         match self {
             Builtin::Array(n) => Ok(Builtin::Array(n.unresolved_as_resolved(analyzer)?)),
@@ -253,7 +250,7 @@ impl Builtin {
     /// Try to convert from a [`Type`] to a Builtin
     pub fn try_from_ty(
         ty: Type,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
     ) -> Option<Builtin> {
         use Type::*;
         match ty {

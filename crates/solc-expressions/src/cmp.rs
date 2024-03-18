@@ -193,7 +193,8 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         .ref_range(self)
                         .into_expr_err(loc)?
                         .expect("No lhs range")
-                        .exclusions.clone();
+                        .exclusions
+                        .clone();
                     SolcRange::new(elem.clone(), elem, exclusions)
                 };
 

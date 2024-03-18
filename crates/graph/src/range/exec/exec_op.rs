@@ -7,7 +7,6 @@ use crate::{
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 
-
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
 
@@ -23,17 +22,17 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 if let Elem::Expr(expr) = &*t {
                     if maximize {
                         if let Some(MinMaxed::Maximized(max)) = &expr.maximized {
-                            return Ok(*max.clone())
+                            return Ok(*max.clone());
                         }
                     } else if let Some(MinMaxed::Minimized(min)) = &expr.minimized {
-                        return Ok(*min.clone())
+                        return Ok(*min.clone());
                     }
                 }
             }
         }
 
         let res = self.exec(self.spread(analyzer)?, maximize, analyzer)?;
-        
+
         if let Some(idx) = idx {
             if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
                 if let Elem::Expr(expr) = &mut *t {
@@ -70,9 +69,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
                 if let Elem::Expr(expr) = &mut *t {
                     if maximize {
-                        expr.maximized = self.maximized.clone();
+                        expr.maximized.clone_from(&self.maximized);
                     } else {
-                        expr.minimized = self.minimized.clone();
+                        expr.minimized.clone_from(&self.minimized);
                     }
                 }
             }
@@ -101,7 +100,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(v) = self.arenaized_flat_cache(maximize, analyzer) {
-            return Ok(*v)
+            return Ok(*v);
         }
 
         let (lhs_min, lhs_max, rhs_min, rhs_max) = self.simplify_spread(analyzer)?;
@@ -157,7 +156,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     };
                     finished = true;
                 }
-                RangeOp::SetLength => {                    
+                RangeOp::SetLength => {
                     ret = if maximize {
                         Ok(lhs_max
                             .range_set_length(&rhs_max)
@@ -256,10 +255,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         match (lhs_is_conc, rhs_is_conc, finished) {
             (true, true, false) => {
                 ret = self.exec(parts, maximize, analyzer);
-            },
+            }
             (_, _, false) => {
                 ret = Ok(Elem::Expr(self.clone()));
-            },
+            }
             _ => {}
         }
 
@@ -283,10 +282,10 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
     > {
         let lhs_min = self.lhs.minimize(analyzer)?;
         self.lhs.set_arenaized_cache(false, &lhs_min, analyzer);
-        
+
         let lhs_max = self.lhs.maximize(analyzer)?;
         self.lhs.set_arenaized_cache(true, &lhs_max, analyzer);
-        
+
         let rhs_min = self.rhs.minimize(analyzer)?;
         self.rhs.set_arenaized_cache(false, &rhs_min, analyzer);
 
@@ -338,17 +337,17 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         if maximize {
             if let Some(MinMaxed::Maximized(v)) = self.arenaized_cache(maximize, analyzer) {
                 tracing::trace!("avoided execing via cache");
-                return Ok(*v)
+                return Ok(*v);
             }
         }
 
         if !maximize {
             if let Some(MinMaxed::Minimized(v)) = self.arenaized_cache(maximize, analyzer) {
                 tracing::trace!("avoided execing via cache");
-                return Ok(*v)
+                return Ok(*v);
             }
         }
-        
+
         tracing::trace!(
             "executing {}: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
             if maximize { "maximum" } else { "minimum" },
@@ -451,8 +450,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 )?
                                 .unwrap_or_else(|| Elem::Null)),
                             Elem::Reference(_) => {
-                                let new_max =
-                                    lhs_max.simplify_maximize(analyzer)?;
+                                let new_max = lhs_max.simplify_maximize(analyzer)?;
                                 if new_max == lhs_max {
                                     Ok(Elem::Null)
                                 } else {
@@ -499,8 +497,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 )?
                                 .unwrap_or_else(|| Elem::Null)),
                             Elem::Reference(ref _r) => {
-                                let new_min =
-                                    lhs_min.simplify_minimize(analyzer)?;
+                                let new_min = lhs_min.simplify_minimize(analyzer)?;
                                 if new_min == lhs_min {
                                     Ok(Elem::Null)
                                 } else {
@@ -516,9 +513,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
             RangeOp::SetIndices => {
                 if maximize {
-                    let max = self
-                        .rhs
-                        .simplify_maximize(analyzer)?;
+                    let max = self.rhs.simplify_maximize(analyzer)?;
 
                     lhs_max.range_set_indices(&rhs_max).unwrap_or_else(|| {
                         lhs_max
@@ -526,9 +521,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                             .unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
                     })
                 } else {
-                    let min = self
-                        .rhs
-                        .simplify_minimize(analyzer)?;
+                    let min = self.rhs.simplify_minimize(analyzer)?;
                     lhs_min.range_set_indices(&rhs_min).unwrap_or_else(|| {
                         lhs_min
                             .range_set_indices(&min)

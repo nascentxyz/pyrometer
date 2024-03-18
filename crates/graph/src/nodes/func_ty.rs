@@ -66,10 +66,7 @@ impl FunctionNode {
     }
 
     /// Gets an ordered list of modifiers for a given function
-    pub fn modifiers(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Vec<FunctionNode> {
+    pub fn modifiers(&self, analyzer: &mut impl AnalyzerBackend) -> Vec<FunctionNode> {
         if let Some(mods) = &self.underlying(analyzer).unwrap().cache.modifiers {
             mods.values().copied().collect()
         } else {
@@ -168,7 +165,7 @@ impl FunctionNode {
 
     pub fn loc_specified_name(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<String, GraphError> {
         if let Some(con) = self.maybe_associated_contract(analyzer) {
             Ok(format!("{}.{}", con.name(analyzer)?, self.name(analyzer)?))
@@ -177,7 +174,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn body_ctx(&self, analyzer: &mut (impl GraphBackend + AnalyzerBackend)) -> ContextNode {
+    pub fn body_ctx(&self, analyzer: &mut impl AnalyzerBackend) -> ContextNode {
         if let Some(body_ctx) = self.underlying(analyzer).unwrap().cache.body_ctx {
             body_ctx
         } else {
@@ -197,10 +194,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn maybe_body_ctx(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Option<ContextNode> {
+    pub fn maybe_body_ctx(&self, analyzer: &mut impl AnalyzerBackend) -> Option<ContextNode> {
         if let Some(body_ctx) = self.underlying(analyzer).unwrap().cache.body_ctx {
             Some(body_ctx)
         } else {
@@ -221,7 +215,7 @@ impl FunctionNode {
 
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Option<ContractNode> {
         if let Some(maybe_contract) = self
             .underlying(analyzer)
@@ -263,7 +257,7 @@ impl FunctionNode {
 
     pub fn maybe_associated_source_unit_part(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Option<SourceUnitPartNode> {
         if let Some(sup) = self
             .underlying(analyzer)
@@ -304,10 +298,7 @@ impl FunctionNode {
         }
     }
 
-    pub fn associated_source(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> SourceUnitNode {
+    pub fn associated_source(&self, analyzer: &mut impl AnalyzerBackend) -> SourceUnitNode {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
             src.into()
         } else {
@@ -327,7 +318,7 @@ impl FunctionNode {
 
     pub fn maybe_associated_source(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Option<SourceUnitNode> {
         if let Some(src) = self.underlying(analyzer).unwrap().cache.associated_source {
             Some(src.into())
@@ -385,7 +376,7 @@ impl FunctionNode {
 
     pub fn set_params_and_ret(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
     ) -> Result<(), GraphError> {
         let underlying = self.underlying(analyzer)?.clone();
         let mut params_strs = vec![];
@@ -445,14 +436,16 @@ impl FunctionNode {
     //     //         .filter(|edge| Edge::FunctionReturn == *edge.weight())
     //     //         .map(|edge| FunctionReturnNode::from(edge.source()))
     //     //         .collect()
-    //     // }   
+    //     // }
     // }
 
-    pub fn returns<'a>(
-        &self,
-        analyzer: &'a impl GraphBackend,
-    ) -> &'a [FunctionReturnNode] {
-        self.underlying(analyzer).unwrap().cache.returns.as_ref().unwrap()
+    pub fn returns<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a [FunctionReturnNode] {
+        self.underlying(analyzer)
+            .unwrap()
+            .cache
+            .returns
+            .as_ref()
+            .unwrap()
     }
 
     pub fn is_public_or_ext(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
@@ -884,7 +877,7 @@ impl From<FunctionParam> for Node {
 
 impl FunctionParam {
     pub fn new(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
         param: Parameter,
         order: usize,
     ) -> Self {
@@ -983,10 +976,7 @@ pub struct FunctionReturn {
 }
 
 impl FunctionReturn {
-    pub fn new(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
-        param: Parameter,
-    ) -> Self {
+    pub fn new(analyzer: &mut impl AnalyzerBackend<Expr = Expression>, param: Parameter) -> Self {
         FunctionReturn {
             loc: param.loc,
             ty: analyzer.parse_expr(&param.ty, None),

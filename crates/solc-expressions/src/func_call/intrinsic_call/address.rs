@@ -21,9 +21,7 @@ pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match &*func_name {
-            "delegatecall" | "staticcall" | "call" => {
-                self.external_call(&func_name, loc, ctx)
-            }
+            "delegatecall" | "staticcall" | "call" => self.external_call(&func_name, loc, ctx),
             "code" => {
                 // TODO: try to be smarter based on the address input
                 let bn = self.builtin_or_add(Builtin::DynamicBytes);
@@ -56,19 +54,13 @@ pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
         }
     }
 
-    fn external_call(
-        &mut self,
-        _ty: &str,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
+    fn external_call(&mut self, _ty: &str, loc: Loc, ctx: ContextNode) -> Result<(), ExprErr> {
         // TODO: Check if we have the code for the address
         // if we dont, model it as a unrestricted call that can make other calls
         ctx.pop_expr_latest(loc, self).into_expr_err(loc)?;
         // TODO: try to be smarter based on the address input
         let booln = self.builtin_or_add(Builtin::Bool);
-        let bool_cvar =
-            ContextVar::new_from_builtin(loc, booln.into(), self).into_expr_err(loc)?;
+        let bool_cvar = ContextVar::new_from_builtin(loc, booln.into(), self).into_expr_err(loc)?;
         let bool_node = self.add_node(Node::ContextVar(bool_cvar));
         ctx.add_var(bool_node.into(), self).into_expr_err(loc)?;
         self.add_edge(bool_node, ctx, Edge::Context(ContextEdge::Variable));

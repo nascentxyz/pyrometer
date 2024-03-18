@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-
 pub fn assert_no_parse_errors(path_str: String) {
     let sol = std::fs::read_to_string(path_str.clone()).unwrap();
     let mut analyzer = Analyzer::default();
@@ -18,10 +17,10 @@ pub fn assert_no_parse_errors(path_str: String) {
     let _ = analyzer.parse(&sol, &current_path, true);
     assert!(
         analyzer.expr_errs.is_empty(),
-        "Analyzer encountered parse errors in {}", path_str
+        "Analyzer encountered parse errors in {}",
+        path_str
     );
 }
-
 
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();

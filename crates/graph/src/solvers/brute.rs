@@ -12,23 +12,23 @@ use ethers_core::types::U256;
 use std::collections::BTreeMap;
 
 pub trait SolcSolver {
-    fn simplify(&mut self, analyzer: &(impl GraphBackend + AnalyzerBackend));
+    fn simplify(&mut self, analyzer: &impl AnalyzerBackend);
     fn solve(
         &mut self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<AtomicSolveStatus, GraphError>;
     fn recurse_check(
         &mut self,
         idx: usize,
         solved_atomics: &mut Vec<usize>,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<bool, GraphError>;
     fn check(
         &mut self,
         solved_for: usize,
         lmr: (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>),
         solved_atomics: &mut Vec<usize>,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(bool, Option<HintOrRanges>), GraphError>;
 }
 
@@ -270,11 +270,11 @@ impl BruteBinSearchSolver {
 }
 
 impl SolcSolver for BruteBinSearchSolver {
-    fn simplify(&mut self, _analyzer: &(impl GraphBackend + AnalyzerBackend)) {}
+    fn simplify(&mut self, _analyzer: &impl AnalyzerBackend) {}
 
     fn solve(
         &mut self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<AtomicSolveStatus, GraphError> {
         // pick a value for a variable. check if it satisfies all dependendies
         // if is sat, try to reduce using bin search? Not sure how that will
@@ -430,7 +430,7 @@ impl SolcSolver for BruteBinSearchSolver {
         &mut self,
         i: usize,
         solved_atomics: &mut Vec<usize>,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<bool, GraphError> {
         // println!("recurse check for: {}", self.atomics[i].idxs[0].display_name(analyzer).unwrap());
         if i >= self.lmrs.len() {
@@ -514,7 +514,7 @@ impl SolcSolver for BruteBinSearchSolver {
         solved_for_idx: usize,
         (low, mid, high): (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>),
         solved_atomics: &mut Vec<usize>,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
         let solved_dep = &self.atomics[solved_for_idx].clone();
 

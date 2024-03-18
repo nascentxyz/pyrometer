@@ -63,7 +63,7 @@ impl ContextVar {
         loc: Loc,
         ctx: ContextNode,
         concrete_node: ConcreteNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         let name = format!(
             "tmp_{}({})",
@@ -89,7 +89,7 @@ impl ContextVar {
         loc: Loc,
         ctx: ContextNode,
         cast_ty: Builtin,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
@@ -108,7 +108,7 @@ impl ContextVar {
         &self,
         loc: Loc,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
@@ -144,7 +144,7 @@ impl ContextVar {
         loc: Loc,
         struct_node: StructNode,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
@@ -168,7 +168,7 @@ impl ContextVar {
         loc: Loc,
         ty_node: TyNode,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),
@@ -535,7 +535,7 @@ impl ContextVar {
     }
 
     pub fn new_from_enum_variant(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         ctx: ContextNode,
         loc: Loc,
         enum_node: EnumNode,
@@ -560,7 +560,7 @@ impl ContextVar {
     }
 
     pub fn new_from_index(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         loc: Loc,
         parent_name: String,
         parent_display_name: String,
@@ -583,7 +583,7 @@ impl ContextVar {
     }
 
     pub fn new_from_func(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         func: FunctionNode,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
@@ -654,7 +654,7 @@ impl ContextVar {
 
     pub fn new_from_func_ret(
         ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         ret: FunctionReturn,
     ) -> Result<Option<Self>, GraphError> {
         let (is_tmp, name) = if let Some(name) = ret.name {

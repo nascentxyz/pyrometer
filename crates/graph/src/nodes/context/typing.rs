@@ -47,7 +47,7 @@ impl ContextNode {
     pub fn is_fn_ext(
         &self,
         fn_node: FunctionNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<bool, GraphError> {
         match fn_node.maybe_associated_contract(analyzer) {
             None => Ok(false),
@@ -75,19 +75,13 @@ impl ContextNode {
     }
 
     /// Sets the context to use unchecked math
-    pub fn set_unchecked(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
+    pub fn set_unchecked(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.unchecked = true;
         Ok(())
     }
 
     /// Sets the context to use checked math
-    pub fn unset_unchecked(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
+    pub fn unset_unchecked(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.unchecked = false;
         Ok(())
     }

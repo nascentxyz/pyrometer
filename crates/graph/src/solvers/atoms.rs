@@ -9,7 +9,7 @@ use crate::{
 };
 
 use ethers_core::types::U256;
-use std::{collections::BTreeMap, cell::RefCell, rc::Rc};
+use std::{collections::BTreeMap, rc::Rc};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum AtomOrPart {
@@ -306,15 +306,13 @@ impl Atomize for Elem<Concrete> {
                             }
                             (Elem::Concrete(_), Elem::Concrete(_)) => {
                                 expr.clone().arenaize(analyzer);
-                                let res = expr
-                                    .exec_op(true, analyzer)
-                                    .unwrap();
+                                let res = expr.exec_op(true, analyzer).unwrap();
                                 if res == Elem::Expr(expr.clone()) {
                                     AtomOrPart::Part(res)
                                 } else {
                                     res.atoms_or_part(analyzer)
                                 }
-                            },
+                            }
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),
                             (_, Elem::ConcreteDyn(_)) => AtomOrPart::Part(Elem::Null),
                             (Elem::Null, _) => AtomOrPart::Part(Elem::Null),
@@ -353,18 +351,16 @@ impl Atomize for Elem<Concrete> {
                 a.update_max_ty();
                 Some(a)
             }
-            Arena(_) => {
-                match &*self.dearenaize(analyzer).borrow() {
-                    e @ Expr(_) => {
-                        let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer) else {
-                            return None;
-                        };
-                        a.update_max_ty();
-                        Some(a)
-                    }
-                    _ => None
+            Arena(_) => match &*self.dearenaize(analyzer).borrow() {
+                e @ Expr(_) => {
+                    let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer) else {
+                        return None;
+                    };
+                    a.update_max_ty();
+                    Some(a)
                 }
-            }
+                _ => None,
+            },
         }
     }
 }

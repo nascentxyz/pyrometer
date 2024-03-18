@@ -7,14 +7,14 @@ use graph::{
     },
     AnalyzerBackend, Edge, Node, VarType,
 };
-use shared::{AnalyzerLike, GraphLike, NodeIdx, JoinStats};
+use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx};
 use solc_expressions::{ExprErr, IntoExprErr};
 
+use ahash::AHashMap;
 use ethers_core::types::U256;
 use solang_parser::{helpers::CodeLocation, pt::Expression};
-use ahash::AHashMap;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 impl AnalyzerBackend for Analyzer {}
 

@@ -520,8 +520,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                 Some(rhs_cvar),
                             )),
                             dep_on: {
-                                let mut deps = lhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?;
-                                deps.extend(rhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?);
+                                let mut deps =
+                                    lhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?;
+                                deps.extend(
+                                    rhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?,
+                                );
                                 Some(deps)
                             },
                             ty: VarType::BuiltIn(
@@ -857,7 +860,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 )),
                 dep_on: {
                     let mut deps = tmp_true.dependent_on(self, true).into_expr_err(loc)?;
-                    deps.extend(conditional_cvar.dependent_on(self, true).into_expr_err(loc)?);
+                    deps.extend(
+                        conditional_cvar
+                            .dependent_on(self, true)
+                            .into_expr_err(loc)?,
+                    );
                     Some(deps)
                 },
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
@@ -1051,8 +1058,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
 
                 // we add one to the element because its strict >
-                let Some(max_conc) = const_var.evaled_range_min(self).unwrap().unwrap().maybe_concrete()
-                 else {
+                let Some(max_conc) = const_var
+                    .evaled_range_min(self)
+                    .unwrap()
+                    .unwrap()
+                    .maybe_concrete()
+                else {
                     return Err(ExprErr::BadRange(loc, format!(
                         "Expected {} to have a concrete range by now. This is likely a bug (update nonconst from const: Gt). Max: {}, expr: {} {} {}, const value: {}",
                         nonconst_var.display_name(self).unwrap(),

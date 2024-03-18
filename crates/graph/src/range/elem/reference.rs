@@ -13,8 +13,6 @@ use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
 
-use std::collections::BTreeMap;
-
 /// A dynamic range element value
 #[derive(Clone, Debug, Ord, PartialOrd)]
 pub struct Reference<T> {
@@ -42,7 +40,6 @@ impl<T> PartialEq for Reference<T> {
     }
 }
 impl<T> Eq for Reference<T> {}
-
 
 impl<T> Reference<T> {
     pub fn new(idx: NodeIdx) -> Self {
@@ -118,14 +115,13 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         var: ContextVarNode,
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
-    ) -> Result<bool, Self::GraphError> { 
+    ) -> Result<bool, Self::GraphError> {
         let cvar = ContextVarNode::from(self.idx);
         if seen.contains(&cvar) {
-            return Ok(false)
+            return Ok(false);
         }
 
-        if cvar == var 
-        || cvar.name(analyzer)? == var.name(analyzer)? && self.idx >= var.0.into() {
+        if cvar == var || cvar.name(analyzer)? == var.name(analyzer)? && self.idx >= var.0.into() {
             Ok(true)
         } else if let Some(range) = cvar.ref_range(analyzer)? {
             seen.push(cvar);
@@ -169,9 +165,9 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     }
 
     fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
-        self.flattened_min.is_some() && self.flattened_max.is_some()
-        || {
-            if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
+        self.flattened_min.is_some() && self.flattened_max.is_some() || {
+            if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx)))
+            {
                 if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
                     if let Elem::Reference(ref arenaized) = *t {
                         arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
@@ -189,7 +185,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
     fn is_min_max_cached(&self, analyzer: &impl GraphBackend) -> (bool, bool) {
         let (arena_cached_min, arena_cached_max) = {
-            if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
+            if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx)))
+            {
                 if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
                     if let Elem::Reference(ref arenaized) = *t {
                         (arenaized.minimized.is_some(), arenaized.maximized.is_some())
@@ -203,7 +200,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 (false, false)
             }
         };
-        (self.minimized.is_some() || arena_cached_min, self.maximized.is_some() || arena_cached_max)
+        (
+            self.minimized.is_some() || arena_cached_min,
+            self.maximized.is_some() || arena_cached_max,
+        )
     }
 
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
@@ -215,7 +215,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                     if let Elem::Reference(ref arenaized) = *t {
                         if arenaized.flattened_max.is_some() {
                             tracing::trace!("reference cache flatten hit");
-                            return Ok(())
+                            return Ok(());
                         }
                     }
                 }
@@ -233,7 +233,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                     if let Elem::Reference(ref arenaized) = *t {
                         if arenaized.flattened_min.is_some() {
                             tracing::trace!("reference cache flatten hit");
-                            return Ok(())
+                            return Ok(());
                         }
                     }
                 }
@@ -334,7 +334,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 if let Elem::Reference(ref arenaized) = *t {
                     if arenaized.flattened_max.is_some() {
                         tracing::trace!("reference simplify maximize cache hit");
-                        return Ok(*arenaized.flattened_max.clone().unwrap())
+                        return Ok(*arenaized.flattened_max.clone().unwrap());
                     }
                 }
             }
@@ -348,8 +348,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 cvar.global_first_version(analyzer).into(),
             )))
         } else {
-            self.flatten(true, analyzer)?
-                .simplify_maximize(analyzer)
+            self.flatten(true, analyzer)?.simplify_maximize(analyzer)
         }
     }
 
@@ -366,7 +365,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 if let Elem::Reference(ref arenaized) = *t {
                     if arenaized.flattened_min.is_some() {
                         tracing::trace!("reference simplify minimize cache hit");
-                        return Ok(*arenaized.flattened_min.clone().unwrap())
+                        return Ok(*arenaized.flattened_min.clone().unwrap());
                     }
                 }
             }
@@ -378,8 +377,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 cvar.global_first_version(analyzer).into(),
             )))
         } else {
-            self.flatten(false, analyzer)?
-                .simplify_minimize(analyzer)
+            self.flatten(false, analyzer)?.simplify_minimize(analyzer)
         }
     }
 

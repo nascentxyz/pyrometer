@@ -1,16 +1,17 @@
-use crate::{Heirarchical, AnalyzerLike};
+use crate::{AnalyzerLike, Heirarchical};
 
-
+use ahash::AHashMap;
 use petgraph::{
     graph::{EdgeIndex, Graph, NodeIndex},
     Directed,
 };
-use ahash::AHashMap;
 
 use std::{
+    cell::RefCell,
     collections::BTreeSet,
+    hash::Hash,
+    rc::Rc,
     sync::{Arc, Mutex},
-    cell::RefCell, rc::Rc, hash::Hash,
 };
 
 pub type NodeIdx = NodeIndex<usize>;

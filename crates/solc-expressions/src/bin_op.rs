@@ -164,9 +164,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let new_lhs = if assign {
             let new = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
             let underlying = new.underlying_mut(self).into_expr_err(loc)?;
-            underlying.tmp_of =
-                Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
-            
+            underlying.tmp_of = Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
+
             if let Some(ref mut dep_on) = underlying.dep_on {
                 dep_on.push(rhs_cvar)
             } else {
@@ -589,7 +588,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 Some(zero_node.into()),
                             )),
                             dep_on: {
-                                let mut deps = tmp_rhs.dependent_on(self, true).into_expr_err(loc)?;
+                                let mut deps =
+                                    tmp_rhs.dependent_on(self, true).into_expr_err(loc)?;
                                 deps.push(zero_node.into());
                                 Some(deps)
                             },

@@ -36,7 +36,7 @@ impl ContextNode {
     pub fn add_var(
         &self,
         var: ContextVarNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         // var.cache_range(analyzer)?;
         let name = var.name(analyzer)?;
@@ -108,10 +108,7 @@ impl ContextNode {
     }
 
     /// Reads the current temporary counter and increments the counter
-    pub fn new_tmp(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<usize, GraphError> {
+    pub fn new_tmp(&self, analyzer: &mut impl AnalyzerBackend) -> Result<usize, GraphError> {
         let context = self.underlying_mut(analyzer)?;
         let ret = context.tmp_var_ctr;
         context.tmp_var_ctr += 1;
@@ -122,7 +119,7 @@ impl ContextNode {
     pub fn push_tmp_expr(
         &self,
         expr_ret: ExprRet,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         underlying_mut.tmp_expr.push(Some(expr_ret));
@@ -134,7 +131,7 @@ impl ContextNode {
     pub fn append_tmp_expr(
         &self,
         expr_ret: ExprRet,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         match underlying_mut.tmp_expr.pop() {
@@ -174,7 +171,7 @@ impl ContextNode {
     pub fn pop_tmp_expr(
         &self,
         loc: Loc,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         if let Some(Some(expr)) = underlying_mut.tmp_expr.pop() {
@@ -189,7 +186,7 @@ impl ContextNode {
     pub fn push_expr(
         &self,
         expr_ret: ExprRet,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "pushing: {}, existing: {:?}, path: {}",
@@ -211,12 +208,9 @@ impl ContextNode {
         &self,
         expr: ExprRet,
         loc: Loc,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ExprRet, GraphError> {
-        tracing::trace!(
-            "moving expr to {}",
-            self.path(analyzer)
-        );
+        tracing::trace!("moving expr to {}", self.path(analyzer));
         match expr {
             ExprRet::SingleLiteral(var) => Ok(ExprRet::SingleLiteral(
                 self.maybe_move_var(var.into(), loc, analyzer)?.into(),
@@ -239,7 +233,7 @@ impl ContextNode {
         &self,
         var: ContextVarNode,
         loc: Loc,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextVarNode, GraphError> {
         let var = var.latest_version(analyzer);
         if let Some(ctx) = var.maybe_ctx(analyzer) {
@@ -273,7 +267,7 @@ impl ContextNode {
     pub fn pop_expr_latest(
         &self,
         loc: Loc,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
         if let Some(elem) = underlying_mut.expr_ret_stack.pop() {

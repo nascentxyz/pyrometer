@@ -1,4 +1,3 @@
-
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{Elem, RangeElem},
@@ -7,7 +6,6 @@ use crate::{
 
 use shared::NodeIdx;
 
-use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 
 use solang_parser::pt::Loc;

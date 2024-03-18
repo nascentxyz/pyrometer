@@ -35,7 +35,7 @@ pub trait StatementParser:
         &mut self,
         stmt: &Statement,
         unchecked: bool,
-        parent_ctx: Option<impl Into<NodeIdx> + Clone + Copy>,
+        parent_ctx: Option<impl Into<NodeIdx> + Copy>,
     ) where
         Self: Sized,
     {
@@ -70,7 +70,7 @@ pub trait StatementParser:
         &mut self,
         stmt: &Statement,
         unchecked: bool,
-        parent_ctx: Option<impl Into<NodeIdx> + Clone + Copy>,
+        parent_ctx: Option<impl Into<NodeIdx> + Copy>,
     ) where
         Self: Sized,
     {

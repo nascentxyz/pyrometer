@@ -1,12 +1,12 @@
-use crate::ListAccess;
 use crate::func_caller::NamedOrUnnamedArgs;
+use crate::ListAccess;
 use crate::{variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 use graph::nodes::FunctionNode;
 
 use graph::{
     elem::*,
     nodes::{BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode},
-    AnalyzerBackend, GraphBackend, Node, Range, VarType,
+    AnalyzerBackend, Node, Range, VarType,
 };
 use shared::NodeIdx;
 
@@ -154,7 +154,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         fn cast_match(
             ctx: ContextNode,
             loc: Loc,
-            analyzer: &mut (impl GraphBackend + AnalyzerBackend + ListAccess),
+            analyzer: &mut impl ListAccess,
             ty: &Builtin,
             ret: ExprRet,
             func_idx: NodeIdx,
@@ -167,7 +167,6 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let new_var = cvar
                         .as_cast_tmp(loc, ctx, ty.clone(), analyzer)
                         .into_expr_err(loc)?;
-
 
                     let v_ty = VarType::try_from_idx(analyzer, func_idx).expect("");
                     let maybe_new_range = cvar.cast_exprs(&v_ty, analyzer).into_expr_err(loc)?;
@@ -184,7 +183,13 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                     if cvar.is_indexable(analyzer).into_expr_err(loc)? {
                         // input is indexable. get the length attribute, create a new length for the casted type
-                        let _ = analyzer.create_length(ctx, loc, cvar, new_var.latest_version(analyzer), false)?;
+                        let _ = analyzer.create_length(
+                            ctx,
+                            loc,
+                            cvar,
+                            new_var.latest_version(analyzer),
+                            false,
+                        )?;
                     }
 
                     ctx.push_expr(ExprRet::Single(new_var.into()), analyzer)

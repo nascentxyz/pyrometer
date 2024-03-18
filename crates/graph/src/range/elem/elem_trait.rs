@@ -6,8 +6,6 @@ use crate::{
 
 use shared::NodeIdx;
 
-use std::collections::BTreeMap;
-
 pub trait RangeElem<T: Ord> {
     type GraphError;
     /// Flattens an element into an expression or concrete based purely on inputs, calldata, storage, or environment data variables
@@ -32,15 +30,9 @@ pub trait RangeElem<T: Ord> {
     /// Uncaches the minimum and maximum
     fn uncache(&mut self);
     /// Tries to simplify to maximum(i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_maximize(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<Elem<T>, Self::GraphError>;
+    fn simplify_maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
     /// Tries to simplify to minimum (i.e.: leaves symbolic/dynamic values as they are)
-    fn simplify_minimize(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<Elem<T>, Self::GraphError>;
+    fn simplify_minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<T>, Self::GraphError>;
     /// Checks if two range elements are equal
     fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool;
     /// Tries to compare the ordering of two range elements

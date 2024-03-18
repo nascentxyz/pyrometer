@@ -8,7 +8,6 @@ use shared::NodeIdx;
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::Loc;
-use tracing::instrument;
 
 use std::{borrow::Cow, collections::BTreeMap};
 
@@ -21,10 +20,13 @@ pub struct FlattenedRange {
 
 impl From<FlattenedRange> for SolcRange {
     fn from(range: FlattenedRange) -> Self {
-        SolcRange::new(Elem::Arena(range.min), Elem::Arena(range.max), range.exclusions)
+        SolcRange::new(
+            Elem::Arena(range.min),
+            Elem::Arena(range.max),
+            range.exclusions,
+        )
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct SolcRange {
@@ -112,10 +114,8 @@ impl SolcRange {
         analyzer: &mut impl GraphBackend,
     ) {
         if let Some(ref mut flattened) = &mut self.flattened {
-            Elem::Arena(flattened.min)
-                .replace_dep(to_replace, replacement.clone(), analyzer);
-            Elem::Arena(flattened.max)
-                .replace_dep(to_replace, replacement.clone(), analyzer);
+            Elem::Arena(flattened.min).replace_dep(to_replace, replacement.clone(), analyzer);
+            Elem::Arena(flattened.max).replace_dep(to_replace, replacement.clone(), analyzer);
         }
         self.min
             .replace_dep(to_replace, replacement.clone(), analyzer);
@@ -553,7 +553,10 @@ impl SolcRange {
         Self::new(min.clone().max(max.clone()), min.max(max), self.exclusions)
     }
 
-    pub fn into_flattened_range(&mut self, analyzer: &mut impl GraphBackend) -> Result<FlattenedRange, GraphError> {
+    pub fn into_flattened_range(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<FlattenedRange, GraphError> {
         if let Some(cached) = &self.flattened {
             return Ok(cached.clone());
         }
@@ -571,7 +574,11 @@ impl SolcRange {
         let min = analyzer.range_arena_idx_or_upsert(simp_min);
         let max = analyzer.range_arena_idx_or_upsert(simp_max);
 
-        let flat_range = FlattenedRange { min, max, exclusions: self.exclusions.clone() };
+        let flat_range = FlattenedRange {
+            min,
+            max,
+            exclusions: self.exclusions.clone(),
+        };
         self.flattened = Some(flat_range.clone());
 
         Ok(flat_range)
@@ -602,12 +609,14 @@ impl Range<Concrete> for SolcRange {
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
             max.cache_maximize(analyzer)?;
-            self.max_cached = Some(analyzer.range_arena_idx_or_upsert(self.range_max().maximize(analyzer)?));
+            self.max_cached =
+                Some(analyzer.range_arena_idx_or_upsert(self.range_max().maximize(analyzer)?));
         }
         if self.min_cached.is_none() {
             let min = self.range_min_mut();
             min.cache_minimize(analyzer)?;
-            self.min_cached = Some(analyzer.range_arena_idx_or_upsert(self.range_min().minimize(analyzer)?));
+            self.min_cached =
+                Some(analyzer.range_arena_idx_or_upsert(self.range_min().minimize(analyzer)?));
         }
         Ok(())
     }
@@ -646,7 +655,11 @@ impl Range<Concrete> for SolcRange {
     }
 
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
-        self.exclusions.clone().into_iter().map(Elem::Arena).collect()
+        self.exclusions
+            .clone()
+            .into_iter()
+            .map(Elem::Arena)
+            .collect()
     }
     fn set_range_min(&mut self, new: Self::ElemTy) {
         self.min_cached = None;
@@ -703,9 +716,9 @@ impl Range<Concrete> for SolcRange {
             let Some(flat) = &self.flattened else {
                 unreachable!();
             };
-            return Ok(Cow::Borrowed(flat))
+            return Ok(Cow::Borrowed(flat));
         } else if let Some(flat) = &self.flattened {
-            return Ok(Cow::Borrowed(flat))
+            return Ok(Cow::Borrowed(flat));
         } else {
             unreachable!()
         }

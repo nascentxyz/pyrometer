@@ -7,7 +7,7 @@ use crate::{
 use graph::{
     nodes::{
         CallFork, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
-        FunctionParamNode, FunctionReturnNode, ModifierState,
+        FunctionParamNode, ModifierState,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
@@ -45,7 +45,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             .cloned();
                         let mut new_cvar = self.add_if_err(res)?;
                         new_cvar.loc = Some(param.loc(self).unwrap());
-                        new_cvar.name = name.clone();
+                        new_cvar.name.clone_from(&name);
                         new_cvar.display_name = name;
                         new_cvar.is_tmp = false;
                         new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
@@ -441,7 +441,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
                             Ok(())
                         })?;
-                    rets = callee_ctx.underlying(self).unwrap().ret.clone();
+                    rets.clone_from(&callee_ctx.underlying(self).unwrap().ret);
                 }
 
                 let target_rets =

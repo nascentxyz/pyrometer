@@ -4,9 +4,10 @@ use shared::RangeArena;
 
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
-use shared::{AnalyzerLike, GraphLike, NodeIdx, Search, JoinStats};
+use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, Search};
 use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
 
+use ahash::AHashMap;
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
 use petgraph::{graph::*, stable_graph::StableGraph, Directed};
 use serde_json::Value;
@@ -19,13 +20,12 @@ use solang_parser::{
         StructDefinition, TypeDefinition, Using, UsingList, VariableDefinition,
     },
 };
-use ahash::AHashMap;
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    cell::RefCell,
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
-    cell::RefCell,
     rc::Rc,
 };
 

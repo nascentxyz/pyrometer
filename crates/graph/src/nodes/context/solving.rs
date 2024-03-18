@@ -1,5 +1,5 @@
-use crate::FlattenedRange;
 use crate::elem::Elem;
+use crate::FlattenedRange;
 use crate::SolcRange;
 use crate::{
     as_dot_str,
@@ -30,7 +30,10 @@ impl ContextNode {
     }
 
     /// Get the dependencies as normalized solver atoms
-    pub fn dep_atoms(&self, analyzer: &mut impl GraphBackend) -> Result<Vec<SolverAtom>, GraphError> {
+    pub fn dep_atoms(
+        &self,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<Vec<SolverAtom>, GraphError> {
         let deps: Vec<_> = self.ctx_deps(analyzer)?;
         let mut ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
@@ -78,7 +81,7 @@ impl ContextNode {
     pub fn add_ctx_dep(
         &self,
         dep: ContextVarNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "Adding ctx dependency: {}, is_controllable: {}",
@@ -91,7 +94,10 @@ impl ContextNode {
                 // dep.cache_flattened_range(analyzer)?;
                 let mut range = dep.range(analyzer)?.unwrap();
                 let r = range.flattened_range(analyzer)?.into_owned();
-                tracing::trace!("flattened: {}", <FlattenedRange as Into<SolcRange>>::into(r.clone()).as_dot_str(analyzer));
+                tracing::trace!(
+                    "flattened: {}",
+                    <FlattenedRange as Into<SolcRange>>::into(r.clone()).as_dot_str(analyzer)
+                );
                 // add the atomic constraint
                 if let Some(atom) = Elem::Arena(r.min).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);

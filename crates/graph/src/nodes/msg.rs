@@ -61,7 +61,7 @@ impl Msg {
         elem: &str,
         loc: Loc,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextVar, GraphError> {
         let (node, name) = match elem {
             "data" => {
@@ -181,7 +181,7 @@ impl Msg {
         };
 
         let mut var = ContextVar::new_from_concrete(loc, ctx, node.into(), analyzer)?;
-        var.name = name.clone();
+        var.name.clone_from(&name);
         var.display_name = name;
         var.is_tmp = false;
         var.is_symbolic = true;

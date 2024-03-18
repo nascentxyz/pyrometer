@@ -279,7 +279,7 @@ impl ContextVarNode {
         loc: Loc,
         ctx: ContextNode,
         cast_ty: Builtin,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         let new_underlying = self
             .underlying(analyzer)?
@@ -295,7 +295,7 @@ impl ContextVarNode {
         &self,
         loc: Loc,
         ctx: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
         let new_underlying = self
             .underlying(analyzer)?
@@ -315,7 +315,7 @@ impl ContextVarNode {
     pub fn cast_from(
         &self,
         other: &Self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         let to_ty = other.ty(analyzer)?.clone();
         self.cast_from_ty(to_ty, analyzer)?;
@@ -325,7 +325,7 @@ impl ContextVarNode {
     pub fn literal_cast_from(
         &self,
         other: &Self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         let to_ty = other.ty(analyzer)?.clone();
         self.literal_cast_from_ty(to_ty, analyzer)?;
@@ -448,7 +448,7 @@ impl ContextVarNode {
     pub fn literal_cast_from_ty(
         &self,
         to_ty: VarType,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         if !from_ty.ty_eq(&to_ty, analyzer)? {
@@ -466,10 +466,7 @@ impl ContextVarNode {
         Ok(())
     }
 
-    pub fn try_increase_size(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
+    pub fn try_increase_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         self.cast_from_ty(from_ty.max_size(analyzer)?, analyzer)?;
         Ok(())
@@ -482,7 +479,7 @@ impl ContextVarNode {
     pub fn cast_exprs(
         &self,
         to_ty: &VarType,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
         if let Some(to_range) = to_ty.range(analyzer)? {
             let mut min_expr = (*self)

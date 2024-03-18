@@ -273,7 +273,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
             };
             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self).into_expr_err(loc)?;
-            var.name = name.clone();
+            var.name.clone_from(&name);
             var.display_name = name;
             var.is_tmp = false;
             var.is_symbolic = true;
@@ -457,7 +457,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             };
 
             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self).into_expr_err(loc)?;
-            var.name = name.clone();
+            var.name.clone_from(&name);
             var.display_name = name;
             var.is_tmp = false;
             var.is_symbolic = true;

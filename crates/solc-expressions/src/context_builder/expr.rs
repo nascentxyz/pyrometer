@@ -7,7 +7,7 @@ use crate::{
 use graph::{
     elem::*,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
 use ethers_core::types::I256;
@@ -330,8 +330,7 @@ pub trait ExpressionParser:
                 fn delete_match(
                     ctx: ContextNode,
                     loc: &Loc,
-                    analyzer: &mut (impl GraphBackend
-                              + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>),
+                    analyzer: &mut impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>,
                     ret: ExprRet,
                 ) {
                     match ret {

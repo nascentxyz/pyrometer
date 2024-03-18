@@ -72,11 +72,7 @@ impl ContractNode {
             .collect()
     }
 
-    pub fn inherit(
-        &self,
-        inherits: Vec<String>,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) {
+    pub fn inherit(&self, inherits: Vec<String>, analyzer: &mut impl AnalyzerBackend) {
         let src = self.associated_source(analyzer);
         let all_contracts = analyzer.search_children_include_via(
             src.into(),
@@ -184,7 +180,7 @@ impl ContractNode {
 
     pub fn funcs_mapping(
         &self,
-        analyzer: &(impl GraphBackend + Search + AnalyzerBackend),
+        analyzer: &(impl Search + AnalyzerBackend),
     ) -> BTreeMap<String, FunctionNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Func, 1, 0)

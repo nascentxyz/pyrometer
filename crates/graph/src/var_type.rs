@@ -135,7 +135,7 @@ impl VarType {
 
     pub fn concrete_to_builtin(
         &mut self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         if let VarType::Concrete(cnode) = self {
             let c = cnode.underlying(analyzer)?.clone();
@@ -257,7 +257,7 @@ impl VarType {
     pub fn try_cast(
         self,
         other: &Self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
             (l, Self::User(TypeNode::Ty(ty), o_r)) => {
@@ -314,7 +314,7 @@ impl VarType {
     pub fn try_literal_cast(
         self,
         other: &Self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<Self>, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, sr), Self::User(TypeNode::Ty(ty), _)) => {
@@ -387,10 +387,7 @@ impl VarType {
         }
     }
 
-    pub fn max_size(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<Self, GraphError> {
+    pub fn max_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<Self, GraphError> {
         match self {
             Self::BuiltIn(from_bn, _r) => {
                 let bn = from_bn.max_size(analyzer)?;
@@ -645,7 +642,7 @@ impl VarType {
 
     pub fn dynamic_underlying_ty(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<VarType, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.dynamic_underlying_ty(analyzer),

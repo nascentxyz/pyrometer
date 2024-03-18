@@ -14,7 +14,7 @@ use petgraph::{
     Directed,
 };
 
-use std::{rc::Rc, collections::BTreeMap};
+use std::{collections::BTreeMap, rc::Rc};
 
 pub type DLGraph = StableGraph<AtomOrPart, AtomOrPart, Directed, usize>;
 
@@ -197,7 +197,8 @@ impl DLSolver {
                     constraint.clone(),
                     Self::dl_atom_normalize(constraint.clone(), analyzer),
                 )
-            }).collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
+            })
+            .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
     }
 
     pub fn dl_solvable_constraints(&self) -> Vec<Vec<Vec<SolverAtom>>> {
@@ -594,9 +595,9 @@ impl DLSolver {
                             ty: OpType::DL,
                             lhs: constraint.rhs.clone(),
                             op: RangeOp::Sub(true),
-                            rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(
-                                U256::from(1),
-                            )))),
+                            rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::from(
+                                1,
+                            ))))),
                         })),
                     },
                     analyzer,

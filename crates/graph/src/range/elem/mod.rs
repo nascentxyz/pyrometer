@@ -22,14 +22,14 @@ impl<T> MinMaxed<T> {
     pub fn maxed(self) -> Elem<T> {
         match self {
             Self::Maximized(t) => *t,
-            _ => panic!("MinMaxed was min not max")
+            _ => panic!("MinMaxed was min not max"),
         }
     }
 
     pub fn mined(self) -> Elem<T> {
         match self {
             Self::Minimized(t) => *t,
-            _ => panic!("MinMaxed was max not min")
+            _ => panic!("MinMaxed was max not min"),
         }
     }
 }

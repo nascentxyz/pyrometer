@@ -1,13 +1,13 @@
-use std::hash::Hasher;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
-use std::cell::RefCell;
-use std::rc::Rc;
 use crate::Analyzer;
 use graph::elem::Elem;
 use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use shared::RangeArena;
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::rc::Rc;
 
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
@@ -46,7 +46,7 @@ impl GraphLike for Analyzer {
         if let Elem::Arena(idx) = elem {
             Some(*idx)
         } else {
-            self.range_arena().map.get(elem).copied()    
+            self.range_arena().map.get(elem).copied()
         }
     }
 
@@ -94,14 +94,14 @@ impl GraphLike for Analyzer {
             idx
         } else {
             let idx = self.range_arena().ranges.len();
-            self.range_arena_mut().ranges.push(Rc::new(RefCell::new(elem.clone())));
+            self.range_arena_mut()
+                .ranges
+                .push(Rc::new(RefCell::new(elem.clone())));
             self.range_arena_mut().map.insert(elem, idx);
             idx
         }
     }
 }
-
-
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();

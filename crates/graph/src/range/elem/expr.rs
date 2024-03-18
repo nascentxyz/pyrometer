@@ -12,8 +12,6 @@ use std::hash::Hasher;
 use ethers_core::types::U256;
 use shared::NodeIdx;
 
-use std::collections::BTreeMap;
-
 pub static SINGLETON_EQ_OPS: &[RangeOp] = &[
     RangeOp::Eq,
     RangeOp::Neq,
@@ -48,12 +46,9 @@ pub struct RangeExpr<T> {
     pub rhs: Box<Elem<T>>,
 }
 
-
 impl<T: std::cmp::PartialEq> PartialEq for RangeExpr<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.lhs == other.lhs
-        && self.rhs == other.rhs
-        && self.op == other.op
+        self.lhs == other.lhs && self.rhs == other.rhs && self.op == other.op
     }
 }
 impl<T: std::cmp::PartialEq> Eq for RangeExpr<T> {}
@@ -107,9 +102,13 @@ impl RangeExpr<Concrete> {
             Elem::Arena(analyzer.range_arena_idx(&self.rhs)?),
         ));
         analyzer.range_arena_idx(&expr)
-    } 
+    }
 
-    pub fn arenaized_cache(&self, max: bool, analyzer: &impl GraphBackend) -> Option<MinMaxed<Concrete>> {
+    pub fn arenaized_cache(
+        &self,
+        max: bool,
+        analyzer: &impl GraphBackend,
+    ) -> Option<MinMaxed<Concrete>> {
         if let Some(idx) = self.arena_idx(analyzer) {
             let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() else {
                 return None;
@@ -126,7 +125,11 @@ impl RangeExpr<Concrete> {
         None
     }
 
-    pub fn arenaized_flat_cache(&self, max: bool, analyzer: &impl GraphBackend) -> Option<Box<Elem<Concrete>>> {
+    pub fn arenaized_flat_cache(
+        &self,
+        max: bool,
+        analyzer: &impl GraphBackend,
+    ) -> Option<Box<Elem<Concrete>>> {
         if let Some(idx) = self.arena_idx(analyzer) {
             let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() else {
                 return None;
@@ -143,7 +146,12 @@ impl RangeExpr<Concrete> {
         None
     }
 
-    pub fn set_arenaized_flattened(&self, max: bool, elem: Elem<Concrete>, analyzer: &impl GraphBackend) {
+    pub fn set_arenaized_flattened(
+        &self,
+        max: bool,
+        elem: Elem<Concrete>,
+        analyzer: &impl GraphBackend,
+    ) {
         if let Some(idx) = self.arena_idx(analyzer) {
             if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
                 let Elem::Expr(arenaized) = &mut *t else {
@@ -158,7 +166,6 @@ impl RangeExpr<Concrete> {
             }
         }
     }
-
 }
 
 impl<T: Ord> RangeExpr<T> {
@@ -215,7 +222,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(arenaized) = self.arenaized_flat_cache(maximize, analyzer) {
-            return Ok(*arenaized)
+            return Ok(*arenaized);
         }
 
         Ok(Elem::Expr(RangeExpr::new(
@@ -226,8 +233,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     }
 
     fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
-        self.flattened_min.is_some() && self.flattened_max.is_some()
-        || {
+        self.flattened_min.is_some() && self.flattened_max.is_some() || {
             if let Some(idx) = self.arena_idx(analyzer) {
                 if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
                     if let Elem::Expr(ref arenaized) = *t {
@@ -260,7 +266,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 (false, false)
             }
         };
-        (self.minimized.is_some() || arena_cached_min, self.maximized.is_some() || arena_cached_max)
+        (
+            self.minimized.is_some() || arena_cached_min,
+            self.maximized.is_some() || arena_cached_max,
+        )
     }
 
     fn range_ord(
@@ -340,7 +349,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             Ok(*cached)
         } else if let Some(MinMaxed::Minimized(cached)) = self.arenaized_cache(false, analyzer) {
             Ok(*cached)
-        }  else if self.op == RangeOp::SetIndices {
+        } else if self.op == RangeOp::SetIndices {
             self.simplify_exec_op(false, analyzer)
         } else {
             self.exec_op(false, analyzer)
@@ -357,7 +366,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(arenaized) = self.arenaized_flat_cache(true, analyzer) {
-            return Ok(*arenaized)
+            return Ok(*arenaized);
         }
 
         let l = self.lhs.simplify_maximize(analyzer)?;
@@ -368,8 +377,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
                 // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
-                let res =
-                    RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer)?;
+                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer)?;
                 match res {
                     Elem::Expr(expr) => {
                         match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
@@ -397,7 +405,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(arenaized) = self.arenaized_flat_cache(false, analyzer) {
-            return Ok(*arenaized)
+            return Ok(*arenaized);
         }
 
         let l = self.lhs.simplify_minimize(analyzer)?;
@@ -410,8 +418,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(false, analyzer),
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
-                let res =
-                    RangeExpr::new(l, self.op, r).simplify_exec_op(false, analyzer)?;
+                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(false, analyzer)?;
                 match res {
                     Elem::Expr(expr) => {
                         match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
@@ -441,9 +448,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             let Elem::Expr(this) = this else {
                 this.cache_flatten(analyzer)?;
                 if let Some(t) = this.arenaized_flattened(false, analyzer) {
-                    return Ok(*t)
+                    return Ok(*t);
                 } else {
-                    return Ok(this.clone())
+                    return Ok(this.clone());
                 }
             };
 
@@ -452,19 +459,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             }
 
             if let Some(arenaized) = this.arenaized_flat_cache(false, analyzer) {
-                return Ok(*arenaized)
+                return Ok(*arenaized);
             }
 
             let l = this.lhs.simplify_minimize(analyzer)?;
             let r = this.rhs.simplify_minimize(analyzer)?;
             let collapsed = collapse(&l, this.op, &r, analyzer);
             let res = match collapsed {
-                MaybeCollapsed::Concretes(..) => RangeExpr::new(l, this.op, r).exec_op(false, analyzer),
+                MaybeCollapsed::Concretes(..) => {
+                    RangeExpr::new(l, this.op, r).exec_op(false, analyzer)
+                }
                 MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
                 MaybeCollapsed::Not(..) => {
-
-                    let res =
-                        RangeExpr::new(l, this.op, r).simplify_exec_op(false, analyzer)?;
+                    let res = RangeExpr::new(l, this.op, r).simplify_exec_op(false, analyzer)?;
 
                     let idx = analyzer.range_arena_idx_or_upsert(res.clone());
                     match res {
@@ -472,13 +479,15 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                             match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
                                 MaybeCollapsed::Concretes(..) => {
                                     let exec_res = expr.exec_op(false, analyzer)?;
-                                    Elem::Arena(idx).set_arenaized_flattened(false, &exec_res, analyzer);
-                                    return Ok(exec_res)
-                                },
+                                    Elem::Arena(idx)
+                                        .set_arenaized_flattened(false, &exec_res, analyzer);
+                                    return Ok(exec_res);
+                                }
                                 MaybeCollapsed::Collapsed(collapsed) => {
-                                    Elem::Arena(idx).set_arenaized_flattened(false, &collapsed, analyzer);
-                                    return Ok(collapsed)
-                                },
+                                    Elem::Arena(idx)
+                                        .set_arenaized_flattened(false, &collapsed, analyzer);
+                                    return Ok(collapsed);
+                                }
                                 _ => {}
                             }
                             Ok(Elem::Expr(expr))
@@ -499,9 +508,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             let Elem::Expr(this) = this else {
                 this.cache_flatten(analyzer)?;
                 if let Some(t) = this.arenaized_flattened(true, analyzer) {
-                    return Ok(*t)
+                    return Ok(*t);
                 } else {
-                    return Ok(this.clone())
+                    return Ok(this.clone());
                 }
             };
 
@@ -510,19 +519,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             }
 
             if let Some(arenaized) = this.arenaized_flat_cache(false, analyzer) {
-                return Ok(*arenaized)
+                return Ok(*arenaized);
             }
 
             let l = this.lhs.simplify_maximize(analyzer)?;
             let r = this.rhs.simplify_maximize(analyzer)?;
             let collapsed = collapse(&l, this.op, &r, analyzer);
             let res = match collapsed {
-                MaybeCollapsed::Concretes(..) => RangeExpr::new(l, this.op, r).exec_op(true, analyzer),
+                MaybeCollapsed::Concretes(..) => {
+                    RangeExpr::new(l, this.op, r).exec_op(true, analyzer)
+                }
                 MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
                 MaybeCollapsed::Not(..) => {
-
-                    let res =
-                        RangeExpr::new(l, this.op, r).simplify_exec_op(true, analyzer)?;
+                    let res = RangeExpr::new(l, this.op, r).simplify_exec_op(true, analyzer)?;
 
                     let idx = analyzer.range_arena_idx_or_upsert(res.clone());
                     match res {
@@ -530,13 +539,15 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                             match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
                                 MaybeCollapsed::Concretes(..) => {
                                     let exec_res = expr.exec_op(true, analyzer)?;
-                                    Elem::Arena(idx).set_arenaized_flattened(true, &exec_res, analyzer);
-                                    return Ok(exec_res)
-                                },
+                                    Elem::Arena(idx)
+                                        .set_arenaized_flattened(true, &exec_res, analyzer);
+                                    return Ok(exec_res);
+                                }
                                 MaybeCollapsed::Collapsed(collapsed) => {
-                                    Elem::Arena(idx).set_arenaized_flattened(true, &collapsed, analyzer);
-                                    return Ok(collapsed)
-                                },
+                                    Elem::Arena(idx)
+                                        .set_arenaized_flattened(true, &collapsed, analyzer);
+                                    return Ok(collapsed);
+                                }
                                 _ => {}
                             }
                             Ok(Elem::Expr(expr))
@@ -554,7 +565,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             if let Some(idx) = self.arena_idx(g) {
                 if let Elem::Expr(ref arenaized) = *g.range_arena().ranges[idx].borrow() {
                     if arenaized.flattened_max.is_some() {
-                        return Ok(())
+                        return Ok(());
                     }
                 };
             } else {
@@ -574,7 +585,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             if let Some(idx) = self.arena_idx(g) {
                 if let Elem::Expr(ref arenaized) = *g.range_arena().ranges[idx].borrow() {
                     if arenaized.flattened_min.is_some() {
-                        return Ok(())
+                        return Ok(());
                     }
                 };
             } else {
@@ -641,23 +652,23 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 match collapse(&t, op, r, analyzer) {
                     MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
                     MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
-                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
                 }
             } else {
                 MaybeCollapsed::Not(l, r)
             }
-        },
+        }
         (l, Elem::Arena(_)) => {
             if let Ok(t) = r.dearenaize(analyzer).try_borrow() {
                 match collapse(l, op, &t, analyzer) {
                     MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
                     MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
-                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
                 }
             } else {
                 MaybeCollapsed::Not(l, r)
             }
-        },
+        }
         (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
         (Elem::Expr(expr), d @ Elem::Reference(_)) => {
             // try to collapse the expression

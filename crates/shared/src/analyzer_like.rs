@@ -2,7 +2,7 @@ use crate::{GraphLike, NodeIdx};
 
 use ahash::AHashMap;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JoinStats {
@@ -21,75 +21,69 @@ pub struct JoinStats {
 
 impl JoinStats {
     pub fn total_joins(&self) -> usize {
-        self.total_pure_joins()
-        + self.total_view_joins()
-        + self.total_mut_joins()
+        self.total_pure_joins() + self.total_view_joins() + self.total_mut_joins()
     }
 
     pub fn completed_joins(&self) -> usize {
-        self.completed_pure_joins()
-        + self.completed_view_joins()
-        + self.completed_mut_joins()
+        self.completed_pure_joins() + self.completed_view_joins() + self.completed_mut_joins()
     }
 
     pub fn reduced_vars(&self) -> usize {
-        self.pure_reduced_vars()
-        + self.view_reduced_vars()
-        + self.mut_reduced_vars()
+        self.pure_reduced_vars() + self.view_reduced_vars() + self.mut_reduced_vars()
     }
 
     pub fn total_pure_joins(&self) -> usize {
         self.pure_no_children_joins.num_joins
-        + self.pure_children_no_forks_joins.num_joins
-        + self.pure_children_forks_joins.num_joins
+            + self.pure_children_no_forks_joins.num_joins
+            + self.pure_children_forks_joins.num_joins
     }
 
     pub fn completed_pure_joins(&self) -> usize {
         self.pure_no_children_joins.completed_joins
-        + self.pure_children_no_forks_joins.completed_joins
-        + self.pure_children_forks_joins.completed_joins
+            + self.pure_children_no_forks_joins.completed_joins
+            + self.pure_children_forks_joins.completed_joins
     }
 
     pub fn pure_reduced_vars(&self) -> usize {
         self.pure_no_children_joins.vars_reduced
-        + self.pure_children_no_forks_joins.vars_reduced
-        + self.pure_children_forks_joins.vars_reduced
+            + self.pure_children_no_forks_joins.vars_reduced
+            + self.pure_children_forks_joins.vars_reduced
     }
 
     pub fn total_view_joins(&self) -> usize {
         self.view_no_children_joins.num_joins
-        + self.view_children_no_forks_joins.num_joins
-        + self.view_children_forks_joins.num_joins
+            + self.view_children_no_forks_joins.num_joins
+            + self.view_children_forks_joins.num_joins
     }
 
     pub fn completed_view_joins(&self) -> usize {
         self.view_no_children_joins.completed_joins
-        + self.view_children_no_forks_joins.completed_joins
-        + self.view_children_forks_joins.completed_joins
+            + self.view_children_no_forks_joins.completed_joins
+            + self.view_children_forks_joins.completed_joins
     }
 
     pub fn view_reduced_vars(&self) -> usize {
         self.view_no_children_joins.vars_reduced
-        + self.view_children_no_forks_joins.vars_reduced
-        + self.view_children_forks_joins.vars_reduced
+            + self.view_children_no_forks_joins.vars_reduced
+            + self.view_children_forks_joins.vars_reduced
     }
 
     pub fn total_mut_joins(&self) -> usize {
         self.mut_no_children_joins.num_joins
-        + self.mut_children_no_forks_joins.num_joins
-        + self.mut_children_forks_joins.num_joins
+            + self.mut_children_no_forks_joins.num_joins
+            + self.mut_children_forks_joins.num_joins
     }
 
     pub fn completed_mut_joins(&self) -> usize {
         self.mut_no_children_joins.completed_joins
-        + self.mut_children_no_forks_joins.completed_joins
-        + self.mut_children_forks_joins.completed_joins
+            + self.mut_children_no_forks_joins.completed_joins
+            + self.mut_children_forks_joins.completed_joins
     }
 
     pub fn mut_reduced_vars(&self) -> usize {
         self.mut_no_children_joins.vars_reduced
-        + self.mut_children_no_forks_joins.vars_reduced
-        + self.mut_children_forks_joins.vars_reduced
+            + self.mut_children_no_forks_joins.vars_reduced
+            + self.mut_children_forks_joins.vars_reduced
     }
 }
 
@@ -97,11 +91,8 @@ impl JoinStats {
 pub struct JoinStat {
     pub num_joins: usize,
     pub completed_joins: usize,
-    pub vars_reduced: usize
+    pub vars_reduced: usize,
 }
-
-
-
 
 pub trait AnalyzerLike: GraphLike {
     /// The expression type

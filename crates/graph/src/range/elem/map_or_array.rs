@@ -35,9 +35,7 @@ pub struct RangeDyn<T> {
 
 impl<T: std::cmp::PartialEq> PartialEq for RangeDyn<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.len == other.len
-        && self.val == other.val
-        && self.op_num == other.op_num
+        self.len == other.len && self.val == other.val && self.op_num == other.op_num
     }
 }
 impl<T: std::cmp::PartialEq> Eq for RangeDyn<T> {}
@@ -348,8 +346,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 })
                 .collect();
             let flat_max = self.flatten(true, analyzer)?;
-            let simplified_flat_max =
-                flat_max.simplify_maximize(analyzer)?;
+            let simplified_flat_max = flat_max.simplify_maximize(analyzer)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
@@ -364,8 +361,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                 })
                 .collect();
             let flat_min = self.flatten(false, analyzer)?;
-            let simplified_flat_min =
-                flat_min.simplify_minimize(analyzer)?;
+            let simplified_flat_min = flat_min.simplify_minimize(analyzer)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
@@ -411,10 +407,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     // We dont maximize the key so that any subsequent
                     // `get_index` can find potential values
                     let maximized = val.0.maximize(analyzer)?;
-                    map.insert(
-                        idx.simplify_maximize(analyzer)?,
-                        (maximized, val.1),
-                    );
+                    map.insert(idx.simplify_maximize(analyzer)?, (maximized, val.1));
                 }
 
                 // map.into_iter().filter(|(k, (v, op))| {
@@ -439,10 +432,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     // We dont minimize the key so that any subsequent
                     // `get_index` can find potential values
                     let minimized = val.0.minimize(analyzer)?;
-                    map.insert(
-                        idx.simplify_minimize(analyzer)?,
-                        (minimized, val.1),
-                    );
+                    map.insert(idx.simplify_minimize(analyzer)?, (minimized, val.1));
                 }
 
                 // map.into_iter().filter(|(k, (v, op))| {

@@ -66,10 +66,7 @@ impl From<Ty> for Node {
 }
 
 impl Ty {
-    pub fn new(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
-        ty: TypeDefinition,
-    ) -> Ty {
+    pub fn new(analyzer: &mut impl AnalyzerBackend<Expr = Expression>, ty: TypeDefinition) -> Ty {
         Ty {
             loc: ty.loc,
             ty: analyzer.parse_expr(&ty.ty, None),

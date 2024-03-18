@@ -205,7 +205,10 @@ impl ContextVarNode {
         Ok(self.underlying(analyzer)?.tmp_of())
     }
 
-    pub fn struct_to_fields(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+    pub fn struct_to_fields(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
         if self.ref_range(analyzer)?.is_none() {
             let fields = analyzer
                 .graph()
@@ -309,10 +312,7 @@ impl ContextVarNode {
             .collect()
     }
 
-    pub fn set_dependent_on(
-        &self,
-        analyzer: &mut impl GraphBackend,
-    ) -> Result<(), GraphError> {
+    pub fn set_dependent_on(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         let mut return_self = false;
         let mut first_iter = true;
         let mut stack = vec![*self];
@@ -335,7 +335,7 @@ impl ContextVarNode {
 
             if first_iter {
                 first_iter = false;
-                return_self = true;    
+                return_self = true;
             }
         }
 
@@ -372,7 +372,7 @@ impl ContextVarNode {
 
             if first_iter {
                 first_iter = false;
-                return_self = true;    
+                return_self = true;
             }
         }
 

@@ -1,4 +1,3 @@
-use crate::func_call::intrinsic_call::AddressCaller;
 use crate::{ExprErr, IntoExprErr, LibraryAccess};
 
 use graph::{
@@ -213,7 +212,7 @@ pub trait BuiltinAccess:
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
                             var.name = format!("int{size}.max");
-                            var.display_name = var.name.clone();
+                            var.display_name.clone_from(&var.name);
                             var.is_tmp = true;
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
@@ -228,7 +227,7 @@ pub trait BuiltinAccess:
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
                             var.name = format!("int{size}.min");
-                            var.display_name = var.name.clone();
+                            var.display_name.clone_from(&var.name);
                             var.is_tmp = true;
                             var.is_symbolic = false;
                             let cvar = self.add_node(Node::ContextVar(var));
@@ -257,7 +256,7 @@ pub trait BuiltinAccess:
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                             .into_expr_err(loc)?;
                         var.name = format!("uint{size}.max");
-                        var.display_name = var.name.clone();
+                        var.display_name.clone_from(&var.name);
                         var.is_tmp = true;
                         var.is_symbolic = false;
                         let cvar = self.add_node(Node::ContextVar(var));
@@ -272,7 +271,7 @@ pub trait BuiltinAccess:
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                             .into_expr_err(loc)?;
                         var.name = format!("uint{size}.min");
-                        var.display_name = var.name.clone();
+                        var.display_name.clone_from(&var.name);
                         var.is_tmp = true;
                         var.is_symbolic = false;
                         let cvar = self.add_node(Node::ContextVar(var));

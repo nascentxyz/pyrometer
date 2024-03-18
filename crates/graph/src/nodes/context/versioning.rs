@@ -57,7 +57,7 @@ impl ContextNode {
     /// Gets the first ancestor of this context
     pub fn first_ancestor(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextNode, GraphError> {
         if let Some(first_ancestor) = self.underlying(analyzer)?.cache.first_ancestor {
             Ok(first_ancestor)
@@ -285,7 +285,7 @@ impl ContextNode {
         &self,
         w1: ContextNode,
         w2: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         assert!(matches!(analyzer.node(w1), Node::Context(_)));
         assert!(matches!(analyzer.node(w2), Node::Context(_)));
@@ -315,7 +315,7 @@ impl ContextNode {
     pub fn set_child_call(
         &self,
         call: ContextNode,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         assert!(matches!(analyzer.node(call), Node::Context(_)));
         assert!(*self != call, "Tried to set child to self");
@@ -342,10 +342,7 @@ impl ContextNode {
     }
 
     /// Removes the child of this context
-    pub fn delete_child(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<(), GraphError> {
+    pub fn delete_child(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
         if let Some(child) = self.underlying(analyzer)?.child {
             match child {
                 CallFork::Fork(w1, w2) => {
@@ -366,7 +363,7 @@ impl ContextNode {
     /// parent contexts if all subcontexts of that context are killed
     pub fn kill(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         kill_loc: Loc,
         kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
@@ -412,7 +409,7 @@ impl ContextNode {
     /// Kills if and only if all subcontexts are killed
     pub fn end_if_all_forks_ended(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
         kill_loc: Loc,
         kill_kind: KilledKind,
     ) -> Result<(), GraphError> {

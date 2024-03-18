@@ -26,10 +26,7 @@ impl ConcreteNode {
     }
 
     /// Creates a version of this concrete that is max size
-    pub fn max_size(
-        &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    ) -> Result<Self, GraphError> {
+    pub fn max_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
         Ok(analyzer.add_node(Node::Concrete(c)).into())
     }
@@ -37,7 +34,7 @@ impl ConcreteNode {
     /// Gets the internal type of the dynamic that backs this. Panics if this is not a dynamic concrete
     pub fn dynamic_underlying_ty(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<VarType, GraphError> {
         let builtin = self.underlying(analyzer)?.dynamic_underlying_ty().unwrap();
         let bn = analyzer.builtin_or_add(builtin);

@@ -1,6 +1,5 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
-use crate::join::JoinStatTracker;
 use crate::{
     func_call::join::FuncJoiner, func_call::modifier::ModifierCaller, helper::CallerHelper,
     internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
@@ -67,9 +66,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
 
     pub fn parse(
         &self,
-        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
-                  + Sized
-                  + GraphBackend),
+        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized),
         ctx: ContextNode,
         loc: Loc,
     ) -> Result<(), ExprErr> {
@@ -101,9 +98,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
     pub fn parse_n(
         &self,
         n: usize,
-        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
-                  + Sized
-                  + GraphBackend),
+        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized),
         ctx: ContextNode,
         loc: Loc,
     ) -> Result<(), ExprErr> {
@@ -569,7 +564,7 @@ pub trait FuncCaller:
                                 var.name,
                                 ctx.new_tmp(analyzer).into_expr_err(loc)?
                             );
-                            var.display_name = var.name.clone();
+                            var.display_name.clone_from(&var.name);
                         }
 
                         let node = analyzer.add_node(Node::ContextVar(var));

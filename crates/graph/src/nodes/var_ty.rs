@@ -45,7 +45,7 @@ impl VarNode {
 
     pub fn parse_initializer(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
         parent: NodeIdx,
     ) -> Result<(), GraphError> {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
@@ -236,7 +236,7 @@ impl From<Var> for Node {
 
 impl Var {
     pub fn new(
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend<Expr = Expression>),
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {

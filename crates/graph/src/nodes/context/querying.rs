@@ -12,7 +12,7 @@ impl ContextNode {
     /// Gets the associated contract for the function for the context
     pub fn associated_contract(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContractNode, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -23,7 +23,7 @@ impl ContextNode {
     /// Tries to get the associated function for the context
     pub fn maybe_associated_contract(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<ContractNode>, GraphError> {
         Ok(self
             .associated_fn(analyzer)?
@@ -33,7 +33,7 @@ impl ContextNode {
     /// Tries to get the associated source for the context
     pub fn maybe_associated_source(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Option<SourceUnitNode> {
         let context = self.underlying(analyzer).unwrap();
         if let Some(src) = context.cache.associated_source {
@@ -54,7 +54,7 @@ impl ContextNode {
     /// Tries to get the associated source unit part for the context
     pub fn associated_source_unit_part(
         &self,
-        analyzer: &mut (impl GraphBackend + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<SourceUnitPartNode, GraphError> {
         if let Some(sup) = self
             .associated_fn(analyzer)?
@@ -71,7 +71,7 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_modifiers(
         &self,
-        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         let Some(source) = self.maybe_associated_source(analyzer) else {
@@ -142,7 +142,7 @@ impl ContextNode {
     /// Gets visible functions
     pub fn visible_funcs(
         &self,
-        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
     ) -> Result<Vec<FunctionNode>, GraphError> {
         // TODO: filter privates
         if let Some(vis) = &self.underlying(analyzer)?.cache.visible_funcs {
@@ -188,7 +188,7 @@ impl ContextNode {
     /// Gets all visible functions
     pub fn source_funcs(
         &self,
-        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
     ) -> Vec<FunctionNode> {
         // TODO: filter privates
         let Some(source) = self.maybe_associated_source(analyzer) else {
@@ -211,7 +211,7 @@ impl ContextNode {
     /// Gets all visible structs
     pub fn visible_structs(
         &self,
-        analyzer: &mut (impl GraphBackend<Edge = Edge> + AnalyzerBackend),
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
     ) -> Result<Vec<StructNode>, GraphError> {
         // TODO: filter privates
         if let Some(vis) = &self.underlying(analyzer)?.cache.visible_structs {

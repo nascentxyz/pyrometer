@@ -1,15 +1,14 @@
-use graph::AsDotStr;
-use graph::SolcRange;
-use shared::AnalyzerLike;
-use graph::nodes::Concrete;
-use shared::NodeIdx;
 use crate::member_access::ListAccess;
 use crate::{helper::CallerHelper, ExprErr, IntoExprErr};
 use graph::elem::Elem;
 use graph::elem::RangeElem;
+use graph::nodes::Concrete;
 use graph::nodes::ContextVar;
 use graph::Range;
+use graph::SolcRange;
 use graph::VarType;
+use shared::AnalyzerLike;
+use shared::NodeIdx;
 use shared::StorageLocation;
 
 use graph::{
@@ -22,7 +21,11 @@ use solang_parser::pt::{Expression, Loc};
 use std::collections::BTreeMap;
 
 impl<T> FuncJoiner for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper + JoinStatTracker
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
+        + Sized
+        + GraphBackend
+        + CallerHelper
+        + JoinStatTracker
 {
 }
 /// A trait for calling a function
@@ -38,7 +41,10 @@ pub trait FuncJoiner:
         params: &[FunctionParamNode],
         func_inputs: &[ContextVarNode],
     ) -> Result<bool, ExprErr> {
-        tracing::trace!("Trying to join function: {}", func.name(self).into_expr_err(loc)?);
+        tracing::trace!(
+            "Trying to join function: {}",
+            func.name(self).into_expr_err(loc)?
+        );
         // ensure no modifiers (for now)
         // if pure function:
         //      grab requirements for context
@@ -58,8 +64,12 @@ pub trait FuncJoiner:
                 {
                     let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
                     if edges.len() == 1 {
-                        tracing::trace!("Joining function: {}", func.name(self).into_expr_err(loc)?);
-                        let replacement_map = self.basic_inputs_replacement_map(body_ctx, loc, params, func_inputs)?;
+                        tracing::trace!(
+                            "Joining function: {}",
+                            func.name(self).into_expr_err(loc)?
+                        );
+                        let replacement_map =
+                            self.basic_inputs_replacement_map(body_ctx, loc, params, func_inputs)?;
                         let mut rets: Vec<_> = edges[0]
                             .return_nodes(self)
                             .into_expr_err(loc)?
@@ -68,10 +78,11 @@ pub trait FuncJoiner:
                             .map(|(i, (_, ret_node))| {
                                 let mut new_var = ret_node.underlying(self).unwrap().clone();
                                 let new_name = format!("{}.{i}", func.name(self).unwrap());
-                                new_var.name = new_name.clone();
+                                new_var.name.clone_from(&new_name);
                                 new_var.display_name = new_name;
                                 if let Some(mut range) = new_var.ty.take_range() {
-                                    let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
+                                    let mut range: SolcRange =
+                                        range.take_flattened_range(self).unwrap().into();
                                     replacement_map.iter().for_each(|(replace, replacement)| {
                                         range.replace_dep(*replace, replacement.0.clone(), self);
                                     });
@@ -83,7 +94,9 @@ pub trait FuncJoiner:
 
                                 if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                     dep_on.iter_mut().for_each(|d| {
-                                        if let Some((_, r)) = replacement_map.get(&(*d).into()) { *d = *r }
+                                        if let Some((_, r)) = replacement_map.get(&(*d).into()) {
+                                            *d = *r
+                                        }
                                     });
                                 }
 
@@ -94,15 +107,29 @@ pub trait FuncJoiner:
                                 if let Ok(fields) = ret_node.struct_to_fields(self) {
                                     if !fields.is_empty() {
                                         fields.iter().for_each(|field| {
-                                            let mut new_var = field.underlying(self).unwrap().clone();
-                                            let new_name = format!("{}.{i}.{}", func.name(self).unwrap(), field.name(self).unwrap());
-                                            new_var.name = new_name.clone();
+                                            let mut new_var =
+                                                field.underlying(self).unwrap().clone();
+                                            let new_name = format!(
+                                                "{}.{i}.{}",
+                                                func.name(self).unwrap(),
+                                                field.name(self).unwrap()
+                                            );
+                                            new_var.name.clone_from(&new_name);
                                             new_var.display_name = new_name;
                                             if let Some(mut range) = new_var.ty.take_range() {
-                                                let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
-                                                replacement_map.iter().for_each(|(replace, replacement)| {
-                                                    range.replace_dep(*replace, replacement.0.clone(), self);
-                                                });
+                                                let mut range: SolcRange = range
+                                                    .take_flattened_range(self)
+                                                    .unwrap()
+                                                    .into();
+                                                replacement_map.iter().for_each(
+                                                    |(replace, replacement)| {
+                                                        range.replace_dep(
+                                                            *replace,
+                                                            replacement.0.clone(),
+                                                            self,
+                                                        );
+                                                    },
+                                                );
 
                                                 range.cache_eval(self).unwrap();
 
@@ -111,16 +138,25 @@ pub trait FuncJoiner:
 
                                             if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                                 dep_on.iter_mut().for_each(|d| {
-                                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) { *d = *r }
+                                                    if let Some((_, r)) =
+                                                        replacement_map.get(&(*d).into())
+                                                    {
+                                                        *d = *r
+                                                    }
                                                 });
                                             }
-                                            let new_field =
-                                                ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
-                                            self.add_edge(new_field, new_cvar, Edge::Context(ContextEdge::AttrAccess("field")));
+                                            let new_field = ContextVarNode::from(
+                                                self.add_node(Node::ContextVar(new_var)),
+                                            );
+                                            self.add_edge(
+                                                new_field,
+                                                new_cvar,
+                                                Edge::Context(ContextEdge::AttrAccess("field")),
+                                            );
                                         });
                                     }
                                 }
-                                
+
                                 self.add_edge(new_cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 ctx.add_var(new_cvar, self).unwrap();
                                 ExprRet::Single(new_cvar.into())
@@ -133,7 +169,8 @@ pub trait FuncJoiner:
                             .try_for_each(|dep| {
                                 let mut new_var = dep.underlying(self)?.clone();
                                 if let Some(mut range) = new_var.ty.take_range() {
-                                    let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
+                                    let mut range: SolcRange =
+                                        range.take_flattened_range(self).unwrap().into();
                                     replacement_map.iter().for_each(|(replace, replacement)| {
                                         range.replace_dep(*replace, replacement.0.clone(), self);
                                     });
@@ -144,7 +181,9 @@ pub trait FuncJoiner:
 
                                 if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                     dep_on.iter_mut().for_each(|d| {
-                                        if let Some((_, r)) = replacement_map.get(&(*d).into()) { *d = *r }
+                                        if let Some((_, r)) = replacement_map.get(&(*d).into()) {
+                                            *d = *r
+                                        }
                                     });
                                 }
                                 let new_cvar =
@@ -152,22 +191,20 @@ pub trait FuncJoiner:
                                 self.add_edge(new_cvar, ctx, Edge::Context(ContextEdge::Variable));
                                 ctx.add_var(new_cvar, self)?;
                                 ctx.add_ctx_dep(new_cvar, self)
-                            }).into_expr_err(loc)?;
+                            })
+                            .into_expr_err(loc)?;
 
-                        func.returns(self)
-                            .to_vec()
-                            .into_iter()
-                            .for_each(|ret| {
-                                if let Some(var) = ContextVar::maybe_new_from_func_ret(
-                                    self,
-                                    ret.underlying(self).unwrap().clone(),
-                                ) {
-                                    let cvar = self.add_node(Node::ContextVar(var));
-                                    ctx.add_var(cvar.into(), self).unwrap();
-                                    self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                    rets.push(ExprRet::Single(cvar));
-                                }
-                            });
+                        func.returns(self).to_vec().into_iter().for_each(|ret| {
+                            if let Some(var) = ContextVar::maybe_new_from_func_ret(
+                                self,
+                                ret.underlying(self).unwrap().clone(),
+                            ) {
+                                let cvar = self.add_node(Node::ContextVar(var));
+                                ctx.add_var(cvar.into(), self).unwrap();
+                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                                rets.push(ExprRet::Single(cvar));
+                            }
+                        });
 
                         ctx.underlying_mut(self).into_expr_err(loc)?.path = format!(
                             "{}.{}.resume{{ {} }}",
@@ -179,12 +216,19 @@ pub trait FuncJoiner:
                             .into_expr_err(loc)?;
                         self.add_completed_pure(true, false, false, edges[0]);
                     } else {
-                        tracing::trace!("Branching pure join function: {}", func.name(self).into_expr_err(loc)?);
+                        tracing::trace!(
+                            "Branching pure join function: {}",
+                            func.name(self).into_expr_err(loc)?
+                        );
                         self.add_completed_pure(false, false, true, body_ctx);
                     }
                 } else {
-                    tracing::trace!("Childless pure join: {}", func.name(self).into_expr_err(loc)?);
-                    let replacement_map = self.basic_inputs_replacement_map(body_ctx, loc, params, func_inputs)?;
+                    tracing::trace!(
+                        "Childless pure join: {}",
+                        func.name(self).into_expr_err(loc)?
+                    );
+                    let replacement_map =
+                        self.basic_inputs_replacement_map(body_ctx, loc, params, func_inputs)?;
                     // 1. Create a new variable with name `<func_name>.<return_number>`
                     // 2. Set the range to be the copy of the return's simplified range from the function
                     // 3. Replace the fundamentals with the input data
@@ -196,10 +240,11 @@ pub trait FuncJoiner:
                         .map(|(i, (_, ret_node))| {
                             let mut new_var = ret_node.underlying(self).unwrap().clone();
                             let new_name = format!("{}.{i}", func.name(self).unwrap());
-                            new_var.name = new_name.clone();
+                            new_var.name.clone_from(&new_name);
                             new_var.display_name = new_name;
                             if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
+                                let mut range: SolcRange =
+                                    range.take_flattened_range(self).unwrap().into();
                                 replacement_map.iter().for_each(|(replace, replacement)| {
                                     range.replace_dep(*replace, replacement.0.clone(), self);
                                 });
@@ -211,7 +256,9 @@ pub trait FuncJoiner:
 
                             if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                 dep_on.iter_mut().for_each(|d| {
-                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) { *d = *r }
+                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) {
+                                        *d = *r
+                                    }
                                 });
                             }
 
@@ -225,14 +272,25 @@ pub trait FuncJoiner:
                                 if !fields.is_empty() {
                                     fields.iter().for_each(|field| {
                                         let mut new_var = field.underlying(self).unwrap().clone();
-                                        let new_name = format!("{}.{i}.{}", func.name(self).unwrap(), field.name(self).unwrap());
-                                        new_var.name = new_name.clone();
+                                        let new_name = format!(
+                                            "{}.{i}.{}",
+                                            func.name(self).unwrap(),
+                                            field.name(self).unwrap()
+                                        );
+                                        new_var.name.clone_from(&new_name);
                                         new_var.display_name = new_name;
                                         if let Some(mut range) = new_var.ty.take_range() {
-                                            let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
-                                            replacement_map.iter().for_each(|(replace, replacement)| {
-                                                range.replace_dep(*replace, replacement.0.clone(), self);
-                                            });
+                                            let mut range: SolcRange =
+                                                range.take_flattened_range(self).unwrap().into();
+                                            replacement_map.iter().for_each(
+                                                |(replace, replacement)| {
+                                                    range.replace_dep(
+                                                        *replace,
+                                                        replacement.0.clone(),
+                                                        self,
+                                                    );
+                                                },
+                                            );
 
                                             range.cache_eval(self).unwrap();
 
@@ -241,12 +299,21 @@ pub trait FuncJoiner:
 
                                         if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                             dep_on.iter_mut().for_each(|d| {
-                                                if let Some((_, r)) = replacement_map.get(&(*d).into()) { *d = *r }
+                                                if let Some((_, r)) =
+                                                    replacement_map.get(&(*d).into())
+                                                {
+                                                    *d = *r
+                                                }
                                             });
                                         }
-                                        let new_field =
-                                            ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
-                                        self.add_edge(new_field, new_cvar, Edge::Context(ContextEdge::AttrAccess("field")));
+                                        let new_field = ContextVarNode::from(
+                                            self.add_node(Node::ContextVar(new_var)),
+                                        );
+                                        self.add_edge(
+                                            new_field,
+                                            new_cvar,
+                                            Edge::Context(ContextEdge::AttrAccess("field")),
+                                        );
                                     });
                                 }
                             }
@@ -263,7 +330,8 @@ pub trait FuncJoiner:
                         .try_for_each(|dep| {
                             let mut new_var = dep.underlying(self)?.clone();
                             if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
+                                let mut range: SolcRange =
+                                    range.take_flattened_range(self).unwrap().into();
                                 replacement_map.iter().for_each(|(replace, replacement)| {
                                     range.replace_dep(*replace, replacement.0.clone(), self);
                                 });
@@ -275,10 +343,11 @@ pub trait FuncJoiner:
                             // TODO: the naming isn't correct here and we move variables around
                             // in a dumb way
 
-
                             if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                 dep_on.iter_mut().for_each(|d| {
-                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) { *d = *r }
+                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) {
+                                        *d = *r
+                                    }
                                 });
                             }
 
@@ -288,22 +357,20 @@ pub trait FuncJoiner:
                             self.add_edge(new_cvar, ctx, Edge::Context(ContextEdge::Variable));
                             ctx.add_var(new_cvar, self)?;
                             ctx.add_ctx_dep(new_cvar, self)
-                        }).into_expr_err(loc)?;
+                        })
+                        .into_expr_err(loc)?;
 
-                    func.returns(self)
-                        .to_vec()
-                        .into_iter()
-                        .for_each(|ret| {
-                            if let Some(var) = ContextVar::maybe_new_from_func_ret(
-                                self,
-                                ret.underlying(self).unwrap().clone(),
-                            ) {
-                                let cvar = self.add_node(Node::ContextVar(var));
-                                ctx.add_var(cvar.into(), self).unwrap();
-                                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                                rets.push(ExprRet::Single(cvar));
-                            }
-                        });
+                    func.returns(self).to_vec().into_iter().for_each(|ret| {
+                        if let Some(var) = ContextVar::maybe_new_from_func_ret(
+                            self,
+                            ret.underlying(self).unwrap().clone(),
+                        ) {
+                            let cvar = self.add_node(Node::ContextVar(var));
+                            ctx.add_var(cvar.into(), self).unwrap();
+                            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                            rets.push(ExprRet::Single(cvar));
+                        }
+                    });
 
                     ctx.underlying_mut(self).into_expr_err(loc)?.path = format!(
                         "{}.{}.resume{{ {} }}",
@@ -327,18 +394,27 @@ pub trait FuncJoiner:
                 {
                     let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
                     if edges.len() == 1 {
-                        tracing::trace!("View join function: {}", func.name(self).into_expr_err(loc)?);
+                        tracing::trace!(
+                            "View join function: {}",
+                            func.name(self).into_expr_err(loc)?
+                        );
                         self.add_completed_view(false, false, false, body_ctx);
                     } else {
-                        tracing::trace!("Branching view join function: {}", func.name(self).into_expr_err(loc)?);
+                        tracing::trace!(
+                            "Branching view join function: {}",
+                            func.name(self).into_expr_err(loc)?
+                        );
                         self.add_completed_view(false, false, true, body_ctx);
                     }
                 } else {
-                    tracing::trace!("Childless view join function: {}", func.name(self).into_expr_err(loc)?);
+                    tracing::trace!(
+                        "Childless view join function: {}",
+                        func.name(self).into_expr_err(loc)?
+                    );
                     self.add_completed_view(false, true, false, body_ctx);
                 }
             }
-        }  else if let Some(body_ctx) = func.maybe_body_ctx(self) {
+        } else if let Some(body_ctx) = func.maybe_body_ctx(self) {
             if body_ctx
                 .underlying(self)
                 .into_expr_err(loc)?
@@ -350,11 +426,17 @@ pub trait FuncJoiner:
                     tracing::trace!("Mut join function: {}", func.name(self).into_expr_err(loc)?);
                     self.add_completed_mut(false, false, false, body_ctx);
                 } else {
-                    tracing::trace!("Branching mut join function: {}", func.name(self).into_expr_err(loc)?);
+                    tracing::trace!(
+                        "Branching mut join function: {}",
+                        func.name(self).into_expr_err(loc)?
+                    );
                     self.add_completed_mut(false, false, true, body_ctx);
                 }
             } else {
-                tracing::trace!("Childless mut join function: {}", func.name(self).into_expr_err(loc)?);
+                tracing::trace!(
+                    "Childless mut join function: {}",
+                    func.name(self).into_expr_err(loc)?
+                );
                 self.add_completed_mut(false, true, false, body_ctx);
             }
         }
@@ -370,7 +452,8 @@ pub trait FuncJoiner:
         func_inputs: &[ContextVarNode],
     ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, ExprErr> {
         let inputs = ctx.input_variables(self);
-        let mut replacement_map: BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)> = BTreeMap::default();
+        let mut replacement_map: BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)> =
+            BTreeMap::default();
         params
             .iter()
             .zip(func_inputs.iter())
@@ -402,9 +485,7 @@ pub trait FuncJoiner:
                         Edge::Context(ContextEdge::InputVariable),
                     );
 
-                    if let Some(param_ty) =
-                        VarType::try_from_idx(self, param.ty(self).unwrap())
-                    {
+                    if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
                         if !replacement.ty_eq_ty(&param_ty, self).into_expr_err(loc)? {
                             replacement
                                 .cast_from_ty(param_ty, self)
@@ -420,14 +501,8 @@ pub trait FuncJoiner:
                     if let (Some(r), Some(r2)) =
                         (replacement.range(self).unwrap(), param.range(self).unwrap())
                     {
-                        let new_min = r
-                            .range_min()
-                            .into_owned()
-                            .cast(r2.range_min().into_owned());
-                        let new_max = r
-                            .range_max()
-                            .into_owned()
-                            .cast(r2.range_max().into_owned());
+                        let new_min = r.range_min().into_owned().cast(r2.range_min().into_owned());
+                        let new_max = r.range_max().into_owned().cast(r2.range_max().into_owned());
                         replacement
                             .latest_version(self)
                             .try_set_range_min(self, new_min)
@@ -443,12 +518,7 @@ pub trait FuncJoiner:
                     }
 
                     ctx.add_var(replacement, self).unwrap();
-                    self.add_edge(
-                        replacement,
-                        ctx,
-                        Edge::Context(ContextEdge::Variable),
-                    );
-
+                    self.add_edge(replacement, ctx, Edge::Context(ContextEdge::Variable));
 
                     let Some(correct_input) = inputs
                         .iter()
@@ -465,18 +535,29 @@ pub trait FuncJoiner:
                             let replacement_fields = func_input.struct_to_fields(self).unwrap();
                             fields.iter().for_each(|field| {
                                 let field_name = field.name(self).unwrap();
-                                let to_replace_field_name = field_name.split('.').collect::<Vec<_>>()[1];
-                                if let Some(replacement_field) = replacement_fields.iter().find(|replacement_field| {
-                                    let name = replacement_field.name(self).unwrap();
-                                    let replacement_name = name.split('.').collect::<Vec<_>>()[1];
-                                    to_replace_field_name == replacement_name
-                                }) {
-                                    let mut replacement_field_as_elem = Elem::from(*replacement_field);
+                                let to_replace_field_name =
+                                    field_name.split('.').collect::<Vec<_>>()[1];
+                                if let Some(replacement_field) =
+                                    replacement_fields.iter().find(|replacement_field| {
+                                        let name = replacement_field.name(self).unwrap();
+                                        let replacement_name =
+                                            name.split('.').collect::<Vec<_>>()[1];
+                                        to_replace_field_name == replacement_name
+                                    })
+                                {
+                                    let mut replacement_field_as_elem =
+                                        Elem::from(*replacement_field);
                                     replacement_field_as_elem.arenaize(self).unwrap();
                                     if let Some(next) = field.next_version(self) {
-                                        replacement_map.insert(next.0.into(), (replacement_field_as_elem.clone(), *replacement_field));
+                                        replacement_map.insert(
+                                            next.0.into(),
+                                            (replacement_field_as_elem.clone(), *replacement_field),
+                                        );
                                     }
-                                    replacement_map.insert(field.0.into(), (replacement_field_as_elem, *replacement_field));
+                                    replacement_map.insert(
+                                        field.0.into(),
+                                        (replacement_field_as_elem, *replacement_field),
+                                    );
                                 }
                             });
                         }
@@ -486,9 +567,11 @@ pub trait FuncJoiner:
                     replacement_as_elem.arenaize(self).into_expr_err(loc)?;
 
                     if let Some(next) = correct_input.next_version(self) {
-                        replacement_map.insert(next.0.into(), (replacement_as_elem.clone(), replacement));
+                        replacement_map
+                            .insert(next.0.into(), (replacement_as_elem.clone(), replacement));
                     }
-                    replacement_map.insert(correct_input.0.into(), (replacement_as_elem, replacement));
+                    replacement_map
+                        .insert(correct_input.0.into(), (replacement_as_elem, replacement));
                 }
                 Ok(())
             })?;
@@ -496,13 +579,18 @@ pub trait FuncJoiner:
     }
 }
 
-impl<T> JoinStatTracker for T where
-    T: AnalyzerLike + GraphBackend
-{
-}
+impl<T> JoinStatTracker for T where T: AnalyzerLike + GraphBackend {}
 
 pub trait JoinStatTracker: AnalyzerLike {
-    fn add_completed_pure(&mut self, completed: bool, no_children: bool, forks: bool, target_ctx: ContextNode) where Self: Sized + GraphBackend {
+    fn add_completed_pure(
+        &mut self,
+        completed: bool,
+        no_children: bool,
+        forks: bool,
+        target_ctx: ContextNode,
+    ) where
+        Self: Sized + GraphBackend,
+    {
         match (no_children, forks) {
             (true, _) => {
                 let num_vars = target_ctx.vars(self).len();
@@ -535,10 +623,18 @@ pub trait JoinStatTracker: AnalyzerLike {
                     stats.pure_children_forks_joins.completed_joins += 1;
                 }
             }
-        }   
+        }
     }
 
-    fn add_completed_view(&mut self, completed: bool, no_children: bool, forks: bool, target_ctx: ContextNode) where Self: Sized + GraphBackend {
+    fn add_completed_view(
+        &mut self,
+        completed: bool,
+        no_children: bool,
+        forks: bool,
+        target_ctx: ContextNode,
+    ) where
+        Self: Sized + GraphBackend,
+    {
         match (no_children, forks) {
             (true, _) => {
                 let num_vars = target_ctx.vars(self).len();
@@ -572,10 +668,18 @@ pub trait JoinStatTracker: AnalyzerLike {
                     stats.view_children_forks_joins.completed_joins += 1;
                 }
             }
-        }   
+        }
     }
 
-    fn add_completed_mut(&mut self, completed: bool, no_children: bool, forks: bool, target_ctx: ContextNode) where Self: Sized + GraphBackend {
+    fn add_completed_mut(
+        &mut self,
+        completed: bool,
+        no_children: bool,
+        forks: bool,
+        target_ctx: ContextNode,
+    ) where
+        Self: Sized + GraphBackend,
+    {
         match (no_children, forks) {
             (true, _) => {
                 let num_vars = target_ctx.vars(self).len();
@@ -600,6 +704,6 @@ pub trait JoinStatTracker: AnalyzerLike {
                     stats.mut_children_forks_joins.completed_joins += 1;
                 }
             }
-        }   
+        }
     }
 }
