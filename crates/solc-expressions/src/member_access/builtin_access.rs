@@ -1,3 +1,4 @@
+use crate::func_call::intrinsic_call::AddressCaller;
 use crate::{ExprErr, IntoExprErr, LibraryAccess};
 
 use graph::{
@@ -270,7 +271,7 @@ pub trait BuiltinAccess:
                         let node = self.add_node(Node::Concrete(c)).into();
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                             .into_expr_err(loc)?;
-                        var.name = format!("int{size}.min");
+                        var.name = format!("uint{size}.min");
                         var.display_name = var.name.clone();
                         var.is_tmp = true;
                         var.is_symbolic = false;
@@ -278,6 +279,11 @@ pub trait BuiltinAccess:
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         Ok(ExprRet::Single(cvar))
+                    }
+                    "call" | "delegatecall" | "staticcall" if size == 160 => {
+                        let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
+                        let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
+                        Ok(ExprRet::Single(func_node))
                     }
                     e => Err(ExprErr::MemberAccessNotFound(
                         loc,

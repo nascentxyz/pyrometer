@@ -203,6 +203,8 @@ impl ContextVarNode {
 
         new_min.arenaize(analyzer)?;
 
+
+
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
 
@@ -279,7 +281,7 @@ impl ContextVarNode {
     pub fn set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        mut new_exclusions: Vec<Elem<Concrete>>,
+        mut new_exclusions: Vec<usize>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "setting range exclusions for {}",
@@ -292,9 +294,10 @@ impl ContextVarNode {
             None
         };
 
-        new_exclusions
-            .iter_mut()
-            .try_for_each(|excl| excl.arenaize(analyzer))?;
+        // let new_exclusions = new_exclusions
+        //     .into_iter()
+        //     .map(|excl| analyzer.range_arena_idx_or_upsert(excl))
+            // .collect();
 
         self.underlying_mut(analyzer)?
             .set_range_exclusions(new_exclusions, fallback)?;
@@ -366,7 +369,7 @@ impl ContextVarNode {
     pub fn try_set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        mut new_exclusions: Vec<Elem<Concrete>>,
+        mut new_exclusions: Vec<usize>,
     ) -> Result<bool, GraphError> {
         tracing::trace!(
             "setting range exclusions for: {}",
@@ -379,9 +382,10 @@ impl ContextVarNode {
             None
         };
 
-        new_exclusions
-            .iter_mut()
-            .try_for_each(|excl| excl.arenaize(analyzer))?;
+        // let new_exclusions = new_exclusions
+        //     .into_iter()
+        //     .map(|excl| analyzer.range_arena_idx_or_upsert(excl))
+        //     .collect();
 
         Ok(self
             .underlying_mut(analyzer)?

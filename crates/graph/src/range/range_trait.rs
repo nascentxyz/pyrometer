@@ -1,3 +1,4 @@
+use crate::FlattenedRange;
 use crate::{range::elem::RangeElem, GraphBackend};
 use shared::NodeIdx;
 use std::borrow::Cow;
@@ -52,11 +53,11 @@ pub trait Range<T: Ord> {
     /// Set the range maximum
     fn set_range_max(&mut self, new: Self::ElemTy);
     /// Set the range exclusions
-    fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>)
+    fn set_range_exclusions(&mut self, new: Vec<usize>)
     where
         Self: std::marker::Sized;
     /// Add an exclusion value to the range
-    fn add_range_exclusion(&mut self, new: Self::ElemTy)
+    fn add_range_exclusion(&mut self, new: usize)
     where
         Self: std::marker::Sized;
     /// Replace a potential recursion causing node index with a new index
@@ -79,19 +80,19 @@ pub trait Range<T: Ord> {
     fn flattened_range<'a>(
         &'a mut self,
         analyzer: &mut impl GraphBackend,
-    ) -> Result<Cow<'a, Self>, Self::GraphError>
+    ) -> Result<Cow<'a, FlattenedRange>, Self::GraphError>
     where
         Self: Sized + Clone;
 
     fn take_flattened_range(
         &mut self,
         analyzer: &mut impl GraphBackend,
-    ) -> Result<Self, Self::GraphError>
+    ) -> Result<FlattenedRange, Self::GraphError>
     where
         Self: Sized;
 }
 
-pub trait RangeEval<E: Ord, T: RangeElem<E>>: Range<E, ElemTy = T> {
+pub trait RangeEval<E: Ord, T: RangeElem<E>> {
     fn sat(&self, analyzer: &impl GraphBackend) -> bool;
     fn unsat(&self, analyzer: &impl GraphBackend) -> bool {
         !self.sat(analyzer)

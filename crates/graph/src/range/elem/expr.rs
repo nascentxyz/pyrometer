@@ -111,7 +111,10 @@ impl RangeExpr<Concrete> {
 
     pub fn arenaized_cache(&self, max: bool, analyzer: &impl GraphBackend) -> Option<MinMaxed<Concrete>> {
         if let Some(idx) = self.arena_idx(analyzer) {
-            let Elem::Expr(ref arenaized) = *analyzer.range_arena().ranges[idx].borrow() else {
+            let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() else {
+                return None;
+            };
+            let Elem::Expr(ref arenaized) = *t else {
                 return None;
             };
             return if max {
@@ -125,7 +128,10 @@ impl RangeExpr<Concrete> {
 
     pub fn arenaized_flat_cache(&self, max: bool, analyzer: &impl GraphBackend) -> Option<Box<Elem<Concrete>>> {
         if let Some(idx) = self.arena_idx(analyzer) {
-            let Elem::Expr(ref arenaized) = *analyzer.range_arena().ranges[idx].borrow() else {
+            let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() else {
+                return None;
+            };
+            let Elem::Expr(ref arenaized) = *t else {
                 return None;
             };
             return if max {
@@ -182,10 +188,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         // self.lhs.clone().arenaize(analyzer)?;
         // self.rhs.clone().arenaize(analyzer)?;
         if self.arena_idx(analyzer).is_none() {
-            let mut self_copy = self.clone();
-            *self_copy.lhs = *Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*self.lhs.clone())));
-            *self_copy.rhs = *Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*self.rhs.clone())));
-            let _ = analyzer.range_arena_idx_or_upsert(Elem::Expr(self_copy));
+            let lhs = std::mem::take(&mut self.lhs);
+            let rhs = std::mem::take(&mut self.rhs);
+            self.lhs = Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*lhs)));
+            self.rhs = Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*rhs)));
+            let _ = analyzer.range_arena_idx_or_upsert(Elem::Expr(self.clone()));
         }
         Ok(())
     }
@@ -218,12 +225,42 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         )))
     }
 
-    fn is_flatten_cached(&self, _analyzer: &impl GraphBackend) -> bool {
+    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
+        || {
+            if let Some(idx) = self.arena_idx(analyzer) {
+                if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+                    if let Elem::Expr(ref arenaized) = *t {
+                        arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }
     }
 
-    fn is_min_max_cached(&self, _analyzer: &impl GraphBackend) -> (bool, bool) {
-        (self.minimized.is_some(), self.maximized.is_some())
+    fn is_min_max_cached(&self, analyzer: &impl GraphBackend) -> (bool, bool) {
+        let (arena_cached_min, arena_cached_max) = {
+            if let Some(idx) = self.arena_idx(analyzer) {
+                if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+                    if let Elem::Expr(ref arenaized) = *t {
+                        (arenaized.minimized.is_some(), arenaized.maximized.is_some())
+                    } else {
+                        (false, false)
+                    }
+                } else {
+                    (false, false)
+                }
+            } else {
+                (false, false)
+            }
+        };
+        (self.minimized.is_some() || arena_cached_min, self.maximized.is_some() || arena_cached_max)
     }
 
     fn range_ord(
@@ -261,6 +298,17 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         Ok(lhs_has_cycle || rhs_has_cycle)
     }
 
+    fn depends_on(
+        &self,
+        var: ContextVarNode,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, Self::GraphError> {
+        let lhs_deps_on = self.lhs.depends_on(var, seen, analyzer)?;
+        let rhs_deps_on = self.rhs.depends_on(var, seen, analyzer)?;
+        Ok(lhs_deps_on || rhs_deps_on)
+    }
+
     #[tracing::instrument(level = "trace", skip_all)]
     fn filter_recursion(
         &mut self,
@@ -268,6 +316,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         new_idx: NodeIdx,
         analyzer: &mut impl GraphBackend,
     ) {
+        let _ = self.arenaize(analyzer);
         self.lhs.filter_recursion(node_idx, new_idx, analyzer);
         self.rhs.filter_recursion(node_idx, new_idx, analyzer);
     }
@@ -314,7 +363,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let l = self.lhs.simplify_maximize(analyzer)?;
         let r = self.rhs.simplify_maximize(analyzer)?;
         let collapsed = collapse(&l, self.op, &r, analyzer);
-        match collapsed {
+        let res = match collapsed {
             MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(true, analyzer),
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
@@ -333,7 +382,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                     other => Ok(other),
                 }
             }
-        }
+        }?;
+        self.set_arenaized_flattened(true, res.clone(), analyzer);
+        Ok(res)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -350,9 +401,12 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
 
         let l = self.lhs.simplify_minimize(analyzer)?;
+        self.lhs.set_arenaized_flattened(false, &l, analyzer);
         let r = self.rhs.simplify_minimize(analyzer)?;
+        self.rhs.set_arenaized_flattened(false, &r, analyzer);
+
         let collapsed = collapse(&l, self.op, &r, analyzer);
-        match collapsed {
+        let res = match collapsed {
             MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(false, analyzer),
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
@@ -370,34 +424,170 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                     other => Ok(other),
                 }
             }
-        }
+        }?;
+
+        self.set_arenaized_flattened(false, res.clone(), analyzer);
+        Ok(res)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+        self.arenaize(g)?;
+
+        fn simplify_minimize(
+            mut this: Elem<Concrete>,
+            analyzer: &mut impl GraphBackend,
+        ) -> Result<Elem<Concrete>, GraphError> {
+            let Elem::Expr(this) = this else {
+                this.cache_flatten(analyzer)?;
+                if let Some(t) = this.arenaized_flattened(false, analyzer) {
+                    return Ok(*t)
+                } else {
+                    return Ok(this.clone())
+                }
+            };
+
+            if let Some(simp_min) = &this.flattened_min {
+                return Ok(*simp_min.clone());
+            }
+
+            if let Some(arenaized) = this.arenaized_flat_cache(false, analyzer) {
+                return Ok(*arenaized)
+            }
+
+            let l = this.lhs.simplify_minimize(analyzer)?;
+            let r = this.rhs.simplify_minimize(analyzer)?;
+            let collapsed = collapse(&l, this.op, &r, analyzer);
+            let res = match collapsed {
+                MaybeCollapsed::Concretes(..) => RangeExpr::new(l, this.op, r).exec_op(false, analyzer),
+                MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
+                MaybeCollapsed::Not(..) => {
+
+                    let res =
+                        RangeExpr::new(l, this.op, r).simplify_exec_op(false, analyzer)?;
+
+                    let idx = analyzer.range_arena_idx_or_upsert(res.clone());
+                    match res {
+                        Elem::Expr(expr) => {
+                            match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
+                                MaybeCollapsed::Concretes(..) => {
+                                    let exec_res = expr.exec_op(false, analyzer)?;
+                                    Elem::Arena(idx).set_arenaized_flattened(false, &exec_res, analyzer);
+                                    return Ok(exec_res)
+                                },
+                                MaybeCollapsed::Collapsed(collapsed) => {
+                                    Elem::Arena(idx).set_arenaized_flattened(false, &collapsed, analyzer);
+                                    return Ok(collapsed)
+                                },
+                                _ => {}
+                            }
+                            Ok(Elem::Expr(expr))
+                        }
+                        other => Ok(other),
+                    }
+                }
+            }?;
+
+            this.set_arenaized_flattened(false, res.clone(), analyzer);
+            Ok(res)
+        }
+
+        fn simplify_maximize(
+            mut this: Elem<Concrete>,
+            analyzer: &mut impl GraphBackend,
+        ) -> Result<Elem<Concrete>, GraphError> {
+            let Elem::Expr(this) = this else {
+                this.cache_flatten(analyzer)?;
+                if let Some(t) = this.arenaized_flattened(true, analyzer) {
+                    return Ok(*t)
+                } else {
+                    return Ok(this.clone())
+                }
+            };
+
+            if let Some(simp_min) = &this.flattened_max {
+                return Ok(*simp_min.clone());
+            }
+
+            if let Some(arenaized) = this.arenaized_flat_cache(false, analyzer) {
+                return Ok(*arenaized)
+            }
+
+            let l = this.lhs.simplify_maximize(analyzer)?;
+            let r = this.rhs.simplify_maximize(analyzer)?;
+            let collapsed = collapse(&l, this.op, &r, analyzer);
+            let res = match collapsed {
+                MaybeCollapsed::Concretes(..) => RangeExpr::new(l, this.op, r).exec_op(true, analyzer),
+                MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
+                MaybeCollapsed::Not(..) => {
+
+                    let res =
+                        RangeExpr::new(l, this.op, r).simplify_exec_op(true, analyzer)?;
+
+                    let idx = analyzer.range_arena_idx_or_upsert(res.clone());
+                    match res {
+                        Elem::Expr(expr) => {
+                            match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
+                                MaybeCollapsed::Concretes(..) => {
+                                    let exec_res = expr.exec_op(true, analyzer)?;
+                                    Elem::Arena(idx).set_arenaized_flattened(true, &exec_res, analyzer);
+                                    return Ok(exec_res)
+                                },
+                                MaybeCollapsed::Collapsed(collapsed) => {
+                                    Elem::Arena(idx).set_arenaized_flattened(true, &collapsed, analyzer);
+                                    return Ok(collapsed)
+                                },
+                                _ => {}
+                            }
+                            Ok(Elem::Expr(expr))
+                        }
+                        other => Ok(other),
+                    }
+                }
+            }?;
+
+            this.set_arenaized_flattened(false, res.clone(), analyzer);
+            Ok(res)
+        }
+
         if self.flattened_max.is_none() {
+            if let Some(idx) = self.arena_idx(g) {
+                if let Elem::Expr(ref arenaized) = *g.range_arena().ranges[idx].borrow() {
+                    if arenaized.flattened_max.is_some() {
+                        return Ok(())
+                    }
+                };
+            } else {
+                self.arenaize(g)?;
+            }
+
             self.lhs.cache_flatten(g)?;
             self.rhs.cache_flatten(g)?;
             // self.arenaize(g)?;
             let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(g)?;
+            let simplified_flat_max = simplify_maximize(flat_max, g)?;
             simplified_flat_max.clone().arenaize(g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
-            self.arenaize(g)?;
-            // let mut s = Elem::Expr(self.clone());
-            // s.arenaize(g)?;
         }
+
         if self.flattened_min.is_none() {
+            if let Some(idx) = self.arena_idx(g) {
+                if let Elem::Expr(ref arenaized) = *g.range_arena().ranges[idx].borrow() {
+                    if arenaized.flattened_min.is_some() {
+                        return Ok(())
+                    }
+                };
+            } else {
+                self.arenaize(g)?;
+            }
+
             self.lhs.cache_flatten(g)?;
             self.rhs.cache_flatten(g)?;
             // self.arenaize(g)?;
             let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(g)?;
+            let simplified_flat_min = simplify_minimize(flat_min, g)?;
             simplified_flat_min.clone().arenaize(g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
-            self.arenaize(g)?;
-            // let mut s = Elem::Expr(self.clone());
-            // s.arenaize(g)?;
         }
         Ok(())
     }
@@ -405,11 +595,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
     fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         tracing::trace!("cache maximizing: {}", Elem::Expr(self.clone()));
+        self.arenaize(g)?;
         if self.maximized.is_none() {
             self.lhs.cache_maximize(g)?;
             self.rhs.cache_maximize(g)?;
             self.cache_exec_op(true, g)?;
-            self.arenaize(g)?;
         }
         Ok(())
     }
@@ -417,11 +607,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
     fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         tracing::trace!("cache minimizing: {}", Elem::Expr(self.clone()));
+        self.arenaize(g)?;
         if self.minimized.is_none() {
             self.lhs.cache_minimize(g)?;
             self.rhs.cache_minimize(g)?;
             self.cache_exec_op(false, g)?;
-            self.arenaize(g)?;
         }
         Ok(())
     }
@@ -447,17 +637,25 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
     let one = Elem::from(Concrete::from(U256::one()));
     match (l, r) {
         (Elem::Arena(_), r) => {
-            match collapse(&l.dearenaize(analyzer).borrow().clone(), op, r, analyzer) {
-                MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
-                MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
-                MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+            if let Ok(t) = l.dearenaize(analyzer).try_borrow() {
+                match collapse(&t, op, r, analyzer) {
+                    MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
+                    MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
+                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+                }
+            } else {
+                MaybeCollapsed::Not(l, r)
             }
         },
         (l, Elem::Arena(_)) => {
-            match collapse(l, op, &r.dearenaize(analyzer).borrow().clone(), analyzer) {
-                MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
-                MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
-                MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+            if let Ok(t) = r.dearenaize(analyzer).try_borrow() {
+                match collapse(l, op, &t, analyzer) {
+                    MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
+                    MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
+                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e)
+                }
+            } else {
+                MaybeCollapsed::Not(l, r)
             }
         },
         (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),

@@ -35,11 +35,6 @@ pub trait GraphLike {
     /// Add a node to the graph
     fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx {
         let res = self.graph_mut().add_node(node.into());
-        // if res == 81.into() {
-        //     panic!("here");
-        // } else {
-        //     res
-        // }
         res
     }
     /// Get a reference to a node in the graph
@@ -68,9 +63,7 @@ pub trait GraphLike {
     fn range_arena(&self) -> &RangeArena<Self::RangeElem>;
     fn range_arena_mut(&mut self) -> &mut RangeArena<Self::RangeElem>;
 
-    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
-        self.range_arena().map.get(elem).copied()
-    }
+    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize>;
 
     fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize;
 }

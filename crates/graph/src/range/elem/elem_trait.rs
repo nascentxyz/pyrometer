@@ -66,6 +66,13 @@ pub trait RangeElem<T: Ord> {
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
     ) -> Result<bool, Self::GraphError>;
+
+    fn depends_on(
+        &self,
+        var: ContextVarNode,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, Self::GraphError>;
     /// Attempts to replace range elements that form a cyclic dependency by replacing
     /// it with a new node. Ideally no cyclic dependencies occur in ranges as of now
     /// but in theory it can make sense.

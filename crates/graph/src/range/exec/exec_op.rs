@@ -17,8 +17,24 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         maximize: bool,
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, Self::GraphError> {
+        let idx = self.arena_idx(analyzer);
+        if let Some(idx) = idx {
+            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+                if let Elem::Expr(expr) = &*t {
+                    if maximize {
+                        if let Some(MinMaxed::Maximized(max)) = &expr.maximized {
+                            return Ok(*max.clone())
+                        }
+                    } else if let Some(MinMaxed::Minimized(min)) = &expr.minimized {
+                        return Ok(*min.clone())
+                    }
+                }
+            }
+        }
+
         let res = self.exec(self.spread(analyzer)?, maximize, analyzer)?;
-        if let Some(idx) = self.arena_idx(analyzer) {
+        
+        if let Some(idx) = idx {
             if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
                 if let Elem::Expr(expr) = &mut *t {
                     if maximize {
@@ -77,15 +93,15 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         analyzer: &impl GraphBackend,
     ) -> Result<Elem<Concrete>, GraphError> {
         if maximize {
-            if let Some(v) = self.arenaized_flat_cache(maximize, analyzer) {
-                return Ok(*v)
+            if let Some(v) = &self.flattened_max {
+                return Ok(*v.clone());
             }
+        } else if let Some(v) = &self.flattened_min {
+            return Ok(*v.clone());
         }
 
-        if !maximize {
-            if let Some(v) = self.arenaized_flat_cache(maximize, analyzer) {
-                return Ok(*v)
-            }
+        if let Some(v) = self.arenaized_flat_cache(maximize, analyzer) {
+            return Ok(*v)
         }
 
         let (lhs_min, lhs_max, rhs_min, rhs_max) = self.simplify_spread(analyzer)?;
@@ -141,7 +157,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                     };
                     finished = true;
                 }
-                RangeOp::SetLength => {
+                RangeOp::SetLength => {                    
                     ret = if maximize {
                         Ok(lhs_max
                             .range_set_length(&rhs_max)
@@ -266,9 +282,17 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         GraphError,
     > {
         let lhs_min = self.lhs.minimize(analyzer)?;
+        self.lhs.set_arenaized_cache(false, &lhs_min, analyzer);
+        
         let lhs_max = self.lhs.maximize(analyzer)?;
+        self.lhs.set_arenaized_cache(true, &lhs_max, analyzer);
+        
         let rhs_min = self.rhs.minimize(analyzer)?;
+        self.rhs.set_arenaized_cache(false, &rhs_min, analyzer);
+
         let rhs_max = self.rhs.maximize(analyzer)?;
+        self.rhs.set_arenaized_cache(true, &rhs_max, analyzer);
+
         Ok((lhs_min, lhs_max, rhs_min, rhs_max))
     }
 
@@ -285,9 +309,17 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         GraphError,
     > {
         let lhs_min = self.lhs.simplify_minimize(analyzer)?;
+        self.lhs.set_arenaized_flattened(false, &lhs_min, analyzer);
+
         let lhs_max = self.lhs.simplify_maximize(analyzer)?;
+        self.lhs.set_arenaized_flattened(true, &lhs_max, analyzer);
+
         let rhs_min = self.rhs.simplify_minimize(analyzer)?;
+        self.rhs.set_arenaized_flattened(false, &rhs_min, analyzer);
+
         let rhs_max = self.rhs.simplify_maximize(analyzer)?;
+        self.rhs.set_arenaized_flattened(true, &rhs_max, analyzer);
+
         Ok((lhs_min, lhs_max, rhs_min, rhs_max))
     }
 
@@ -363,7 +395,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::GetLength => {
                 if maximize {
                     let new = lhs_max.clone();
-                    let new_max = new.simplify_minimize(analyzer)?;
+                    let new_max = new.simplify_maximize(analyzer)?;
                     let res = new_max.range_get_length();
                     res.unwrap_or_else(|| fallback(self, lhs_min, rhs_min, consts))
                 } else {

@@ -240,7 +240,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
                 if let Some(next_range) = curr.ref_range(self).unwrap() {
                     let nr_min = next_range.evaled_range_min(self).unwrap();
                     let nr_max = next_range.evaled_range_max(self).unwrap();
-                    let nr_excl = &next_range.exclusions;
+                    let nr_excl = &next_range.range_exclusions();
 
                     // check if there was a bound change
                     if report_config.show_all_lines
@@ -266,7 +266,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
                 if let Some(next_range) = next.ref_range(self).unwrap() {
                     let nr_min = next_range.evaled_range_min(self).unwrap();
                     let nr_max = next_range.evaled_range_max(self).unwrap();
-                    let nr_excl = &next_range.exclusions;
+                    let nr_excl = &next_range.range_exclusions();
 
                     // check if there was a bound change
                     if report_config.show_all_lines

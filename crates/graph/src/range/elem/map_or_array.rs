@@ -290,6 +290,21 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         Ok(has_cycle)
     }
 
+    fn depends_on(
+        &self,
+        var: ContextVarNode,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
+        let mut deps_on = false;
+        deps_on |= self.len.depends_on(var, seen, analyzer)?;
+        self.val.iter().try_for_each(|(_, val)| {
+            deps_on |= val.0.depends_on(var, seen, analyzer)?;
+            Ok(())
+        })?;
+        Ok(deps_on)
+    }
+
     fn flatten(
         &self,
         maximize: bool,

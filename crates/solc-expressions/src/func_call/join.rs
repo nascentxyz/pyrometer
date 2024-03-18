@@ -1,3 +1,4 @@
+use graph::SolcRange;
 use shared::AnalyzerLike;
 use graph::nodes::Concrete;
 use shared::NodeIdx;
@@ -66,7 +67,7 @@ pub trait FuncJoiner:
                                 new_var.name = new_name.clone();
                                 new_var.display_name = new_name;
                                 if let Some(mut range) = new_var.ty.take_range() {
-                                    let mut range = range.take_flattened_range(self).unwrap();
+                                    let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                                     replacement_map.iter().for_each(|(replace, replacement)| {
                                         range.replace_dep(*replace, replacement.clone(), self);
                                     });
@@ -88,7 +89,7 @@ pub trait FuncJoiner:
                                             new_var.name = new_name.clone();
                                             new_var.display_name = new_name;
                                             if let Some(mut range) = new_var.ty.take_range() {
-                                                let mut range = range.take_flattened_range(self).unwrap();
+                                                let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                                                 replacement_map.iter().for_each(|(replace, replacement)| {
                                                     range.replace_dep(*replace, replacement.clone(), self);
                                                 });
@@ -116,7 +117,7 @@ pub trait FuncJoiner:
                             .try_for_each(|dep| {
                                 let mut new_var = dep.underlying(self)?.clone();
                                 if let Some(mut range) = new_var.ty.take_range() {
-                                    let mut range = range.take_flattened_range(self).unwrap();
+                                    let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                                     replacement_map.iter().for_each(|(replace, replacement)| {
                                         range.replace_dep(*replace, replacement.clone(), self);
                                     });
@@ -175,7 +176,7 @@ pub trait FuncJoiner:
                             new_var.name = new_name.clone();
                             new_var.display_name = new_name;
                             if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range = range.take_flattened_range(self).unwrap();
+                                let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                                 replacement_map.iter().for_each(|(replace, replacement)| {
                                     range.replace_dep(*replace, replacement.clone(), self);
                                 });
@@ -199,7 +200,7 @@ pub trait FuncJoiner:
                                         new_var.name = new_name.clone();
                                         new_var.display_name = new_name;
                                         if let Some(mut range) = new_var.ty.take_range() {
-                                            let mut range = range.take_flattened_range(self).unwrap();
+                                            let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                                             replacement_map.iter().for_each(|(replace, replacement)| {
                                                 range.replace_dep(*replace, replacement.clone(), self);
                                             });
@@ -227,7 +228,7 @@ pub trait FuncJoiner:
                         .try_for_each(|dep| {
                             let mut new_var = dep.underlying(self)?.clone();
                             if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range = range.take_flattened_range(self).unwrap();
+                                let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                                 replacement_map.iter().for_each(|(replace, replacement)| {
                                     range.replace_dep(*replace, replacement.clone(), self);
                                 });

@@ -27,7 +27,8 @@ impl ContextNode {
         underlying_mut
             .expr_ret_stack
             .iter()
-            .for_each(|elem| println!("{}", elem.debug_str(analyzer)));
+            .enumerate()
+            .for_each(|(i, elem)| println!("{i}. {}", elem.debug_str(analyzer)));
         Ok(())
     }
 
@@ -212,6 +213,10 @@ impl ContextNode {
         loc: Loc,
         analyzer: &mut (impl GraphBackend + AnalyzerBackend),
     ) -> Result<ExprRet, GraphError> {
+        tracing::trace!(
+            "moving expr to {}",
+            self.path(analyzer)
+        );
         match expr {
             ExprRet::SingleLiteral(var) => Ok(ExprRet::SingleLiteral(
                 self.maybe_move_var(var.into(), loc, analyzer)?.into(),
@@ -239,6 +244,11 @@ impl ContextNode {
         let var = var.latest_version(analyzer);
         if let Some(ctx) = var.maybe_ctx(analyzer) {
             if ctx != *self {
+                tracing::trace!(
+                    "moving var {} from {}",
+                    ctx.path(analyzer),
+                    self.path(analyzer)
+                );
                 let mut new_cvar = var.latest_version(analyzer).underlying(analyzer)?.clone();
                 new_cvar.loc = Some(loc);
 

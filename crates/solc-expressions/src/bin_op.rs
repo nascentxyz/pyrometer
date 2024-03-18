@@ -720,6 +720,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .set_range_min(self, expr.clone())
                     .into_expr_err(loc)?;
                 out_var.set_range_max(self, expr).into_expr_err(loc)?;
+
+                self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
                 ctx.push_expr(ExprRet::Single(out_var.into()), self)
                     .into_expr_err(loc)?;
                 Ok(())

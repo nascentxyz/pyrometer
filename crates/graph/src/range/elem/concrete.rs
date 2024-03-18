@@ -62,6 +62,15 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(false)
     }
 
+    fn depends_on(
+        &self,
+        var: ContextVarNode,
+        seen: &mut Vec<ContextVarNode>,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, Self::GraphError> {
+        Ok(false)
+    }
+
     fn flatten(
         &self,
         _maximize: bool,

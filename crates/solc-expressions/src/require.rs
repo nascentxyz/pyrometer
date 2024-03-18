@@ -873,7 +873,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 return Ok(None);
             }
 
-            ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+            ctx.add_ctx_dep(conditional_cvar, self).into_expr_err(loc)?;
         }
 
         tracing::trace!(
@@ -1014,7 +1014,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     nonconst_var.set_range_max(self, max).into_expr_err(loc)?;
                 } else {
                     // just add as an exclusion
-                    nonconst_range.add_range_exclusion(elem);
+                    let idx = self.range_arena_idx_or_upsert(elem);
+                    nonconst_range.add_range_exclusion(idx);
                     nonconst_var
                         .set_range_exclusions(self, nonconst_range.exclusions)
                         .into_expr_err(loc)?;
@@ -1197,14 +1198,16 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
                 // just add as an exclusion
-                lhs_range.add_range_exclusion(rhs_elem);
+                let idx = self.range_arena_idx_or_upsert(rhs_elem);
+                lhs_range.add_range_exclusion(idx);
                 new_lhs
                     .set_range_exclusions(self, lhs_range.exclusions)
                     .into_expr_err(loc)?;
 
                 let lhs_elem = Elem::from(new_lhs.latest_version(self));
                 // just add as an exclusion
-                rhs_range.add_range_exclusion(lhs_elem);
+                let idx = self.range_arena_idx_or_upsert(lhs_elem);
+                rhs_range.add_range_exclusion(idx);
                 new_rhs
                     .set_range_exclusions(self, rhs_range.exclusions)
                     .into_expr_err(loc)?;

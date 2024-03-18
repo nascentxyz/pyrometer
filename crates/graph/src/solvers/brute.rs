@@ -97,9 +97,9 @@ impl BruteBinSearchSolver {
                     dep.display_name(analyzer).unwrap()
                 );
             }
-            let r = range.flattened_range(analyzer)?;
+            let r: SolcRange = range.flattened_range(analyzer)?.into_owned().into();
             atomic_idxs.extend(r.dependent_on(analyzer));
-            ranges.insert(*dep, r.into_owned());
+            ranges.insert(*dep, r);
             Ok(())
         })?;
 

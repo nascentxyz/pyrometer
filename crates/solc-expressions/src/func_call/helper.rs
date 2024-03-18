@@ -102,7 +102,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             self.add_if_err(res);
                             let res = node
                                 .latest_version(self)
-                                .try_set_range_exclusions(self, r.exclusions)
+                                .try_set_range_exclusions(self, r.exclusions.clone())
                                 .into_expr_err(loc);
                             self.add_if_err(res);
                         }
@@ -525,7 +525,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             let res = new_input
                                 .set_range_exclusions(
                                     analyzer,
-                                    updated_var_range.range_exclusions(),
+                                    updated_var_range.exclusions.clone(),
                                 )
                                 .into_expr_err(loc);
                             let _ = analyzer.add_if_err(res);
@@ -572,7 +572,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 let _ = new_inheritor_var
                                     .set_range_max(analyzer, r.range_max().into_owned());
                                 let _ = new_inheritor_var
-                                    .set_range_exclusions(analyzer, r.range_exclusions());
+                                    .set_range_exclusions(analyzer, r.exclusions.clone());
                             }
                         } else {
                             let new_in_inheritor =

@@ -238,13 +238,13 @@ pub static LIA_OPS: &[RangeOp] = &[
 ];
 
 pub trait Atomize {
-    fn atoms_or_part(&self, analyzer: &impl GraphBackend) -> AtomOrPart;
-    fn atomize(&self, analyzer: &impl GraphBackend) -> Option<SolverAtom>;
+    fn atoms_or_part(&self, analyzer: &mut impl GraphBackend) -> AtomOrPart;
+    fn atomize(&self, analyzer: &mut impl GraphBackend) -> Option<SolverAtom>;
 }
 
 impl Atomize for Elem<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
-    fn atoms_or_part(&self, analyzer: &impl GraphBackend) -> AtomOrPart {
+    fn atoms_or_part(&self, analyzer: &mut impl GraphBackend) -> AtomOrPart {
         match self {
             Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
@@ -305,16 +305,10 @@ impl Atomize for Elem<Concrete> {
                                 todo!("here4");
                             }
                             (Elem::Concrete(_), Elem::Concrete(_)) => {
+                                expr.clone().arenaize(analyzer);
                                 let res = expr
                                     .exec_op(true, analyzer)
                                     .unwrap();
-                                let ty = if DL_OPS.contains(&expr.op) {
-                                    OpType::DL
-                                } else if CONST_OPS.contains(&expr.op) {
-                                    OpType::Const
-                                } else {
-                                    OpType::Other
-                                };
                                 if res == Elem::Expr(expr.clone()) {
                                     AtomOrPart::Part(res)
                                 } else {
@@ -343,7 +337,7 @@ impl Atomize for Elem<Concrete> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn atomize(&self, analyzer: &impl GraphBackend) -> Option<SolverAtom> {
+    fn atomize(&self, analyzer: &mut impl GraphBackend) -> Option<SolverAtom> {
         use Elem::*;
 
         match self {
@@ -359,7 +353,18 @@ impl Atomize for Elem<Concrete> {
                 a.update_max_ty();
                 Some(a)
             }
-            Arena(_) => todo!(),
+            Arena(_) => {
+                match &*self.dearenaize(analyzer).borrow() {
+                    e @ Expr(_) => {
+                        let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer) else {
+                            return None;
+                        };
+                        a.update_max_ty();
+                        Some(a)
+                    }
+                    _ => None
+                }
+            }
         }
     }
 }

@@ -4,7 +4,7 @@ use crate::{
 };
 
 use graph::{
-    elem::Elem,
+    elem::{RangeElem, Elem},
     nodes::{ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, GraphError, Node,
 };
@@ -131,7 +131,17 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             Elem::from(rhs_cvar.latest_version(self)),
         );
 
-        let new_lhs = self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?;
+
+
+        let needs_forcible = new_lower_bound.depends_on(lhs_cvar, &mut vec![], self).into_expr_err(loc)?
+        || new_upper_bound.depends_on(lhs_cvar, &mut vec![], self).into_expr_err(loc)?;
+
+        let new_lhs = if needs_forcible {
+            self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?
+        } else {
+            self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?    
+        };
+        
         new_lhs.underlying_mut(self).into_expr_err(loc)?.tmp_of =
             rhs_cvar.tmp_of(self).into_expr_err(loc)?;
         if lhs_cvar.is_storage(self).into_expr_err(loc)? {

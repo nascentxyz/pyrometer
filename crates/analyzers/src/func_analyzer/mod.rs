@@ -56,7 +56,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                 let deps = ctx.ctx_deps(analyzer).unwrap();
                 let deps = deps
                     .iter()
-                    .map(|var| (var.display_name(analyzer).unwrap(), var))
+                    .map(|var| (var.as_controllable_name(analyzer).unwrap(), var))
                     .collect::<BTreeMap<_, _>>();
                 // create the bound strings
                 // let atoms = ctx.dep_atoms(analyzer).unwrap();

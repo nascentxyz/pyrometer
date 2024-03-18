@@ -1,3 +1,5 @@
+use crate::FlattenedRange;
+use crate::elem::Elem;
 use crate::SolcRange;
 use crate::{
     as_dot_str,
@@ -33,7 +35,7 @@ impl ContextNode {
         let mut ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
             let mut range = dep.range(analyzer)?.unwrap();
-            let r: Cow<'_, SolcRange> = range.flattened_range(analyzer)?;
+            let r: Cow<'_, _> = range.flattened_range(analyzer)?;
             ranges.insert(*dep, r.into_owned());
             Ok(())
         })?;
@@ -41,10 +43,10 @@ impl ContextNode {
         Ok(ranges
             .iter()
             .filter_map(|(_dep, range)| {
-                if let Some(atom) = range.min.atomize(analyzer) {
+                if let Some(atom) = Elem::Arena(range.min).atomize(analyzer) {
                     Some(atom)
                 } else {
-                    range.max.atomize(analyzer)
+                    Elem::Arena(range.max).atomize(analyzer)
                 }
             })
             .collect::<Vec<SolverAtom>>())
@@ -89,12 +91,13 @@ impl ContextNode {
                 // dep.cache_flattened_range(analyzer)?;
                 let mut range = dep.range(analyzer)?.unwrap();
                 let r = range.flattened_range(analyzer)?.into_owned();
+                tracing::trace!("flattened: {}", <FlattenedRange as Into<SolcRange>>::into(r.clone()).as_dot_str(analyzer));
                 // add the atomic constraint
-                if let Some(atom) = r.min.atomize(analyzer) {
+                if let Some(atom) = Elem::Arena(r.min).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
                     solver.add_constraints(vec![atom], analyzer);
                     self.underlying_mut(analyzer)?.dl_solver = solver;
-                } else if let Some(atom) = r.max.atomize(analyzer) {
+                } else if let Some(atom) = Elem::Arena(r.max).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
                     solver.add_constraints(vec![atom], analyzer);
                     self.underlying_mut(analyzer)?.dl_solver = solver;

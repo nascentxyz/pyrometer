@@ -42,7 +42,15 @@ impl GraphLike for Analyzer {
         &mut self.range_arena
     }
 
-    fn range_arena_idx_or_upsert(&mut self, mut elem: Self::RangeElem) -> usize {
+    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+        if let Elem::Arena(idx) = elem {
+            Some(*idx)
+        } else {
+            self.range_arena().map.get(elem).copied()    
+        }
+    }
+
+    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
         // tracing::trace!("arenaizing: {}", elem);
         if let Elem::Arena(idx) = elem {
             return idx;
@@ -50,7 +58,7 @@ impl GraphLike for Analyzer {
 
         if let Some(idx) = self.range_arena_idx(&elem) {
             let existing = &self.range_arena().ranges[idx];
-            let Ok(existing) = existing.try_borrow() else {
+            let Ok(existing) = existing.try_borrow_mut() else {
                 return idx;
             };
             let (min_cached, max_cached) = existing.is_min_max_cached(self);
@@ -661,6 +669,10 @@ impl GraphLike for G<'_> {
         panic!("Should not call this")
     }
     fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        panic!("Should not call this")
+    }
+
+    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
         panic!("Should not call this")
     }
 

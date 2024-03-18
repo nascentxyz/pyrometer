@@ -60,7 +60,7 @@ pub struct DLSolveResult {
 }
 
 impl DLSolver {
-    pub fn new(mut constraints: Vec<SolverAtom>, analyzer: &impl GraphBackend) -> Self {
+    pub fn new(mut constraints: Vec<SolverAtom>, analyzer: &mut impl GraphBackend) -> Self {
         constraints.iter_mut().for_each(|c| {
             c.update_max_ty();
         });
@@ -97,7 +97,7 @@ impl DLSolver {
     pub fn add_constraints(
         &mut self,
         constraints: Vec<SolverAtom>,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>> {
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
@@ -190,13 +190,14 @@ impl DLSolver {
                         .all(|constraint| constraint.ty == OpType::DL)
                 })
             })
+            .collect::<Vec<_>>()
+            .iter()
             .map(|constraint| {
                 (
                     constraint.clone(),
-                    Self::dl_atom_normalize(constraint, analyzer),
+                    Self::dl_atom_normalize(constraint.clone(), analyzer),
                 )
-            })
-            .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
+            }).collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
     }
 
     pub fn dl_solvable_constraints(&self) -> Vec<Vec<Vec<SolverAtom>>> {
@@ -515,7 +516,7 @@ impl DLSolver {
     /// Needed for running negative cycle check. Additionally, if we have an `OR`, we
     pub fn dl_atom_normalize(
         constraint: SolverAtom,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> Vec<Vec<SolverAtom>> {
         // println!("normalizing: {}", constraint.into_expr_elem());
         let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
