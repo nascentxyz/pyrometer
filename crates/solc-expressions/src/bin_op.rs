@@ -146,7 +146,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
         op: RangeOp,
-        mut assign: bool,
+        assign: bool,
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!(
             "binary op: {} {} {}, assign: {}",
@@ -183,7 +183,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         //         }
         //     }
         // }
-        
 
         let unchecked = match op {
             RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) | RangeOp::Div(u) => u,
@@ -204,8 +203,12 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             new
         } else {
             // TODO: simplify the expression such that we match an existing tmp if possible
-            let mut new_lhs_underlying = ContextVar::new_bin_op_tmp(lhs_cvar, op, rhs_cvar, ctx, loc, self).into_expr_err(loc)?;
-            if let Ok(Some(existing)) = self.get_unchanged_tmp_variable(&new_lhs_underlying.display_name, ctx) {
+            let mut new_lhs_underlying =
+                ContextVar::new_bin_op_tmp(lhs_cvar, op, rhs_cvar, ctx, loc, self)
+                    .into_expr_err(loc)?;
+            if let Ok(Some(existing)) =
+                self.get_unchanged_tmp_variable(&new_lhs_underlying.display_name, ctx)
+            {
                 self.advance_var_in_ctx_forcible(existing, loc, ctx, true)?
             } else {
                 // will potentially mutate the ty from concrete to builtin with a concrete range

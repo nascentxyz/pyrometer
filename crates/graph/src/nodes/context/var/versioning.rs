@@ -64,14 +64,19 @@ impl ContextVarNode {
                 .graph()
                 .edges_directed(current_node.0.into(), Direction::Outgoing)
                 .filter(|edge| {
-                    matches!(edge.weight(), Edge::Context(ContextEdge::InheritedVariable) | Edge::Context(ContextEdge::InputVariable))
+                    matches!(
+                        edge.weight(),
+                        Edge::Context(ContextEdge::InheritedVariable)
+                            | Edge::Context(ContextEdge::InputVariable)
+                    )
                 })
                 .map(|edge| ContextVarNode::from(edge.target()))
                 .take(1)
-                .next() {
+                .next()
+            {
                 global_first = target_node.first_version(analyzer);
                 stack.push(global_first);
-                pushed = true;     
+                pushed = true;
             }
 
             if !pushed {
@@ -125,13 +130,18 @@ impl ContextVarNode {
                 .graph()
                 .edges_directed(current_node.0.into(), Direction::Outgoing)
                 .filter(|edge| {
-                    matches!(edge.weight(), Edge::Context(ContextEdge::InheritedVariable) | Edge::Context(ContextEdge::InputVariable))
+                    matches!(
+                        edge.weight(),
+                        Edge::Context(ContextEdge::InheritedVariable)
+                            | Edge::Context(ContextEdge::InputVariable)
+                    )
                 })
                 .map(|edge| ContextVarNode::from(edge.target()))
                 .take(1)
-                .next() {
+                .next()
+            {
                 stack.push(target_node);
-                pushed = true;  
+                pushed = true;
             }
 
             if !pushed {

@@ -1,6 +1,4 @@
 use crate::elem::Elem;
-use crate::FlattenedRange;
-use crate::SolcRange;
 use crate::{
     as_dot_str,
     nodes::{ContextNode, ContextVarNode},
@@ -25,13 +23,11 @@ impl ContextNode {
         // println!("checking unreachable: {}", self.path(analyzer));
         let mut solver = self.dl_solver(analyzer)?.clone();
         match solver.solve_partial(analyzer)? {
-            SolveStatus::Unsat => {
-                Ok(true)
-            },
+            SolveStatus::Unsat => Ok(true),
             e => {
                 // println!("other: {e:?}");
                 Ok(false)
-            },
+            }
         }
     }
 
@@ -105,16 +101,20 @@ impl ContextNode {
                 if let Some(atom) = Elem::Arena(r.min).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
                     let constraints = solver.add_constraints(vec![atom], analyzer);
-                    constraints.into_iter().for_each(|(constraint, normalized)| {
-                        solver.add_constraint(constraint, normalized);
-                    });
+                    constraints
+                        .into_iter()
+                        .for_each(|(constraint, normalized)| {
+                            solver.add_constraint(constraint, normalized);
+                        });
                     self.underlying_mut(analyzer)?.dl_solver = solver;
                 } else if let Some(atom) = Elem::Arena(r.max).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
                     let constraints = solver.add_constraints(vec![atom], analyzer);
-                    constraints.into_iter().for_each(|(constraint, normalized)| {
-                        solver.add_constraint(constraint, normalized);
-                    });
+                    constraints
+                        .into_iter()
+                        .for_each(|(constraint, normalized)| {
+                            solver.add_constraint(constraint, normalized);
+                        });
                     self.underlying_mut(analyzer)?.dl_solver = solver;
                 }
 

@@ -134,12 +134,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         }
     }
 
-    fn get_tmp_variable(
-        &mut self,
-        name: &str,
-        ctx: ContextNode,
-    ) -> Option<ContextVarNode> {
-        let cvar = ctx.tmp_var_by_name(self, &name)?;
+    fn get_tmp_variable(&mut self, name: &str, ctx: ContextNode) -> Option<ContextVarNode> {
+        let cvar = ctx.tmp_var_by_name(self, name)?;
         Some(cvar.latest_version(self))
     }
 
@@ -149,7 +145,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         ctx: ContextNode,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         let Some(var) = self.get_tmp_variable(name, ctx) else {
-            return Ok(None)
+            return Ok(None);
         };
 
         if let Some(tmp) = var.tmp_of(self)? {
@@ -158,12 +154,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 let newest_min = latest.evaled_range_min(self)?;
                 let curr_min = tmp.lhs.evaled_range_min(self)?;
                 if newest_min != curr_min {
-                    return Ok(None)
+                    return Ok(None);
                 }
                 let newest_max = latest.evaled_range_max(self)?;
                 let curr_max = tmp.lhs.evaled_range_max(self)?;
                 if newest_max != curr_max {
-                    return Ok(None)
+                    return Ok(None);
                 }
             }
 
@@ -173,12 +169,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     let newest_min = latest.evaled_range_min(self)?;
                     let curr_min = rhs.evaled_range_min(self)?;
                     if newest_min != curr_min {
-                        return Ok(None)
+                        return Ok(None);
                     }
                     let newest_max = latest.evaled_range_max(self)?;
                     let curr_max = rhs.evaled_range_max(self)?;
                     if newest_max != curr_max {
-                        return Ok(None)
+                        return Ok(None);
                     }
                 }
             }

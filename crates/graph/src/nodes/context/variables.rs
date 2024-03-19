@@ -48,7 +48,7 @@ impl ContextNode {
             let name = var.name(analyzer)?;
             let vars = &mut self.underlying_mut(analyzer)?.cache.vars;
             vars.insert(name, var);
-            Ok(())    
+            Ok(())
         }
     }
 
@@ -71,7 +71,11 @@ impl ContextNode {
             .copied()
     }
 
-    pub fn tmp_var_by_name(&self, analyzer: &impl GraphBackend, name: &str) -> Option<ContextVarNode> {
+    pub fn tmp_var_by_name(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Option<ContextVarNode> {
         self.underlying(analyzer)
             .unwrap()
             .cache

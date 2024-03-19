@@ -330,7 +330,7 @@ impl Atomize for Elem<Concrete> {
                     }
                     (AtomOrPart::Atom(l_atom), r @ AtomOrPart::Part(_)) => {
                         // println!("atom part");
-                        
+
                         AtomOrPart::Atom(l_atom.add_rhs(expr.op, r))
                     }
                     (l @ AtomOrPart::Part(_), AtomOrPart::Atom(r_atom)) => {

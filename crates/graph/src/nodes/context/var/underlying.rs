@@ -84,8 +84,7 @@ impl ContextVar {
             ),
             storage: None,
             is_tmp: true,
-            is_symbolic: lhs_cvar.is_symbolic(analyzer)?
-                || rhs_cvar.is_symbolic(analyzer)?,
+            is_symbolic: lhs_cvar.is_symbolic(analyzer)? || rhs_cvar.is_symbolic(analyzer)?,
             is_return: false,
             tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
             dep_on: {

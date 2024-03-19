@@ -496,7 +496,6 @@ impl DLSolver {
             );
         });
 
-
         if find_negative_cycle(&self.graph, root_node, analyzer).is_some() {
             return Ok(DLSolveResult {
                 status: SolveStatus::Unsat,
@@ -619,7 +618,7 @@ impl DLSolver {
                                 })),
                             }
                         }
-                        _ => constraint
+                        _ => constraint,
                     }
                 } else {
                     // good
@@ -640,7 +639,7 @@ impl DLSolver {
                                     ty: OpType::DL,
                                     lhs: constraint.lhs,
                                     op: RangeOp::Add(true),
-                                    rhs: rhs.rhs                                       
+                                    rhs: rhs.rhs,
                                 })),
                                 op: constraint.op,
                                 rhs: rhs.lhs,
@@ -654,22 +653,21 @@ impl DLSolver {
                                     ty: OpType::DL,
                                     lhs: constraint.lhs,
                                     op: RangeOp::Sub(true),
-                                    rhs: rhs.rhs                                       
+                                    rhs: rhs.rhs,
                                 })),
                                 op: constraint.op,
                                 rhs: rhs.lhs,
                             }
                         }
-                        _ => constraint
+                        _ => constraint,
                     }
                 } else {
                     // good
                     constraint
                 }
             }
-            _ => constraint
+            _ => constraint,
         };
-
 
         println!("normalizing: {}", constraint.into_expr_elem());
         match constraint.op {
@@ -820,7 +818,7 @@ impl DLSolver {
                             },
                             analyzer,
                         )
-                            // }
+                        // }
                         // }
                     }
                     _ => panic!("here"),
