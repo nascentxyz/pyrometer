@@ -3,7 +3,7 @@
     - [x] Cleanup repo (remove unnecessary files, automate testing, etc.)
     - [x] Graceful error handling
     - [ ] `join` operations between contexts
-    - [ ] Trait/Lang separation cleanup
+    - [x] Trait/Lang separation cleanup
     - [ ] Propogate requirements across variables (i.e. `y = x;` & `x != 0;` therefore `y != 0;`)
 - [ ] Language
     - [x] Better import handling (`foundry.toml` reading?)

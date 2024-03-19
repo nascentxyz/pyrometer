@@ -1,0 +1,37 @@
+[package]
+name = "cli"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+analyzers.workspace = true
+shared.workspace = true
+pyrometer.workspace = true
+graph.workspace = true
+# queries.workspace = true
+
+ariadne.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-tree.workspace = true
+petgraph.workspace = true
+ethers-core.workspace = true
+
+
+clap = { version = "4.1.4", features = ["derive"] }
+
+[[bin]]
+name = "pyrometer"
+path = "src/main.rs"
+
+
+# [profile.release]
+# debug = true

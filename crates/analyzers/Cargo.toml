@@ -1,0 +1,18 @@
+[package]
+name = "analyzers"
+description = "Pyrometer's builtin analyzers"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+graph.workspace = true
+shared.workspace = true
+
+solang-parser.workspace = true
+ariadne.workspace = true
