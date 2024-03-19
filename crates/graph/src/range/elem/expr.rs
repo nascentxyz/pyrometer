@@ -62,6 +62,32 @@ impl Hash for RangeExpr<Concrete> {
 }
 
 impl RangeExpr<Concrete> {
+    pub fn is_noop(&self) -> (bool, usize) {
+        let one = Elem::from(Concrete::from(U256::one()));
+        let zero = Elem::from(Concrete::from(U256::zero()));
+        match self.op {
+            RangeOp::Mul(_) | RangeOp::Div(_) => {
+                if *self.lhs == one {
+                    (true, 0)
+                } else if *self.rhs == one {
+                    (true, 1)
+                } else {
+                    (false, 0)
+                }
+            }
+            RangeOp::Add(_) | RangeOp::Sub(_) => {
+                if *self.lhs == zero {
+                    (true, 0)
+                } else if *self.rhs == zero {
+                    (true, 1)
+                } else {
+                    (false, 0)
+                }
+            }
+            _ => (false, 0),            
+        }
+    }
+
     pub fn inverse_if_boolean(&self) -> Option<Self> {
         if EQ_OPS.contains(&self.op) {
             if SINGLETON_EQ_OPS.contains(&self.op) {

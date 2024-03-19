@@ -1,3 +1,4 @@
+use crate::elem::{collapse, MaybeCollapsed};
 use crate::range::exec_traits::ExecOp;
 use crate::{
     nodes::{Concrete, ContextVarNode},
@@ -253,15 +254,26 @@ pub trait Atomize {
 impl Atomize for Elem<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
     fn atoms_or_part(&self, analyzer: &mut impl GraphBackend) -> AtomOrPart {
+
         match self {
             Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
-            e @ Elem::Expr(expr) => {
-                // println!("atoms or part was expr: {e}");
+            Elem::Expr(expr) => {
+                match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
+                    MaybeCollapsed::Concretes(_l, _r) => {
+                        let exec_res = expr.exec_op(true, analyzer).unwrap();
+                        return exec_res.atoms_or_part(analyzer);
+                    }
+                    MaybeCollapsed::Collapsed(elem) => {
+                        return elem.atoms_or_part(analyzer);
+                    }
+                    MaybeCollapsed::Not(..) => {}
+                }
+
                 match (
                     expr.lhs.atoms_or_part(analyzer),
-                    expr.rhs.atoms_or_part(analyzer),
+                    expr.rhs.atoms_or_part(analyzer)
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         // println!("part part");
