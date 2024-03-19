@@ -73,6 +73,8 @@ impl ModifierState {
 pub struct ContextCache {
     /// Variables in this context
     pub vars: BTreeMap<String, ContextVarNode>,
+    /// Temporary variables in this context
+    pub tmp_vars: BTreeMap<String, ContextVarNode>,
     /// Visible functions from this context
     pub visible_funcs: Option<Vec<FunctionNode>>,
     /// Visible structs from this context

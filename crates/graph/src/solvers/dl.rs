@@ -40,6 +40,7 @@ impl PartialEq for DLSolver {
 
 impl Eq for DLSolver {}
 
+#[derive(Debug)]
 pub enum SolveStatus {
     Unsat,
     Sat {
@@ -53,6 +54,7 @@ pub enum SolveStatus {
 
 pub type SolveMap = BTreeMap<ContextVarNode, Elem<Concrete>>;
 
+#[derive(Debug)]
 pub struct DLSolveResult {
     pub status: SolveStatus,
     pub added_atoms: Vec<AtomOrPart>,
@@ -85,7 +87,9 @@ impl DLSolver {
         mut constraint: SolverAtom,
         normalized_forms: Vec<Vec<SolverAtom>>,
     ) {
+        // println!("adding constraint");
         if !self.constraints.contains(&constraint) {
+            // println!("didnt contain");
             constraint.update_max_ty();
             self.constraints.push(constraint.clone());
             self.normalized_constraints
@@ -99,6 +103,7 @@ impl DLSolver {
         constraints: Vec<SolverAtom>,
         analyzer: &mut impl GraphBackend,
     ) -> BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>> {
+        // println!("adding constriants: {constraints:#?}");
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on(analyzer);
@@ -116,10 +121,14 @@ impl DLSolver {
             });
         });
 
+        // println!("dep_to_solve_ty: {dep_to_solve_ty:#?}");
+
         let constraints: Vec<_> = constraints
             .iter()
             .filter(|c| !self.constraints.contains(c))
             .collect();
+
+        // println!("unique constraints: {constraints:#?}");
 
         constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on(analyzer);
@@ -137,6 +146,8 @@ impl DLSolver {
             });
         });
 
+        // println!("dep_to_solve_ty2: {dep_to_solve_ty:#?}");
+
         // filter out self equality
         let non_self_equality: Vec<_> = dep_to_solve_ty
             .iter()
@@ -147,6 +158,8 @@ impl DLSolver {
                 Some((*dep, atoms))
             })
             .collect();
+
+        // println!("non_self_equality: {non_self_equality:#?}");
         // solve constant deps
         let const_solves = non_self_equality
             .iter()
@@ -161,24 +174,26 @@ impl DLSolver {
                 None
             })
             .collect::<BTreeMap<_, _>>();
+        // println!("const_solves: {const_solves:#?}");
         self.const_solves = const_solves.clone();
 
         // widdle down constraints based on if we constant solved them
-        let still_unknown_constraints: Vec<_> = self
-            .constraints
-            .clone()
+        let still_unknown_constraints: Vec<_> = constraints
             .into_iter()
             .filter(|constraint| {
                 let deps = constraint.dependent_on(analyzer);
                 !deps.iter().all(|dep| const_solves.contains_key(dep))
             })
+            .cloned()
             .collect();
+
+        // println!("still_unknown_constraints: {still_unknown_constraints:#?}");
 
         if still_unknown_constraints.is_empty() {
             return Default::default();
         }
 
-        still_unknown_constraints
+        let res = still_unknown_constraints
             .into_iter()
             .filter(|constraint| {
                 let deps = constraint.dependent_on(analyzer);
@@ -195,10 +210,12 @@ impl DLSolver {
             .map(|constraint| {
                 (
                     constraint.clone(),
-                    Self::dl_atom_normalize(constraint.clone(), analyzer),
+                    Self::dl_atom_normalize(constraint.clone().clone(), analyzer),
                 )
             })
-            .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>()
+            .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>();
+        // println!("normalized map: {res:#?}");
+        res
     }
 
     pub fn dl_solvable_constraints(&self) -> Vec<Vec<Vec<SolverAtom>>> {
@@ -209,6 +226,7 @@ impl DLSolver {
         &mut self,
         analyzer: &impl GraphBackend,
     ) -> Result<SolveStatus, GraphError> {
+        // println!("constraints {:#?}", self.constraints);
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on(analyzer);
@@ -225,6 +243,8 @@ impl DLSolver {
                 }
             });
         });
+
+        // println!("dep to solve: {dep_to_solve_ty:#?}");
 
         if let Some(_self_inequality) = dep_to_solve_ty.iter().find(|(_dep, atoms)| {
             atoms.iter().any(|atom| {
@@ -246,6 +266,8 @@ impl DLSolver {
                 Some((*dep, atoms))
             })
             .collect();
+
+        // println!("non_self_equality: {non_self_equality:#?}");
         // solve constant deps
         let const_solves = non_self_equality
             .iter()
@@ -274,6 +296,8 @@ impl DLSolver {
             })
             .collect();
 
+        // println!("still unknown: {still_unknown_constraints:#?}");
+
         if still_unknown_constraints.is_empty() {
             // TODO: Check that the constraints still hold
             return Ok(SolveStatus::Sat {
@@ -283,6 +307,7 @@ impl DLSolver {
         }
 
         let dl_solvable = self.dl_solvable_constraints();
+        // println!("dl solvable: {dl_solvable:#?}");
         // constraints -> paths -> constraint
 
         let basic: Vec<SolverAtom> = dl_solvable
@@ -294,10 +319,13 @@ impl DLSolver {
 
         // check if basics are unsat, if so the extra constraints wont help that
         // so its truly unsat
+        // println!("basic: {basic:#?}");
         let basic_solve = self.dl_solve(basic.clone(), analyzer)?;
         if matches!(basic_solve.status, SolveStatus::Unsat) {
             return Ok(SolveStatus::Unsat);
         }
+
+        // println!("basic solve: {basic_solve:?}");
 
         let multi: Vec<_> = dl_solvable
             .iter()
@@ -468,6 +496,7 @@ impl DLSolver {
             );
         });
 
+
         if find_negative_cycle(&self.graph, root_node, analyzer).is_some() {
             return Ok(DLSolveResult {
                 status: SolveStatus::Unsat,
@@ -519,7 +548,6 @@ impl DLSolver {
         constraint: SolverAtom,
         analyzer: &mut impl GraphBackend,
     ) -> Vec<Vec<SolverAtom>> {
-        // println!("normalizing: {}", constraint.into_expr_elem());
         let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
         let false_part = AtomOrPart::Part(Elem::from(Concrete::from(false)));
         let true_part = AtomOrPart::Part(Elem::from(Concrete::from(true)));
@@ -546,6 +574,104 @@ impl DLSolver {
             }
             _ => {}
         }
+
+        // x <==> y
+        // x + x + y => AtomOrPart::Atom(Atom { lhs x, op: +, rhs: AtomOrPart::Atom(Atom { lhs: x, op: +, rhs: y})})
+        let lhs_symbs = constraint.lhs.dependent_on(analyzer);
+        let rhs_symbs = constraint.rhs.dependent_on(analyzer);
+        let constraint = match (!lhs_symbs.is_empty(), !rhs_symbs.is_empty()) {
+            (true, true) => {
+                // TODO: in theory could have x <op> x + y
+                // which should simplify to 0 <op> y
+                constraint
+            }
+            (true, false) => {
+                // check for two vars on lhs
+                if lhs_symbs.len() > 1 {
+                    // two or more
+                    let lhs = constraint.lhs.expect_atom();
+                    match lhs.op {
+                        RangeOp::Sub(_) => {
+                            // x - y <op> z ==> x <op> z + y
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: lhs.lhs,
+                                op: constraint.op,
+                                rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
+                                    ty: OpType::DL,
+                                    lhs: constraint.rhs,
+                                    op: RangeOp::Add(true),
+                                    rhs: lhs.rhs,
+                                })),
+                            }
+                        }
+                        RangeOp::Add(_) => {
+                            // x + y <op> z ==> x <op> z - y
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: lhs.lhs,
+                                op: constraint.op,
+                                rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
+                                    ty: OpType::DL,
+                                    lhs: constraint.rhs,
+                                    op: RangeOp::Sub(true),
+                                    rhs: lhs.rhs,
+                                })),
+                            }
+                        }
+                        _ => constraint
+                    }
+                } else {
+                    // good
+                    constraint
+                }
+            }
+            (false, true) => {
+                // check for two vars on lhs
+                if rhs_symbs.len() > 1 {
+                    // two or more
+                    let rhs = constraint.rhs.expect_atom();
+                    match rhs.op {
+                        RangeOp::Sub(_) => {
+                            // z <op> x - y ==> z + y <op> x
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: Rc::new(AtomOrPart::Atom(SolverAtom {
+                                    ty: OpType::DL,
+                                    lhs: constraint.lhs,
+                                    op: RangeOp::Add(true),
+                                    rhs: rhs.rhs                                       
+                                })),
+                                op: constraint.op,
+                                rhs: rhs.lhs,
+                            }
+                        }
+                        RangeOp::Add(_) => {
+                            // z <op> x + y ==> z - y <op> x
+                            SolverAtom {
+                                ty: OpType::DL,
+                                lhs: Rc::new(AtomOrPart::Atom(SolverAtom {
+                                    ty: OpType::DL,
+                                    lhs: constraint.lhs,
+                                    op: RangeOp::Sub(true),
+                                    rhs: rhs.rhs                                       
+                                })),
+                                op: constraint.op,
+                                rhs: rhs.lhs,
+                            }
+                        }
+                        _ => constraint
+                    }
+                } else {
+                    // good
+                    constraint
+                }
+            }
+            _ => constraint
+        };
+
+
+        println!("normalizing: {}", constraint.into_expr_elem());
         match constraint.op {
             RangeOp::Eq => {
                 // convert `x == y` into `x <= y - 0 || y <= x - 0`
@@ -631,6 +757,8 @@ impl DLSolver {
                 let rhs_symb = !constraint.rhs.dependent_on(analyzer).is_empty();
                 match (lhs_symb, rhs_symb) {
                     (true, true) => {
+                        // x < y
+                        // ==> x - y <= -1
                         let new_lhs = AtomOrPart::Atom(
                             constraint
                                 .lhs
@@ -652,6 +780,8 @@ impl DLSolver {
                         )
                     }
                     (true, false) => {
+                        // x < k
+                        // ==> x - 0 <= k
                         let new_lhs = AtomOrPart::Atom(
                             constraint
                                 .lhs
@@ -672,6 +802,9 @@ impl DLSolver {
                         )
                     }
                     (false, true) => {
+                        // k < x ==> k < (x - y)
+                        // k < x
+                        // ==>  0 - x <= k
                         let new_lhs = AtomOrPart::Atom(
                             Elem::from(Concrete::from(U256::zero()))
                                 .wrapping_sub(constraint.rhs.into_elem())
@@ -687,6 +820,8 @@ impl DLSolver {
                             },
                             analyzer,
                         )
+                            // }
+                        // }
                     }
                     _ => panic!("here"),
                 }
@@ -741,22 +876,44 @@ impl DLSolver {
                             }
                         }
                         RangeOp::Add(_) => {
-                            // (k + x <= y) || (x + k <= y)
-                            //   ==> (x <= y - k)
-                            Self::dl_atom_normalize(
-                                SolverAtom {
-                                    ty: constraint.ty,
-                                    lhs: lhs_atom.lhs,
-                                    op: constraint.op,
-                                    rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
+                            if lhs_atom.lhs == zero_part.clone().into() {
+                                Self::dl_atom_normalize(
+                                    SolverAtom {
                                         ty: constraint.ty,
-                                        lhs: constraint.rhs,
-                                        op: RangeOp::Sub(true),
-                                        rhs: lhs_atom.rhs,
-                                    })),
-                                },
-                                analyzer,
-                            )
+                                        lhs: lhs_atom.rhs,
+                                        op: constraint.op,
+                                        rhs: constraint.rhs,
+                                    },
+                                    analyzer,
+                                )
+                            } else if lhs_atom.rhs == zero_part.into() {
+                                Self::dl_atom_normalize(
+                                    SolverAtom {
+                                        ty: constraint.ty,
+                                        lhs: lhs_atom.lhs,
+                                        op: constraint.op,
+                                        rhs: constraint.rhs,
+                                    },
+                                    analyzer,
+                                )
+                            } else {
+                                // (k + x <= y) || (x + k <= y)
+                                //   ==> (x <= y - k)
+                                Self::dl_atom_normalize(
+                                    SolverAtom {
+                                        ty: constraint.ty,
+                                        lhs: lhs_atom.lhs,
+                                        op: constraint.op,
+                                        rhs: Rc::new(AtomOrPart::Atom(SolverAtom {
+                                            ty: constraint.ty,
+                                            lhs: constraint.rhs,
+                                            op: RangeOp::Sub(true),
+                                            rhs: lhs_atom.rhs,
+                                        })),
+                                    },
+                                    analyzer,
+                                )
+                            }
                         }
                         RangeOp::And => {
                             let mut res = Self::dl_atom_normalize(

@@ -890,12 +890,13 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
             tracing::trace!("checking unsat");
             any_unsat |= new_var_range.unsat(self);
+
+            ctx.add_ctx_dep(conditional_cvar, self).into_expr_err(loc)?;
+
             if any_unsat || ctx.unreachable(self).into_expr_err(loc)? {
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                 return Ok(None);
             }
-
-            ctx.add_ctx_dep(conditional_cvar, self).into_expr_err(loc)?;
         }
 
         tracing::trace!(

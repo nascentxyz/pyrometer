@@ -77,6 +77,14 @@ impl AtomOrPart {
         }
     }
 
+    pub fn expect_part(&self) -> Elem<Concrete> {
+        if let AtomOrPart::Part(part) = self {
+            part.clone()
+        } else {
+            panic!("Expected part, was atom: {self:?}")
+        }
+    }
+
     pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         match self {
             AtomOrPart::Part(e) => e.dependent_on(analyzer),
@@ -249,13 +257,14 @@ impl Atomize for Elem<Concrete> {
             Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
-            Elem::Expr(expr) => {
-                // println!("atoms or part: was expr: {:?} {} {:?}", expr.lhs.atoms_or_part(), expr.op.to_string(), expr.rhs.atoms_or_part());
+            e @ Elem::Expr(expr) => {
+                // println!("atoms or part was expr: {e}");
                 match (
                     expr.lhs.atoms_or_part(analyzer),
                     expr.rhs.atoms_or_part(analyzer),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
+                        // println!("part part");
                         match (l, r) {
                             (_, Elem::Arena(_)) => todo!(),
                             (Elem::Arena(_), _) => todo!(),
@@ -305,7 +314,7 @@ impl Atomize for Elem<Concrete> {
                                 todo!("here4");
                             }
                             (Elem::Concrete(_), Elem::Concrete(_)) => {
-                                expr.clone().arenaize(analyzer);
+                                let _ = expr.clone().arenaize(analyzer);
                                 let res = expr.exec_op(true, analyzer).unwrap();
                                 if res == Elem::Expr(expr.clone()) {
                                     AtomOrPart::Part(res)
@@ -320,12 +329,16 @@ impl Atomize for Elem<Concrete> {
                         }
                     }
                     (AtomOrPart::Atom(l_atom), r @ AtomOrPart::Part(_)) => {
+                        // println!("atom part");
+                        
                         AtomOrPart::Atom(l_atom.add_rhs(expr.op, r))
                     }
                     (l @ AtomOrPart::Part(_), AtomOrPart::Atom(r_atom)) => {
+                        // println!("part atom");
                         AtomOrPart::Atom(r_atom.add_lhs(expr.op, l))
                     }
                     (AtomOrPart::Atom(l_atoms), AtomOrPart::Atom(r_atoms)) => {
+                        // println!("atom atom");
                         AtomOrPart::Atom(r_atoms.add_lhs(expr.op, AtomOrPart::Atom(l_atoms)))
                     }
                 }
@@ -346,6 +359,7 @@ impl Atomize for Elem<Concrete> {
             Expr(_) => {
                 // println!("atomized: was expr");
                 let AtomOrPart::Atom(mut a) = self.atoms_or_part(analyzer) else {
+                    // println!("returning none");
                     return None;
                 };
                 a.update_max_ty();
@@ -354,6 +368,7 @@ impl Atomize for Elem<Concrete> {
             Arena(_) => match &*self.dearenaize(analyzer).borrow() {
                 e @ Expr(_) => {
                     let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer) else {
+                        // println!("returning none arena");
                         return None;
                     };
                     a.update_max_ty();

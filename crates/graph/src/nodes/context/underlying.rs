@@ -206,6 +206,7 @@ impl Context {
             number_of_live_edges: 0,
             cache: ContextCache {
                 vars: Default::default(),
+                tmp_vars: Default::default(),
                 visible_funcs: if fork_expr.is_some() {
                     parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
                 } else if let Some(ret_ctx) = returning_ctx {
@@ -285,6 +286,7 @@ impl Context {
             number_of_live_edges: 0,
             cache: ContextCache {
                 vars: parent_ctx.underlying(analyzer)?.cache.vars.clone(),
+                tmp_vars: Default::default(),
                 visible_funcs: parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone(),
                 visible_structs: parent_ctx
                     .underlying(analyzer)?

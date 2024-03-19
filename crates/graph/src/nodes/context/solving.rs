@@ -22,10 +22,16 @@ use std::collections::BTreeMap;
 impl ContextNode {
     /// Use a Difference Logic solver to see if it is unreachable
     pub fn unreachable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        // println!("checking unreachable: {}", self.path(analyzer));
         let mut solver = self.dl_solver(analyzer)?.clone();
         match solver.solve_partial(analyzer)? {
-            SolveStatus::Unsat => Ok(true),
-            _ => Ok(false),
+            SolveStatus::Unsat => {
+                Ok(true)
+            },
+            e => {
+                // println!("other: {e:?}");
+                Ok(false)
+            },
         }
     }
 
@@ -84,7 +90,8 @@ impl ContextNode {
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         tracing::trace!(
-            "Adding ctx dependency: {}, is_controllable: {}",
+            "Adding ctx ({}) dependency: {}, is_controllable: {}",
+            self.path(analyzer),
             dep.display_name(analyzer)?,
             dep.is_controllable(analyzer)?
         );
@@ -94,18 +101,20 @@ impl ContextNode {
                 // dep.cache_flattened_range(analyzer)?;
                 let mut range = dep.range(analyzer)?.unwrap();
                 let r = range.flattened_range(analyzer)?.into_owned();
-                tracing::trace!(
-                    "flattened: {}",
-                    <FlattenedRange as Into<SolcRange>>::into(r.clone()).as_dot_str(analyzer)
-                );
                 // add the atomic constraint
                 if let Some(atom) = Elem::Arena(r.min).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
-                    solver.add_constraints(vec![atom], analyzer);
+                    let constraints = solver.add_constraints(vec![atom], analyzer);
+                    constraints.into_iter().for_each(|(constraint, normalized)| {
+                        solver.add_constraint(constraint, normalized);
+                    });
                     self.underlying_mut(analyzer)?.dl_solver = solver;
                 } else if let Some(atom) = Elem::Arena(r.max).atomize(analyzer) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
-                    solver.add_constraints(vec![atom], analyzer);
+                    let constraints = solver.add_constraints(vec![atom], analyzer);
+                    constraints.into_iter().for_each(|(constraint, normalized)| {
+                        solver.add_constraint(constraint, normalized);
+                    });
                     self.underlying_mut(analyzer)?.dl_solver = solver;
                 }
 

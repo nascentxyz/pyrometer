@@ -59,6 +59,44 @@ impl ContextVar {
         self.tmp_of
     }
 
+    pub fn new_bin_op_tmp(
+        lhs_cvar: ContextVarNode,
+        op: RangeOp,
+        rhs_cvar: ContextVarNode,
+        ctx: ContextNode,
+        loc: Loc,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Self, GraphError> {
+        Ok(ContextVar {
+            loc: Some(loc),
+            name: format!(
+                "tmp{}({} {} {})",
+                ctx.new_tmp(analyzer)?,
+                lhs_cvar.name(analyzer)?,
+                op.to_string(),
+                rhs_cvar.name(analyzer)?
+            ),
+            display_name: format!(
+                "({} {} {})",
+                lhs_cvar.display_name(analyzer)?,
+                op.to_string(),
+                rhs_cvar.display_name(analyzer)?
+            ),
+            storage: None,
+            is_tmp: true,
+            is_symbolic: lhs_cvar.is_symbolic(analyzer)?
+                || rhs_cvar.is_symbolic(analyzer)?,
+            is_return: false,
+            tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
+            dep_on: {
+                let mut deps = lhs_cvar.dependent_on(analyzer, true)?;
+                deps.extend(rhs_cvar.dependent_on(analyzer, true)?);
+                Some(deps)
+            },
+            ty: lhs_cvar.underlying(analyzer)?.ty.clone(),
+        })
+    }
+
     pub fn new_from_concrete(
         loc: Loc,
         ctx: ContextNode,

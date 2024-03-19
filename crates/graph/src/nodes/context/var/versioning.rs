@@ -54,28 +54,32 @@ impl ContextVarNode {
     }
 
     pub fn global_first_version(&self, analyzer: &impl GraphBackend) -> Self {
-        let first = self.first_version(analyzer);
-        if let Some(inherited_from) = analyzer
-            .graph()
-            .edges_directed(first.0.into(), Direction::Outgoing)
-            .filter(|edge| Edge::Context(ContextEdge::InheritedVariable) == *edge.weight())
-            .map(|edge| ContextVarNode::from(edge.target()))
-            .take(1)
-            .next()
-        {
-            inherited_from.global_first_version(analyzer)
-        } else if let Some(input_from) = analyzer
-            .graph()
-            .edges_directed(first.0.into(), Direction::Outgoing)
-            .filter(|edge| Edge::Context(ContextEdge::InputVariable) == *edge.weight())
-            .map(|edge| ContextVarNode::from(edge.target()))
-            .take(1)
-            .next()
-        {
-            input_from.global_first_version(analyzer)
-        } else {
-            first
+        let mut global_first = self.first_version(analyzer);
+
+        let mut stack = vec![global_first];
+
+        while let Some(current_node) = stack.pop() {
+            let mut pushed = false;
+            if let Some(target_node) = analyzer
+                .graph()
+                .edges_directed(current_node.0.into(), Direction::Outgoing)
+                .filter(|edge| {
+                    matches!(edge.weight(), Edge::Context(ContextEdge::InheritedVariable) | Edge::Context(ContextEdge::InputVariable))
+                })
+                .map(|edge| ContextVarNode::from(edge.target()))
+                .take(1)
+                .next() {
+                global_first = target_node.first_version(analyzer);
+                stack.push(global_first);
+                pushed = true;     
+            }
+
+            if !pushed {
+                continue;
+            }
         }
+
+        global_first
     }
 
     pub fn first_version(&self, analyzer: &impl GraphBackend) -> Self {
@@ -110,27 +114,32 @@ impl ContextVarNode {
     }
 
     pub fn global_curr_version_num(&self, analyzer: &impl GraphBackend) -> usize {
-        let mut curr_num = self.curr_version_num(analyzer);
-        if let Some(inherited_from) = analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Outgoing)
-            .filter(|edge| Edge::Context(ContextEdge::InheritedVariable) == *edge.weight())
-            .map(|edge| ContextVarNode::from(edge.target()))
-            .take(1)
-            .next()
-        {
-            curr_num += inherited_from.global_curr_version_num(analyzer);
-        } else if let Some(input_from) = analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Outgoing)
-            .filter(|edge| Edge::Context(ContextEdge::InputVariable) == *edge.weight())
-            .map(|edge| ContextVarNode::from(edge.target()))
-            .take(1)
-            .next()
-        {
-            curr_num += input_from.global_curr_version_num(analyzer);
+        let mut stack = vec![*self];
+        let mut total_version_num = 0;
+
+        while let Some(current_node) = stack.pop() {
+            total_version_num += current_node.curr_version_num(analyzer);
+
+            let mut pushed = false;
+            if let Some(target_node) = analyzer
+                .graph()
+                .edges_directed(current_node.0.into(), Direction::Outgoing)
+                .filter(|edge| {
+                    matches!(edge.weight(), Edge::Context(ContextEdge::InheritedVariable) | Edge::Context(ContextEdge::InputVariable))
+                })
+                .map(|edge| ContextVarNode::from(edge.target()))
+                .take(1)
+                .next() {
+                stack.push(target_node);
+                pushed = true;  
+            }
+
+            if !pushed {
+                continue;
+            }
         }
-        curr_num
+
+        total_version_num
     }
 
     pub fn all_versions(&self, analyzer: &impl GraphBackend) -> Vec<Self> {

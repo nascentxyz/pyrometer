@@ -39,10 +39,17 @@ impl ContextNode {
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         // var.cache_range(analyzer)?;
-        let name = var.name(analyzer)?;
-        let vars = &mut self.underlying_mut(analyzer)?.cache.vars;
-        vars.insert(name, var);
-        Ok(())
+        if var.underlying(analyzer)?.is_tmp {
+            let name = var.display_name(analyzer)?;
+            let vars = &mut self.underlying_mut(analyzer)?.cache.tmp_vars;
+            vars.insert(name, var);
+            Ok(())
+        } else {
+            let name = var.name(analyzer)?;
+            let vars = &mut self.underlying_mut(analyzer)?.cache.vars;
+            vars.insert(name, var);
+            Ok(())    
+        }
     }
 
     /// Returns whether the context's cache contains a variable (by name)
@@ -60,6 +67,15 @@ impl ContextNode {
             .unwrap()
             .cache
             .vars
+            .get(name)
+            .copied()
+    }
+
+    pub fn tmp_var_by_name(&self, analyzer: &impl GraphBackend, name: &str) -> Option<ContextVarNode> {
+        self.underlying(analyzer)
+            .unwrap()
+            .cache
+            .tmp_vars
             .get(name)
             .copied()
     }

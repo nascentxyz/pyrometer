@@ -146,7 +146,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         rhs_cvar: ContextVarNode,
         ctx: ContextNode,
         op: RangeOp,
-        assign: bool,
+        mut assign: bool,
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!(
             "binary op: {} {} {}, assign: {}",
@@ -155,6 +155,35 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             rhs_cvar.display_name(self).into_expr_err(loc)?,
             assign
         );
+
+        // if rhs_cvar.is_const(self).unwrap() {
+        //     let int = rhs_cvar.evaled_range_max(self).unwrap().unwrap();
+        //     match collapse(&Elem::from(lhs_cvar), op, &int, self) {
+        //         MaybeCollapsed::Collapsed(c) => {
+        //             println!("collapsed: {c:?}");
+        //         }
+        //         MaybeCollapsed::Concretes(_, _) => {
+        //             println!("concretes");
+        //         }
+        //         MaybeCollapsed::Not(..) => {
+        //             println!("not collapsed");
+        //         }
+        //     }
+        // } else if lhs_cvar.is_const(self).unwrap() {
+        //     let int = lhs_cvar.evaled_range_max(self).unwrap().unwrap();
+        //     match collapse(&int, op, &Elem::from(rhs_cvar), self) {
+        //         MaybeCollapsed::Collapsed(c) => {
+        //             println!("collapsed: {c:?}");
+        //         }
+        //         MaybeCollapsed::Concretes(_, _) => {
+        //             println!("concretes");
+        //         }
+        //         MaybeCollapsed::Not(..) => {
+        //             println!("not collapsed");
+        //         }
+        //     }
+        // }
+        
 
         let unchecked = match op {
             RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) | RangeOp::Div(u) => u,
@@ -174,45 +203,22 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
             new
         } else {
-            let mut new_lhs_underlying = ContextVar {
-                loc: Some(loc),
-                name: format!(
-                    "tmp{}({} {} {})",
-                    ctx.new_tmp(self).into_expr_err(loc)?,
-                    lhs_cvar.name(self).into_expr_err(loc)?,
-                    op.to_string(),
-                    rhs_cvar.name(self).into_expr_err(loc)?
-                ),
-                display_name: format!(
-                    "({} {} {})",
-                    lhs_cvar.display_name(self).into_expr_err(loc)?,
-                    op.to_string(),
-                    rhs_cvar.display_name(self).into_expr_err(loc)?
-                ),
-                storage: None,
-                is_tmp: true,
-                is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?
-                    || rhs_cvar.is_symbolic(self).into_expr_err(loc)?,
-                is_return: false,
-                tmp_of: Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar))),
-                dep_on: {
-                    let mut deps = lhs_cvar.dependent_on(self, true).into_expr_err(loc)?;
-                    deps.extend(rhs_cvar.dependent_on(self, true).into_expr_err(loc)?);
-                    Some(deps)
-                },
-                ty: lhs_cvar.underlying(self).into_expr_err(loc)?.ty.clone(),
-            };
+            // TODO: simplify the expression such that we match an existing tmp if possible
+            let mut new_lhs_underlying = ContextVar::new_bin_op_tmp(lhs_cvar, op, rhs_cvar, ctx, loc, self).into_expr_err(loc)?;
+            if let Ok(Some(existing)) = self.get_unchanged_tmp_variable(&new_lhs_underlying.display_name, ctx) {
+                self.advance_var_in_ctx_forcible(existing, loc, ctx, true)?
+            } else {
+                // will potentially mutate the ty from concrete to builtin with a concrete range
+                new_lhs_underlying
+                    .ty
+                    .concrete_to_builtin(self)
+                    .into_expr_err(loc)?;
 
-            // will potentially mutate the ty from concrete to builtin with a concrete range
-            new_lhs_underlying
-                .ty
-                .concrete_to_builtin(self)
-                .into_expr_err(loc)?;
-
-            let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
-            ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
-            self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
-            ContextVarNode::from(new_var)
+                let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
+                ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
+                self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
+                ContextVarNode::from(new_var)
+            }
         };
 
         let mut new_rhs = rhs_cvar.latest_version(self);

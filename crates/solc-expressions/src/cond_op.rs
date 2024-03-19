@@ -82,9 +82,11 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
             match (true_killed, false_killed) {
                 (true, true) => {
                     // both have been killed, delete the child and dont process the bodies
+                    println!("BOTH KILLED");
                     ctx.delete_child(analyzer).into_expr_err(loc)?;
                 }
                 (true, false) => {
+                    println!("TRUE KILLED");
                     // the true context has been killed, delete child, process the false fork expression
                     // in the parent context and parse the false body
                     ctx.delete_child(analyzer).into_expr_err(loc)?;
@@ -97,6 +99,7 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
                     }
                 }
                 (false, true) => {
+                    println!("FALSE KILLED");
                     // the false context has been killed, delete child, process the true fork expression
                     // in the parent context and parse the true body
                     ctx.delete_child(analyzer).into_expr_err(loc)?;
@@ -111,6 +114,7 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
                     })?;
                 }
                 (false, false) => {
+                    println!("NEITHER KILLED");
                     // both branches are reachable. process each body
                     analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, _loc| {
                         analyzer.parse_ctx_statement(
