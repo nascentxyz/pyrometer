@@ -84,7 +84,7 @@ impl RangeExpr<Concrete> {
                     (false, 0)
                 }
             }
-            _ => (false, 0),            
+            _ => (false, 0),
         }
     }
 

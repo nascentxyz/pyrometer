@@ -254,7 +254,6 @@ pub trait Atomize {
 impl Atomize for Elem<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
     fn atoms_or_part(&self, analyzer: &mut impl GraphBackend) -> AtomOrPart {
-
         match self {
             Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
@@ -273,7 +272,7 @@ impl Atomize for Elem<Concrete> {
 
                 match (
                     expr.lhs.atoms_or_part(analyzer),
-                    expr.rhs.atoms_or_part(analyzer)
+                    expr.rhs.atoms_or_part(analyzer),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         // println!("part part");

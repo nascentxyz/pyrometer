@@ -319,9 +319,16 @@ impl DLSolver {
         let basic: Vec<SolverAtom> = dl_solvable
             .iter()
             .filter_map(|var| {
-                let res: Vec<_> = var.iter().filter_map(|constraint| {
-                    if constraint.len() == 1 { Some(constraint.clone()) } else { None }
-                }).collect();
+                let res: Vec<_> = var
+                    .iter()
+                    .filter_map(|constraint| {
+                        if constraint.len() == 1 {
+                            Some(constraint.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 if res.len() == 1 {
                     Some(res)
                 } else {
@@ -345,9 +352,16 @@ impl DLSolver {
         let multi: Vec<_> = dl_solvable
             .iter()
             .filter_map(|var| {
-                let res: Vec<_> = var.iter().filter_map(|constraint| {
-                    if constraint.len() > 1 { Some(constraint.clone()) } else { None }
-                }).collect();
+                let res: Vec<_> = var
+                    .iter()
+                    .filter_map(|constraint| {
+                        if constraint.len() > 1 {
+                            Some(constraint.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 if res.len() > 1 {
                     Some(res)
                 } else {
@@ -780,7 +794,8 @@ impl DLSolver {
             RangeOp::Lt => {
                 // x < y
                 // x <= y - 1
-                let new_rhs = constraint.rhs
+                let new_rhs = constraint
+                    .rhs
                     .into_elem()
                     .wrapping_sub(Elem::from(Concrete::from(U256::one())))
                     .atoms_or_part(analyzer);
