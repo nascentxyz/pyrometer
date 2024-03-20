@@ -104,40 +104,43 @@ impl DLSolver {
         analyzer: &mut impl GraphBackend,
     ) -> BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>> {
         // println!("adding constriants: {constraints:#?}");
-        let constraints: Vec<_> = constraints.into_iter().flat_map(|mut constraint| {
-            if let AtomOrPart::Part(c) = &*constraint.lhs {
-                if let Some(mut c) = c.maybe_concrete() {
-                    c.val = c.val.max_size();
-                    constraint.lhs = AtomOrPart::Part(Elem::Concrete(c)).into()
+        let constraints: Vec<_> = constraints
+            .into_iter()
+            .flat_map(|mut constraint| {
+                if let AtomOrPart::Part(c) = &*constraint.lhs {
+                    if let Some(mut c) = c.maybe_concrete() {
+                        c.val = c.val.max_size();
+                        constraint.lhs = AtomOrPart::Part(Elem::Concrete(c)).into()
+                    }
                 }
-            }
 
-            if let AtomOrPart::Part(c) = &*constraint.rhs {
-                if let Some(mut c) = c.maybe_concrete() {
-                    c.val = c.val.max_size();
-                    constraint.rhs = AtomOrPart::Part(Elem::Concrete(c)).into()
+                if let AtomOrPart::Part(c) = &*constraint.rhs {
+                    if let Some(mut c) = c.maybe_concrete() {
+                        c.val = c.val.max_size();
+                        constraint.rhs = AtomOrPart::Part(Elem::Concrete(c)).into()
+                    }
                 }
-            }
 
-            if constraint.op == RangeOp::And {
-                vec![
-                    SolverAtom {
-                        ty: OpType::Const,
-                        lhs: constraint.lhs,
-                        op: RangeOp::Eq,
-                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(true))))
-                    },
-                    SolverAtom {
-                        ty: OpType::Const,
-                        lhs: constraint.rhs,
-                        op: RangeOp::Eq,
-                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(true))))
-                    },
-                ]
-            } else {
-                vec![constraint]
-            }
-        }).collect();
+                if constraint.op == RangeOp::And {
+                    vec![
+                        SolverAtom {
+                            ty: OpType::Const,
+                            lhs: constraint.lhs,
+                            op: RangeOp::Eq,
+                            rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(true)))),
+                        },
+                        SolverAtom {
+                            ty: OpType::Const,
+                            lhs: constraint.rhs,
+                            op: RangeOp::Eq,
+                            rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(true)))),
+                        },
+                    ]
+                } else {
+                    vec![constraint]
+                }
+            })
+            .collect();
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on(analyzer);

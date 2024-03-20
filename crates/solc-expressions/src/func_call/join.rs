@@ -1,5 +1,3 @@
-use graph::nodes::KilledKind;
-use crate::context_builder::ContextBuilder;
 use crate::context_builder::StatementParser;
 use crate::member_access::ListAccess;
 use crate::{helper::CallerHelper, ExprErr, IntoExprErr};
@@ -7,6 +5,7 @@ use graph::elem::Elem;
 use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use graph::nodes::ContextVar;
+use graph::nodes::KilledKind;
 use graph::Range;
 use graph::SolcRange;
 use graph::VarType;
@@ -66,13 +65,19 @@ pub trait FuncJoiner:
                     .child
                     .is_some()
                 {
-                    tracing::trace!(
-                        "Joining function: {}",
-                        func.name(self).into_expr_err(loc)?
-                    );
+                    tracing::trace!("Joining function: {}", func.name(self).into_expr_err(loc)?);
                     let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
                     if edges.len() == 1 {
-                        self.join_pure(loc, func, params, func_inputs, body_ctx, edges[0], ctx, false)?;
+                        self.join_pure(
+                            loc,
+                            func,
+                            params,
+                            func_inputs,
+                            body_ctx,
+                            edges[0],
+                            ctx,
+                            false,
+                        )?;
                         return Ok(true);
                     } else if edges.len() > 1 {
                         tracing::trace!(
@@ -81,15 +86,28 @@ pub trait FuncJoiner:
                         );
                         // self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
                         let new_forks = ctx.set_join_forks(loc, edges.clone(), self).unwrap();
-                        edges.into_iter().zip(new_forks.iter()).try_for_each(|(edge, new_fork)| {
-                            let res = self.join_pure(loc, func, params, func_inputs, body_ctx, edge, *new_fork, true)?;
-                            if !res {
-                                new_fork.kill(self, loc, KilledKind::Unreachable).into_expr_err(loc)?;
-                                Ok(())
-                            } else {
-                                Ok(())
-                            }
-                        })?;
+                        edges.into_iter().zip(new_forks.iter()).try_for_each(
+                            |(edge, new_fork)| {
+                                let res = self.join_pure(
+                                    loc,
+                                    func,
+                                    params,
+                                    func_inputs,
+                                    body_ctx,
+                                    edge,
+                                    *new_fork,
+                                    true,
+                                )?;
+                                if !res {
+                                    new_fork
+                                        .kill(self, loc, KilledKind::Unreachable)
+                                        .into_expr_err(loc)?;
+                                    Ok(())
+                                } else {
+                                    Ok(())
+                                }
+                            },
+                        )?;
                         return Ok(true);
                     }
                 } else {
@@ -262,7 +280,7 @@ pub trait FuncJoiner:
                 if seen.contains(&func) {
                     return Ok(false);
                 }
-                
+
                 self.handled_funcs_mut().push(func);
                 if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                     self.parse_ctx_statement(body, false, Some(func));
@@ -344,7 +362,7 @@ pub trait FuncJoiner:
         body_ctx: ContextNode,
         resulting_edge: ContextNode,
         target_ctx: ContextNode,
-        forks: bool
+        forks: bool,
     ) -> Result<bool, ExprErr> {
         let replacement_map =
             self.basic_inputs_replacement_map(body_ctx, loc, params, func_inputs)?;
@@ -359,8 +377,7 @@ pub trait FuncJoiner:
                 new_var.name.clone_from(&new_name);
                 new_var.display_name = new_name;
                 if let Some(mut range) = new_var.ty.take_range() {
-                    let mut range: SolcRange =
-                        range.take_flattened_range(self).unwrap().into();
+                    let mut range: SolcRange = range.take_flattened_range(self).unwrap().into();
                     replacement_map.iter().for_each(|(replace, replacement)| {
                         range.replace_dep(*replace, replacement.0.clone(), self);
                     });
@@ -378,15 +395,13 @@ pub trait FuncJoiner:
                     });
                 }
 
-                let new_cvar =
-                    ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
 
                 // handle the case where the return node is a struct
                 if let Ok(fields) = ret_node.struct_to_fields(self) {
                     if !fields.is_empty() {
                         fields.iter().for_each(|field| {
-                            let mut new_var =
-                                field.underlying(self).unwrap().clone();
+                            let mut new_var = field.underlying(self).unwrap().clone();
                             let new_name = format!(
                                 "{}.{i}.{}",
                                 func.name(self).unwrap(),
@@ -395,19 +410,11 @@ pub trait FuncJoiner:
                             new_var.name.clone_from(&new_name);
                             new_var.display_name = new_name;
                             if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range: SolcRange = range
-                                    .take_flattened_range(self)
-                                    .unwrap()
-                                    .into();
-                                replacement_map.iter().for_each(
-                                    |(replace, replacement)| {
-                                        range.replace_dep(
-                                            *replace,
-                                            replacement.0.clone(),
-                                            self,
-                                        );
-                                    },
-                                );
+                                let mut range: SolcRange =
+                                    range.take_flattened_range(self).unwrap().into();
+                                replacement_map.iter().for_each(|(replace, replacement)| {
+                                    range.replace_dep(*replace, replacement.0.clone(), self);
+                                });
 
                                 range.cache_eval(self).unwrap();
 
@@ -416,16 +423,13 @@ pub trait FuncJoiner:
 
                             if let Some(ref mut dep_on) = &mut new_var.dep_on {
                                 dep_on.iter_mut().for_each(|d| {
-                                    if let Some((_, r)) =
-                                        replacement_map.get(&(*d).into())
-                                    {
+                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) {
                                         *d = *r
                                     }
                                 });
                             }
-                            let new_field = ContextVarNode::from(
-                                self.add_node(Node::ContextVar(new_var)),
-                            );
+                            let new_field =
+                                ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
                             self.add_edge(
                                 new_field,
                                 new_cvar,
@@ -443,7 +447,6 @@ pub trait FuncJoiner:
 
         let mut unsat = false;
 
-
         resulting_edge
             .ctx_deps(self)
             .into_expr_err(loc)?
@@ -452,7 +455,7 @@ pub trait FuncJoiner:
                 let mut new_var = dep.underlying(self)?.clone();
                 if let Some(mut range) = new_var.ty.take_range() {
                     // let mut range: SolcRange =
-                        // range.take_flattened_range(self).unwrap().into();
+                    // range.take_flattened_range(self).unwrap().into();
                     let mut range: SolcRange = range.flattened_range(self)?.into_owned().into();
                     // println!("[{:?}, {:?}]", range.min, range.max);
                     // println!("[{:?}, {:?}]", range.min.dearenaize(self).borrow(), range.max.dearenaize(self).borrow());
@@ -471,10 +474,11 @@ pub trait FuncJoiner:
                         }
                     });
                 }
-                let new_cvar =
-                    ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
 
-                if new_cvar.is_const(self)? && new_cvar.evaled_range_min(self)? == Some(Elem::from(Concrete::from(false))) {
+                if new_cvar.is_const(self)?
+                    && new_cvar.evaled_range_min(self)? == Some(Elem::from(Concrete::from(false)))
+                {
                     unsat = true;
                 }
                 self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
@@ -488,10 +492,9 @@ pub trait FuncJoiner:
         }
 
         func.returns(self).to_vec().into_iter().for_each(|ret| {
-            if let Some(var) = ContextVar::maybe_new_from_func_ret(
-                self,
-                ret.underlying(self).unwrap().clone(),
-            ) {
+            if let Some(var) =
+                ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
+            {
                 let cvar = self.add_node(Node::ContextVar(var));
                 target_ctx.add_var(cvar.into(), self).unwrap();
                 self.add_edge(cvar, target_ctx, Edge::Context(ContextEdge::Variable));
@@ -505,7 +508,8 @@ pub trait FuncJoiner:
             resulting_edge.path(self),
             target_ctx.associated_fn_name(self).unwrap()
         );
-        target_ctx.push_expr(ExprRet::Multi(rets), self)
+        target_ctx
+            .push_expr(ExprRet::Multi(rets), self)
             .into_expr_err(loc)?;
         self.add_completed_pure(true, false, forks, resulting_edge);
         Ok(true)

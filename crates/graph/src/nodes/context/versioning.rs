@@ -324,7 +324,7 @@ impl ContextNode {
         //          |
         //     |----------|
         //     a1         a2
-        //     |          |     
+        //     |          |
         // |------|    |------|
         // a3     a4   a5     a6
         //
@@ -337,18 +337,32 @@ impl ContextNode {
         for _ in 0..end_worlds.len().saturating_sub(1) {
             let curr = stack.pop_front().unwrap();
 
-            let left_ctx =
-                Context::new_subctx(curr, None, loc, Some("join_left"), None, false, analyzer, None)?;
+            let left_ctx = Context::new_subctx(
+                curr,
+                None,
+                loc,
+                Some("join_left"),
+                None,
+                false,
+                analyzer,
+                None,
+            )?;
             let left_subctx = ContextNode::from(analyzer.add_node(Node::Context(left_ctx)));
-            let right_ctx =
-                Context::new_subctx(curr, None, loc, Some("join_right"), None, false, analyzer, None)?;
+            let right_ctx = Context::new_subctx(
+                curr,
+                None,
+                loc,
+                Some("join_right"),
+                None,
+                false,
+                analyzer,
+                None,
+            )?;
             let right_subctx = ContextNode::from(analyzer.add_node(Node::Context(right_ctx)));
             curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
-            left_subctx
-                .set_continuation_ctx(analyzer, curr, "join_left")?;
-            right_subctx
-                .set_continuation_ctx(analyzer, curr, "join_right")?;
-            
+            left_subctx.set_continuation_ctx(analyzer, curr, "join_left")?;
+            right_subctx.set_continuation_ctx(analyzer, curr, "join_right")?;
+
             stack.push_back(left_subctx);
             stack.push_back(right_subctx);
         }

@@ -26,7 +26,7 @@ impl ContextNode {
             SolveStatus::Unsat => {
                 tracing::trace!("{} is unreachable via UNSAT", self.path(analyzer));
                 Ok(true)
-            },
+            }
             e => {
                 // println!("other: {e:?}");
                 Ok(false)
@@ -82,13 +82,9 @@ impl ContextNode {
         Ok(deps)
     }
 
-    pub fn debug_ctx_deps(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<(), GraphError> {
+    pub fn debug_ctx_deps(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
         let deps = self.ctx_deps(analyzer)?;
-        deps
-            .iter()
+        deps.iter()
             .enumerate()
             .for_each(|(i, var)| println!("{i}. {}", var.as_controllable_name(analyzer).unwrap()));
         Ok(())
