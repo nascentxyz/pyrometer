@@ -403,9 +403,11 @@ pub trait FuncCaller:
         modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
         if !entry_call {
-            if let Ok(true) = self.join(ctx, loc, func_node, params, inputs) {
+            if let Ok(true) = self.join(ctx, loc, func_node, params, inputs, &mut vec![]) {
                 return Ok(());
             }
+        } else {
+            println!("entry call");
         }
 
         // pseudocode:

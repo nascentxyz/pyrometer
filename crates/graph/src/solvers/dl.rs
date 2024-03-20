@@ -104,6 +104,40 @@ impl DLSolver {
         analyzer: &mut impl GraphBackend,
     ) -> BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>> {
         // println!("adding constriants: {constraints:#?}");
+        let constraints: Vec<_> = constraints.into_iter().flat_map(|mut constraint| {
+            if let AtomOrPart::Part(c) = &*constraint.lhs {
+                if let Some(mut c) = c.maybe_concrete() {
+                    c.val = c.val.max_size();
+                    constraint.lhs = AtomOrPart::Part(Elem::Concrete(c)).into()
+                }
+            }
+
+            if let AtomOrPart::Part(c) = &*constraint.rhs {
+                if let Some(mut c) = c.maybe_concrete() {
+                    c.val = c.val.max_size();
+                    constraint.rhs = AtomOrPart::Part(Elem::Concrete(c)).into()
+                }
+            }
+
+            if constraint.op == RangeOp::And {
+                vec![
+                    SolverAtom {
+                        ty: OpType::Const,
+                        lhs: constraint.lhs,
+                        op: RangeOp::Eq,
+                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(true))))
+                    },
+                    SolverAtom {
+                        ty: OpType::Const,
+                        lhs: constraint.rhs,
+                        op: RangeOp::Eq,
+                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(true))))
+                    },
+                ]
+            } else {
+                vec![constraint]
+            }
+        }).collect();
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on(analyzer);
@@ -129,7 +163,6 @@ impl DLSolver {
             .collect();
 
         // println!("unique constraints: {constraints:#?}");
-
         constraints.iter().for_each(|constraint| {
             let deps = constraint.dependent_on(analyzer);
             deps.into_iter().for_each(|dep| {
@@ -343,9 +376,9 @@ impl DLSolver {
         // so its truly unsat
         // println!("basic: {basic:#?}");
         let basic_solve = self.dl_solve(basic.clone(), analyzer)?;
-        // if matches!(basic_solve.status, SolveStatus::Unsat) {
-        //     return Ok(SolveStatus::Unsat);
-        // }
+        if matches!(basic_solve.status, SolveStatus::Unsat) {
+            return Ok(SolveStatus::Unsat);
+        }
 
         // println!("basic solve: {basic_solve:?}");
 
@@ -434,11 +467,21 @@ impl DLSolver {
         });
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn dl_solve(
         &mut self,
         normalized_constraints: Vec<SolverAtom>,
         analyzer: &impl GraphBackend,
     ) -> Result<DLSolveResult, GraphError> {
+        if self.graph.node_count() == 0 {
+            let root_node = self.graph.add_node(AtomOrPart::Part(Elem::Null));
+            self.root_node = root_node;
+        }
+
+        // println!("constraints:");
+        // normalized_constraints.iter().for_each(|c| {
+        //     println!("{}", c.into_expr_elem());
+        // });
         let mut added_atoms = vec![];
         let mut added_deps = vec![];
         if normalized_constraints.is_empty() {
@@ -584,6 +627,7 @@ impl DLSolver {
 
     /// Normalizes a DL atom into x <= y - k, where x and y are variables and k is a constant.
     /// Needed for running negative cycle check. Additionally, if we have an `OR`, we
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn dl_atom_normalize(
         constraint: SolverAtom,
         analyzer: &mut impl GraphBackend,

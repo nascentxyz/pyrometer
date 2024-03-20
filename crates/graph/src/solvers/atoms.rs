@@ -258,9 +258,10 @@ impl Atomize for Elem<Concrete> {
             Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
-            Elem::Expr(expr) => {
+            _e @ Elem::Expr(expr) => {
+                // println!("collapsing: {e}");
                 match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
-                    MaybeCollapsed::Concretes(_l, _r) => {
+                    MaybeCollapsed::Concretes(_l, r) => {
                         let exec_res = expr.exec_op(true, analyzer).unwrap();
                         return exec_res.atoms_or_part(analyzer);
                     }

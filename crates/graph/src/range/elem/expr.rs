@@ -48,7 +48,7 @@ pub struct RangeExpr<T> {
 
 impl<T: std::cmp::PartialEq> PartialEq for RangeExpr<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.lhs == other.lhs && self.rhs == other.rhs && self.op == other.op
+        self.op == other.op && self.lhs == other.lhs && self.rhs == other.rhs
     }
 }
 impl<T: std::cmp::PartialEq> Eq for RangeExpr<T> {}
@@ -467,8 +467,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
         self.arenaize(g)?;
 
-        fn simplify_minimize(
-            mut this: Elem<Concrete>,
+        fn simp_minimize(
+            this: &mut Elem<Concrete>,
             analyzer: &mut impl GraphBackend,
         ) -> Result<Elem<Concrete>, GraphError> {
             let Elem::Expr(this) = this else {
@@ -488,8 +488,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 return Ok(*arenaized);
             }
 
-            let l = this.lhs.simplify_minimize(analyzer)?;
-            let r = this.rhs.simplify_minimize(analyzer)?;
+            let l = simp_minimize(&mut this.lhs, analyzer)?;
+            let r = simp_minimize(&mut this.rhs, analyzer)?;
             let collapsed = collapse(&l, this.op, &r, analyzer);
             let res = match collapsed {
                 MaybeCollapsed::Concretes(..) => {
@@ -527,8 +527,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             Ok(res)
         }
 
-        fn simplify_maximize(
-            mut this: Elem<Concrete>,
+        fn simp_maximize(
+            this: &mut Elem<Concrete>,
             analyzer: &mut impl GraphBackend,
         ) -> Result<Elem<Concrete>, GraphError> {
             let Elem::Expr(this) = this else {
@@ -548,8 +548,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 return Ok(*arenaized);
             }
 
-            let l = this.lhs.simplify_maximize(analyzer)?;
-            let r = this.rhs.simplify_maximize(analyzer)?;
+            let l = simp_maximize(&mut this.lhs, analyzer)?;
+            let r = simp_maximize(&mut this.rhs, analyzer)?;
             let collapsed = collapse(&l, this.op, &r, analyzer);
             let res = match collapsed {
                 MaybeCollapsed::Concretes(..) => {
@@ -589,9 +589,11 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
         if self.flattened_max.is_none() {
             if let Some(idx) = self.arena_idx(g) {
-                if let Elem::Expr(ref arenaized) = *g.range_arena().ranges[idx].borrow() {
-                    if arenaized.flattened_max.is_some() {
-                        return Ok(());
+                if let Ok(t) = g.range_arena().ranges[idx].try_borrow() {
+                    if let Elem::Expr(ref arenaized) = *t {
+                        if arenaized.flattened_max.is_some() {
+                            return Ok(());
+                        }
                     }
                 };
             } else {
@@ -601,17 +603,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             self.lhs.cache_flatten(g)?;
             self.rhs.cache_flatten(g)?;
             // self.arenaize(g)?;
-            let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = simplify_maximize(flat_max, g)?;
+            let mut flat_max = self.flatten(true, g)?;
+            let simplified_flat_max = simp_maximize(&mut flat_max, g)?;
             simplified_flat_max.clone().arenaize(g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
 
         if self.flattened_min.is_none() {
             if let Some(idx) = self.arena_idx(g) {
-                if let Elem::Expr(ref arenaized) = *g.range_arena().ranges[idx].borrow() {
-                    if arenaized.flattened_min.is_some() {
-                        return Ok(());
+                if let Ok(t) = g.range_arena().ranges[idx].try_borrow() {
+                    if let Elem::Expr(ref arenaized) = *t {
+                        if arenaized.flattened_min.is_some() {
+                            return Ok(());
+                        }
                     }
                 };
             } else {
@@ -621,8 +625,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             self.lhs.cache_flatten(g)?;
             self.rhs.cache_flatten(g)?;
             // self.arenaize(g)?;
-            let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = simplify_minimize(flat_min, g)?;
+            let mut flat_min = self.flatten(false, g)?;
+            let simplified_flat_min = simp_minimize(&mut flat_min, g)?;
             simplified_flat_min.clone().arenaize(g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }

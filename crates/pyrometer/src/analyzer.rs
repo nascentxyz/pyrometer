@@ -138,6 +138,8 @@ pub struct Analyzer {
     pub join_stats: JoinStats,
     /// An arena of ranges
     pub range_arena: RangeArena<Elem<Concrete>>,
+    /// Parsed functions
+    pub handled_funcs: Vec<FunctionNode>,
 }
 
 impl Default for Analyzer {
@@ -173,6 +175,7 @@ impl Default for Analyzer {
                     map
                 },
             },
+            handled_funcs: Vec::default(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -540,7 +543,6 @@ impl Analyzer {
                 .funcs
                 .iter()
                 .for_each(|func| self.analyze_fn_calls(*func));
-            let mut handled_funcs = vec![];
             let mut func_mapping = BTreeMap::default();
             let mut call_dep_graph: StableGraph<FunctionNode, usize> = StableGraph::default();
             let fn_calls_fns = std::mem::take(&mut self.fn_calls_fns);
@@ -566,7 +568,7 @@ impl Analyzer {
                         call_dep_graph.add_edge(func_idx, call_idx, 0);
                     });
                 } else {
-                    handled_funcs.push(func);
+                    self.handled_funcs.push(*func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                         self.parse_ctx_statement(body, false, Some(*func));
                     }
@@ -583,8 +585,8 @@ impl Analyzer {
 
             indices.iter().for_each(|idx| {
                 let func = call_dep_graph.node_weight(*idx).unwrap();
-                if !handled_funcs.contains(&func) {
-                    handled_funcs.push(func);
+                if !self.handled_funcs.contains(func) {
+                    self.handled_funcs.push(*func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                         self.parse_ctx_statement(body, false, Some(*func));
                     }
@@ -592,7 +594,7 @@ impl Analyzer {
             });
 
             final_pass_item.funcs.into_iter().for_each(|func| {
-                if !handled_funcs.contains(&&func) {
+                if !self.handled_funcs.contains(&func) {
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
                         self.parse_ctx_statement(body, false, Some(func));
                     }

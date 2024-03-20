@@ -244,7 +244,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             match op {
                 RangeOp::Div(..) | RangeOp::Mod => {
                     // x / y
-
                     if new_rhs.is_const(self).into_expr_err(loc)? {
                         // y is constant, do a check if it is 0
                         if new_rhs
@@ -426,9 +425,12 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         }
                     }
                 }
-                RangeOp::Mul(..) => {
+                RangeOp::Mul(..) => 'mul: {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
+                        if new_rhs.is_const(self).into_expr_err(loc)? && new_rhs.evaled_range_min(self).into_expr_err(loc)? == Some(Elem::from(Concrete::from(U256::zero()))) {
+                            break 'mul;
+                        }
                         let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
 
                         // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))

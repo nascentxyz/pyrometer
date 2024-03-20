@@ -176,4 +176,6 @@ pub trait AnalyzerLike: GraphLike {
     }
 
     fn join_stats_mut(&mut self) -> &mut JoinStats;
+    fn handled_funcs(&self) -> &[Self::FunctionNode];
+    fn handled_funcs_mut(&mut self) -> &mut Vec<Self::FunctionNode>;
 }

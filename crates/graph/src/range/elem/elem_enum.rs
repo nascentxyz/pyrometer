@@ -843,34 +843,11 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Arena(idx) => {
                 tracing::trace!("flattening for arena idx: {idx}");
                 let dearenaized = self.dearenaize(analyzer);
-                let (min, max) = {
-                    let Ok(t) = dearenaized.try_borrow() else {
-                        return Ok(());
-                    };
-
-                    let min = t.flatten(false, analyzer)?;
-                    let max = t.flatten(true, analyzer)?;
-                    (min, max)
+                let Ok(mut t) = dearenaized.try_borrow_mut() else {
+                    return Ok(());
                 };
 
-                match &mut *dearenaized.borrow_mut() {
-                    Self::Reference(ref mut d) => {
-                        d.flattened_min = Some(Box::new(min));
-                        d.flattened_max = Some(Box::new(max));
-                    }
-                    Self::Expr(ref mut expr) => {
-                        expr.flattened_min = Some(Box::new(min));
-                        expr.flattened_max = Some(Box::new(max));
-                    }
-                    Self::ConcreteDyn(ref mut d) => {
-                        d.flattened_min = Some(Box::new(min));
-                        d.flattened_max = Some(Box::new(max));
-                    }
-                    _ => {}
-                }
-                // let mut dearenaized = self.dearenaize(analyzer).borrow().clone();
-                // dearenaized.cache_flatten(analyzer)?;
-                // *self.dearenaize(analyzer).borrow_mut() = dearenaized;
+                t.cache_flatten(analyzer)?;
                 Ok(())
             }
         }
@@ -1125,25 +1102,27 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         use Elem::*;
 
         if let Some(idx) = analyzer.range_arena_idx(self) {
-            match &*analyzer.range_arena().ranges[idx].borrow() {
-                Reference(dy) => {
-                    if let Some(max) = &dy.flattened_max {
-                        return Ok(*max.clone());
+            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+                match &*t {
+                    Reference(dy) => {
+                        if let Some(max) = &dy.flattened_max {
+                            return Ok(*max.clone());
+                        }
                     }
-                }
-                c @ Concrete(_) => return Ok(c.clone()),
-                ConcreteDyn(inner) => {
-                    if let Some(max) = &inner.flattened_max {
-                        return Ok(*max.clone());
+                    c @ Concrete(_) => return Ok(c.clone()),
+                    ConcreteDyn(inner) => {
+                        if let Some(max) = &inner.flattened_max {
+                            return Ok(*max.clone());
+                        }
                     }
-                }
-                Expr(expr) => {
-                    if let Some(max) = &expr.flattened_max {
-                        return Ok(*max.clone());
+                    Expr(expr) => {
+                        if let Some(max) = &expr.flattened_max {
+                            return Ok(*max.clone());
+                        }
                     }
+                    Null => return Ok(Elem::Null),
+                    _ => {}
                 }
-                Null => return Ok(Elem::Null),
-                _ => {}
             }
         }
 
@@ -1201,25 +1180,27 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         use Elem::*;
 
         if let Some(idx) = analyzer.range_arena_idx(self) {
-            match &*analyzer.range_arena().ranges[idx].borrow() {
-                Reference(dy) => {
-                    if let Some(min) = &dy.flattened_min {
-                        return Ok(*min.clone());
+            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+                match &*t {
+                    Reference(dy) => {
+                        if let Some(min) = &dy.flattened_min {
+                            return Ok(*min.clone());
+                        }
                     }
-                }
-                c @ Concrete(_) => return Ok(c.clone()),
-                ConcreteDyn(inner) => {
-                    if let Some(min) = &inner.flattened_min {
-                        return Ok(*min.clone());
+                    c @ Concrete(_) => return Ok(c.clone()),
+                    ConcreteDyn(inner) => {
+                        if let Some(min) = &inner.flattened_min {
+                            return Ok(*min.clone());
+                        }
                     }
-                }
-                Expr(expr) => {
-                    if let Some(min) = &expr.flattened_min {
-                        return Ok(*min.clone());
+                    Expr(expr) => {
+                        if let Some(min) = &expr.flattened_min {
+                            return Ok(*min.clone());
+                        }
                     }
+                    Null => return Ok(Elem::Null),
+                    _ => {}
                 }
-                Null => return Ok(Elem::Null),
-                _ => {}
             }
         }
 

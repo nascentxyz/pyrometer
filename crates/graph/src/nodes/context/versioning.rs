@@ -1,3 +1,4 @@
+use crate::nodes::Context;
 use crate::ContextEdge;
 use crate::Edge;
 use crate::{
@@ -299,7 +300,7 @@ impl ContextNode {
                 Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
                 None => unreachable!(),
             };
-            Err(GraphError::ChildRedefinition(format!(
+            Err(GraphError::ChildRedefinition(panic!(
                 "This is a bug. Tried to redefine a child context, parent:\n{}, current child:\n{},\nnew child: Fork({}, {})",
                 self.path(analyzer),
                 child_str,
@@ -309,6 +310,50 @@ impl ContextNode {
         } else {
             Ok(())
         }
+    }
+
+    pub fn set_join_forks(
+        &self,
+        loc: Loc,
+        end_worlds: Vec<ContextNode>,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Vec<ContextNode>, GraphError> {
+        // if we have 4 worlds we need to represent
+        // we need to construct a tree like this
+        //          a
+        //          |
+        //     |----------|
+        //     a1         a2
+        //     |          |     
+        // |------|    |------|
+        // a3     a4   a5     a6
+        //
+        // each fork adds 1 world
+
+        let edges = self.all_edges(analyzer)?;
+        let mut stack = std::collections::VecDeque::new();
+        stack.push_front(*self);
+
+        for _ in 0..end_worlds.len().saturating_sub(1) {
+            let curr = stack.pop_front().unwrap();
+
+            let left_ctx =
+                Context::new_subctx(curr, None, loc, Some("join_left"), None, false, analyzer, None)?;
+            let left_subctx = ContextNode::from(analyzer.add_node(Node::Context(left_ctx)));
+            let right_ctx =
+                Context::new_subctx(curr, None, loc, Some("join_right"), None, false, analyzer, None)?;
+            let right_subctx = ContextNode::from(analyzer.add_node(Node::Context(right_ctx)));
+            curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
+            left_subctx
+                .set_continuation_ctx(analyzer, curr, "join_left")?;
+            right_subctx
+                .set_continuation_ctx(analyzer, curr, "join_right")?;
+            
+            stack.push_back(left_subctx);
+            stack.push_back(right_subctx);
+        }
+
+        self.all_edges(analyzer)
     }
 
     /// Adds a child to the context
@@ -329,7 +374,7 @@ impl ContextNode {
                 None => unreachable!(),
             };
             tracing::trace!("Error setting child as a call");
-            Err(GraphError::ChildRedefinition(format!(
+            Err(GraphError::ChildRedefinition(panic!(
                 "This is a bug. Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
                 self.path(analyzer),
                 child_str,

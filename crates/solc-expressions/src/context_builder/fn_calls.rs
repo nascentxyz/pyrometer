@@ -251,69 +251,62 @@ pub trait FnCallBuilder:
                 _ => {}
             },
 
-            FunctionCallBlock(_, func_expr, _input_exprs) => match *func_expr {
-                Variable(ref ident) => {
-                    let loc = func_expr.loc();
-                    let ctx = Context::new(
-                        caller,
-                        format!("<{}_parser_fn>", caller.name(self).unwrap()),
-                        loc,
-                    );
-                    let ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
-                    let visible_funcs = ctx.visible_funcs(self).unwrap();
-                    let possible_funcs: Vec<_> = visible_funcs
-                        .into_iter()
-                        .filter(|f| f.name(self).unwrap().starts_with(&ident.name))
-                        .collect();
-                    if possible_funcs.len() == 1 {
-                        let func = possible_funcs[0];
-                        self.add_fn_call(caller, func);
-                    }
+            FunctionCallBlock(_, func_expr, _input_exprs) => if let Variable(ref ident) = *func_expr {
+                let loc = func_expr.loc();
+                let ctx = Context::new(
+                    caller,
+                    format!("<{}_parser_fn>", caller.name(self).unwrap()),
+                    loc,
+                );
+                let ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
+                let visible_funcs = ctx.visible_funcs(self).unwrap();
+                let possible_funcs: Vec<_> = visible_funcs
+                    .into_iter()
+                    .filter(|f| f.name(self).unwrap().starts_with(&ident.name))
+                    .collect();
+                if possible_funcs.len() == 1 {
+                    let func = possible_funcs[0];
+                    self.add_fn_call(caller, func);
                 }
-                _ => {}
             },
-            NamedFunctionCall(_, func_expr, _input_args) => match *func_expr {
-                Variable(ref ident) => {
-                    let loc = func_expr.loc();
-                    let ctx = Context::new(
-                        caller,
-                        format!("<{}_parser_fn>", caller.name(self).unwrap()),
-                        loc,
-                    );
-                    let ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
-                    let visible_funcs = ctx.visible_funcs(self).unwrap();
-                    let possible_funcs: Vec<_> = visible_funcs
-                        .into_iter()
-                        .filter(|f| f.name(self).unwrap().starts_with(&ident.name))
-                        .collect();
-                    if possible_funcs.len() == 1 {
-                        let func = possible_funcs[0];
-                        self.add_fn_call(caller, func);
-                    }
+            NamedFunctionCall(_, func_expr, input_args) => if let Variable(ref ident) = *func_expr {
+                let loc = func_expr.loc();
+                let ctx = Context::new(
+                    caller,
+                    format!("<{}_parser_fn>", caller.name(self).unwrap()),
+                    loc,
+                );
+                let ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
+                let visible_funcs = ctx.visible_funcs(self).unwrap();
+                let mut possible_funcs: Vec<_> = visible_funcs
+                    .into_iter()
+                    .filter(|f| f.name(self).unwrap().starts_with(&ident.name))
+                    .collect();
+                possible_funcs.retain(|func| func.params(self).len() == input_args.len());
+                if possible_funcs.len() == 1 {
+                    let func = possible_funcs[0];
+                    self.add_fn_call(caller, func);
                 }
-                _ => {}
             },
             FunctionCall(_, func_expr, input_exprs) => {
-                match *func_expr {
-                    Variable(ref ident) => {
-                        let loc = func_expr.loc();
-                        let ctx = Context::new(
-                            caller,
-                            format!("<{}_parser_fn>", caller.name(self).unwrap()),
-                            loc,
-                        );
-                        let ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
-                        let visible_funcs = ctx.visible_funcs(self).unwrap();
-                        let possible_funcs: Vec<_> = visible_funcs
-                            .into_iter()
-                            .filter(|f| f.name(self).unwrap().starts_with(&ident.name))
-                            .collect();
-                        if possible_funcs.len() == 1 {
-                            let func = possible_funcs[0];
-                            self.add_fn_call(caller, func);
-                        }
+                if let Variable(ref ident) = *func_expr {
+                    let loc = func_expr.loc();
+                    let ctx = Context::new(
+                        caller,
+                        format!("<{}_parser_fn>", caller.name(self).unwrap()),
+                        loc,
+                    );
+                    let ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
+                    let visible_funcs = ctx.visible_funcs(self).unwrap();
+                    let mut possible_funcs: Vec<_> = visible_funcs
+                        .into_iter()
+                        .filter(|f| f.name(self).unwrap().starts_with(&ident.name))
+                        .collect();
+                    possible_funcs.retain(|func| func.params(self).len() == input_exprs.len());
+                    if possible_funcs.len() == 1 {
+                        let func = possible_funcs[0];
+                        self.add_fn_call(caller, func);
                     }
-                    _ => {}
                 }
 
                 input_exprs.iter().for_each(|expr| {

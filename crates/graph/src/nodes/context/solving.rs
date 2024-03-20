@@ -23,7 +23,10 @@ impl ContextNode {
         // println!("checking unreachable: {}", self.path(analyzer));
         let mut solver = self.dl_solver(analyzer)?.clone();
         match solver.solve_partial(analyzer)? {
-            SolveStatus::Unsat => Ok(true),
+            SolveStatus::Unsat => {
+                tracing::trace!("{} is unreachable via UNSAT", self.path(analyzer));
+                Ok(true)
+            },
             e => {
                 // println!("other: {e:?}");
                 Ok(false)
@@ -77,6 +80,18 @@ impl ContextNode {
             .into_iter()
             .collect::<Vec<_>>();
         Ok(deps)
+    }
+
+    pub fn debug_ctx_deps(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<(), GraphError> {
+        let deps = self.ctx_deps(analyzer)?;
+        deps
+            .iter()
+            .enumerate()
+            .for_each(|(i, var)| println!("{i}. {}", var.as_controllable_name(analyzer).unwrap()));
+        Ok(())
     }
 
     /// Adds a dependency for this context to exit successfully

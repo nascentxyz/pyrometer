@@ -247,4 +247,12 @@ impl AnalyzerLike for Analyzer {
     fn join_stats_mut(&mut self) -> &mut JoinStats {
         &mut self.join_stats
     }
+
+    fn handled_funcs(&self) -> &[FunctionNode] {
+        &self.handled_funcs
+    }
+
+    fn handled_funcs_mut(&mut self) -> &mut Vec<FunctionNode> {
+        &mut self.handled_funcs
+    }
 }
