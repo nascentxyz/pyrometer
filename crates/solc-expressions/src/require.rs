@@ -1398,7 +1398,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         .set_range_min(
                             self,
                             Elem::Concrete(RangeConcrete {
-                                val: Concrete::min(&c.val).unwrap_or_else(|| c.val.clone()),
+                                val: Concrete::min_of_type(&c.val).unwrap_or_else(|| c.val.clone()),
                                 loc,
                             }),
                         )
@@ -1407,7 +1407,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         .set_range_max(
                             self,
                             Elem::Concrete(RangeConcrete {
-                                val: Concrete::max(&c.val).unwrap_or(c.val),
+                                val: Concrete::max_of_type(&c.val).unwrap_or(c.val),
                                 loc,
                             }),
                         )

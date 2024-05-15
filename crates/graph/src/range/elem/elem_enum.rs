@@ -680,10 +680,7 @@ impl Elem<Concrete> {
 
 impl From<Concrete> for Elem<Concrete> {
     fn from(c: Concrete) -> Self {
-        Elem::Concrete(RangeConcrete {
-            val: c,
-            loc: Loc::Implicit,
-        })
+        Elem::Concrete(RangeConcrete::new(c, Loc::Implicit))
     }
 }
 
@@ -1358,14 +1355,18 @@ impl Elem<Concrete> {
 
     pub fn maybe_elem_min(&self) -> Option<Self> {
         match self {
-            Elem::Concrete(RangeConcrete { val, .. }) => Some(Elem::from(Concrete::min(val)?)),
+            Elem::Concrete(RangeConcrete { val, .. }) => {
+                Some(Elem::from(Concrete::min_of_type(val)?))
+            }
             _ => None,
         }
     }
 
     pub fn maybe_elem_max(&self) -> Option<Self> {
         match self {
-            Elem::Concrete(RangeConcrete { val, .. }) => Some(Elem::from(Concrete::max(val)?)),
+            Elem::Concrete(RangeConcrete { val, .. }) => {
+                Some(Elem::from(Concrete::max_of_type(val)?))
+            }
             _ => None,
         }
     }

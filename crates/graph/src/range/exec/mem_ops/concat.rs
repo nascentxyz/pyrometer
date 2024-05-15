@@ -6,10 +6,7 @@ use std::collections::BTreeMap;
 
 impl RangeConcat<Concrete> for RangeConcrete<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {
-        Some(Elem::Concrete(RangeConcrete {
-            val: self.val.clone().concat(&other.val)?,
-            loc: self.loc,
-        }))
+        Some(Elem::Concrete(RangeConcrete::new(self.val.clone().concat(&other.val)?, self.loc)))
     }
 }
 

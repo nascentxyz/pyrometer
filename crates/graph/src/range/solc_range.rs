@@ -61,10 +61,7 @@ impl AsDotStr for SolcRange {
 
 impl From<bool> for SolcRange {
     fn from(b: bool) -> Self {
-        let val = Elem::Concrete(RangeConcrete {
-            val: Concrete::Bool(b),
-            loc: Loc::Implicit,
-        });
+        let val = Elem::Concrete(RangeConcrete::new(Concrete::Bool(b), Loc::Implicit));
         Self::new(val.clone(), val, vec![])
     }
 }
@@ -135,14 +132,8 @@ impl SolcRange {
     }
 
     pub fn default_bool() -> Self {
-        let min = Elem::Concrete(RangeConcrete {
-            val: Concrete::Bool(false),
-            loc: Loc::Implicit,
-        });
-        let max = Elem::Concrete(RangeConcrete {
-            val: Concrete::Bool(true),
-            loc: Loc::Implicit,
-        });
+        let min = Elem::Concrete(RangeConcrete::new(Concrete::Bool(false), Loc::Implicit));
+        let max = Elem::Concrete(RangeConcrete::new(Concrete::Bool(true), Loc::Implicit));
         Self::new(min, max, vec![])
     }
     pub fn from(c: Concrete) -> Option<Self> {
@@ -152,14 +143,8 @@ impl SolcRange {
             | c @ Concrete::Bool(_)
             | c @ Concrete::Address(_)
             | c @ Concrete::Bytes(_, _) => Some(SolcRange::new(
-                Elem::Concrete(RangeConcrete {
-                    val: c.clone(),
-                    loc: Loc::Implicit,
-                }),
-                Elem::Concrete(RangeConcrete {
-                    val: c,
-                    loc: Loc::Implicit,
-                }),
+                Elem::Concrete(RangeConcrete::new(c.clone(), Loc::Implicit)),
+                Elem::Concrete(RangeConcrete::new(c, Loc::Implicit)),
                 vec![],
             )),
             Concrete::String(s) => {
@@ -209,26 +194,14 @@ impl SolcRange {
             Builtin::Uint(size) => {
                 if *size == 256 {
                     Some(SolcRange::new(
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Uint(*size, 0.into()),
-                            loc: Loc::Implicit,
-                        }),
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Uint(*size, U256::MAX),
-                            loc: Loc::Implicit,
-                        }),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Uint(*size, 0.into()), Loc::Implicit)),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Uint(*size, U256::MAX), Loc::Implicit)),
                         vec![],
                     ))
                 } else {
                     Some(SolcRange::new(
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Uint(*size, 0.into()),
-                            loc: Loc::Implicit,
-                        }),
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Uint(*size, U256::from(2).pow(U256::from(*size)) - 1),
-                            loc: Loc::Implicit,
-                        }),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Uint(*size, 0.into()), Loc::Implicit)),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Uint(*size, U256::from(2).pow(U256::from(*size)) - 1), Loc::Implicit)),
                         vec![],
                     ))
                 }
@@ -236,14 +209,8 @@ impl SolcRange {
             Builtin::Int(size) => {
                 if *size == 256 {
                     Some(SolcRange::new(
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*size, I256::MIN),
-                            loc: Loc::Implicit,
-                        }),
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*size, I256::MAX),
-                            loc: Loc::Implicit,
-                        }),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Int(*size, I256::MIN), Loc::Implicit)),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Int(*size, I256::MAX), Loc::Implicit)),
                         vec![],
                     ))
                 } else {
@@ -251,38 +218,20 @@ impl SolcRange {
                         I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1);
                     let min = max * I256::from(-1i32) - I256::from(1i32);
                     Some(SolcRange::new(
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*size, min),
-                            loc: Loc::Implicit,
-                        }),
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(*size, max),
-                            loc: Loc::Implicit,
-                        }),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Int(*size, min), Loc::Implicit)),
+                        Elem::Concrete(RangeConcrete::new(Concrete::Int(*size, max), Loc::Implicit)),
                         vec![],
                     ))
                 }
             }
             Builtin::Bool => Some(SolcRange::new(
-                Elem::Concrete(RangeConcrete {
-                    val: Concrete::Bool(false),
-                    loc: Loc::Implicit,
-                }),
-                Elem::Concrete(RangeConcrete {
-                    val: Concrete::Bool(true),
-                    loc: Loc::Implicit,
-                }),
+                Elem::Concrete(RangeConcrete::new(Concrete::Bool(false), Loc::Implicit)),
+                Elem::Concrete(RangeConcrete::new(Concrete::Bool(true), Loc::Implicit)),
                 vec![],
             )),
             Builtin::Address | Builtin::Payable | Builtin::AddressPayable => Some(SolcRange::new(
-                Elem::Concrete(RangeConcrete {
-                    val: Concrete::Address(Address::from_slice(&[0x00; 20])),
-                    loc: Loc::Implicit,
-                }),
-                Elem::Concrete(RangeConcrete {
-                    val: Concrete::Address(Address::from_slice(&[0xff; 20])),
-                    loc: Loc::Implicit,
-                }),
+                Elem::Concrete(RangeConcrete::new(Concrete::Address(Address::from_slice(&[0x00; 20])), Loc::Implicit)),
+                Elem::Concrete(RangeConcrete::new(Concrete::Address(Address::from_slice(&[0xff; 20])), Loc::Implicit)),
                 vec![],
             )),
             Builtin::Bytes(size) => {
@@ -290,14 +239,8 @@ impl SolcRange {
                     .map(|i| if i < *size { 0xff } else { 0x00 })
                     .collect();
                 Some(SolcRange::new(
-                    Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(*size, H256::from_slice(&[0x00; 32])),
-                        loc: Loc::Implicit,
-                    }),
-                    Elem::Concrete(RangeConcrete {
-                        val: Concrete::Bytes(*size, H256::from_slice(&v[..])),
-                        loc: Loc::Implicit,
-                    }),
+                    Elem::Concrete(RangeConcrete::new(Concrete::Bytes(*size, H256::from_slice(&[0x00; 32])), Loc::Implicit)),
+                    Elem::Concrete(RangeConcrete::new(Concrete::Bytes(*size, H256::from_slice(&v[..])), Loc::Implicit)),
                     vec![],
                 ))
             }
@@ -347,10 +290,7 @@ impl SolcRange {
             self.min,
             self.max.min(
                 Elem::from(other)
-                    - Elem::Concrete(RangeConcrete {
-                        val: U256::from(1).into(),
-                        loc: Loc::Implicit,
-                    }),
+                    - Elem::Concrete(RangeConcrete::new(U256::from(1).into(), Loc::Implicit)),
             ),
             self.exclusions,
         )
@@ -360,10 +300,7 @@ impl SolcRange {
         Self::new(
             self.min.max(
                 Elem::from(other)
-                    + Elem::Concrete(RangeConcrete {
-                        val: U256::from(1).into(),
-                        loc: Loc::Implicit,
-                    }),
+                    + Elem::Concrete(RangeConcrete::new(U256::from(1).into(), Loc::Implicit)),
             ),
             self.max,
             self.exclusions,

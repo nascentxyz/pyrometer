@@ -7,29 +7,25 @@ impl RangeMod<Concrete> for RangeConcrete<Concrete> {
     fn range_mod(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) if rhs_val != 0.into() => {
-                Some(Elem::Concrete(RangeConcrete {
-                    val: self.val.u256_as_original(lhs_val % rhs_val),
-                    loc: self.loc,
-                }))
+                let res = self.val.u256_as_original(lhs_val % rhs_val);
+                let rc = RangeConcrete::new(res, self.loc);
+                Some(rc.into())
             }
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, I256::from_raw(*val) % *neg_v),
-                        loc: self.loc,
-                    }))
+                    let res = Concrete::Int(*lhs_size, I256::from_raw(*val) % *neg_v);
+                    let rc = RangeConcrete::new(res, self.loc);
+                    Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) if *val != 0.into() => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, *neg_v % I256::from_raw(*val)),
-                        loc: self.loc,
-                    }))
+                    let res = Concrete::Int(*lhs_size, *neg_v % I256::from_raw(*val));
+                    let rc = RangeConcrete::new(res, self.loc);
+                    Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, *l % *r),
-                        loc: self.loc,
-                    }))
+                    let res = Concrete::Int(*lhs_size, *l % *r);
+                    let rc = RangeConcrete::new(res, self.loc);
+                    Some(rc.into())
                 }
                 _ => None,
             },

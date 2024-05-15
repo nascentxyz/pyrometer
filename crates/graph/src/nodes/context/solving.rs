@@ -2,7 +2,7 @@ use crate::elem::Elem;
 use crate::{
     as_dot_str,
     nodes::{ContextNode, ContextVarNode},
-    range::{elem::RangeOp, Range, RangeEval},
+    range::{elem::RangeOp, Range},
     solvers::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,

@@ -4,30 +4,25 @@ use crate::range::{elem::*, exec_traits::*};
 impl RangeUnary<Concrete> for RangeConcrete<Concrete> {
     fn range_not(&self) -> Option<Elem<Concrete>> {
         match self.val {
-            Concrete::Bool(b) => Some(Elem::Concrete(RangeConcrete {
-                val: Concrete::Bool(!b),
-                loc: self.loc,
-            })),
+            Concrete::Bool(b) => Some(RangeConcrete::new(Concrete::Bool(!b), self.loc).into()),
             _ => None,
         }
     }
 
     fn range_and(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (&self.val, &other.val) {
-            (Concrete::Bool(a), Concrete::Bool(b)) => Some(Elem::Concrete(RangeConcrete {
-                val: Concrete::Bool(*a && *b),
-                loc: self.loc,
-            })),
+            (Concrete::Bool(a), Concrete::Bool(b)) => {
+                Some(RangeConcrete::new(Concrete::Bool(*a && *b), self.loc).into())
+            }
             _ => None,
         }
     }
 
     fn range_or(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (&self.val, &other.val) {
-            (Concrete::Bool(a), Concrete::Bool(b)) => Some(Elem::Concrete(RangeConcrete {
-                val: Concrete::Bool(*a || *b),
-                loc: self.loc,
-            })),
+            (Concrete::Bool(a), Concrete::Bool(b)) => {
+                Some(RangeConcrete::new(Concrete::Bool(*a || *b), self.loc).into())
+            }
             _ => None,
         }
     }

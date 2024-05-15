@@ -308,6 +308,14 @@ impl Concrete {
         }
     }
 
+    pub fn is_zero(&self) -> bool {
+        self.into_u256() == Some(U256::zero())
+    }
+
+    pub fn is_one(&self) -> bool {
+        self.into_u256() == Some(U256::from(1))
+    }
+
     /// Cast from one concrete variant given another concrete variant
     pub fn cast_from(self, other: &Self) -> Option<Self> {
         self.cast(other.as_builtin())
@@ -687,7 +695,7 @@ impl Concrete {
     }
 
     /// Gets the default max for a given concrete variant.
-    pub fn max(&self) -> Option<Self> {
+    pub fn max_of_type(&self) -> Option<Self> {
         match self {
             Concrete::Uint(size, _) => {
                 let max = if *size == 256 {
@@ -798,7 +806,7 @@ impl Concrete {
     }
 
     /// Gets the default min for a given concrete variant.
-    pub fn min(&self) -> Option<Self> {
+    pub fn min_of_type(&self) -> Option<Self> {
         match self {
             Concrete::Uint(size, _) => Some(Concrete::Uint(*size, 0.into())),
             Concrete::Int(size, _) => {

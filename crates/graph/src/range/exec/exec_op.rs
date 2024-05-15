@@ -1750,13 +1750,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                                 val: Concrete::Uint(..),
                                 ..
                             },
-                        ) => candidates.push(Some(Elem::from(Concrete::max(&r.val).unwrap()))),
+                        ) => candidates.push(Some(Concrete::max_of_type(&r.val).unwrap().into())),
                         Elem::Concrete(
                             ref r @ RangeConcrete {
                                 val: Concrete::Int(..),
                                 ..
                             },
-                        ) => candidates.push(Some(Elem::from(Concrete::min(&r.val).unwrap()))),
+                        ) => candidates.push(Some(Concrete::min_of_type(&r.val).unwrap().into())),
                         _ => {}
                     }
                 }

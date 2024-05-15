@@ -130,10 +130,7 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
     fn range_set_indices(&self, range: &Self) -> Option<Elem<Concrete>> {
         let mut new_val = self.val.clone();
         new_val.set_indices(&range.val);
-        Some(Elem::Concrete(RangeConcrete {
-            val: new_val,
-            loc: range.loc,
-        }))
+        Some(Elem::Concrete(RangeConcrete::new(new_val, range.loc)))
     }
 
     fn range_get_index(&self, index: &Self) -> Option<Elem<Concrete>> {

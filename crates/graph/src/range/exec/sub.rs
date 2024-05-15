@@ -9,23 +9,14 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
             (Some(lhs_val), Some(rhs_val)) => {
                 if lhs_val > rhs_val {
                     let val = lhs_val.saturating_sub(rhs_val);
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: self.val.u256_as_original(val),
-                        loc: self.loc,
-                    }))
+                    Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(val), self.loc)))
                 } else {
                     match self.val {
-                        Concrete::Int(size, val) => Some(Elem::Concrete(RangeConcrete {
-                            val: Concrete::Int(size, val.saturating_sub(I256::from_raw(rhs_val))),
-                            loc: self.loc,
-                        })),
+                        Concrete::Int(size, val) => Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(size, val.saturating_sub(I256::from_raw(rhs_val))), self.loc))),
                         _ => {
                             // TODO: this should cause a revert
                             let val = lhs_val.saturating_sub(rhs_val);
-                            Some(Elem::Concrete(RangeConcrete {
-                                val: self.val.u256_as_original(val),
-                                loc: self.loc,
-                            }))
+                            Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(val), self.loc)))
                         }
                     }
                 }
@@ -37,12 +28,9 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                     } else {
                         U256::from(2).pow(U256::from(*lhs_size)) - 1
                     };
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: self
+                    Some(Elem::Concrete(RangeConcrete::new(self
                             .val
-                            .u256_as_original(val.saturating_add(neg_v.into_raw()).min(max)),
-                        loc: self.loc,
-                    }))
+                            .u256_as_original(val.saturating_add(neg_v.into_raw()).min(max)), self.loc)))
                 }
                 (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
                     let max = if *lhs_size == 256 {
@@ -62,10 +50,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                     }))
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, l.saturating_sub(*r)),
-                        loc: self.loc,
-                    }))
+                    Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, l.saturating_sub(*r)), self.loc)))
                 }
                 _ => None,
             },
@@ -77,10 +62,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
             (Some(lhs_val), Some(rhs_val)) => {
                 if lhs_val > rhs_val {
                     let val = lhs_val.overflowing_sub(rhs_val).0;
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: self.val.u256_as_original(val),
-                        loc: self.loc,
-                    }))
+                    Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(val), self.loc)))
                 } else {
                     match self.val {
                         Concrete::Int(size, val) => Some(Elem::Concrete(RangeConcrete {
@@ -92,22 +74,16 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                         })),
                         _ => {
                             let val = lhs_val.overflowing_sub(rhs_val).0;
-                            Some(Elem::Concrete(RangeConcrete {
-                                val: self.val.u256_as_original(val),
-                                loc: self.loc,
-                            }))
+                            Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(val), self.loc)))
                         }
                     }
                 }
             }
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(_lhs_size, val), Concrete::Int(_, neg_v)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: self
+                    Some(Elem::Concrete(RangeConcrete::new(self
                             .val
-                            .u256_as_original(val.overflowing_add(neg_v.into_raw()).0),
-                        loc: self.loc,
-                    }))
+                            .u256_as_original(val.overflowing_add(neg_v.into_raw()).0), self.loc)))
                 }
                 (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
                     Some(Elem::Concrete(RangeConcrete {
@@ -119,10 +95,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                     }))
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(*lhs_size, l.overflowing_sub(*r).0),
-                        loc: self.loc,
-                    }))
+                    Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, l.overflowing_sub(*r).0), self.loc)))
                 }
                 _ => None,
             },

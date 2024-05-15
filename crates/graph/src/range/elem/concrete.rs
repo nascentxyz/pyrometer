@@ -13,8 +13,16 @@ use solang_parser::pt::Loc;
 /// A concrete value for a range element
 #[derive(Default, Clone, Debug, Ord, PartialOrd)]
 pub struct RangeConcrete<T> {
+    /// The value of the concrete
     pub val: T,
+    /// The source code location
     pub loc: Loc,
+}
+
+impl<T> RangeConcrete<T> {
+    pub fn new(val: T, loc: Loc) -> Self {
+        Self { val, loc }
+    }
 }
 
 impl<T: std::cmp::PartialEq> PartialEq for RangeConcrete<T> {
@@ -101,15 +109,9 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
                 (Concrete::Array(a), Concrete::Array(b)) => {
                     if a.len() == b.len() {
                         a.iter().zip(b.iter()).all(|(a, b)| {
-                            let a = RangeConcrete {
-                                val: a.clone(),
-                                loc: self.loc,
-                            };
+                            let a = RangeConcrete::new(a.clone(), self.loc);
 
-                            let b = RangeConcrete {
-                                val: b.clone(),
-                                loc: other.loc,
-                            };
+                            let b = RangeConcrete::new(b.clone(), other.loc);
 
                             a.range_eq(&b, analyzer)
                         })
