@@ -277,7 +277,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                     Ok(Elem::Reference(self.clone()))
                 }
             }
-            VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete::new(concrete_node.underlying(analyzer)?.clone(), cvar.loc.unwrap_or(Loc::Implicit)))),
+            VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete::new(
+                concrete_node.underlying(analyzer)?.clone(),
+                cvar.loc.unwrap_or(Loc::Implicit),
+            ))),
             _e => Ok(Elem::Reference(self.clone())),
         }
     }
@@ -310,7 +313,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                     Ok(Elem::Reference(self.clone()))
                 }
             }
-            VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete::new(concrete_node.underlying(analyzer)?.clone(), cvar.loc.unwrap_or(Loc::Implicit)))),
+            VarType::Concrete(concrete_node) => Ok(Elem::Concrete(RangeConcrete::new(
+                concrete_node.underlying(analyzer)?.clone(),
+                cvar.loc.unwrap_or(Loc::Implicit),
+            ))),
             _e => Ok(Elem::Reference(self.clone())),
         }
     }

@@ -8,7 +8,10 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
                 if rhs_val > 256.into() {
-                    return Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(U256::zero()), self.loc)));
+                    return Some(Elem::Concrete(RangeConcrete::new(
+                        self.val.u256_as_original(U256::zero()),
+                        self.loc,
+                    )));
                 }
                 let max = Concrete::max_of_type(&self.val)
                     .unwrap()
@@ -26,7 +29,10 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                 } else if rhs_val > lhs_val.leading_zeros().into() {
                     Some(Elem::Concrete(RangeConcrete::new(max.into(), self.loc)))
                 } else {
-                    Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original((lhs_val << rhs_val).min(max)), self.loc)))
+                    Some(Elem::Concrete(RangeConcrete::new(
+                        self.val.u256_as_original((lhs_val << rhs_val).min(max)),
+                        self.loc,
+                    )))
                 }
             }
             _ => match (&self.val, &other.val) {
@@ -47,10 +53,16 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         if val > &U256::zero() {
                             Some(Elem::from(self.clone()))
                         } else {
-                            Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, I256::zero()), self.loc)))
+                            Some(Elem::Concrete(RangeConcrete::new(
+                                Concrete::Int(*lhs_size, I256::zero()),
+                                self.loc,
+                            )))
                         }
                     } else if val > &U256::from(abs.leading_zeros()) {
-                        Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, I256::zero()), self.loc)))
+                        Some(Elem::Concrete(RangeConcrete::new(
+                            Concrete::Int(*lhs_size, I256::zero()),
+                            self.loc,
+                        )))
                     } else {
                         let raw = I256::from_raw(abs.into_raw() << val);
                         let as_int = if raw == I256::MIN {
@@ -58,7 +70,10 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         } else {
                             I256::from(-1i32) * raw
                         };
-                        Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, as_int.max(min)), self.loc)))
+                        Some(Elem::Concrete(RangeConcrete::new(
+                            Concrete::Int(*lhs_size, as_int.max(min)),
+                            self.loc,
+                        )))
                     }
                 }
                 _ => None,
@@ -72,9 +87,15 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                 if rhs_val == U256::zero() {
                     Some(Elem::Concrete(self.clone()))
                 } else if rhs_val > U256::from(256) {
-                    Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(U256::zero()), self.loc)))
+                    Some(Elem::Concrete(RangeConcrete::new(
+                        self.val.u256_as_original(U256::zero()),
+                        self.loc,
+                    )))
                 } else {
-                    Some(Elem::Concrete(RangeConcrete::new(self.val.u256_as_original(lhs_val >> rhs_val), self.loc)))
+                    Some(Elem::Concrete(RangeConcrete::new(
+                        self.val.u256_as_original(lhs_val >> rhs_val),
+                        self.loc,
+                    )))
                 }
             }
             _ => match (&self.val, &other.val) {
@@ -82,7 +103,10 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                     if val == &U256::zero() {
                         Some(Elem::Concrete(self.clone()))
                     } else if val > &U256::from(*lhs_size) {
-                        Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, I256::from(-1i32)), self.loc)))
+                        Some(Elem::Concrete(RangeConcrete::new(
+                            Concrete::Int(*lhs_size, I256::from(-1i32)),
+                            self.loc,
+                        )))
                     } else {
                         let max = if *lhs_size == 256 {
                             I256::MAX
@@ -100,7 +124,10 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         };
 
                         if val >= &U256::from(bits) {
-                            Some(Elem::Concrete(RangeConcrete::new(Concrete::Int(*lhs_size, I256::from(-1i32)), self.loc)))
+                            Some(Elem::Concrete(RangeConcrete::new(
+                                Concrete::Int(*lhs_size, I256::from(-1i32)),
+                                self.loc,
+                            )))
                         } else {
                             let shr_val = abs.into_raw() >> val;
                             let as_int = I256::from_raw(shr_val);
