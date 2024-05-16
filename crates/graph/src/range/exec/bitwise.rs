@@ -1,6 +1,6 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
-use ethers_core::types::{H256, I256, U256};
+use ethers_core::types::{H256, U256};
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -187,7 +187,7 @@ impl RangeBitwise<Concrete> for Elem<Concrete> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethers_core::types::{H256, I256, U256};
+    use ethers_core::types::{I256, U256};
     use solang_parser::pt::Loc;
 
     #[test]

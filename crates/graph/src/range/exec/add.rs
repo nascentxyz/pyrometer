@@ -1,4 +1,4 @@
-use crate::nodes::{Builtin, Concrete};
+use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 
 use ethers_core::types::I256;
@@ -69,7 +69,7 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
                 | (Concrete::Int(..), Concrete::Uint(..)) => {
                     // just fall back to normal implementation because
                     // a positive and negative cannot overflow in addition
-                    self.range_add(&other)
+                    self.range_add(other)
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
                     let op_res = l.overflowing_add(*r).0;
