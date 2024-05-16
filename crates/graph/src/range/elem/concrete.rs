@@ -19,6 +19,24 @@ pub struct RangeConcrete<T> {
     pub loc: Loc,
 }
 
+macro_rules! rc_new_uint {
+    ($size:expr, $value:expr) => {
+        RangeConcrete::new(Concrete::Uint($size, $value), Loc::Implicit);
+    };
+    ($value:expr) => {
+        rc_new!(256, $value)
+    };
+}
+
+macro_rules! rc_new_int {
+    ($size:expr, $value:expr) => {
+        RangeConcrete::new(Concrete::Int($size, $value), Loc::Implicit);
+    };
+    ($value:expr) => {
+        rc_new!(256, $value)
+    };
+}
+
 impl<T> RangeConcrete<T> {
     pub fn new(val: T, loc: Loc) -> Self {
         Self { val, loc }

@@ -9,20 +9,20 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
                 let max = Concrete::max_of_type(&self.val).unwrap();
 
                 let op_res = lhs_val.checked_pow(rhs_val);
-                let res = if let Some(num) = op_res {
+                let op_res = if let Some(num) = op_res {
                     num.min(max.into_u256().unwrap())
                 } else {
                     max.into_u256().unwrap()
                 };
 
-                let res_val = self.val.u256_as_original(res);
-                let rc = RangeConcrete::new(res_val, self.loc);
+                let val = self.val.u256_as_original(op_res);
+                let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
             _ => match (&self.val, &other.val) {
                 (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
                     let pow2 = val % U256::from(2) == 0.into();
-                    let res = if val > &U256::from(u32::MAX) {
+                    let val = if val > &U256::from(u32::MAX) {
                         if pow2 {
                             Concrete::max_of_type(&self.val).unwrap()
                         } else {
@@ -45,7 +45,7 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
                             Concrete::min_of_type(&self.val).unwrap()
                         }
                     };
-                    let rc = RangeConcrete::new(res, self.loc);
+                    let rc = RangeConcrete::new(val, self.loc);
                     Some(rc.into())
                 }
                 _ => None,

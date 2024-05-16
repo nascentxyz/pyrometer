@@ -354,6 +354,13 @@ impl Concrete {
         matches!(self, Concrete::Int(_, _))
     }
 
+    pub fn size_wrap(self) -> Self {
+        match self {
+            Concrete::Int(size, val) => Concrete::Int(256, val).cast(Builtin::Int(size)).unwrap(),
+            _ => self,
+        }
+    }
+
     /// Performs a literal cast to another type
     pub fn literal_cast(self, builtin: Builtin) -> Option<Self> {
         match self {
@@ -470,6 +477,7 @@ impl Concrete {
                     bit_repr.cast(builtin)
                 }
                 Builtin::Int(size) => {
+                    println!("val: {val:x}");
                     // no op
                     if r_size == size {
                         Some(self)
@@ -477,26 +485,23 @@ impl Concrete {
                         let mask = if size == 256 {
                             U256::MAX / 2
                         } else {
-                            U256::from(2).pow((size - 1).into()) - 1
+                            U256::from(2).pow((size).into()) - 1
                         };
 
-                        let (_sign, abs) = val.into_sign_and_abs();
+                        let raw = val.into_raw();
 
-                        if abs < mask {
+                        if raw < mask / U256::from(2) {
                             Some(Concrete::Int(size, val))
                         } else {
-                            // check if the top bit for the new value is set on the existing value
-                            // if it is, then the cast will result in a negative number
-                            let top_mask =
-                                if abs & (U256::from(1) << U256::from(size)) != U256::zero() {
-                                    // sign extension
-                                    ((U256::from(1) << U256::from(257 - size)) - U256::from(1))
-                                        << U256::from(size - 1)
-                                } else {
-                                    U256::from(0)
-                                };
+                            let base_value = raw & mask;
+                            let res = if base_value >> (size - 1) & U256::from(1) == U256::from(1) {
+                                let top = U256::MAX << size;
+                                base_value | top
+                            } else {
+                                base_value
+                            };
 
-                            Some(Concrete::Int(size, I256::from_raw((abs & mask) | top_mask)))
+                            Some(Concrete::Int(size, I256::from_raw(res)))
                         }
                     }
                 }
@@ -856,6 +861,13 @@ impl Concrete {
         match self {
             Concrete::Int(_, val) => Some(*val),
             _ => None,
+        }
+    }
+
+    pub fn is_negative(&self) -> bool {
+        match self {
+            Concrete::Int(_, val) if *val < I256::from(0) => true,
+            _ => false,
         }
     }
 

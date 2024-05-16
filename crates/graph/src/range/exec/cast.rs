@@ -288,3 +288,51 @@ impl RangeCast<Concrete> for Elem<Concrete> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ethers_core::types::I256;
+    use solang_parser::pt::Loc;
+
+    #[test]
+    fn int_downcast() {
+        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-1500)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(8, I256::from(0)), Loc::Implicit);
+        let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(8, I256::from(36)));
+    }
+
+    #[test]
+    fn uint_downcast() {
+        let x = RangeConcrete::new(Concrete::Uint(256, U256::from(1500)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(8, U256::from(0)), Loc::Implicit);
+        let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Uint(8, U256::from(220)));
+    }
+
+    #[test]
+    fn int_weirdness() {
+        // type(int64).max
+        let v = Concrete::max_of_type(&Concrete::Int(64, I256::from(0i32)))
+            .unwrap()
+            .int_val()
+            .unwrap();
+        // int128(type(int64).max)
+        let x = RangeConcrete::new(Concrete::Int(128, v), Loc::Implicit);
+        // int128(type(int64).max) + 1
+        let x = x
+            .range_add(&RangeConcrete::new(
+                Concrete::Int(256, I256::from(1)),
+                Loc::Implicit,
+            ))
+            .unwrap()
+            .maybe_concrete_value()
+            .unwrap();
+        let expected = x.val.int_val().unwrap() * I256::from(-1i32);
+        let y = RangeConcrete::new(Concrete::Int(64, I256::from(0)), Loc::Implicit);
+        // int64(int128(type(int64).max) + 1)
+        let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(64, expected));
+    }
+}

@@ -13,13 +13,13 @@ impl RangeMax<Concrete> for RangeConcrete<Concrete> {
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, _))
                 | (Concrete::Int(lhs_size, _), Concrete::Uint(_, val)) => {
-                    let res = Concrete::Uint(*lhs_size, *val);
-                    let rc = RangeConcrete::new(res, self.loc);
+                    let val = Concrete::Uint(*lhs_size, *val);
+                    let rc = RangeConcrete::new(val, self.loc);
                     Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    let res = Concrete::Int(*lhs_size, *l.max(r));
-                    let rc = RangeConcrete::new(res, self.loc);
+                    let val = Concrete::Int(*lhs_size, *l.max(r));
+                    let rc = RangeConcrete::new(val, self.loc);
                     Some(rc.into())
                 }
                 _ => None,

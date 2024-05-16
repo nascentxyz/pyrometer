@@ -8,31 +8,28 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
                 if rhs_val > 256.into() {
-                    return Some(Elem::Concrete(RangeConcrete::new(
-                        self.val.u256_as_original(U256::zero()),
-                        self.loc,
-                    )));
+                    let val = self.val.u256_as_original(U256::zero());
+                    let rc = RangeConcrete::new(val, self.loc);
+                    return Some(rc.into());
                 }
+
                 let max = Concrete::max_of_type(&self.val)
                     .unwrap()
                     .into_u256()
                     .unwrap();
                 if self.val.int_val().is_some() {
                     // ints get weird treatment because they can push into the negatives
-                    Some(Elem::Concrete(RangeConcrete {
-                        val: Concrete::Int(
-                            self.val.int_size().unwrap(),
-                            I256::from_raw(lhs_val << rhs_val),
-                        ),
-                        loc: self.loc,
-                    }))
+                    let size = self.val.int_size().unwrap();
+                    let op_res = I256::from_raw(lhs_val << rhs_val);
+                    let val = Concrete::Int(size, op_res);
+                    Some(RangeConcrete::new(val, self.loc).into())
                 } else if rhs_val > lhs_val.leading_zeros().into() {
-                    Some(Elem::Concrete(RangeConcrete::new(max.into(), self.loc)))
+                    Some(RangeConcrete::new(max.into(), self.loc).into())
                 } else {
-                    Some(Elem::Concrete(RangeConcrete::new(
-                        self.val.u256_as_original((lhs_val << rhs_val).min(max)),
-                        self.loc,
-                    )))
+                    let op_res = (lhs_val << rhs_val).min(max);
+                    let val = self.val.u256_as_original(op_res);
+                    let rc = RangeConcrete::new(val, self.loc);
+                    Some(rc.into())
                 }
             }
             _ => match (&self.val, &other.val) {
@@ -41,28 +38,22 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         return Some(Elem::Concrete(self.clone()));
                     }
 
-                    let max = if *lhs_size == 256 {
-                        I256::MAX
-                    } else {
-                        I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1)) - I256::from(1)
-                    };
+                    let tmp = Concrete::Int(*lhs_size, I256::from(0i32));
+                    let min = Concrete::min_of_type(&tmp).unwrap().int_val().unwrap();
 
-                    let min = max * I256::from(-1i32) - I256::from(1i32);
                     let (abs, is_min) = neg_v.overflowing_abs();
                     if is_min {
                         if val > &U256::zero() {
-                            Some(Elem::from(self.clone()))
+                            Some(self.clone().into())
                         } else {
-                            Some(Elem::Concrete(RangeConcrete::new(
-                                Concrete::Int(*lhs_size, I256::zero()),
-                                self.loc,
-                            )))
+                            let val = Concrete::Int(*lhs_size, I256::zero());
+                            let rc = RangeConcrete::new(val, self.loc);
+                            Some(rc.into())
                         }
                     } else if val > &U256::from(abs.leading_zeros()) {
-                        Some(Elem::Concrete(RangeConcrete::new(
-                            Concrete::Int(*lhs_size, I256::zero()),
-                            self.loc,
-                        )))
+                        let val = Concrete::Int(*lhs_size, I256::zero());
+                        let rc = RangeConcrete::new(val, self.loc);
+                        Some(rc.into())
                     } else {
                         let raw = I256::from_raw(abs.into_raw() << val);
                         let as_int = if raw == I256::MIN {
@@ -70,10 +61,11 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         } else {
                             I256::from(-1i32) * raw
                         };
-                        Some(Elem::Concrete(RangeConcrete::new(
-                            Concrete::Int(*lhs_size, as_int.max(min)),
-                            self.loc,
-                        )))
+
+                        let op_res = as_int.max(min);
+                        let val = Concrete::Int(*lhs_size, op_res);
+                        let rc = RangeConcrete::new(val, self.loc);
+                        Some(rc.into())
                     }
                 }
                 _ => None,
@@ -87,15 +79,13 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                 if rhs_val == U256::zero() {
                     Some(Elem::Concrete(self.clone()))
                 } else if rhs_val > U256::from(256) {
-                    Some(Elem::Concrete(RangeConcrete::new(
-                        self.val.u256_as_original(U256::zero()),
-                        self.loc,
-                    )))
+                    let op_res = self.val.u256_as_original(U256::zero());
+                    let rc = RangeConcrete::new(op_res, self.loc);
+                    Some(rc.into())
                 } else {
-                    Some(Elem::Concrete(RangeConcrete::new(
-                        self.val.u256_as_original(lhs_val >> rhs_val),
-                        self.loc,
-                    )))
+                    let op_res = self.val.u256_as_original(lhs_val >> rhs_val);
+                    let rc = RangeConcrete::new(op_res, self.loc);
+                    Some(rc.into())
                 }
             }
             _ => match (&self.val, &other.val) {
@@ -103,19 +93,12 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                     if val == &U256::zero() {
                         Some(Elem::Concrete(self.clone()))
                     } else if val > &U256::from(*lhs_size) {
-                        Some(Elem::Concrete(RangeConcrete::new(
-                            Concrete::Int(*lhs_size, I256::from(-1i32)),
-                            self.loc,
-                        )))
+                        let val = Concrete::Int(*lhs_size, I256::from(-1i32));
+                        let rc = RangeConcrete::new(val, self.loc);
+                        Some(rc.into())
                     } else {
-                        let max = if *lhs_size == 256 {
-                            I256::MAX
-                        } else {
-                            I256::from_raw(U256::from(1u8) << U256::from(*lhs_size - 1))
-                                - I256::from(1)
-                        };
-                        let min = max * I256::from(-1i32) - I256::from(1i32);
-
+                        let tmp = Concrete::Int(*lhs_size, I256::from(0i32));
+                        let min = Concrete::min_of_type(&tmp).unwrap().int_val().unwrap();
                         let (abs, is_min) = neg_v.overflowing_abs();
                         let bits = if is_min {
                             255
@@ -124,20 +107,16 @@ impl RangeShift<Concrete> for RangeConcrete<Concrete> {
                         };
 
                         if val >= &U256::from(bits) {
-                            Some(Elem::Concrete(RangeConcrete::new(
-                                Concrete::Int(*lhs_size, I256::from(-1i32)),
-                                self.loc,
-                            )))
+                            let val = Concrete::Int(*lhs_size, I256::from(-1i32));
+                            let rc = RangeConcrete::new(val, self.loc);
+                            Some(rc.into())
                         } else {
                             let shr_val = abs.into_raw() >> val;
                             let as_int = I256::from_raw(shr_val);
-                            Some(Elem::Concrete(RangeConcrete {
-                                val: Concrete::Int(
-                                    *lhs_size,
-                                    (I256::from(-1i32) * as_int).max(min),
-                                ),
-                                loc: self.loc,
-                            }))
+                            let op_res = (I256::from(-1i32) * as_int).max(min);
+                            let val = Concrete::Int(*lhs_size, op_res);
+                            let rc = RangeConcrete::new(val, self.loc);
+                            Some(rc.into())
                         }
                     }
                 }

@@ -6,20 +6,20 @@ impl RangeMin<Concrete> for RangeConcrete<Concrete> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
                 let op_res = lhs_val.min(rhs_val);
-                let res = self.val.u256_as_original(op_res);
-                let rc = RangeConcrete::new(res, self.loc);
+                let val = self.val.u256_as_original(op_res);
+                let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, _), Concrete::Int(_, neg_v))
                 | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, _)) => {
-                    let res = Concrete::Int(*lhs_size, *neg_v);
-                    let rc = RangeConcrete::new(res, self.loc);
+                    let val = Concrete::Int(*lhs_size, *neg_v);
+                    let rc = RangeConcrete::new(val, self.loc);
                     Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    let res = Concrete::Int(*lhs_size, *l.min(r));
-                    let rc = RangeConcrete::new(res, self.loc);
+                    let val = Concrete::Int(*lhs_size, *l.min(r));
+                    let rc = RangeConcrete::new(val, self.loc);
                     Some(rc.into())
                 }
                 _ => None,
