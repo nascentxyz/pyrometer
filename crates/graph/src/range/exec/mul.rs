@@ -180,14 +180,10 @@ pub fn exec_mul(
                              one_overflowed: &mut bool| {
             if let Some(c) = lhs.range_wrapping_mul(rhs) {
                 let reverse = c.range_div(lhs).unwrap();
-                let overflowed = if !matches!(
+                let overflowed = !matches!(
                     reverse.range_ord(rhs, analyzer).unwrap(),
                     std::cmp::Ordering::Equal
-                ) {
-                    true
-                } else {
-                    false
-                };
+                );
 
                 if *all_overflowed && !overflowed {
                     *all_overflowed = false;
@@ -280,7 +276,7 @@ pub fn exec_mul(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{DummyGraph, GraphBackend};
+    use crate::DummyGraph;
     use ethers_core::types::U256;
     use solang_parser::pt::Loc;
 

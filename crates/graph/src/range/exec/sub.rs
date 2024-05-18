@@ -275,9 +275,9 @@ pub fn exec_sub(
         }
     } else if maximize {
         // if we are maximizing, the largest value will always just be the the largest value - the smallest value
-        lhs_max.range_sub(&rhs_min)
+        lhs_max.range_sub(rhs_min)
     } else {
         // if we are minimizing, the smallest value will always be smallest value - largest value
-        lhs_min.range_sub(&rhs_max)
+        lhs_min.range_sub(rhs_max)
     }
 }

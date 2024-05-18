@@ -2,7 +2,7 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
-use ethers_core::types::{I256, U256};
+use ethers_core::types::I256;
 
 impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
     fn range_add(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -274,10 +274,10 @@ pub fn exec_add(
         }
     } else if maximize {
         // if we are maximizing, the largest value will always just be the the largest value + the largest value
-        lhs_max.range_add(&rhs_max)
+        lhs_max.range_add(rhs_max)
     } else {
         // if we are minimizing, the smallest value will always just be the the smallest value + the smallest value
-        lhs_min.range_add(&rhs_min)
+        lhs_min.range_add(rhs_min)
     }
 }
 
