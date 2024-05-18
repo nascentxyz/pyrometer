@@ -1,5 +1,6 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
+use crate::GraphBackend;
 
 use ethers_core::types::{I256, U256};
 
@@ -122,5 +123,161 @@ impl RangeSub<Concrete> for Elem<Concrete> {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_sub(b),
             _ => None,
         }
+    }
+}
+
+/// Executes an subtraction given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound of the operation.
+///
+/// ### Explanation
+/// A fact about subtraction is that the largest value possible (in unbounded integer space), is between the left hand side _maximum_ and right hand side _minimum_ and the smallest
+/// is between the left hand side _minimum_ and right hand side _maximum_ values. This fact is used in normal "unbounded" (really, saturating) subtraction calculations as well as wrapping subtraction as basis for another fact:
+///
+/// In wrapping subtraction, if the bounds allow for optionally wrapping (e.g.: maximum - minimum does not wrap, but minimum - maximum does wrap), we can
+/// by extension include *both* the type's maximum and minimum.
+///
+/// For example, assume:<code>
+///uint256 x: [101, 2<sup>256</sup>-1]
+///uint256 y: [100, 2<sup>256</sup>-1]
+///unchecked { x - y }
+///</code>
+///
+/// In this subtraction of `x - y`, `101 - 100` does not wrap, but `101 - 102` does (unsigned integer). We can construct a value of x and y such that
+/// the result of `x - y` is equal to <code>2<sup>256</sup>-1</code> (`101 - 102`) or `0` (`101 - 101`). Therefore, the new bounds
+/// on `unchecked { x - y }` is <code>[0, 2<sup>256</sup>-1]</code>.
+///
+/// ### Note
+/// Signed integers use 2's complement representation so the maximum is <code>2<sup>size - 1</sup> - 1</code>, while unsigned integers are <code>2<sup>size</sup> - 1</code>
+///
+///
+/// ### Truth Tables
+/// Truth table for `checked sub` operation:
+///
+///| Sub             | Uint                                                                                         | Int                                                                                          | BytesX | Address | Bytes | String |
+///|-----------------|----------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------|--------|---------|-------|--------|
+///| **Uint**        | _min_: lhs<sub>min</sub> - rhs<sub>max</sub><br>_max_: lhs<sub>max</sub> - rhs<sub>min</sub> | _min_: lhs<sub>min</sub> - rhs<sub>max</sub><br>_max_: lhs<sub>max</sub> - rhs<sub>min</sub> | N/A    | N/A     | N/A   | N/A    |
+///| **Int**         | _min_: lhs<sub>min</sub> - rhs<sub>max</sub><br>_max_: lhs<sub>max</sub> - rhs<sub>min</sub> | _min_: lhs<sub>min</sub> - rhs<sub>max</sub><br>_max_: lhs<sub>max</sub> - rhs<sub>min</sub> | N/A    | N/A     | N/A   | N/A    |
+///| **BytesX**      | N/A                                                                                          | N/A                                                                                          | N/A    | N/A     | N/A   | N/A    |
+///| **Address**     | N/A                                                                                          | N/A                                                                                          | N/A    | N/A     | N/A   | N/A    |
+///| **Bytes**       | N/A                                                                                          | N/A                                                                                          | N/A    | N/A     | N/A   | N/A    |
+///| **String**      | N/A                                                                                          | N/A                                                                                          | N/A    | N/A     | N/A   | N/A    |
+///
+/// Truth table for `wrapping sub` operation:
+///
+///| Wrapping Sub              | Uint                                                                                                                                          | Int                                                                                                                                           | BytesX | Address | Bytes | String |
+///|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|--------|---------|-------|--------|
+///| **Uint**                  | _min_: {0, lhs<sub>min</sub> - rhs<sub>max</sub>}<br>_max_: {2<sup>size</sup> - 1, lhs<sub>max</sub> - rhs<sub>min</sub>}                     | _min_: {0, lhs<sub>min</sub> - rhs<sub>max</sub>}<br>_max_: {2<sup>size</sup> - 1, lhs<sub>max</sub> - rhs<sub>min</sub>}                     | N/A    | N/A     | N/A   | N/A    |
+///| **Int**                   | _min_: {-2<sup>size-1</sup>, lhs<sub>min</sub> - rhs<sub>max</sub>}<br>_max_: {2<sup>size-1</sup> - 1, lhs<sub>max</sub> - rhs<sub>min</sub>} | _min_: {-2<sup>size-1</sup>, lhs<sub>min</sub> - rhs<sub>max</sub>}<br>_max_: {2<sup>size-1</sup> - 1, lhs<sub>max</sub> - rhs<sub>min</sub>} | N/A    | N/A     | N/A   | N/A    |
+///| **BytesX**                | N/A                                                                                                                                           | N/A                                                                                                                                           | N/A    | N/A     | N/A   | N/A    |
+///| **Address**               | N/A                                                                                                                                           | N/A                                                                                                                                           | N/A    | N/A     | N/A   | N/A    |
+///| **Bytes**                 | N/A                                                                                                                                           | N/A                                                                                                                                           | N/A    | N/A     | N/A   | N/A    |
+///| **String**                | N/A                                                                                                                                           | N/A                                                                                                                                           | N/A    | N/A     | N/A   | N/A    |
+pub fn exec_sub(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    wrapping: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    // quick check if rhs is const and zero, if so return min or max
+    if wrapping {
+        let mut candidates = vec![];
+        let mut all_overflowed = true;
+        let mut one_overflowed = false;
+        let add_candidate = |lhs: &Elem<Concrete>,
+                             rhs: &Elem<Concrete>,
+                             candidates: &mut Vec<Elem<Concrete>>,
+                             all_overflowed: &mut bool,
+                             one_overflowed: &mut bool| {
+            if let Some(c) = lhs.range_wrapping_sub(rhs) {
+                let overflowed = if matches!(
+                    c.range_ord(lhs, analyzer),
+                    Some(std::cmp::Ordering::Greater)
+                ) {
+                    true
+                } else {
+                    false
+                };
+
+                if *all_overflowed && !overflowed {
+                    *all_overflowed = false;
+                }
+
+                if !*one_overflowed && overflowed {
+                    *one_overflowed = true;
+                }
+
+                candidates.push(c);
+            }
+        };
+
+        add_candidate(
+            lhs_min,
+            rhs_min,
+            &mut candidates,
+            &mut all_overflowed,
+            &mut one_overflowed,
+        );
+        add_candidate(
+            lhs_min,
+            rhs_max,
+            &mut candidates,
+            &mut all_overflowed,
+            &mut one_overflowed,
+        );
+        add_candidate(
+            lhs_max,
+            rhs_min,
+            &mut candidates,
+            &mut all_overflowed,
+            &mut one_overflowed,
+        );
+        add_candidate(
+            lhs_max,
+            rhs_max,
+            &mut candidates,
+            &mut all_overflowed,
+            &mut one_overflowed,
+        );
+
+        // If we have a conditional overflow, add the min and max of the type of lhs to the candidates
+        if !all_overflowed && one_overflowed {
+            let add_extremes = |elem: &Elem<Concrete>, candidates: &mut Vec<Elem<_>>| {
+                if let Some(c) = elem.maybe_concrete() {
+                    if let Some(max) = Concrete::max_of_type(&c.val) {
+                        candidates.push(RangeConcrete::new(max, c.loc).into());
+                    }
+
+                    if let Some(min) = Concrete::min_of_type(&c.val) {
+                        candidates.push(RangeConcrete::new(min, c.loc).into());
+                    }
+                }
+            };
+
+            add_extremes(lhs_min, &mut candidates);
+            add_extremes(lhs_max, &mut candidates);
+        }
+
+        candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+            Some(r) => r,
+            _ => std::cmp::Ordering::Less,
+        });
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        if maximize {
+            Some(candidates.remove(candidates.len() - 1))
+        } else {
+            Some(candidates.remove(0))
+        }
+    } else if maximize {
+        // if we are maximizing, the largest value will always just be the the largest value - the smallest value
+        lhs_max.range_sub(&rhs_min)
+    } else {
+        // if we are minimizing, the smallest value will always be smallest value - largest value
+        lhs_min.range_sub(&rhs_max)
     }
 }

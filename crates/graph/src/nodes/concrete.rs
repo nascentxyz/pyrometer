@@ -477,7 +477,6 @@ impl Concrete {
                     bit_repr.cast(builtin)
                 }
                 Builtin::Int(size) => {
-                    println!("val: {val:x}");
                     // no op
                     if r_size == size {
                         Some(self)

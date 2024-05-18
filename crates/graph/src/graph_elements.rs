@@ -1,9 +1,10 @@
 use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
-use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx};
+use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx, RangeArena};
 
 use lazy_static::lazy_static;
+use petgraph::{Directed, Graph};
 use solang_parser::pt::Identifier;
 
 use std::collections::HashMap;
@@ -380,3 +381,35 @@ pub enum ContextEdge {
     /// Unused
     Range,
 }
+
+#[derive(Default)]
+pub(crate) struct DummyGraph {}
+
+impl GraphLike for DummyGraph {
+    type Node = Node;
+    type Edge = Edge;
+    type RangeElem = Elem<Concrete>;
+    fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
+        panic!("Dummy Graph")
+    }
+
+    fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
+        panic!("Dummy Graph")
+    }
+    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
+        panic!("Dummy Graph")
+    }
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        panic!("Dummy Graph")
+    }
+
+    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+        panic!("Dummy Graph")
+    }
+
+    fn range_arena_idx_or_upsert(&mut self, _elem: Self::RangeElem) -> usize {
+        panic!("Dummy Graph")
+    }
+}
+
+impl GraphBackend for DummyGraph {}

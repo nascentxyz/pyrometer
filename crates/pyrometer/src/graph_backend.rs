@@ -324,7 +324,7 @@ impl GraphDot for Analyzer {
                 if as_mermaid {
                     format!("{indent}{from:} -->|\"{edge_str}\"| {to:}\n{indent}class {to} linkSource{edge_idx}\n{indent}class {from} linkTarget{edge_idx}")
                 } else {
-                    format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)    
+                    format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)
                 }
             })
             .collect::<Vec<_>>()
