@@ -250,6 +250,10 @@ pub fn exec_add(
                     if let Some(min) = Concrete::min_of_type(&c.val) {
                         candidates.push(RangeConcrete::new(min, c.loc).into());
                     }
+
+                    if let Some(max) = Concrete::max_of_type(&c.val) {
+                        candidates.push(RangeConcrete::new(max, c.loc).into());
+                    }
                 }
             };
             // We are able to conditionally overflow, so add min
@@ -284,6 +288,7 @@ pub fn exec_add(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DummyGraph;
     use ethers_core::types::U256;
     use solang_parser::pt::Loc;
 
@@ -408,5 +413,85 @@ mod tests {
             .maybe_concrete_value()
             .unwrap();
         assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+    }
+
+    #[test]
+    fn exec_sized_uint_uint_saturating() {
+        let g = DummyGraph::default();
+        let lhs_min = rc_uint_sized(105).into();
+        let lhs_max = rc_uint_sized(150).into();
+        let rhs_min = rc_uint_sized(10).into();
+        let rhs_max = rc_uint_sized(200).into();
+
+        let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, false, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
+        let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, false, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(115)));
+    }
+
+    #[test]
+    fn exec_sized_wrapping_uint_uint() {
+        let g = DummyGraph::default();
+        let lhs_min = rc_uint_sized(105).into();
+        let lhs_max = rc_uint_sized(150).into();
+        let rhs_min = rc_uint_sized(10).into();
+        let rhs_max = rc_uint_sized(200).into();
+
+        let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
+        let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+    }
+
+    #[test]
+    fn exec_sized_wrapping_int_uint() {
+        let g = DummyGraph::default();
+        let lhs_min = rc_int_sized(-128).into();
+        let lhs_max = rc_int_sized(127).into();
+        let rhs_min = rc_uint_sized(0).into();
+        let rhs_max = rc_uint_sized(255).into();
+
+        let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+        let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+    }
+
+    #[test]
+    fn exec_sized_wrapping_int_int_max() {
+        let g = DummyGraph::default();
+        let lhs_min = rc_int_sized(-128).into();
+        let lhs_max = rc_int_sized(-100).into();
+        let rhs_min = rc_int_sized(-5).into();
+        let rhs_max = rc_int_sized(5).into();
+
+        let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+        let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
     }
 }

@@ -1,6 +1,8 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
-use ethers_core::types::{H256, U256};
+use crate::GraphBackend;
+
+use ethers_core::types::{H256, I256, U256};
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -181,6 +183,324 @@ impl RangeBitwise<Concrete> for Elem<Concrete> {
             Elem::Concrete(a) => a.range_bit_not(),
             _ => None,
         }
+    }
+}
+
+/// Executes a bitwise `and` given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+///
+/// ### Note
+/// Signed integers use 2's complement representation so the maximum is <code>2<sup>size - 1</sup> - 1</code>, while unsigned integers are <code>2<sup>size</sup> - 1</code>
+///
+///
+/// ### Truth Tables
+/// Truth table for `checked div` operation:
+///
+/// `todo!()`
+///
+/// Truth table for `wrapping div` operation:
+///
+/// `todo!()`
+///
+pub fn exec_bit_and(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let mut candidates = vec![];
+    let bit_and = |lhs: &Elem<_>, rhs: &Elem<_>, candidates: &mut Vec<Elem<Concrete>>| {
+        if let Some(c) = lhs.range_bit_and(rhs) {
+            candidates.push(c);
+        }
+    };
+
+    // the max is the min of the maxes
+    match lhs_max.range_ord(rhs_max, analyzer) {
+        Some(std::cmp::Ordering::Less) => {
+            candidates.push(lhs_max.clone());
+        }
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal) => {
+            candidates.push(rhs_max.clone());
+        }
+        _ => {}
+    }
+
+    bit_and(lhs_min, rhs_min, &mut candidates);
+    bit_and(lhs_min, rhs_max, &mut candidates);
+    bit_and(lhs_max, rhs_min, &mut candidates);
+    bit_and(lhs_max, rhs_max, &mut candidates);
+
+    let zero = Elem::from(Concrete::from(U256::from(0)));
+    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+    let min_contains = matches!(
+        rhs_min.range_ord(&zero, analyzer),
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+    );
+
+    let max_contains = matches!(
+        rhs_max.range_ord(&zero, analyzer),
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+    );
+
+    if min_contains && max_contains {
+        candidates.push(zero);
+    }
+
+    let min_contains = matches!(
+        rhs_min.range_ord(&negative_one, analyzer),
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+    );
+
+    let max_contains = matches!(
+        rhs_max.range_ord(&negative_one, analyzer),
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+    );
+
+    if min_contains && max_contains {
+        candidates.push(lhs_min.clone());
+        candidates.push(lhs_max.clone());
+    }
+
+    // Sort the candidates
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
+    }
+}
+
+/// Executes a bitwise `or` given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+///
+/// ### Note
+/// Signed integers use 2's complement representation so the maximum is <code>2<sup>size - 1</sup> - 1</code>, while unsigned integers are <code>2<sup>size</sup> - 1</code>
+///
+///
+/// ### Truth Tables
+/// Truth table for `checked div` operation:
+///
+/// `todo!()`
+///
+/// Truth table for `wrapping div` operation:
+///
+/// `todo!()`
+///
+pub fn exec_bit_or(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let mut candidates = vec![];
+    let bit_or = |lhs: &Elem<_>, rhs: &Elem<_>, candidates: &mut Vec<Elem<Concrete>>| {
+        if let Some(c) = lhs.range_bit_or(rhs) {
+            candidates.push(c);
+        }
+    };
+
+    bit_or(lhs_min, rhs_min, &mut candidates);
+    bit_or(lhs_min, rhs_max, &mut candidates);
+    bit_or(lhs_max, rhs_min, &mut candidates);
+    bit_or(lhs_max, rhs_max, &mut candidates);
+
+    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+    let min_contains = matches!(
+        rhs_min.range_ord(&negative_one, analyzer),
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+    );
+
+    let max_contains = matches!(
+        rhs_max.range_ord(&negative_one, analyzer),
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+    );
+
+    if min_contains && max_contains {
+        candidates.push(negative_one.clone());
+        candidates.push(negative_one.clone());
+    }
+
+    // Sort the candidates
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
+    }
+}
+
+/// Executes a bitwise `xor` given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+///
+/// ### Note
+/// Signed integers use 2's complement representation so the maximum is <code>2<sup>size - 1</sup> - 1</code>, while unsigned integers are <code>2<sup>size</sup> - 1</code>
+///
+///
+/// ### Truth Tables
+/// Truth table for `checked div` operation:
+///
+/// `todo!()`
+///
+/// Truth table for `wrapping div` operation:
+///
+/// `todo!()`
+///
+pub fn exec_bit_xor(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let mut candidates = vec![
+        lhs_min.range_bit_xor(&rhs_min),
+        lhs_min.range_bit_xor(&rhs_max),
+        lhs_max.range_bit_xor(&rhs_min),
+        lhs_max.range_bit_xor(&rhs_max),
+    ];
+
+    let zero = Elem::from(Concrete::from(U256::from(0)));
+    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+
+    let min_contains = matches!(
+        rhs_min.range_ord(&zero, analyzer),
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+    );
+
+    let max_contains = matches!(
+        rhs_max.range_ord(&zero, analyzer),
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+    );
+
+    if min_contains && max_contains {
+        // if the rhs contains zero, in xor, thats just itself
+        candidates.push(lhs_max.range_bit_xor(&zero));
+    }
+
+    let min_contains = matches!(
+        rhs_min.range_ord(&negative_one, analyzer),
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+    );
+
+    let max_contains = matches!(
+        rhs_max.range_ord(&negative_one, analyzer),
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+    );
+
+    if min_contains && max_contains {
+        candidates.push(lhs_min.range_bit_xor(&negative_one));
+        candidates.push(lhs_max.range_bit_xor(&negative_one));
+    }
+
+    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
+    }
+}
+
+/// Executes a bitwise `not` given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+///
+/// ### Note
+/// Signed integers use 2's complement representation so the maximum is <code>2<sup>size - 1</sup> - 1</code>, while unsigned integers are <code>2<sup>size</sup> - 1</code>
+///
+///
+/// ### Truth Tables
+/// Truth table for `checked div` operation:
+///
+/// `todo!()`
+///
+/// Truth table for `wrapping div` operation:
+///
+/// `todo!()`
+///
+pub fn exec_bit_not(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let mut candidates = vec![lhs_min.range_bit_not(), lhs_max.range_bit_not()];
+
+    let zero = Elem::from(Concrete::from(U256::from(0)));
+
+    let min_contains = matches!(
+        lhs_min.range_ord(&zero, analyzer),
+        Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+    );
+
+    let max_contains = matches!(
+        lhs_max.range_ord(&zero, analyzer),
+        Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
+    );
+
+    if min_contains && max_contains {
+        match lhs_min {
+            Elem::Concrete(
+                ref r @ RangeConcrete {
+                    val: Concrete::Uint(..),
+                    ..
+                },
+            ) => candidates.push(Some(Concrete::max_of_type(&r.val).unwrap().into())),
+            Elem::Concrete(
+                ref r @ RangeConcrete {
+                    val: Concrete::Int(..),
+                    ..
+                },
+            ) => candidates.push(Some(Concrete::min_of_type(&r.val).unwrap().into())),
+            _ => {}
+        }
+    }
+
+    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
     }
 }
 

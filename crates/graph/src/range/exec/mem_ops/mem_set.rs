@@ -1,3 +1,4 @@
+use crate::GraphBackend;
 use crate::{
     nodes::Concrete,
     range::{elem::*, exec_traits::*},
@@ -23,36 +24,18 @@ impl RangeMemSet<Concrete> for RangeDyn<Concrete> {
         )))
     }
 
-    fn range_get_index(&self, _index: &Self) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
     fn range_set_length(&self, _other: &Self) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
-    fn range_get_length(&self) -> Option<Elem<Concrete>> {
         unreachable!()
     }
 }
 
 impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
     fn range_set_indices(&self, range: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        match (range.val.clone(), self.val.iter().take(1).next()) {
-            (
-                Concrete::DynBytes(val),
-                Some((
-                    _,
-                    (
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bytes(..),
-                            ..
-                        }),
-                        _,
-                    ),
-                )),
-            )
-            | (Concrete::DynBytes(val), None) => {
+        match (
+            range.val.clone(),
+            self.val.values().take(1).next().and_then(|(a, _)| Some(a)),
+        ) {
+            (Concrete::DynBytes(val), s) if s.is_none() || s.unwrap().is_bytes() => {
                 let mut existing = self.val.clone();
                 let new = val
                     .iter()
@@ -74,20 +57,7 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     range.loc,
                 )))
             }
-            (
-                Concrete::String(val),
-                Some((
-                    _,
-                    (
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::String(..),
-                            ..
-                        }),
-                        _,
-                    ),
-                )),
-            )
-            | (Concrete::String(val), None) => {
+            (Concrete::String(val), s) if s.is_none() || s.unwrap().is_string() => {
                 let mut existing = self.val.clone();
                 let new = val
                     .chars()
@@ -113,15 +83,7 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
         }
     }
 
-    fn range_get_index(&self, _index: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
     fn range_set_length(&self, _other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
-    fn range_get_length(&self) -> Option<Elem<Concrete>> {
         unreachable!()
     }
 }
@@ -133,15 +95,7 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
         Some(Elem::Concrete(RangeConcrete::new(new_val, range.loc)))
     }
 
-    fn range_get_index(&self, index: &Self) -> Option<Elem<Concrete>> {
-        self.val.get_index(&index.val).map(Elem::from)
-    }
-
     fn range_set_length(&self, _other: &Self) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
-    fn range_get_length(&self) -> Option<Elem<Concrete>> {
         unreachable!()
     }
 }
@@ -151,15 +105,7 @@ impl RangeMemSet<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
         todo!()
     }
 
-    fn range_get_index(&self, _range: &RangeDyn<Concrete>) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
     fn range_set_length(&self, _other: &RangeDyn<Concrete>) -> Option<Elem<Concrete>> {
-        unreachable!()
-    }
-
-    fn range_get_length(&self) -> Option<Elem<Concrete>> {
         unreachable!()
     }
 }
@@ -191,33 +137,45 @@ impl RangeMemSet<Concrete> for Elem<Concrete> {
             _e => None,
         }
     }
+}
 
-    fn range_get_length(&self) -> Option<Elem<Concrete>> {
-        match self {
-            Elem::Concrete(a) => Some(Elem::from(Concrete::from(a.val.maybe_array_size()?))),
-            Elem::ConcreteDyn(a) => Some(*a.len.clone()),
-            _e => None,
-        }
+pub fn exec_set_length(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    if maximize {
+        lhs_max.range_set_length(&rhs_max)
+    } else {
+        lhs_min.range_set_length(&rhs_min)
     }
+}
 
-    fn range_get_index(&self, index: &Elem<Concrete>) -> Option<Elem<Concrete>> {
-        match (self, index) {
-            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_get_index(b),
-            (Elem::ConcreteDyn(a), idx @ Elem::Concrete(_)) => {
-                if let Some((val, _)) = a.val.get(idx).cloned() {
-                    Some(val)
-                } else {
-                    None
-                }
-            }
-            (Elem::ConcreteDyn(a), idx @ Elem::Reference(_)) => {
-                if let Some((val, _)) = a.val.get(idx).cloned() {
-                    Some(val)
-                } else {
-                    None
-                }
-            }
-            _e => None,
+pub fn exec_set_indices(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    rhs: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    if maximize {
+        if let Some(t) = lhs_max.range_set_indices(&rhs_max) {
+            Some(t)
+        } else {
+            let max = rhs.simplify_maximize(analyzer).ok()?;
+            lhs_max.range_set_indices(&max)
+        }
+    } else {
+        if let Some(t) = lhs_min.range_set_indices(&rhs_min) {
+            Some(t)
+        } else {
+            let min = rhs.simplify_minimize(analyzer).ok()?;
+            lhs_min.range_set_indices(&min)
         }
     }
 }

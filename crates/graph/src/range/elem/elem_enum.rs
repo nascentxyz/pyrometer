@@ -676,6 +676,46 @@ impl Elem<Concrete> {
             }
         }
     }
+
+    pub fn is_bytes(&self) -> bool {
+        matches!(
+            self,
+            Elem::Concrete(RangeConcrete {
+                val: Concrete::Bytes(..),
+                ..
+            })
+        )
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(
+            self,
+            Elem::Concrete(RangeConcrete {
+                val: Concrete::String(..),
+                ..
+            })
+        )
+    }
+
+    pub fn is_uint(&self) -> bool {
+        matches!(
+            self,
+            Elem::Concrete(RangeConcrete {
+                val: Concrete::Uint(..),
+                ..
+            })
+        )
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(
+            self,
+            Elem::Concrete(RangeConcrete {
+                val: Concrete::Int(..),
+                ..
+            })
+        )
+    }
 }
 
 impl From<Concrete> for Elem<Concrete> {

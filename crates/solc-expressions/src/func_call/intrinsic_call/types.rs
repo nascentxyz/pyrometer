@@ -6,7 +6,7 @@ use graph::nodes::FunctionNode;
 use graph::{
     elem::*,
     nodes::{BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode},
-    AnalyzerBackend, Node, Range, VarType,
+    AnalyzerBackend, Node, VarType,
 };
 use shared::NodeIdx;
 

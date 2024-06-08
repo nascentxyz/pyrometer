@@ -158,9 +158,13 @@ pub trait RangeConcat<T, Rhs = Self> {
 pub trait RangeMemSet<T, Rhs = Self> {
     /// Applies a transformation of indices
     fn range_set_indices(&self, other: &Rhs) -> Option<Elem<T>>;
-    /// Gets an index
-    fn range_get_index(&self, other: &Rhs) -> Option<Elem<T>>;
     /// Applies a transformation of length
     fn range_set_length(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+pub trait RangeMemGet<T, Rhs = Self> {
+    /// Gets an index
+    fn range_get_index(&self, other: &Rhs) -> Option<Elem<T>>;
+    /// Gets the length
     fn range_get_length(&self) -> Option<Elem<T>>;
 }

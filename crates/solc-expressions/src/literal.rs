@@ -38,7 +38,7 @@ pub trait Literal: AnalyzerBackend + Sized {
             val
         };
 
-        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
+        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8).max(8) as u16;
         let concrete_node = if negative {
             let val = if val == U256::from(2).pow(255.into()) {
                 // no need to set upper bit

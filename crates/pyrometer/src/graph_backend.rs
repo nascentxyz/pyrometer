@@ -4,9 +4,9 @@ use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use shared::RangeArena;
 use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
+// use std::collections::hash_map::DefaultHasher;
+// use std::hash::Hash;
+// use std::hash::Hasher;
 use std::rc::Rc;
 
 use graph::{
@@ -103,11 +103,11 @@ impl GraphLike for Analyzer {
     }
 }
 
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
-    let mut s = DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
-}
+// fn calculate_hash<T: Hash>(t: &T) -> u64 {
+//     let mut s = DefaultHasher::new();
+//     t.hash(&mut s);
+//     s.finish()
+// }
 
 impl GraphBackend for Analyzer {}
 
@@ -177,6 +177,10 @@ impl GraphDot for Analyzer {
         let child_node_str = children
             .iter()
             .filter_map(|child| {
+                if handled_nodes.lock().unwrap().contains(child) {
+                    return None;
+                }
+
                 let post_str = match self.node(*child) {
                     Node::Context(c) => {
                         *cluster_num += 2;
@@ -262,12 +266,17 @@ impl GraphDot for Analyzer {
                         children
                             .iter()
                             .map(|child| {
-                                // if !handled_nodes.lock().unwrap().contains(child) {
-                                //     return None
-                                // } else {
-                                //     handled_nodes.lock().unwrap().insert(*child);
-                                // }
-                                mermaid_node(self, &indent, *child, true, Some(&curr_cluster_name))
+                                if !handled_nodes.lock().unwrap().contains(child) {
+                                    handled_nodes.lock().unwrap().insert(*child);
+                                }
+                                mermaid_node(
+                                    self,
+                                    &indent,
+                                    *child,
+                                    true,
+                                    true,
+                                    Some(&curr_cluster_name),
+                                )
                             })
                             .collect::<Vec<_>>()
                             .join("\n")
@@ -276,25 +285,22 @@ impl GraphDot for Analyzer {
                 };
 
                 if as_mermaid {
-                    if !post_str.is_empty() {
-                        Some(post_str)
-                    } else {
-                        if !handled_nodes.lock().unwrap().contains(child) {
-                            return None;
+                    if handled_nodes.lock().unwrap().contains(child) {
+                        return if !post_str.is_empty() {
+                            Some(post_str)
                         } else {
-                            handled_nodes.lock().unwrap().insert(*child);
-                        }
-                        Some(mermaid_node(
-                            self,
-                            &indent,
-                            *child,
-                            true,
-                            Some(&curr_cluster_name),
-                        ))
+                            None
+                        };
+                    } else {
+                        handled_nodes.lock().unwrap().insert(*child);
                     }
+                    Some(format!(
+                        "{}\n{indent}{post_str}",
+                        mermaid_node(self, &indent, *child, true, true, Some(&curr_cluster_name),)
+                    ))
                 } else {
                     {
-                        if !handled_nodes.lock().unwrap().contains(child) {
+                        if handled_nodes.lock().unwrap().contains(child) {
                             return None;
                         } else {
                             handled_nodes.lock().unwrap().insert(*child);
@@ -338,7 +344,7 @@ impl GraphDot for Analyzer {
                     {
                         handled_nodes.lock().unwrap().insert(node);
                     }
-                    mermaid_node(self, &indent, node, true, Some(&curr_cluster_name))
+                    mermaid_node(self, &indent, node, true, true, Some(&curr_cluster_name))
                 }
             };
 
@@ -672,7 +678,7 @@ impl GraphLike for G<'_> {
         panic!("Should not call this")
     }
 
-    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+    fn range_arena_idx(&self, _elem: &Self::RangeElem) -> Option<usize> {
         panic!("Should not call this")
     }
 
@@ -688,6 +694,7 @@ pub fn mermaid_node(
     indent: &str,
     node: NodeIdx,
     style: bool,
+    loc: bool,
     class: Option<&str>,
 ) -> String {
     let mut node_str = format!(
@@ -702,6 +709,23 @@ pub fn mermaid_node(
             petgraph::graph::GraphIndex::index(&node),
             g.node(node).dot_str_color()
         ));
+    }
+
+    if loc {
+        match g.node(node) {
+            Node::ContextVar(..) => {
+                match graph::nodes::ContextVarNode::from(node).loc(g).unwrap() {
+                    solang_parser::pt::Loc::File(f, s, e) => {
+                        node_str.push_str(&format!(
+                            "\n{indent}class {} loc_{f}_{s}_{e}",
+                            petgraph::graph::GraphIndex::index(&node)
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
     }
 
     if let Some(class) = class {

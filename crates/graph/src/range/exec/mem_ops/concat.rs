@@ -1,5 +1,6 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
+use crate::GraphBackend;
 
 use ethers_core::types::{H256, U256};
 use std::collections::BTreeMap;
@@ -15,21 +16,9 @@ impl RangeConcat<Concrete> for RangeConcrete<Concrete> {
 
 impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
     fn range_concat(&self, other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        match (other.val.clone(), self.val.iter().take(1).next()) {
-            (
-                Concrete::DynBytes(val),
-                Some((
-                    _,
-                    (
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bytes(..),
-                            ..
-                        }),
-                        _,
-                    ),
-                )),
-            )
-            | (Concrete::DynBytes(val), None) => {
+        let inner = self.val.values().take(1).next().and_then(|(a, _)| Some(a));
+        match (other.val.clone(), inner) {
+            (Concrete::DynBytes(val), inner) if inner.is_none() || inner.unwrap().is_bytes() => {
                 let last = self.len.clone();
                 let mut existing = self.val.clone();
                 let new = val
@@ -51,20 +40,7 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     other.loc,
                 )))
             }
-            (
-                Concrete::String(val),
-                Some((
-                    _,
-                    (
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::String(..),
-                            ..
-                        }),
-                        _,
-                    ),
-                )),
-            )
-            | (Concrete::String(val), None) => {
+            (Concrete::String(val), inner) if inner.is_none() || inner.unwrap().is_string() => {
                 let last = self.len.clone();
                 let mut existing = self.val.clone();
                 let new = val
@@ -93,31 +69,10 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
 
 impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {
-        let val: Option<(_, &(Elem<Concrete>, _))> = self.val.iter().take(1).next();
-        let o_val: Option<(_, &(Elem<Concrete>, _))> = other.val.iter().take(1).next();
+        let val = self.val.values().take(1).next().and_then(|(a, _)| Some(a));
+        let o_val = other.val.values().take(1).next().and_then(|(a, _)| Some(a));
         match (val, o_val) {
-            (
-                Some((
-                    _,
-                    &(
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bytes(..),
-                            ..
-                        }),
-                        _,
-                    ),
-                )),
-                Some((
-                    _,
-                    &(
-                        Elem::Concrete(RangeConcrete {
-                            val: Concrete::Bytes(..),
-                            ..
-                        }),
-                        _,
-                    ),
-                )),
-            ) => {
+            (Some(v), Some(o)) if v.is_bytes() && o.is_bytes() => {
                 let last = self.len.clone();
                 let mut existing = self.val.clone();
                 let other_vals = other
@@ -140,8 +95,8 @@ impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                     other.loc,
                 )))
             }
-            (Some((_, (l @ Elem::Reference(_), _))), None) => Some(l.clone()),
-            (None, Some((_, (r @ Elem::Reference(_), _)))) => Some(r.clone()),
+            (Some(l @ Elem::Reference(_)), None) => Some(l.clone()),
+            (None, Some(r @ Elem::Reference(_))) => Some(r.clone()),
             (None, None) => Some(Elem::ConcreteDyn(self.clone())),
             _e => None,
         }
@@ -157,5 +112,38 @@ impl RangeConcat<Concrete> for Elem<Concrete> {
             | (Elem::ConcreteDyn(d), Elem::Concrete(c)) => d.range_concat(c),
             _e => None,
         }
+    }
+}
+
+/// Executes a concatenation of bytes.
+pub fn exec_concat(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    // TODO: improve with smarter stuff
+    let candidates = vec![
+        lhs_min.range_concat(&rhs_min),
+        lhs_min.range_concat(&rhs_max),
+        lhs_max.range_concat(&rhs_min),
+        lhs_max.range_concat(&rhs_max),
+    ];
+    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
     }
 }

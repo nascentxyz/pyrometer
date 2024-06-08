@@ -1,5 +1,6 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
+use crate::GraphBackend;
 
 impl RangeMin<Concrete> for RangeConcrete<Concrete> {
     fn range_min(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -53,5 +54,38 @@ impl RangeMin<Concrete> for Elem<Concrete> {
             (Elem::Null, _) => Some(other.clone()),
             _ => None,
         }
+    }
+}
+
+/// Executes the minimum given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+pub fn exec_min(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let candidates = vec![
+        lhs_min.range_min(&rhs_min),
+        lhs_min.range_min(&rhs_max),
+        lhs_max.range_min(&rhs_min),
+        lhs_max.range_min(&rhs_max),
+    ];
+    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
     }
 }

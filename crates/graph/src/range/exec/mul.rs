@@ -280,24 +280,6 @@ mod tests {
     use ethers_core::types::U256;
     use solang_parser::pt::Loc;
 
-    fn rc_uint_sized(n: u128) -> RangeConcrete<Concrete> {
-        let size: u16 = ((32 - ((n.leading_zeros() + 128) / 8)) * 8).max(8) as u16;
-        RangeConcrete::new(Concrete::Uint(size, U256::from(n)), Loc::Implicit)
-    }
-
-    fn rc_uint256(n: u128) -> RangeConcrete<Concrete> {
-        RangeConcrete::new(Concrete::Uint(256, U256::from(n)), Loc::Implicit)
-    }
-
-    fn rc_int_sized(n: i128) -> RangeConcrete<Concrete> {
-        let size: u16 = ((32 - ((n.abs().leading_zeros() + 128) / 8)) * 8).max(8) as u16;
-        RangeConcrete::new(Concrete::Int(size, I256::from(n)), Loc::Implicit)
-    }
-
-    fn rc_int256(n: i128) -> RangeConcrete<Concrete> {
-        RangeConcrete::new(Concrete::Int(256, I256::from(n)), Loc::Implicit)
-    }
-
     #[test]
     fn sized_uint_uint() {
         let x = rc_uint_sized(255);
@@ -322,6 +304,14 @@ mod tests {
     fn sized_int_int() {
         let x = rc_int_sized(-127);
         let y = rc_int_sized(-127);
+        let result = x.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+    }
+
+    #[test]
+    fn sized_int_int_one() {
+        let x = rc_int_sized(-1);
+        let y = rc_int_sized(-128);
         let result = x.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
     }

@@ -2,12 +2,11 @@ use crate::{
     require::Require, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
     ListAccess,
 };
-use graph::elem::RangeElem;
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
     nodes::{Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 
 use solang_parser::{

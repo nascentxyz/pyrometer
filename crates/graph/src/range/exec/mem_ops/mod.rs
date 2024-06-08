@@ -1,16 +1,9 @@
 mod concat;
+mod mem_get;
 mod mem_set;
+mod memcopy;
 
-use crate::elem::Elem;
-use crate::exec_traits::RangeMemOps;
-use crate::nodes::Concrete;
-
-impl RangeMemOps<Concrete> for Elem<Concrete> {
-    fn range_memcopy(&self) -> Option<Elem<Concrete>> {
-        match self {
-            Elem::Concrete(_a) => Some(self.clone()),
-            Elem::ConcreteDyn(_a) => Some(self.clone()),
-            _e => None,
-        }
-    }
-}
+pub use concat::exec_concat;
+pub use mem_get::{exec_get_index, exec_get_length};
+pub use mem_set::{exec_set_indices, exec_set_length};
+pub use memcopy::exec_memcopy;

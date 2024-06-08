@@ -73,8 +73,6 @@ pub enum RangeOp {
     And,
     /// Logical OR
     Or,
-    /// Catch-all requirement statement
-    Where,
     /// Cast from one type to another
     Cast,
     /// Bitwise AND
@@ -176,7 +174,6 @@ impl ToString for RangeOp {
             Not => "!".to_string(),
             And => "&&".to_string(),
             Or => "||".to_string(),
-            Where => "where".to_string(),
             Cast => "cast".to_string(),
             BitAnd => "&".to_string(),
             BitOr => "|".to_string(),

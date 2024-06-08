@@ -8,7 +8,7 @@ use graph::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
         KilledKind, TmpConstruction,
     },
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node, RangeEval, SolcRange, VarType,
 };
 
 use ethers_core::types::U256;

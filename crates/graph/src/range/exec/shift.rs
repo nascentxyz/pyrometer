@@ -1,5 +1,6 @@
 use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
+use crate::GraphBackend;
 
 use ethers_core::types::{I256, U256};
 
@@ -138,5 +139,71 @@ impl RangeShift<Concrete> for Elem<Concrete> {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_shr(b),
             _ => None,
         }
+    }
+}
+
+/// Executes the `shift left` operation given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+pub fn exec_shl(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let candidates = vec![
+        lhs_min.range_shl(&rhs_min),
+        lhs_min.range_shl(&rhs_max),
+        lhs_max.range_shl(&rhs_min),
+        lhs_max.range_shl(&rhs_max),
+    ];
+    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
+    }
+}
+
+/// Executes the `shift right` operation given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
+/// of the operation.
+pub fn exec_shr(
+    lhs_min: &Elem<Concrete>,
+    lhs_max: &Elem<Concrete>,
+    rhs_min: &Elem<Concrete>,
+    rhs_max: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+) -> Option<Elem<Concrete>> {
+    let candidates = vec![
+        lhs_min.range_shr(&rhs_min),
+        lhs_min.range_shr(&rhs_max),
+        lhs_max.range_shr(&rhs_min),
+        lhs_max.range_shr(&rhs_max),
+    ];
+    let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
+    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        Some(r) => r,
+        _ => std::cmp::Ordering::Less,
+    });
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    if maximize {
+        Some(candidates.remove(candidates.len() - 1))
+    } else {
+        Some(candidates.remove(0))
     }
 }

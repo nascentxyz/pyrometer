@@ -403,7 +403,7 @@ impl GraphLike for DummyGraph {
         panic!("Dummy Graph")
     }
 
-    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+    fn range_arena_idx(&self, _elem: &Self::RangeElem) -> Option<usize> {
         panic!("Dummy Graph")
     }
 

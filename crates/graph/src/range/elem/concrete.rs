@@ -8,6 +8,7 @@ use shared::NodeIdx;
 
 use std::hash::{Hash, Hasher};
 
+use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 
 /// A concrete value for a range element
@@ -19,22 +20,27 @@ pub struct RangeConcrete<T> {
     pub loc: Loc,
 }
 
-macro_rules! rc_new_uint {
-    ($size:expr, $value:expr) => {
-        RangeConcrete::new(Concrete::Uint($size, $value), Loc::Implicit);
-    };
-    ($value:expr) => {
-        rc_new!(256, $value)
-    };
+pub fn rc_uint_sized(n: u128) -> RangeConcrete<Concrete> {
+    let size: u16 = ((32 - ((n.leading_zeros() + 128) / 8)) * 8).max(8) as u16;
+    RangeConcrete::new(Concrete::Uint(size, U256::from(n)), Loc::Implicit)
 }
 
-macro_rules! rc_new_int {
-    ($size:expr, $value:expr) => {
-        RangeConcrete::new(Concrete::Int($size, $value), Loc::Implicit);
-    };
-    ($value:expr) => {
-        rc_new!(256, $value)
-    };
+pub fn rc_uint256(n: u128) -> RangeConcrete<Concrete> {
+    RangeConcrete::new(Concrete::Uint(256, U256::from(n)), Loc::Implicit)
+}
+
+pub fn rc_int_sized(n: i128) -> RangeConcrete<Concrete> {
+    let size: u16 = ((32 - ((n.abs().leading_zeros() + 128) / 8)) * 8).max(8) as u16;
+    RangeConcrete::new(Concrete::Int(size, I256::from(n)), Loc::Implicit)
+}
+
+pub fn rc_i256_sized(n: I256) -> RangeConcrete<Concrete> {
+    let size: u16 = ((32 - ((n.abs().leading_zeros()) / 8)) * 8).max(8) as u16;
+    RangeConcrete::new(Concrete::Int(size, n), Loc::Implicit)
+}
+
+pub fn rc_int256(n: i128) -> RangeConcrete<Concrete> {
+    RangeConcrete::new(Concrete::Int(256, I256::from(n)), Loc::Implicit)
 }
 
 impl<T> RangeConcrete<T> {
@@ -88,9 +94,9 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
 
     fn depends_on(
         &self,
-        var: ContextVarNode,
-        seen: &mut Vec<ContextVarNode>,
-        analyzer: &impl GraphBackend,
+        _var: ContextVarNode,
+        _seen: &mut Vec<ContextVarNode>,
+        _analyzer: &impl GraphBackend,
     ) -> Result<bool, Self::GraphError> {
         Ok(false)
     }

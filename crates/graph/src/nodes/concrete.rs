@@ -170,6 +170,13 @@ impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
 }
 
 impl Concrete {
+    pub fn raw_bits_u256(&self) -> Option<U256> {
+        match self {
+            Concrete::Int(_, val) => Some(val.into_raw()),
+            _ => self.into_u256(),
+        }
+    }
+
     pub fn set_indices(&mut self, other: &Self) {
         match (self, other) {
             (Concrete::DynBytes(s), Concrete::DynBytes(o)) => {
