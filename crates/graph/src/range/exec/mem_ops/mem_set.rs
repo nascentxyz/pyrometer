@@ -33,7 +33,7 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
     fn range_set_indices(&self, range: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
         match (
             range.val.clone(),
-            self.val.values().take(1).next().and_then(|(a, _)| Some(a)),
+            self.val.values().take(1).next().map(|(a, _)| a),
         ) {
             (Concrete::DynBytes(val), s) if s.is_none() || s.unwrap().is_bytes() => {
                 let mut existing = self.val.clone();
@@ -148,9 +148,9 @@ pub fn exec_set_length(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        lhs_max.range_set_length(&rhs_max)
+        lhs_max.range_set_length(rhs_max)
     } else {
-        lhs_min.range_set_length(&rhs_min)
+        lhs_min.range_set_length(rhs_min)
     }
 }
 
@@ -164,18 +164,16 @@ pub fn exec_set_indices(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        if let Some(t) = lhs_max.range_set_indices(&rhs_max) {
+        if let Some(t) = lhs_max.range_set_indices(rhs_max) {
             Some(t)
         } else {
             let max = rhs.simplify_maximize(analyzer).ok()?;
             lhs_max.range_set_indices(&max)
         }
+    } else if let Some(t) = lhs_min.range_set_indices(rhs_min) {
+        Some(t)
     } else {
-        if let Some(t) = lhs_min.range_set_indices(&rhs_min) {
-            Some(t)
-        } else {
-            let min = rhs.simplify_minimize(analyzer).ok()?;
-            lhs_min.range_set_indices(&min)
-        }
+        let min = rhs.simplify_minimize(analyzer).ok()?;
+        lhs_min.range_set_indices(&min)
     }
 }

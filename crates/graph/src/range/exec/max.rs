@@ -60,10 +60,10 @@ pub fn exec_max(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
-        lhs_min.range_max(&rhs_min),
-        lhs_min.range_max(&rhs_max),
-        lhs_max.range_max(&rhs_min),
-        lhs_max.range_max(&rhs_max),
+        lhs_min.range_max(rhs_min),
+        lhs_min.range_max(rhs_max),
+        lhs_max.range_max(rhs_min),
+        lhs_max.range_max(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {

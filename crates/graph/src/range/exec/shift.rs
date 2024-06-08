@@ -153,10 +153,10 @@ pub fn exec_shl(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
-        lhs_min.range_shl(&rhs_min),
-        lhs_min.range_shl(&rhs_max),
-        lhs_max.range_shl(&rhs_min),
-        lhs_max.range_shl(&rhs_max),
+        lhs_min.range_shl(rhs_min),
+        lhs_min.range_shl(rhs_max),
+        lhs_max.range_shl(rhs_min),
+        lhs_max.range_shl(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
@@ -186,10 +186,10 @@ pub fn exec_shr(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
-        lhs_min.range_shr(&rhs_min),
-        lhs_min.range_shr(&rhs_max),
-        lhs_max.range_shr(&rhs_min),
-        lhs_max.range_shr(&rhs_max),
+        lhs_min.range_shr(rhs_min),
+        lhs_min.range_shr(rhs_max),
+        lhs_max.range_shr(rhs_min),
+        lhs_max.range_shr(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {

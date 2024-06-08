@@ -86,12 +86,12 @@ pub fn exec_get_length(
     if maximize {
         let new = lhs_max.clone();
         let new_max = new.simplify_maximize(analyzer).ok()?;
-        let res = new_max.range_get_length();
-        res
+
+        new_max.range_get_length()
     } else {
         let new_min = lhs_min.simplify_minimize(analyzer).ok()?;
-        let res = new_min.range_get_length();
-        res
+
+        new_min.range_get_length()
     }
 }
 
@@ -117,7 +117,7 @@ pub fn exec_get_index(
                     .iter()
                     .try_fold(None, |mut acc: Option<Elem<Concrete>>, (key, (val, _))| {
                         if matches!(
-                            key.overlaps_dual(&rhs_min, &rhs_max, true, analyzer)?,
+                            key.overlaps_dual(rhs_min, rhs_max, true, analyzer)?,
                             Some(true)
                         ) {
                             if acc.is_none()
@@ -160,7 +160,7 @@ pub fn exec_get_index(
                     .iter()
                     .try_fold(None, |mut acc: Option<Elem<Concrete>>, (key, (val, _))| {
                         if matches!(
-                            key.overlaps_dual(&rhs_min, &rhs_max, true, analyzer)?,
+                            key.overlaps_dual(rhs_min, rhs_max, true, analyzer)?,
                             Some(true)
                         ) {
                             if acc.is_none()

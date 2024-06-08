@@ -16,7 +16,7 @@ impl RangeConcat<Concrete> for RangeConcrete<Concrete> {
 
 impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
     fn range_concat(&self, other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        let inner = self.val.values().take(1).next().and_then(|(a, _)| Some(a));
+        let inner = self.val.values().take(1).next().map(|(a, _)| a);
         match (other.val.clone(), inner) {
             (Concrete::DynBytes(val), inner) if inner.is_none() || inner.unwrap().is_bytes() => {
                 let last = self.len.clone();
@@ -69,8 +69,8 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
 
 impl RangeConcat<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
     fn range_concat(&self, other: &Self) -> Option<Elem<Concrete>> {
-        let val = self.val.values().take(1).next().and_then(|(a, _)| Some(a));
-        let o_val = other.val.values().take(1).next().and_then(|(a, _)| Some(a));
+        let val = self.val.values().take(1).next().map(|(a, _)| a);
+        let o_val = other.val.values().take(1).next().map(|(a, _)| a);
         match (val, o_val) {
             (Some(v), Some(o)) if v.is_bytes() && o.is_bytes() => {
                 let last = self.len.clone();
@@ -126,10 +126,10 @@ pub fn exec_concat(
 ) -> Option<Elem<Concrete>> {
     // TODO: improve with smarter stuff
     let candidates = vec![
-        lhs_min.range_concat(&rhs_min),
-        lhs_min.range_concat(&rhs_max),
-        lhs_max.range_concat(&rhs_min),
-        lhs_max.range_concat(&rhs_max),
+        lhs_min.range_concat(rhs_min),
+        lhs_min.range_concat(rhs_max),
+        lhs_max.range_concat(rhs_min),
+        lhs_max.range_concat(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {

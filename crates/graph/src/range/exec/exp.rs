@@ -79,10 +79,10 @@ pub fn exec_exp(
 ) -> Option<Elem<Concrete>> {
     // TODO: Improve this
     let candidates = vec![
-        lhs_min.range_exp(&rhs_min),
-        lhs_min.range_exp(&rhs_max),
-        lhs_max.range_exp(&rhs_min),
-        lhs_max.range_exp(&rhs_max),
+        lhs_min.range_exp(rhs_min),
+        lhs_min.range_exp(rhs_max),
+        lhs_max.range_exp(rhs_min),
+        lhs_max.range_exp(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {

@@ -366,7 +366,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 exec_set_length(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer)
             }
             RangeOp::SetIndices => exec_set_indices(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, &*self.rhs, maximize, analyzer,
+                &lhs_min, &lhs_max, &rhs_min, &rhs_max, &self.rhs, maximize, analyzer,
             ),
             RangeOp::Memcopy => exec_memcopy(&lhs_min, &lhs_max, maximize),
             RangeOp::Concat => {

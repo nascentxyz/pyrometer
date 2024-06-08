@@ -18,7 +18,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
     fn range_cast(&self, other: &RangeDyn<Concrete>) -> Option<Elem<Concrete>> {
         match (
             self.val.clone(),
-            other.val.values().take(1).next().and_then(|(a, _)| Some(a)),
+            other.val.values().take(1).next().map(|(a, _)| a),
         ) {
             (Concrete::Bytes(size, val), o) if o.is_none() || o.unwrap().is_bytes() => {
                 let new = val
@@ -82,10 +82,8 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
 
 impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
     fn range_cast(&self, other: &Self) -> Option<Elem<Concrete>> {
-        let val: Option<&Elem<Concrete>> =
-            self.val.values().take(1).next().and_then(|(a, _)| Some(a));
-        let o_val: Option<&Elem<Concrete>> =
-            other.val.values().take(1).next().and_then(|(a, _)| Some(a));
+        let val: Option<&Elem<Concrete>> = self.val.values().take(1).next().map(|(a, _)| a);
+        let o_val: Option<&Elem<Concrete>> = other.val.values().take(1).next().map(|(a, _)| a);
 
         match (val, o_val) {
             (Some(elem), Some(o_elem))
@@ -108,12 +106,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
 
 impl RangeCast<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
     fn range_cast(&self, other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        let val: &Elem<_> = self
-            .val
-            .values()
-            .take(1)
-            .next()
-            .and_then(|(a, _)| Some(a))?;
+        let val: &Elem<_> = self.val.values().take(1).next().map(|(a, _)| a)?;
         let o_val = &other.val;
         match (val, o_val) {
             (
@@ -172,10 +165,10 @@ pub fn exec_cast(
     // the weird thing about cast is that we really dont know until after the cast due to sizing things
     // so we should just try them all then compare
     let candidates = vec![
-        lhs_min.range_cast(&rhs_min),
-        lhs_min.range_cast(&rhs_max),
-        lhs_max.range_cast(&rhs_min),
-        lhs_max.range_cast(&rhs_max),
+        lhs_min.range_cast(rhs_min),
+        lhs_min.range_cast(rhs_max),
+        lhs_max.range_cast(rhs_min),
+        lhs_max.range_cast(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {

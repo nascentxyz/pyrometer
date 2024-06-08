@@ -175,9 +175,9 @@ pub fn exec_gt(
     maximize: bool,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        lhs_max.range_gt(&rhs_min)
+        lhs_max.range_gt(rhs_min)
     } else {
-        lhs_min.range_gt(&rhs_max)
+        lhs_min.range_gt(rhs_max)
     }
 }
 
@@ -191,9 +191,9 @@ pub fn exec_lt(
     maximize: bool,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        lhs_min.range_lt(&rhs_max)
+        lhs_min.range_lt(rhs_max)
     } else {
-        lhs_max.range_lt(&rhs_min)
+        lhs_max.range_lt(rhs_min)
     }
 }
 
@@ -207,9 +207,9 @@ pub fn exec_gte(
     maximize: bool,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        lhs_max.range_gte(&rhs_min)
+        lhs_max.range_gte(rhs_min)
     } else {
-        lhs_min.range_gte(&rhs_max)
+        lhs_min.range_gte(rhs_max)
     }
 }
 
@@ -223,9 +223,9 @@ pub fn exec_lte(
     maximize: bool,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        lhs_min.range_lte(&rhs_max)
+        lhs_min.range_lte(rhs_max)
     } else {
-        lhs_max.range_lte(&rhs_min)
+        lhs_max.range_lte(rhs_min)
     }
 }
 
@@ -271,12 +271,12 @@ pub fn exec_eq_neq(
         // Check if lhs max > rhs min
         // LHS: <--?---| max
         // RHS:  min |----?---->
-        let lhs_max_rhs_min_ord = lhs_max.range_ord(&rhs_min, analyzer);
+        let lhs_max_rhs_min_ord = lhs_max.range_ord(rhs_min, analyzer);
 
         // Check if lhs min < rhs max
         // LHS: min |----?---->
         // RHS: <--?---| max
-        let lhs_min_rhs_max_ord = lhs_min.range_ord(&rhs_max, analyzer);
+        let lhs_min_rhs_max_ord = lhs_min.range_ord(rhs_max, analyzer);
 
         // if lhs max is less than the rhs min, it has to be false
         if matches!(lhs_max_rhs_min_ord, Some(std::cmp::Ordering::Less)) {
@@ -305,11 +305,11 @@ pub fn exec_eq_neq(
         // This only occurs when both sides are constant and equal
         match (
             // check if lhs is constant
-            lhs_min.range_ord(&lhs_max, analyzer),
+            lhs_min.range_ord(lhs_max, analyzer),
             // check if rhs is constant
-            rhs_min.range_ord(&rhs_max, analyzer),
+            rhs_min.range_ord(rhs_max, analyzer),
             // check if lhs is equal to rhs
-            lhs_min.range_ord(&rhs_min, analyzer),
+            lhs_min.range_ord(rhs_min, analyzer),
         ) {
             // LHS & RHS are constant and equal
             (

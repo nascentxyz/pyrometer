@@ -377,10 +377,10 @@ pub fn exec_bit_xor(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     let mut candidates = vec![
-        lhs_min.range_bit_xor(&rhs_min),
-        lhs_min.range_bit_xor(&rhs_max),
-        lhs_max.range_bit_xor(&rhs_min),
-        lhs_max.range_bit_xor(&rhs_max),
+        lhs_min.range_bit_xor(rhs_min),
+        lhs_min.range_bit_xor(rhs_max),
+        lhs_max.range_bit_xor(rhs_min),
+        lhs_max.range_bit_xor(rhs_max),
     ];
 
     let zero = Elem::from(Concrete::from(U256::from(0)));

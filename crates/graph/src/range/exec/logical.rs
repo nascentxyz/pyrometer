@@ -59,10 +59,10 @@ pub fn exec_and(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
-        lhs_min.range_and(&rhs_min),
-        lhs_min.range_and(&rhs_max),
-        lhs_max.range_and(&rhs_min),
-        lhs_max.range_and(&rhs_max),
+        lhs_min.range_and(rhs_min),
+        lhs_min.range_and(rhs_max),
+        lhs_max.range_and(rhs_min),
+        lhs_max.range_and(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
@@ -90,10 +90,10 @@ pub fn exec_or(
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
-        lhs_min.range_or(&rhs_min),
-        lhs_min.range_or(&rhs_max),
-        lhs_max.range_or(&rhs_min),
-        lhs_max.range_or(&rhs_max),
+        lhs_min.range_or(rhs_min),
+        lhs_min.range_or(rhs_max),
+        lhs_max.range_or(rhs_min),
+        lhs_max.range_or(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
     candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
