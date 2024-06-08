@@ -871,10 +871,7 @@ impl Concrete {
     }
 
     pub fn is_negative(&self) -> bool {
-        match self {
-            Concrete::Int(_, val) if *val < I256::from(0) => true,
-            _ => false,
-        }
+        matches!(self, Concrete::Int(_, val) if *val < I256::from(0))
     }
 
     pub fn as_hex_string(&self) -> String {

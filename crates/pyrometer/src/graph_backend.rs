@@ -712,19 +712,13 @@ pub fn mermaid_node(
     }
 
     if loc {
-        match g.node(node) {
-            Node::ContextVar(..) => {
-                match graph::nodes::ContextVarNode::from(node).loc(g).unwrap() {
-                    solang_parser::pt::Loc::File(f, s, e) => {
-                        node_str.push_str(&format!(
-                            "\n{indent}class {} loc_{f}_{s}_{e}",
-                            petgraph::graph::GraphIndex::index(&node)
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
+        if let solang_parser::pt::Loc::File(f, s, e) =
+            graph::nodes::ContextVarNode::from(node).loc(g).unwrap()
+        {
+            node_str.push_str(&format!(
+                "\n{indent}class {} loc_{f}_{s}_{e}",
+                petgraph::graph::GraphIndex::index(&node)
+            ));
         }
     }
 

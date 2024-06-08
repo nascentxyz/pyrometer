@@ -191,14 +191,10 @@ pub fn exec_sub(
                              all_overflowed: &mut bool,
                              one_overflowed: &mut bool| {
             if let Some(c) = lhs.range_wrapping_sub(rhs) {
-                let overflowed = if matches!(
+                let overflowed = matches!(
                     c.range_ord(lhs, analyzer),
                     Some(std::cmp::Ordering::Greater)
-                ) {
-                    true
-                } else {
-                    false
-                };
+                );
 
                 if *all_overflowed && !overflowed {
                     *all_overflowed = false;

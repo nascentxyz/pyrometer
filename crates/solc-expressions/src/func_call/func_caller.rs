@@ -485,6 +485,7 @@ pub trait FuncCaller:
         tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
+            #[allow(clippy::unnecessary_to_owned)]
             func_node
                 .returns(self)
                 .to_vec()
@@ -544,6 +545,7 @@ pub trait FuncCaller:
                 .into_expr_err(loc);
             let _ = self.add_if_err(res);
             self.apply_to_edges(callee_ctx, loc, &|analyzer, ctx, loc| {
+                #[allow(clippy::unnecessary_to_owned)]
                 func_node
                     .returns(analyzer)
                     .to_vec()

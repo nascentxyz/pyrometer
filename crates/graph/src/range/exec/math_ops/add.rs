@@ -169,11 +169,7 @@ pub fn exec_add(
                              one_overflowed: &mut bool| {
             if let Some(c) = lhs.range_wrapping_add(rhs) {
                 let overflowed =
-                    if matches!(c.range_ord(lhs, analyzer), Some(std::cmp::Ordering::Less)) {
-                        true
-                    } else {
-                        false
-                    };
+                    matches!(c.range_ord(lhs, analyzer), Some(std::cmp::Ordering::Less));
 
                 if *all_overflowed && !overflowed {
                     *all_overflowed = false;
