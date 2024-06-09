@@ -226,9 +226,11 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
-    let mut analyzer = Analyzer::default();
-    analyzer.max_depth = args.max_stack_depth;
-    analyzer.root = Root::RemappingsDirectory(env::current_dir().unwrap());
+    let mut analyzer = Analyzer {
+        max_depth: args.max_stack_depth,
+        root: Root::RemappingsDirectory(env::current_dir().unwrap()),
+        ..Default::default()
+    };
     println!("debug panic: {}", args.debug_panic);
     analyzer.debug_panic = args.debug_panic;
 
@@ -398,14 +400,13 @@ fn main() {
                                 )
                                 .unwrap()
                                 {
-                                    println!("created solver");
                                     match solver.solve(&mut analyzer).unwrap() {
                                         AtomicSolveStatus::Unsat => {
                                             println!("TRUE UNSAT: {}", c.path(&analyzer));
                                         }
                                         AtomicSolveStatus::Sat(ranges) => {
-                                            println!("-----------------------");
-                                            println!("sat for: {}", c.path(&analyzer));
+                                            // println!("-----------------------");
+                                            // println!("sat for: {}", c.path(&analyzer));
                                             ranges.iter().for_each(|(atomic, conc)| {
                                                 println!(
                                                     "{}: {}",
@@ -415,13 +416,13 @@ fn main() {
                                             });
                                         }
                                         AtomicSolveStatus::Indeterminate => {
-                                            println!("-----------------------");
-                                            println!("sat for: {}", c.path(&analyzer));
-                                            println!("MAYBE UNSAT");
+                                            // println!("-----------------------");
+                                            // println!("sat for: {}", c.path(&analyzer));
+                                            // println!("MAYBE UNSAT");
                                         }
                                     }
                                 }
-                                println!("-----------------------");
+                                // println!("-----------------------");
                                 let analysis = analyzer
                                     .bounds_for_lineage(&file_mapping, *c, vec![*c], config)
                                     .as_cli_compat(&file_mapping);

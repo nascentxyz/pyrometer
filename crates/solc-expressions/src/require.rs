@@ -7,7 +7,7 @@ use graph::{
         ExprRet, KilledKind, TmpConstruction,
     },
     range_string::ToRangeString,
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 
 use ethers_core::types::I256;
@@ -922,6 +922,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
     /// Checks and returns whether the require statement is killable (i.e. impossible)
     fn const_killable(&mut self, op: RangeOp, lhs_range: SolcRange, rhs_range: SolcRange) -> bool {
+        println!(
+            "lhs: {}, rhs: {}",
+            lhs_range.as_dot_str(self),
+            rhs_range.as_dot_str(self)
+        );
         // check that the op is satisfied, return it as a bool
         match op {
             RangeOp::Eq => !lhs_range

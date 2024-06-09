@@ -145,7 +145,6 @@ pub fn exec_set_length(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
     if maximize {
         lhs_max.range_set_length(rhs_max)

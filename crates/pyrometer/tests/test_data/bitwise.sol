@@ -137,7 +137,7 @@ contract BitNot {
         require(~type(uint24).max == 0);
         require(bit_not(50) == 115792089237316195423570985008687907853269984665640564039457584007913129639885);
     }
-    
+
     function int_bit_not(int256 x) public returns (int256) {
         return ~x;
     }

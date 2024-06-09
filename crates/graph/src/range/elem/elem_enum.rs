@@ -351,7 +351,7 @@ impl Elem<Concrete> {
             }
             Elem::Null => {}
             Elem::Arena(_) => {
-                let mut s = self.dearenaize(analyzer).borrow().clone();
+                let mut s = (*self.dearenaize(analyzer).borrow()).clone();
                 s.replace_dep(to_replace, replacement, analyzer);
                 *self = Elem::Arena(analyzer.range_arena_idx_or_upsert(s));
             }
@@ -360,8 +360,7 @@ impl Elem<Concrete> {
 
     pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Self {
         match self {
-            Self::Arena(arena_idx) => analyzer.range_arena().ranges[*arena_idx]
-                .borrow()
+            Self::Arena(arena_idx) => (*analyzer.range_arena().ranges[*arena_idx].borrow())
                 .clone()
                 .recurse_dearenaize(analyzer),
             Self::Expr(expr) => expr.recurse_dearenaize(analyzer),
@@ -835,7 +834,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Null => Ok(Elem::Null),
             Self::Arena(_) => {
                 let de = self.dearenaize(analyzer);
-                let res = de.borrow().flatten(maximize, analyzer)?;
+                let res = de.borrow().clone().flatten(maximize, analyzer)?;
                 // match &mut *de.borrow_mut() {
                 //     Self::Reference(ref mut d) => {
                 //         if maximize {
@@ -1023,13 +1022,15 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             let (_min, max) = Elem::Arena(idx).is_min_max_cached(analyzer);
             if max {
                 tracing::trace!("maximize cache hit");
-                match &*analyzer.range_arena().ranges[idx].borrow() {
-                    Reference(dy) => return dy.maximize(analyzer),
-                    Concrete(inner) => return inner.maximize(analyzer),
-                    ConcreteDyn(inner) => return inner.maximize(analyzer),
-                    Expr(expr) => return expr.maximize(analyzer),
-                    Null => return Ok(Elem::Null),
-                    _ => {}
+                if let Ok(b) = analyzer.range_arena().ranges[idx].try_borrow() {
+                    match &*b {
+                        Reference(dy) => return dy.maximize(analyzer),
+                        Concrete(inner) => return inner.maximize(analyzer),
+                        ConcreteDyn(inner) => return inner.maximize(analyzer),
+                        Expr(expr) => return expr.maximize(analyzer),
+                        Null => return Ok(Elem::Null),
+                        _ => {}
+                    }
                 }
             }
         }
@@ -1050,20 +1051,22 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                     t.maximize(analyzer)?
                 };
 
-                match &mut *dearenaized.borrow_mut() {
-                    Self::Reference(ref mut d) => {
-                        tracing::trace!("maximize cache MISS: {self}");
-                        d.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                if let Ok(mut b) = dearenaized.try_borrow_mut() {
+                    match &mut *b {
+                        Self::Reference(ref mut d) => {
+                            tracing::trace!("maximize cache MISS: {self}");
+                            d.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                        }
+                        Self::Expr(ref mut expr) => {
+                            tracing::trace!("maximize cache MISS: {self}");
+                            expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                        }
+                        Self::ConcreteDyn(ref mut d) => {
+                            tracing::trace!("maximize cache MISS: {self}");
+                            d.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                        }
+                        _ => {}
                     }
-                    Self::Expr(ref mut expr) => {
-                        tracing::trace!("maximize cache MISS: {self}");
-                        expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
-                    }
-                    Self::ConcreteDyn(ref mut d) => {
-                        tracing::trace!("maximize cache MISS: {self}");
-                        d.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
-                    }
-                    _ => {}
                 }
 
                 let (_min, max) = self.is_min_max_cached(analyzer);
@@ -1082,13 +1085,15 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             let (min, _max) = Elem::Arena(idx).is_min_max_cached(analyzer);
             if min {
                 tracing::trace!("minimize cache hit");
-                match &*analyzer.range_arena().ranges[idx].borrow() {
-                    Reference(dy) => return dy.minimize(analyzer),
-                    Concrete(inner) => return inner.minimize(analyzer),
-                    ConcreteDyn(inner) => return inner.minimize(analyzer),
-                    Expr(expr) => return expr.minimize(analyzer),
-                    Null => return Ok(Elem::Null),
-                    _ => {}
+                if let Ok(b) = analyzer.range_arena().ranges[idx].try_borrow() {
+                    match &*b {
+                        Reference(dy) => return dy.minimize(analyzer),
+                        Concrete(inner) => return inner.minimize(analyzer),
+                        ConcreteDyn(inner) => return inner.minimize(analyzer),
+                        Expr(expr) => return expr.minimize(analyzer),
+                        Null => return Ok(Elem::Null),
+                        _ => {}
+                    }
                 }
             }
         }
@@ -1108,20 +1113,22 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                     t.minimize(analyzer)?
                 };
 
-                match &mut *dearenaized.borrow_mut() {
-                    Self::Reference(ref mut d) => {
-                        tracing::trace!("minimize cache MISS: {self}");
-                        d.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                if let Ok(mut b) = dearenaized.try_borrow_mut() {
+                    match &mut *b {
+                        Self::Reference(ref mut d) => {
+                            tracing::trace!("minimize cache MISS: {self}");
+                            d.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                        }
+                        Self::Expr(ref mut expr) => {
+                            tracing::trace!("minimize cache MISS: {self}");
+                            expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                        }
+                        Self::ConcreteDyn(ref mut d) => {
+                            tracing::trace!("minimize cache MISS: {self}");
+                            d.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
+                        }
+                        _ => {}
                     }
-                    Self::Expr(ref mut expr) => {
-                        tracing::trace!("minimize cache MISS: {self}");
-                        expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
-                    }
-                    Self::ConcreteDyn(ref mut d) => {
-                        tracing::trace!("minimize cache MISS: {self}");
-                        d.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
-                    }
-                    _ => {}
                 }
 
                 let (min, _max) = self.is_min_max_cached(analyzer);
@@ -1182,26 +1189,28 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Null => Ok(Elem::Null),
             Arena(_) => {
                 let dearenaized = self.dearenaize(analyzer);
-                let flat = dearenaized.borrow().flatten(true, analyzer)?;
+                let flat = (*dearenaized.borrow()).clone().flatten(true, analyzer)?;
                 let max = flat.simplify_maximize(analyzer)?;
                 // let min = flat.simplify_minimize(analyzer)?;
-                match &mut *dearenaized.borrow_mut() {
-                    Self::Reference(ref mut d) => {
-                        tracing::trace!("simplify maximize cache MISS: {self}");
-                        d.flattened_max = Some(Box::new(max.clone()));
-                        // d.flattened_min = Some(Box::new(min.clone()));
+                if let Ok(mut b) = dearenaized.try_borrow_mut() {
+                    match &mut *b {
+                        Self::Reference(ref mut d) => {
+                            tracing::trace!("simplify maximize cache MISS: {self}");
+                            d.flattened_max = Some(Box::new(max.clone()));
+                            // d.flattened_min = Some(Box::new(min.clone()));
+                        }
+                        Self::Expr(ref mut expr) => {
+                            tracing::trace!("simplify maximize cache MISS: {self}");
+                            expr.flattened_max = Some(Box::new(max.clone()));
+                            // expr.flattened_min = Some(Box::new(min.clone()));
+                        }
+                        Self::ConcreteDyn(ref mut d) => {
+                            tracing::trace!("simplify maximize cache MISS: {self}");
+                            d.flattened_max = Some(Box::new(max.clone()));
+                            // d.flattened_min = Some(Box::new(min.clone()));
+                        }
+                        _ => {}
                     }
-                    Self::Expr(ref mut expr) => {
-                        tracing::trace!("simplify maximize cache MISS: {self}");
-                        expr.flattened_max = Some(Box::new(max.clone()));
-                        // expr.flattened_min = Some(Box::new(min.clone()));
-                    }
-                    Self::ConcreteDyn(ref mut d) => {
-                        tracing::trace!("simplify maximize cache MISS: {self}");
-                        d.flattened_max = Some(Box::new(max.clone()));
-                        // d.flattened_min = Some(Box::new(min.clone()));
-                    }
-                    _ => {}
                 }
 
                 // assert!(self.is_flatten_cached(analyzer), "????");
@@ -1260,22 +1269,24 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Null => Ok(Elem::Null),
             Arena(_) => {
                 let dearenaized = self.dearenaize(analyzer);
-                let flat = dearenaized.borrow().flatten(false, analyzer)?;
+                let flat = (*dearenaized.borrow()).clone().flatten(false, analyzer)?;
                 let min = flat.simplify_minimize(analyzer)?;
-                match &mut *dearenaized.borrow_mut() {
-                    Self::Reference(ref mut d) => {
-                        tracing::trace!("simplify minimize cache MISS: {self}");
-                        d.flattened_min = Some(Box::new(min.clone()));
+                if let Ok(mut b) = dearenaized.try_borrow_mut() {
+                    match &mut *b {
+                        Self::Reference(ref mut d) => {
+                            tracing::trace!("simplify minimize cache MISS: {self}");
+                            d.flattened_min = Some(Box::new(min.clone()));
+                        }
+                        Self::Expr(ref mut expr) => {
+                            tracing::trace!("simplify minimize cache MISS: {self}");
+                            expr.flattened_min = Some(Box::new(min.clone()));
+                        }
+                        Self::ConcreteDyn(ref mut d) => {
+                            tracing::trace!("simplify minimize cache MISS: {self}");
+                            d.flattened_min = Some(Box::new(min.clone()));
+                        }
+                        _ => {}
                     }
-                    Self::Expr(ref mut expr) => {
-                        tracing::trace!("simplify minimize cache MISS: {self}");
-                        expr.flattened_min = Some(Box::new(min.clone()));
-                    }
-                    Self::ConcreteDyn(ref mut d) => {
-                        tracing::trace!("simplify minimize cache MISS: {self}");
-                        d.flattened_min = Some(Box::new(min.clone()));
-                    }
-                    _ => {}
                 }
 
                 Ok(min)

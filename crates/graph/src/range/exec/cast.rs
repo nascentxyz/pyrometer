@@ -233,4 +233,12 @@ mod tests {
         let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(64, expected));
     }
+
+    #[test]
+    fn int_upcast() {
+        let x = rc_int_sized(-101);
+        let y = rc_int256(-101);
+        let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(256, I256::from(-101)));
+    }
 }

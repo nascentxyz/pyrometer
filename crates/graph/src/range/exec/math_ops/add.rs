@@ -24,7 +24,7 @@ impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
                     (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v))
                     | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
                         // neg_v guaranteed to be negative here
-                        let abs = neg_v.abs().into_raw();
+                        let abs = neg_v.unsigned_abs();
                         if abs > *val {
                             // |b| - a
                             let op_res =

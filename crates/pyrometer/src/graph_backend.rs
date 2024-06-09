@@ -366,23 +366,20 @@ impl GraphDot for Analyzer {
             ))
         } else {
             Some(format!(
-                "{preindent}subgraph cluster_{} {{\n{}\n{}\n{}\n{}\n}}",
+                "{preindent}subgraph cluster_{} {{\n{indent}{}\n{indent}{} [label = \"{}\", color = \"{}\"]\n{}\n{}\n}}",
                 cluster_num,
                 if is_killed && curr_cluster % 2 == 0 {
-                    format!("{indent}bgcolor=\"#7a0b0b\"")
+                    "bgcolor=\"#7a0b0b\""
                 } else if is_killed {
-                    format!("{indent}bgcolor=\"#e04646\"")
+                    "bgcolor=\"#e04646\""
                 } else if curr_cluster % 2 == 0 {
-                    format!("{indent}bgcolor=\"#545e87\"")
+                    "bgcolor=\"#545e87\""
                 } else {
-                    format!("{indent}bgcolor=\"#1a1b26\"")
+                    "bgcolor=\"#1a1b26\""
                 },
-                format!(
-                    "{indent}{} [label = \"{}\", color = \"{}\"]",
-                    node.index(),
-                    as_dot_str(node, g).replace('\"', "\'"),
-                    self.node(node).dot_str_color()
-                ),
+                node.index(),
+                as_dot_str(node, g).replace('\"', "\'"),
+                self.node(node).dot_str_color(),
                 child_node_str,
                 edge_str,
             ))
@@ -712,13 +709,18 @@ pub fn mermaid_node(
     }
 
     if loc {
-        if let solang_parser::pt::Loc::File(f, s, e) =
-            graph::nodes::ContextVarNode::from(node).loc(g).unwrap()
-        {
-            node_str.push_str(&format!(
-                "\n{indent}class {} loc_{f}_{s}_{e}",
-                petgraph::graph::GraphIndex::index(&node)
-            ));
+        match g.node(node) {
+            Node::ContextVar(..) => {
+                if let solang_parser::pt::Loc::File(f, s, e) =
+                    graph::nodes::ContextVarNode::from(node).loc(g).unwrap()
+                {
+                    node_str.push_str(&format!(
+                        "\n{indent}class {} loc_{f}_{s}_{e}",
+                        petgraph::graph::GraphIndex::index(&node)
+                    ));
+                }
+            }
+            _ => {}
         }
     }
 

@@ -362,9 +362,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::GetIndex => {
                 exec_get_index(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer)
             }
-            RangeOp::SetLength => {
-                exec_set_length(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer)
-            }
+            RangeOp::SetLength => exec_set_length(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize),
             RangeOp::SetIndices => exec_set_indices(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, &self.rhs, maximize, analyzer,
             ),
@@ -408,7 +406,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 exec_bit_or(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer)
             }
             RangeOp::BitXor => {
-                exec_bit_or(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer)
+                exec_bit_xor(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer)
             }
             RangeOp::BitNot => exec_bit_not(&lhs_min, &lhs_max, maximize, analyzer),
             RangeOp::Shl => exec_shl(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer),

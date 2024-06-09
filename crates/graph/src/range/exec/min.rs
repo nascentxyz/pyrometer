@@ -33,15 +33,11 @@ impl RangeMin<Concrete> for Elem<Concrete> {
     fn range_min(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_min(b),
-            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => {
-                if a.op_num > b.op_num {
-                    Some(self.clone())
-                } else if a.op_num < b.op_num {
-                    Some(other.clone())
-                } else {
-                    None
-                }
-            }
+            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => match a.op_num.cmp(&b.op_num) {
+                std::cmp::Ordering::Greater => Some(self.clone()),
+                std::cmp::Ordering::Less => Some(other.clone()),
+                _ => None,
+            },
             (c @ Elem::Concrete(_), Elem::ConcreteDyn(b))
             | (Elem::ConcreteDyn(b), c @ Elem::Concrete(_)) => {
                 if b.op_num == 0 {

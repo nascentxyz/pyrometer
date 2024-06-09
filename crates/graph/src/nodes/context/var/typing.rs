@@ -1,7 +1,10 @@
 use crate::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
-    range::{elem::RangeElem, RangeEval},
+    range::{
+        elem::{RangeElem, RangeExpr, RangeOp},
+        RangeEval,
+    },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
@@ -312,13 +315,26 @@ impl ContextVarNode {
         self.ty(analyzer)?.ty_eq(other.ty(analyzer)?, analyzer)
     }
 
+    /// Performs an in-place cast
     pub fn cast_from(
         &self,
         other: &Self,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
-        let to_ty = other.ty(analyzer)?.clone();
-        self.cast_from_ty(to_ty, analyzer)?;
+        let min_expr = Elem::Expr(RangeExpr::new(
+            self.range_min(analyzer)?.expect("Should have a minimum"),
+            RangeOp::Cast,
+            Elem::from(*other),
+        ));
+
+        let max_expr = Elem::Expr(RangeExpr::new(
+            self.range_max(analyzer)?.expect("Should have a maximum"),
+            RangeOp::Cast,
+            Elem::from(*other),
+        ));
+
+        self.set_range_min(analyzer, min_expr)?;
+        self.set_range_max(analyzer, max_expr)?;
         Ok(())
     }
 

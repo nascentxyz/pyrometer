@@ -67,48 +67,52 @@ pub trait FuncJoiner:
                 {
                     tracing::trace!("Joining function: {}", func.name(self).into_expr_err(loc)?);
                     let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
-                    if edges.len() == 1 {
-                        self.join_pure(
-                            loc,
-                            func,
-                            params,
-                            func_inputs,
-                            body_ctx,
-                            edges[0],
-                            ctx,
-                            false,
-                        )?;
-                        return Ok(true);
-                    } else if edges.len() > 1 {
-                        tracing::trace!(
-                            "Branching pure join function: {}",
-                            func.name(self).into_expr_err(loc)?
-                        );
-                        // self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                        let new_forks = ctx.set_join_forks(loc, edges.clone(), self).unwrap();
-                        edges.into_iter().zip(new_forks.iter()).try_for_each(
-                            |(edge, new_fork)| {
-                                let res = self.join_pure(
-                                    loc,
-                                    func,
-                                    params,
-                                    func_inputs,
-                                    body_ctx,
-                                    edge,
-                                    *new_fork,
-                                    true,
-                                )?;
-                                if !res {
-                                    new_fork
-                                        .kill(self, loc, KilledKind::Unreachable)
-                                        .into_expr_err(loc)?;
-                                    Ok(())
-                                } else {
-                                    Ok(())
-                                }
-                            },
-                        )?;
-                        return Ok(true);
+                    match edges.len() {
+                        0 => {}
+                        1 => {
+                            self.join_pure(
+                                loc,
+                                func,
+                                params,
+                                func_inputs,
+                                body_ctx,
+                                edges[0],
+                                ctx,
+                                false,
+                            )?;
+                            return Ok(true);
+                        }
+                        2.. => {
+                            tracing::trace!(
+                                "Branching pure join function: {}",
+                                func.name(self).into_expr_err(loc)?
+                            );
+                            // self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                            let new_forks = ctx.set_join_forks(loc, edges.clone(), self).unwrap();
+                            edges.into_iter().zip(new_forks.iter()).try_for_each(
+                                |(edge, new_fork)| {
+                                    let res = self.join_pure(
+                                        loc,
+                                        func,
+                                        params,
+                                        func_inputs,
+                                        body_ctx,
+                                        edge,
+                                        *new_fork,
+                                        true,
+                                    )?;
+                                    if !res {
+                                        new_fork
+                                            .kill(self, loc, KilledKind::Unreachable)
+                                            .into_expr_err(loc)?;
+                                        Ok(())
+                                    } else {
+                                        Ok(())
+                                    }
+                                },
+                            )?;
+                            return Ok(true);
+                        }
                     }
                 } else {
                     tracing::trace!(
@@ -248,6 +252,7 @@ pub trait FuncJoiner:
                         })
                         .into_expr_err(loc)?;
 
+                    #[allow(clippy::unnecessary_to_owned)]
                     func.returns(self).to_vec().into_iter().for_each(|ret| {
                         if let Some(var) = ContextVar::maybe_new_from_func_ret(
                             self,
@@ -491,6 +496,7 @@ pub trait FuncJoiner:
             return Ok(false);
         }
 
+        #[allow(clippy::unnecessary_to_owned)]
         func.returns(self).to_vec().into_iter().for_each(|ret| {
             if let Some(var) =
                 ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())

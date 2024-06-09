@@ -281,8 +281,6 @@ impl SolcSolver for BruteBinSearchSolver {
         // affect other dependencies If it doesnt,
         // raise or lower
 
-        println!("-------------------------");
-        println!("DL SOLVER CHECK");
         let atoms = self
             .ranges
             .iter()
@@ -303,7 +301,6 @@ impl SolcSolver for BruteBinSearchSolver {
 
         match dl_solver.solve_partial(analyzer)? {
             SolveStatus::Unsat => {
-                println!("TRUE UNSAT");
                 return Ok(AtomicSolveStatus::Unsat);
             }
             SolveStatus::Sat {
@@ -353,11 +350,8 @@ impl SolcSolver for BruteBinSearchSolver {
             }
         }
         // println!("solved for: {:#?}", atomic_solves);
-        println!("-------------------------");
 
         if atomic_solves.len() == self.atomics.len() {
-            println!("DONE HERE");
-
             return Ok(AtomicSolveStatus::Sat(atomic_solves));
         } else {
             atomic_solves.iter().for_each(|(atomic, val)| {

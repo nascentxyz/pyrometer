@@ -484,30 +484,39 @@ impl Concrete {
                     bit_repr.cast(builtin)
                 }
                 Builtin::Int(size) => {
-                    // no op
-                    if r_size == size {
-                        Some(self)
-                    } else {
-                        let mask = if size == 256 {
-                            U256::MAX / 2
-                        } else {
-                            U256::from(2).pow((size).into()) - 1
-                        };
-
-                        let raw = val.into_raw();
-
-                        if raw < mask / U256::from(2) {
+                    match r_size.cmp(&size) {
+                        std::cmp::Ordering::Less => {
+                            // upcast
                             Some(Concrete::Int(size, val))
-                        } else {
-                            let base_value = raw & mask;
-                            let res = if base_value >> (size - 1) & U256::from(1) == U256::from(1) {
-                                let top = U256::MAX << size;
-                                base_value | top
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // noop
+                            Some(self)
+                        }
+                        std::cmp::Ordering::Greater => {
+                            // downcast
+                            let mask = if size == 256 {
+                                U256::MAX / 2
                             } else {
-                                base_value
+                                U256::from(2).pow((size).into()) - 1
                             };
 
-                            Some(Concrete::Int(size, I256::from_raw(res)))
+                            let raw = val.into_raw();
+
+                            if raw < mask / U256::from(2) {
+                                Some(Concrete::Int(size, val))
+                            } else {
+                                let base_value = raw & mask;
+                                let res =
+                                    if base_value >> (size - 1) & U256::from(1) == U256::from(1) {
+                                        let top = U256::MAX << size;
+                                        base_value | top
+                                    } else {
+                                        base_value
+                                    };
+
+                                Some(Concrete::Int(size, I256::from_raw(res)))
+                            }
                         }
                     }
                 }

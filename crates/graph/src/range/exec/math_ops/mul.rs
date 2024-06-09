@@ -2,7 +2,7 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
-use ethers_core::types::I256;
+use ethers_core::types::{I256, U256};
 
 impl RangeMul<Concrete> for RangeConcrete<Concrete> {
     fn range_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -171,6 +171,7 @@ pub fn exec_mul(
     };
 
     if wrapping {
+        let zero = Elem::from(Concrete::from(U256::zero()));
         let mut all_overflowed = true;
         let mut one_overflowed = false;
         let add_candidate = |lhs: &Elem<Concrete>,
@@ -179,18 +180,22 @@ pub fn exec_mul(
                              all_overflowed: &mut bool,
                              one_overflowed: &mut bool| {
             if let Some(c) = lhs.range_wrapping_mul(rhs) {
-                let reverse = c.range_div(lhs).unwrap();
-                let overflowed = !matches!(
-                    reverse.range_ord(rhs, analyzer).unwrap(),
-                    std::cmp::Ordering::Equal
-                );
+                if !matches!(
+                    lhs.range_ord(&zero, analyzer),
+                    Some(std::cmp::Ordering::Equal)
+                ) {
+                    let reverse = c.range_div(lhs).unwrap();
+                    let overflowed = !matches!(
+                        reverse.range_ord(rhs, analyzer).unwrap(),
+                        std::cmp::Ordering::Equal
+                    );
+                    if *all_overflowed && !overflowed {
+                        *all_overflowed = false;
+                    }
 
-                if *all_overflowed && !overflowed {
-                    *all_overflowed = false;
-                }
-
-                if !*one_overflowed && overflowed {
-                    *one_overflowed = true;
+                    if !*one_overflowed && overflowed {
+                        *one_overflowed = true;
+                    }
                 }
 
                 candidates.push(c);
@@ -226,7 +231,7 @@ pub fn exec_mul(
             &mut one_overflowed,
         );
 
-        if all_overflowed || (!all_overflowed && one_overflowed) {
+        if all_overflowed || one_overflowed {
             // We overflowed in every case, or had a conditional overflow.
             // In this case we just under/overestimate
             saturating_mul(lhs_max, rhs_max, &mut candidates);
