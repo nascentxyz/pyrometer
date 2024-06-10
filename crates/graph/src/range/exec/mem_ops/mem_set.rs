@@ -232,9 +232,9 @@ pub fn exec_set_indices(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DummyGraph;
+
     use ethers_core::types::U256;
-    use pretty_assertions::{assert_eq, assert_ne};
+    use pretty_assertions::assert_eq;
     use solang_parser::pt::Loc;
 
     #[test]

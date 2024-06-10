@@ -153,8 +153,8 @@ pub fn exec_concat(
 mod tests {
     use super::*;
     use crate::DummyGraph;
+    use pretty_assertions::assert_eq;
     use solang_parser::pt::Loc;
-    use pretty_assertions::{assert_eq, assert_ne};
 
     #[test]
     fn concrete_concrete_bytes() {

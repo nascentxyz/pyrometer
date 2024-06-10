@@ -3,7 +3,6 @@ use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
 use ethers_core::types::{H256, I256, U256};
-use solang_parser::pt::Loc;
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
