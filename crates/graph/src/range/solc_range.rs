@@ -368,14 +368,6 @@ impl SolcRange {
             RangeOp::BitAnd => &Self::bit_and_dyn,
             RangeOp::BitOr => &Self::bit_or_dyn,
             RangeOp::BitXor => &Self::bit_xor_dyn,
-            // RangeOp::And => (
-            //     &Self::and_dyn,
-            //     (DynSide::Min, DynSide::Max),
-            // ),
-            // RangeOp::Or => (
-            //     &Self::or_dyn,
-            //     (DynSide::Min, DynSide::Max),
-            // ),
             e => unreachable!("Comparator operations shouldn't exist in a range: {:?}", e),
         }
     }

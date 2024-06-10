@@ -256,9 +256,6 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     type GraphError = GraphError;
 
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        // self.cache_flatten(analyzer)?;
-        // self.cache_minimize(analyzer)?;
-        // self.cache_maximize(analyzer)?;
         self.len.arenaize(analyzer)?;
         self.val = self
             .val
@@ -489,9 +486,6 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     map.insert(idx.simplify_maximize(analyzer)?, (maximized, val.1));
                 }
 
-                // map.into_iter().filter(|(k, (v, op))| {
-                //     *v != Elem::Null
-                // }).collect()
                 map
             },
             self.loc,
@@ -514,9 +508,6 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
                     map.insert(idx.simplify_minimize(analyzer)?, (minimized, val.1));
                 }
 
-                // map.into_iter().filter(|(k, (v, op))| {
-                //     *v != Elem::Null
-                // }).collect()
                 map
             },
             self.loc,
@@ -606,7 +597,5 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn uncache(&mut self) {
         self.minimized = None;
         self.maximized = None;
-        // self.flattened_min = None;
-        // self.flattened_max = None;
     }
 }

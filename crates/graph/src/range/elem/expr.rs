@@ -218,8 +218,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
     #[tracing::instrument(level = "trace", skip_all)]
     fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        // self.lhs.clone().arenaize(analyzer)?;
-        // self.rhs.clone().arenaize(analyzer)?;
         if self.arena_idx(analyzer).is_none() {
             let lhs = std::mem::take(&mut self.lhs);
             let rhs = std::mem::take(&mut self.rhs);
@@ -402,7 +400,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(true, analyzer),
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
-                // Ok(Elem::Expr(RangeExpr::new(l, self.op, r)))//.simplify_exec_op(false, &mut vec![], analyzer)
                 let res = RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer)?;
                 match res {
                     Elem::Expr(expr) => {
@@ -602,9 +599,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
             self.lhs.cache_flatten(g)?;
             self.rhs.cache_flatten(g)?;
-            // self.arenaize(g)?;
-            let mut flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = simp_maximize(&mut flat_max, g)?;
+
+            let flat_max = self.flatten(true, g)?;
+            let simplified_flat_max = simplify_maximize(flat_max, g)?;
             simplified_flat_max.clone().arenaize(g)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
@@ -624,9 +621,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
             self.lhs.cache_flatten(g)?;
             self.rhs.cache_flatten(g)?;
-            // self.arenaize(g)?;
-            let mut flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = simp_minimize(&mut flat_min, g)?;
+
+            let flat_min = self.flatten(false, g)?;
+            let simplified_flat_min = simplify_minimize(flat_min, g)?;
             simplified_flat_min.clone().arenaize(g)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }

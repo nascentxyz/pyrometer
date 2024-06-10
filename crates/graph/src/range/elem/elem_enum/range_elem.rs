@@ -5,6 +5,8 @@ use crate::{
     GraphBackend, GraphError,
 };
 
+use shared::{NodeIdx, RangeArenaIdx};
+
 use shared::NodeIdx;
 use tracing::instrument;
 
@@ -73,30 +75,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::Arena(_) => {
                 let de = self.dearenaize(analyzer);
                 let res = de.borrow().clone().flatten(maximize, analyzer)?;
-                // match &mut *de.borrow_mut() {
-                //     Self::Reference(ref mut d) => {
-                //         if maximize {
-                //             d.flattened_max = Some(Box::new(res));
-                //         } else {
-                //             d.flattened_min = Some(Box::new(res));
-                //         }
-                //     }
-                //     Self::Expr(ref mut expr) => {
-                //         if maximize {
-                //             expr.flattened_max = Some(Box::new(res));
-                //         } else {
-                //             expr.flattened_min = Some(Box::new(res));
-                //         }
-                //     }
-                //     Self::ConcreteDyn(ref mut d) => {
-                //         if maximize {
-                //             d.flattened_max = Some(Box::new(res));
-                //         } else {
-                //             d.flattened_min = Some(Box::new(res));
-                //         }
-                //     }
-                //     _ => {}
-                // }
                 Ok(res)
             }
         }
@@ -429,29 +407,24 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 let dearenaized = self.dearenaize(analyzer);
                 let flat = (*dearenaized.borrow()).clone().flatten(true, analyzer)?;
                 let max = flat.simplify_maximize(analyzer)?;
-                // let min = flat.simplify_minimize(analyzer)?;
                 if let Ok(mut b) = dearenaized.try_borrow_mut() {
                     match &mut *b {
                         Self::Reference(ref mut d) => {
                             tracing::trace!("simplify maximize cache MISS: {self}");
                             d.flattened_max = Some(Box::new(max.clone()));
-                            // d.flattened_min = Some(Box::new(min.clone()));
                         }
                         Self::Expr(ref mut expr) => {
                             tracing::trace!("simplify maximize cache MISS: {self}");
                             expr.flattened_max = Some(Box::new(max.clone()));
-                            // expr.flattened_min = Some(Box::new(min.clone()));
                         }
                         Self::ConcreteDyn(ref mut d) => {
                             tracing::trace!("simplify maximize cache MISS: {self}");
                             d.flattened_max = Some(Box::new(max.clone()));
-                            // d.flattened_min = Some(Box::new(min.clone()));
                         }
                         _ => {}
                     }
                 }
 
-                // assert!(self.is_flatten_cached(analyzer), "????");
                 Ok(max)
             }
         }
