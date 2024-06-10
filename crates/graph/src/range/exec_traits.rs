@@ -162,9 +162,12 @@ pub trait RangeMemSet<T, Rhs = Self> {
     fn range_set_length(&self, other: &Rhs) -> Option<Elem<T>>;
 }
 
-pub trait RangeMemGet<T, Rhs = Self> {
+pub trait RangeMemGet<T, Rhs = Self>: RangeMemLen<T> {
     /// Gets an index
     fn range_get_index(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+pub trait RangeMemLen<T> {
     /// Gets the length
     fn range_get_length(&self) -> Option<Elem<T>>;
 }

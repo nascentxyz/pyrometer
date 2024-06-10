@@ -106,12 +106,6 @@ impl Default for Concrete {
     }
 }
 
-// impl From<usize> for Concrete {
-//     fn from(u: usize) -> Self {
-//         Concrete::Uint(256, U256::from(u))
-//     }
-// }
-
 impl From<U256> for Concrete {
     fn from(u: U256) -> Self {
         Concrete::Uint(256, u)
@@ -127,6 +121,14 @@ impl From<I256> for Concrete {
 impl From<Vec<u8>> for Concrete {
     fn from(u: Vec<u8>) -> Self {
         Concrete::DynBytes(u)
+    }
+}
+
+impl From<u8> for Concrete {
+    fn from(u: u8) -> Self {
+        let mut h = H256::default();
+        h.0[0] = u;
+        Concrete::Bytes(1, h)
     }
 }
 
@@ -163,11 +165,17 @@ impl From<String> for Concrete {
     }
 }
 
-impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
-    fn from(u: Vec<T>) -> Self {
-        Concrete::Array(u.into_iter().map(|t| t.into()).collect())
+impl From<&str> for Concrete {
+    fn from(u: &str) -> Self {
+        Concrete::String(u.to_string())
     }
 }
+
+// impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
+//     fn from(u: Vec<T>) -> Self {
+//         Concrete::Array(u.into_iter().map(|t| t.into()).collect())
+//     }
+// }
 
 impl Concrete {
     pub fn raw_bits_u256(&self) -> Option<U256> {
@@ -325,6 +333,13 @@ impl Concrete {
 
     /// Cast from one concrete variant given another concrete variant
     pub fn cast_from(self, other: &Self) -> Option<Self> {
+        if let (Concrete::DynBytes(s), Concrete::DynBytes(o)) = (&self, other) {
+            if s.len() < o.len() {
+                let mut t = s.clone();
+                t.resize(o.len(), 0);
+                return Some(Concrete::DynBytes(t));
+            }
+        }
         self.cast(other.as_builtin())
     }
 

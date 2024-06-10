@@ -1,4 +1,5 @@
 use crate::elem::Elem;
+use crate::range::elem::RangeElem;
 use crate::{nodes::*, VarType};
 
 use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx, RangeArena};
@@ -7,7 +8,7 @@ use lazy_static::lazy_static;
 use petgraph::{Directed, Graph};
 use solang_parser::pt::Identifier;
 
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub trait GraphBackend: GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> {}
 pub trait AnalyzerBackend:
@@ -383,7 +384,9 @@ pub enum ContextEdge {
 }
 
 #[derive(Default)]
-pub(crate) struct DummyGraph {}
+pub(crate) struct DummyGraph {
+    pub range_arena: RangeArena<Elem<Concrete>>,
+}
 
 impl GraphLike for DummyGraph {
     type Node = Node;
@@ -397,18 +400,70 @@ impl GraphLike for DummyGraph {
         panic!("Dummy Graph")
     }
     fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
-        panic!("Dummy Graph")
+        &self.range_arena
     }
     fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
-        panic!("Dummy Graph")
+        &mut self.range_arena
     }
 
-    fn range_arena_idx(&self, _elem: &Self::RangeElem) -> Option<usize> {
-        panic!("Dummy Graph")
+    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+        if let Elem::Arena(idx) = elem {
+            Some(*idx)
+        } else {
+            self.range_arena().map.get(elem).copied()
+        }
     }
 
-    fn range_arena_idx_or_upsert(&mut self, _elem: Self::RangeElem) -> usize {
-        panic!("Dummy Graph")
+    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
+        // tracing::trace!("arenaizing: {}", elem);
+        if let Elem::Arena(idx) = elem {
+            return idx;
+        }
+
+        if let Some(idx) = self.range_arena_idx(&elem) {
+            let existing = &self.range_arena().ranges[idx];
+            let Ok(existing) = existing.try_borrow_mut() else {
+                return idx;
+            };
+            let (min_cached, max_cached) = existing.is_min_max_cached(self);
+            let mut existing_count = 0;
+            if min_cached {
+                existing_count += 1;
+            }
+            if max_cached {
+                existing_count += 1;
+            }
+            if existing.is_flatten_cached(self) {
+                existing_count += 1;
+            }
+
+            let (min_cached, max_cached) = elem.is_min_max_cached(self);
+            let mut new_count = 0;
+            if min_cached {
+                new_count += 1;
+            }
+            if max_cached {
+                new_count += 1;
+            }
+            if elem.is_flatten_cached(self) {
+                new_count += 1;
+            }
+
+            drop(existing);
+
+            if new_count >= existing_count {
+                self.range_arena_mut().ranges[idx] = Rc::new(RefCell::new(elem));
+            }
+
+            idx
+        } else {
+            let idx = self.range_arena().ranges.len();
+            self.range_arena_mut()
+                .ranges
+                .push(Rc::new(RefCell::new(elem.clone())));
+            self.range_arena_mut().map.insert(elem, idx);
+            idx
+        }
     }
 }
 

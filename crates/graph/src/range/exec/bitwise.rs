@@ -1,8 +1,9 @@
-use crate::nodes::Concrete;
+use crate::nodes::{Builtin, Concrete};
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
 use ethers_core::types::{H256, I256, U256};
+use solang_parser::pt::Loc;
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -36,6 +37,15 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
+            (Concrete::DynBytes(v), _) if v.len() <= 32 => RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )
+            .range_bit_and(other),
+            (_, Concrete::DynBytes(v)) if v.len() <= 32 => self.range_bit_and(&RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )),
             _ => {
                 if let (Some(l), Some(r)) = (self.val.into_u256(), other.val.into_u256()) {
                     let op_res = l & r;
@@ -72,6 +82,15 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
+            (Concrete::DynBytes(v), _) if v.len() <= 32 => RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )
+            .range_bit_or(other),
+            (_, Concrete::DynBytes(v)) if v.len() <= 32 => self.range_bit_or(&RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )),
             _ => {
                 if let (Some(l), Some(r)) = (self.val.into_u256(), other.val.into_u256()) {
                     let op_res = l | r;
@@ -108,6 +127,15 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
+            (Concrete::DynBytes(v), _) if v.len() <= 32 => RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )
+            .range_bit_xor(other),
+            (_, Concrete::DynBytes(v)) if v.len() <= 32 => self.range_bit_xor(&RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )),
             _ => {
                 if let (Some(l), Some(r)) = (self.val.into_u256(), other.val.into_u256()) {
                     let op_res = l ^ r;
@@ -153,6 +181,11 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(Concrete::Bytes(*s, op_res), self.loc);
                 Some(rc.into())
             }
+            Concrete::DynBytes(v) if v.len() <= 32 => RangeConcrete::new(
+                Concrete::DynBytes(v.clone()).cast(Builtin::Bytes(v.len() as u8))?,
+                self.loc,
+            )
+            .range_bit_not(),
             _ => None,
         }
     }
@@ -210,6 +243,50 @@ pub fn exec_bit_and(
     maximize: bool,
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
+    match (lhs_min, lhs_max, rhs_min, rhs_max) {
+        (Elem::ConcreteDyn(d), _, _, _) => {
+            return exec_bit_and(
+                &d.as_sized_bytes()?,
+                lhs_max,
+                rhs_min,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, Elem::ConcreteDyn(d), _, _) => {
+            return exec_bit_and(
+                lhs_min,
+                &d.as_sized_bytes()?,
+                rhs_min,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, _, Elem::ConcreteDyn(d), _) => {
+            return exec_bit_and(
+                lhs_min,
+                lhs_max,
+                &d.as_sized_bytes()?,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, _, _, Elem::ConcreteDyn(d)) => {
+            return exec_bit_and(
+                lhs_min,
+                lhs_max,
+                rhs_min,
+                &d.as_sized_bytes()?,
+                maximize,
+                analyzer,
+            );
+        }
+        _ => {}
+    }
+
     let mut candidates = vec![];
     let bit_and = |lhs: &Elem<_>, rhs: &Elem<_>, candidates: &mut Vec<Elem<Concrete>>| {
         if let Some(c) = lhs.range_bit_and(rhs) {
@@ -306,6 +383,50 @@ pub fn exec_bit_or(
     maximize: bool,
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
+    match (lhs_min, lhs_max, rhs_min, rhs_max) {
+        (Elem::ConcreteDyn(d), _, _, _) => {
+            return exec_bit_or(
+                &d.as_sized_bytes()?,
+                lhs_max,
+                rhs_min,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, Elem::ConcreteDyn(d), _, _) => {
+            return exec_bit_or(
+                lhs_min,
+                &d.as_sized_bytes()?,
+                rhs_min,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, _, Elem::ConcreteDyn(d), _) => {
+            return exec_bit_or(
+                lhs_min,
+                lhs_max,
+                &d.as_sized_bytes()?,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, _, _, Elem::ConcreteDyn(d)) => {
+            return exec_bit_or(
+                lhs_min,
+                lhs_max,
+                rhs_min,
+                &d.as_sized_bytes()?,
+                maximize,
+                analyzer,
+            );
+        }
+        _ => {}
+    }
+
     let mut candidates = vec![];
     let bit_or = |lhs: &Elem<_>, rhs: &Elem<_>, candidates: &mut Vec<Elem<Concrete>>| {
         if let Some(c) = lhs.range_bit_or(rhs) {
@@ -376,6 +497,50 @@ pub fn exec_bit_xor(
     maximize: bool,
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
+    match (lhs_min, lhs_max, rhs_min, rhs_max) {
+        (Elem::ConcreteDyn(d), _, _, _) => {
+            return exec_bit_xor(
+                &d.as_sized_bytes()?,
+                lhs_max,
+                rhs_min,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, Elem::ConcreteDyn(d), _, _) => {
+            return exec_bit_xor(
+                lhs_min,
+                &d.as_sized_bytes()?,
+                rhs_min,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, _, Elem::ConcreteDyn(d), _) => {
+            return exec_bit_xor(
+                lhs_min,
+                lhs_max,
+                &d.as_sized_bytes()?,
+                rhs_max,
+                maximize,
+                analyzer,
+            );
+        }
+        (_, _, _, Elem::ConcreteDyn(d)) => {
+            return exec_bit_xor(
+                lhs_min,
+                lhs_max,
+                rhs_min,
+                &d.as_sized_bytes()?,
+                maximize,
+                analyzer,
+            );
+        }
+        _ => {}
+    }
+
     let mut candidates = vec![
         lhs_min.range_bit_xor(rhs_min),
         lhs_min.range_bit_xor(rhs_max),
@@ -455,6 +620,15 @@ pub fn exec_bit_not(
     maximize: bool,
     analyzer: &impl GraphBackend,
 ) -> Option<Elem<Concrete>> {
+    match (lhs_min, lhs_max) {
+        (Elem::ConcreteDyn(d), _) => {
+            return exec_bit_not(&d.as_sized_bytes()?, lhs_max, maximize, analyzer);
+        }
+        (_, Elem::ConcreteDyn(d)) => {
+            return exec_bit_not(lhs_min, &d.as_sized_bytes()?, maximize, analyzer);
+        }
+        _ => {}
+    }
     let mut candidates = vec![lhs_min.range_bit_not(), lhs_max.range_bit_not()];
 
     let zero = Elem::from(Concrete::from(U256::from(0)));

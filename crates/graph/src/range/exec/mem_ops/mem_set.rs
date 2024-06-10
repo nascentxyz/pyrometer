@@ -24,8 +24,10 @@ impl RangeMemSet<Concrete> for RangeDyn<Concrete> {
         )))
     }
 
-    fn range_set_length(&self, _other: &Self) -> Option<Elem<Concrete>> {
-        unreachable!()
+    fn range_set_length(&self, other: &Self) -> Option<Elem<Concrete>> {
+        let mut a = self.clone();
+        a.len.clone_from(&other.len);
+        Some(Elem::ConcreteDyn(a))
     }
 }
 
@@ -83,8 +85,10 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
         }
     }
 
-    fn range_set_length(&self, _other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
-        unreachable!()
+    fn range_set_length(&self, other: &RangeConcrete<Concrete>) -> Option<Elem<Concrete>> {
+        let mut a = self.clone();
+        a.len = Box::new(Elem::Concrete(other.clone()));
+        Some(Elem::ConcreteDyn(a))
     }
 }
 
@@ -95,8 +99,60 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
         Some(Elem::Concrete(RangeConcrete::new(new_val, range.loc)))
     }
 
-    fn range_set_length(&self, _other: &Self) -> Option<Elem<Concrete>> {
-        unreachable!()
+    fn range_set_length(&self, other: &Self) -> Option<Elem<Concrete>> {
+        let new = match self.val {
+            Concrete::DynBytes(ref val) => Some(
+                val.iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let mut bytes = [0x00; 32];
+                        bytes[0] = *v;
+                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        (Elem::from(Concrete::from(U256::from(i))), (v, i))
+                    })
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            Concrete::String(ref val) => Some(
+                val.chars()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let mut bytes = [0x00; 32];
+                        v.encode_utf8(&mut bytes[..]);
+                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        (Elem::from(Concrete::from(U256::from(i))), (v, i))
+                    })
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            Concrete::Array(ref val) => Some(
+                val.iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let t = Elem::Concrete(RangeConcrete::new(v.clone(), self.loc));
+                        (Elem::from(Concrete::from(U256::from(i))), (t, i))
+                    })
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            Concrete::Bytes(size, val) => Some(
+                val.0
+                    .iter()
+                    .take(size as usize)
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let mut bytes = [0x00; 32];
+                        bytes[0] = *v;
+                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        (Elem::from(Concrete::from(U256::from(i))), (v, i))
+                    })
+                    .collect::<BTreeMap<_, _>>(),
+            ),
+            _ => None,
+        };
+
+        Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
+            Elem::Concrete(other.clone()),
+            new?,
+            self.loc,
+        )))
     }
 }
 
@@ -123,16 +179,12 @@ impl RangeMemSet<Concrete> for Elem<Concrete> {
 
     fn range_set_length(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => {
-                let mut a = a.clone();
-                a.len.clone_from(&b.len);
-                Some(Elem::ConcreteDyn(a.clone()))
-            }
-            (a @ Elem::Concrete(_), _b @ Elem::Concrete(_)) => Some(a.clone()),
+            (Elem::ConcreteDyn(a), Elem::ConcreteDyn(b)) => a.range_set_length(b),
+            (Elem::Concrete(a), Elem::Concrete(b)) => a.range_set_length(b),
             (Elem::ConcreteDyn(a), _) => {
                 let mut a = a.clone();
                 a.len = Box::new(other.clone());
-                Some(Elem::ConcreteDyn(a.clone()))
+                Some(Elem::ConcreteDyn(a))
             }
             _e => None,
         }
@@ -174,5 +226,271 @@ pub fn exec_set_indices(
     } else {
         let min = rhs.simplify_minimize(analyzer).ok()?;
         lhs_min.range_set_indices(&min)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DummyGraph;
+    use ethers_core::types::U256;
+    use pretty_assertions::{assert_eq, assert_ne};
+    use solang_parser::pt::Loc;
+
+    #[test]
+    fn concrete_set_len() {
+        let x: RangeConcrete<Concrete> = RangeConcrete::new(
+            Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
+            Loc::Implicit,
+        );
+        let new_len = rc_uint256(10);
+        let result = x.range_set_length(&new_len).unwrap();
+        assert_eq!(result.range_get_length().unwrap(), Elem::Concrete(new_len));
+    }
+
+    #[test]
+    fn dyn_set_len() {
+        let x = RangeDyn::from_concrete(
+            Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
+            Loc::Implicit,
+        )
+        .unwrap();
+        let new_len = rc_uint256(10);
+        let result = x.range_set_length(&new_len).unwrap();
+        assert_eq!(result.range_get_length().unwrap(), Elem::Concrete(new_len));
+    }
+
+    #[test]
+    fn dyn_set_ref_len() {
+        let x = RangeDyn::from_concrete(
+            Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
+            Loc::Implicit,
+        )
+        .unwrap();
+        let new_len = test_reference(0, 6.into(), 10.into());
+        let result = Elem::ConcreteDyn(x).range_set_length(&new_len).unwrap();
+        assert_eq!(result.range_get_length().unwrap(), new_len);
+    }
+
+    #[test]
+    fn concrete_concrete_set_indices() {
+        let x = RangeConcrete::new(
+            Concrete::from(vec![b'h', b'e', b'l', b'l', b'o', b's']),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::from(vec![b'w', b'o', b'r', b'l', b'd']),
+            Loc::Implicit,
+        );
+
+        let expected = RangeConcrete::new(
+            Concrete::from(vec![b'w', b'o', b'r', b'l', b'd', b's']),
+            Loc::Implicit,
+        );
+        let result = x
+            .range_set_indices(&y)
+            .unwrap()
+            .maybe_concrete_value()
+            .unwrap();
+        assert_eq!(result.val, expected.val);
+    }
+
+    #[test]
+    fn dyn_concrete_index() {
+        let x = RangeDyn::from_concrete(
+            Concrete::from(vec![b'h', b'e', b'l', b'l', b'o', b's']),
+            Loc::Implicit,
+        )
+        .unwrap();
+        let y = RangeConcrete::new(
+            Concrete::from(vec![b'w', b'o', b'r', b'l', b'd']),
+            Loc::Implicit,
+        );
+
+        let expected = RangeDyn::new_w_op_nums(
+            rc_uint256(6).into(),
+            vec![
+                (
+                    Elem::from(rc_uint256(0)),
+                    (
+                        Elem::Concrete(RangeConcrete::new(Concrete::from(b'w'), Loc::Implicit)),
+                        5usize,
+                    ),
+                ),
+                (
+                    Elem::from(rc_uint256(1)),
+                    (
+                        Elem::Concrete(RangeConcrete::new(Concrete::from(b'o'), Loc::Implicit)),
+                        6usize,
+                    ),
+                ),
+                (
+                    Elem::from(rc_uint256(2)),
+                    (
+                        Elem::Concrete(RangeConcrete::new(Concrete::from(b'r'), Loc::Implicit)),
+                        7usize,
+                    ),
+                ),
+                (
+                    Elem::from(rc_uint256(3)),
+                    (
+                        Elem::Concrete(RangeConcrete::new(Concrete::from(b'l'), Loc::Implicit)),
+                        8usize,
+                    ),
+                ),
+                (
+                    Elem::from(rc_uint256(4)),
+                    (
+                        Elem::Concrete(RangeConcrete::new(Concrete::from(b'd'), Loc::Implicit)),
+                        9usize,
+                    ),
+                ),
+                (
+                    Elem::from(rc_uint256(5)),
+                    (
+                        Elem::Concrete(RangeConcrete::new(Concrete::from(b's'), Loc::Implicit)),
+                        5usize,
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect::<BTreeMap<Elem<_>, (Elem<_>, usize)>>(),
+            Loc::Implicit,
+        );
+
+        let result = x.range_set_indices(&y).unwrap();
+        assert_eq!(result.dyn_map().unwrap(), &expected.val);
+    }
+
+    #[test]
+    fn dyn_ref_set_indices() {
+        let idx = test_reference(0, 0.into(), 2000.into());
+        let rand: Elem<_> = rc_uint256(1337).into();
+        let val: Elem<_> = rc_uint256(200).into();
+        let x = RangeDyn::new_for_indices(vec![(rand.clone(), rand.clone())], Loc::Implicit);
+
+        let y = RangeDyn::new_for_indices(vec![(idx.clone(), val.clone())], Loc::Implicit);
+
+        let expected = Elem::ConcreteDyn(RangeDyn::new_for_indices(
+            vec![(rand.clone(), rand), (idx.clone(), val)],
+            Loc::Implicit,
+        ));
+        let result = x.range_set_indices(&y).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    // #[test]
+    // fn exec_dyn_get_ref_idx_low() {
+    //     let g = DummyGraph::default();
+    //     let idx0 = test_reference(1, 12.into(), 100.into());
+    //     let idx1 = test_reference(2, 220.into(), 1000.into());
+    //     let val0 = rc_uint256(200).into();
+    //     let val1 = rc_uint256(201).into();
+    //     let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
+
+    //     let get_idx = test_reference(3, 0.into(), 12.into());
+
+    //     let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx.clone(), &get_idx, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Uint(256, U256::from(200)));
+    // }
+
+    // #[test]
+    // fn exec_dyn_get_ref_idx_high() {
+    //     let g = DummyGraph::default();
+    //     let idx0 = test_reference(1, 12.into(), 100.into());
+    //     let idx1 = test_reference(2, 220.into(), 1000.into());
+    //     let val0 = rc_uint256(200).into();
+    //     let val1 = rc_uint256(201).into();
+    //     let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
+
+    //     let get_idx = test_reference(3, 400.into(), 400.into());
+
+    //     let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx.clone(), &get_idx, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Uint(256, U256::from(201)));
+    // }
+
+    // #[test]
+    // fn exec_dyn_get_ref_idx_all() {
+    //     let g = DummyGraph::default();
+    //     let idx0 = test_reference(1, 12.into(), 100.into());
+    //     let idx1 = test_reference(2, 220.into(), 1000.into());
+    //     let val0 = rc_uint256(200).into();
+    //     let val1 = rc_uint256(201).into();
+    //     let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
+
+    //     let get_idx = test_reference(3, 0.into(), U256::MAX);
+
+    //     let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx.clone(), &get_idx, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Uint(256, U256::from(201)));
+    // }
+
+    // #[test]
+    // fn exec_dyn_get_ref_idx_none() {
+    //     let g = DummyGraph::default();
+    //     let idx0 = test_reference(1, 12.into(), 100.into());
+    //     let idx1 = test_reference(2, 220.into(), 1000.into());
+    //     let val0 = rc_uint256(200).into();
+    //     let val1 = rc_uint256(201).into();
+    //     let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
+
+    //     let get_idx = test_reference(3, 0.into(), 2.into());
+
+    //     let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx.clone(), &get_idx, true, &g);
+    //     assert!(result.is_none());
+    // }
+
+    // #[test]
+    // fn exec_concrete_get_ref_idx_low() {
+    //     let g = DummyGraph::default();
+    //     let x: RangeConcrete<Concrete> = RangeConcrete::new(
+    //         Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
+    //         Loc::Implicit,
+    //     );
+    //     let get_idx = test_reference(1, 0.into(), 2.into());
+
+    //     let result = exec_get_index(&Elem::Concrete(x), &get_idx.clone(), &get_idx, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::from(b'l'));
+    // }
+
+    // #[test]
+    // fn exec_concrete_get_ref_idx_none() {
+    //     let g = DummyGraph::default();
+    //     let x: RangeConcrete<Concrete> = RangeConcrete::new(
+    //         Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
+    //         Loc::Implicit,
+    //     );
+    //     let get_idx = test_reference(1, 6.into(), 8.into());
+
+    //     let result = exec_get_index(&Elem::Concrete(x), &get_idx.clone(), &get_idx, true, &g);
+    //     assert!(result.is_none());
+    // }
+
+    fn test_reference(id: usize, min: U256, max: U256) -> Elem<Concrete> {
+        let mut re = Reference::new(id.into());
+        let mi = Box::new(Elem::Concrete(RangeConcrete::new(
+            Concrete::from(min),
+            Loc::Implicit,
+        )));
+        let ma = Box::new(Elem::Concrete(RangeConcrete::new(
+            Concrete::from(max),
+            Loc::Implicit,
+        )));
+        re.minimized = Some(MinMaxed::Minimized(mi.clone()));
+        re.maximized = Some(MinMaxed::Maximized(ma.clone()));
+        re.flattened_min = Some(mi);
+        re.flattened_max = Some(ma);
+        Elem::Reference(re)
     }
 }

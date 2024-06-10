@@ -1,4 +1,4 @@
-use crate::nodes::Concrete;
+use crate::nodes::{Builtin, Concrete};
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
@@ -20,6 +20,13 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
             self.val.clone(),
             other.val.values().take(1).next().map(|(a, _)| a),
         ) {
+            (Concrete::Uint(size, val), o) if o.is_none() || o.unwrap().is_bytes() => {
+                RangeConcrete::new(
+                    Concrete::Uint(size, val).cast(Builtin::Bytes((size / 8) as u8))?,
+                    self.loc,
+                )
+                .range_cast(other)
+            }
             (Concrete::Bytes(size, val), o) if o.is_none() || o.unwrap().is_bytes() => {
                 let new = val
                     .0
@@ -240,5 +247,13 @@ mod tests {
         let y = rc_int256(-101);
         let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(256, I256::from(-101)));
+    }
+
+    #[test]
+    fn bytes_upcast() {
+        let x = RangeConcrete::new(Concrete::from(vec![19, 55]), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::from(vec![0, 0, 0, 0]), Loc::Implicit);
+        let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::from(vec![19, 55, 0, 0]));
     }
 }

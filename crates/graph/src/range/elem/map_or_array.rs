@@ -1,16 +1,22 @@
 use crate::{
-    nodes::{Concrete, ContextVarNode},
-    range::elem::{Elem, MinMaxed, RangeElem},
+    nodes::{Builtin, Concrete, ContextVarNode},
+    range::{
+        elem::{Elem, MinMaxed, RangeConcrete, RangeElem},
+        exec_traits::{RangeCast, RangeMemLen},
+    },
     GraphBackend, GraphError,
 };
-use std::hash::Hash;
-use std::hash::Hasher;
 
 use shared::NodeIdx;
 
+use ethers_core::types::{H256, U256};
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
+use std::hash::Hash;
+use std::hash::Hasher;
+
+use super::rc_uint256;
 
 /// A concrete value for a range element
 #[derive(Clone, Debug, Ord, PartialOrd)]
@@ -108,7 +114,7 @@ impl<T: Ord> RangeDyn<T> {
             flattened_max: None,
             len: Box::new(Elem::Null),
             val,
-            op_num,
+            op_num: op_num - 1,
             loc,
         }
     }
@@ -126,6 +132,20 @@ impl<T: Ord> RangeDyn<T> {
 }
 
 impl RangeDyn<Concrete> {
+    pub fn as_sized_bytes(&self) -> Option<Elem<Concrete>> {
+        let len = self.range_get_length()?;
+        let uint_val = len.maybe_concrete()?.val.uint_val()?;
+        if uint_val <= 32.into() {
+            let v = vec![0u8; uint_val.as_usize()];
+            let conc = Concrete::from(v)
+                .cast(Builtin::Bytes(uint_val.as_usize() as u8))
+                .unwrap();
+            let to_cast = RangeConcrete::new(conc, Loc::Implicit);
+            self.range_cast(&to_cast)
+        } else {
+            None
+        }
+    }
     pub fn as_bytes(&self, analyzer: &impl GraphBackend, maximize: bool) -> Option<Vec<u8>> {
         let len = if maximize {
             let as_u256 = self.len.maximize(analyzer).ok()?.concrete()?.into_u256()?;
@@ -170,6 +190,65 @@ impl RangeDyn<Concrete> {
         evaled.sort_by(|a, b| a.range_ord(b, analyzer).unwrap_or(std::cmp::Ordering::Less));
 
         evaled.iter().take(1).next()?.concrete()
+    }
+
+    pub fn from_concrete(concrete: Concrete, loc: Loc) -> Option<Self> {
+        let (vals, len) = match concrete {
+            Concrete::Bytes(size, b) => (
+                Some(
+                    b.0.into_iter()
+                        .take((size).into())
+                        .enumerate()
+                        .map(|(i, b)| {
+                            let mut h = H256::default();
+                            h.0[0] = b;
+                            (
+                                rc_uint256(i as u128).into(),
+                                RangeConcrete::new(Concrete::Bytes(1, h), Loc::Implicit).into(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                Concrete::Uint(256, U256::from(size)),
+            ),
+            Concrete::DynBytes(b) => (
+                Some(
+                    b.iter()
+                        .enumerate()
+                        .map(|(i, by)| {
+                            let mut h = H256::default();
+                            h.0[0] = *by;
+                            (
+                                rc_uint256(i as u128).into(),
+                                RangeConcrete::new(Concrete::Bytes(1, h), Loc::Implicit).into(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                Concrete::Uint(256, U256::from(b.len())),
+            ),
+            Concrete::String(s) => (
+                Some(
+                    s.chars()
+                        .enumerate()
+                        .map(|(i, b): (usize, char)| {
+                            let mut h = H256::default();
+                            h.0[0] = b as u8;
+                            (
+                                rc_uint256(i as u128).into(),
+                                RangeConcrete::new(Concrete::Bytes(1, h), Loc::Implicit).into(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+                Concrete::Uint(256, U256::from(s.len())),
+            ),
+            _ => (None, Concrete::Uint(256, 0.into())),
+        };
+
+        let mut s = Self::new_for_indices(vals?, loc);
+        s.len = Box::new(RangeConcrete::new(len, loc).into());
+        Some(s)
     }
 }
 

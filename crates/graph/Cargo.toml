@@ -22,3 +22,6 @@ tracing-subscriber.workspace = true
 
 itertools = "0.10.5"
 lazy_static = "1.4.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4.0"

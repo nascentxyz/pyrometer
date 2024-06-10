@@ -186,7 +186,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         let _ = analyzer.create_length(
                             ctx,
                             loc,
-                            cvar,
+                            new_var,
                             new_var.latest_version(analyzer),
                             false,
                         )?;

@@ -21,8 +21,9 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
-            _ => match (&self.val, &other.val) {
-                (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
+            _ => match (&self.val, &other.val.into_u256()) {
+                // exponent must be positive otherwise return None.
+                (Concrete::Int(lhs_size, neg_v), Some(val)) => {
                     let pow2 = val % U256::from(2) == 0.into();
                     let val = if val > &U256::from(u32::MAX) {
                         if pow2 {
@@ -69,6 +70,8 @@ impl RangeExp<Concrete> for Elem<Concrete> {
 
 /// Executes the `exponentiation` operation given the minimum and maximum of each element. It returns either the _minimum_ bound or _maximum_ bound
 /// of the operation.
+///
+/// TODO: Add wrapping/unchecked version
 pub fn exec_exp(
     lhs_min: &Elem<Concrete>,
     lhs_max: &Elem<Concrete>,
@@ -99,4 +102,210 @@ pub fn exec_exp(
     } else {
         Some(candidates.remove(0))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DummyGraph;
+    use ethers_core::types::{I256, U256};
+    use solang_parser::pt::Loc;
+
+    #[test]
+    fn uint_uint() {
+        let x = RangeConcrete::new(Concrete::Uint(256, U256::from(15)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(256, U256::from(5)), Loc::Implicit);
+        let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Uint(256, U256::from(759375)));
+    }
+
+    #[test]
+    fn saturating_uint_uint() {
+        let x = RangeConcrete::new(Concrete::Uint(256, U256::MAX), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(256, U256::MAX), Loc::Implicit);
+        let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Uint(256, U256::MAX));
+    }
+
+    #[test]
+    fn sized_saturating_uint_uint() {
+        let x = RangeConcrete::new(Concrete::Uint(8, U256::from(254)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(8, U256::from(254)), Loc::Implicit);
+        let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Uint(8, U256::from(255)));
+    }
+
+    #[test]
+    fn int_uint() {
+        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-1i32)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(256, U256::from(15)), Loc::Implicit);
+        let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(256, I256::from(-1i32)));
+    }
+
+    #[test]
+    fn int_uint_2() {
+        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::from(15i32)), Loc::Implicit);
+        let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(
+            result.val,
+            Concrete::Int(256, I256::from(-437893890380859375i128))
+        );
+    }
+
+    #[test]
+    fn saturating_int_int() {
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::MIN + I256::from(1i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(Concrete::Int(256, I256::from(2i32)), Loc::Implicit);
+        let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(256, I256::MAX));
+    }
+
+    #[test]
+    fn sized_saturating_int_int() {
+        let x = RangeConcrete::new(Concrete::Int(8, I256::from(-127i32)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(8, I256::from(-2i32)), Loc::Implicit);
+        let result = x.range_add(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(8, I256::from(-128i32)));
+    }
+
+    // #[test]
+    // fn wrapping_uint_uint() {
+    //     let x = RangeConcrete::new(Concrete::Uint(256, U256::MAX), Loc::Implicit);
+    //     let y = RangeConcrete::new(Concrete::Uint(256, U256::from(2)), Loc::Implicit);
+    //     let result = x
+    //         .range_wrapping_add(&y)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Uint(256, U256::from(1)));
+    // }
+
+    // #[test]
+    // fn sized_wrapping_uint_uint() {
+    //     let x = RangeConcrete::new(Concrete::Uint(8, U256::from(255)), Loc::Implicit);
+    //     let y = RangeConcrete::new(Concrete::Uint(8, U256::from(2)), Loc::Implicit);
+    //     let result = x
+    //         .range_wrapping_add(&y)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Uint(8, U256::from(1)));
+    // }
+
+    // #[test]
+    // fn wrapping_big_int_uint() {
+    //     let x = RangeConcrete::new(Concrete::Uint(256, U256::from(1)), Loc::Implicit);
+    //     let y = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
+    //     let result = x.range_add(&y).unwrap().maybe_concrete_value().unwrap();
+    //     assert_eq!(result.val, Concrete::Int(256, I256::from(-14i32)));
+    // }
+
+    // #[test]
+    // fn wrapping_int_int() {
+    //     let x = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
+    //     let y = RangeConcrete::new(Concrete::Int(256, I256::from(-1i32)), Loc::Implicit);
+    //     let result = x
+    //         .range_wrapping_add(&y)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Int(256, I256::MAX));
+    // }
+
+    // #[test]
+    // fn sized_wrapping_int_int() {
+    //     let x = RangeConcrete::new(Concrete::Int(8, I256::from(-128i32)), Loc::Implicit);
+    //     let y = RangeConcrete::new(Concrete::Int(8, I256::from(-1i32)), Loc::Implicit);
+    //     let result = x
+    //         .range_wrapping_add(&y)
+    //         .unwrap()
+    //         .maybe_concrete_value()
+    //         .unwrap();
+    //     assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+    // }
+
+    #[test]
+    fn exec_sized_uint_uint_saturating() {
+        let g = DummyGraph::default();
+        let lhs_min = rc_uint_sized(2).into();
+        let lhs_max = rc_uint_sized(150).into();
+        let rhs_min = rc_uint_sized(3).into();
+        let rhs_max = rc_uint_sized(200).into();
+
+        let max_result = exec_exp(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
+        let min_result = exec_exp(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(8)));
+    }
+
+    // #[test]
+    // fn exec_sized_wrapping_uint_uint() {
+    //     let g = DummyGraph::default();
+    //     let lhs_min = rc_uint_sized(105).into();
+    //     let lhs_max = rc_uint_sized(150).into();
+    //     let rhs_min = rc_uint_sized(10).into();
+    //     let rhs_max = rc_uint_sized(200).into();
+
+    //     let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete()
+    //         .unwrap();
+    //     assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
+    //     let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete()
+    //         .unwrap();
+    //     assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+    // }
+
+    // #[test]
+    // fn exec_sized_wrapping_int_uint() {
+    //     let g = DummyGraph::default();
+    //     let lhs_min = rc_int_sized(-128).into();
+    //     let lhs_max = rc_int_sized(127).into();
+    //     let rhs_min = rc_uint_sized(0).into();
+    //     let rhs_max = rc_uint_sized(255).into();
+
+    //     let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete()
+    //         .unwrap();
+    //     assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+    //     let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete()
+    //         .unwrap();
+    //     assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+    // }
+
+    // #[test]
+    // fn exec_sized_wrapping_int_int_max() {
+    //     let g = DummyGraph::default();
+    //     let lhs_min = rc_int_sized(-128).into();
+    //     let lhs_max = rc_int_sized(-100).into();
+    //     let rhs_min = rc_int_sized(-5).into();
+    //     let rhs_max = rc_int_sized(5).into();
+
+    //     let max_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete()
+    //         .unwrap();
+    //     assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+    //     let min_result = exec_add(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
+    //         .unwrap()
+    //         .maybe_concrete()
+    //         .unwrap();
+    //     assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+    // }
 }
