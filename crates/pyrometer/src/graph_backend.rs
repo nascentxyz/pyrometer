@@ -5,7 +5,7 @@ use shared::RangeArena;
 // use std::collections::hash_map::DefaultHasher;
 // use std::hash::Hash;
 // use std::hash::Hasher;
-
+use tracing::{trace, debug, error, warn};
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
     Node,
@@ -124,6 +124,10 @@ impl GraphDot for Analyzer {
         let child_node_str = children
             .iter()
             .filter_map(|child| {
+                if handled_nodes.lock().unwrap().contains(child) {
+                    return None;
+                }
+
                 if handled_nodes.lock().unwrap().contains(child) {
                     return None;
                 }
@@ -261,6 +265,7 @@ impl GraphDot for Analyzer {
                 } else {
                     {
                         if handled_nodes.lock().unwrap().contains(child) {
+                        if handled_nodes.lock().unwrap().contains(child) {
                             return None;
                         } else {
                             handled_nodes.lock().unwrap().insert(*child);
@@ -290,6 +295,7 @@ impl GraphDot for Analyzer {
                 if as_mermaid {
                     format!("{indent}{from:} -->|\"{edge_str}\"| {to:}\n{indent}class {to} linkSource{edge_idx}\n{indent}class {from} linkTarget{edge_idx}")
                 } else {
+                    format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)
                     format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)
                 }
             })
@@ -363,7 +369,7 @@ impl GraphDot for Analyzer {
         let raw_start_str = r##"digraph G {
     node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
     edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
-    bgcolor="#1a1b26"; rankdir="BT"; splines=ortho;"##;
+    bgcolor="#1a1b26"; rankdir="BT"; splines=ortho; size="6,6"; ratio="fill";layout="fdp";"##;
         dot_str.push(raw_start_str.to_string());
         let handled_edges = Arc::new(Mutex::new(BTreeSet::new()));
         let handled_nodes = Arc::new(Mutex::new(BTreeSet::new()));
@@ -461,9 +467,9 @@ impl GraphDot for Analyzer {
         );
         let mut dot_str = Vec::new();
         let raw_start_str = r##"digraph G {
-    node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
-    edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
-    bgcolor="#1a1b26";"##;
+            node [shape=box, style="filled, rounded", color="#565f89", fontcolor="#d5daf0", fontname="Helvetica", fillcolor="#24283b"];
+            edge [color="#414868", fontcolor="#c0caf5", fontname="Helvetica"];
+            bgcolor="#1a1b26"; rankdir="BT"; splines=ortho; size="6,6"; ratio="fill";layout="fdp";"##;
         dot_str.push(raw_start_str.to_string());
         let nodes_and_edges_str = format!(
             "{:?}",
@@ -646,6 +652,44 @@ impl GraphLike for G<'_> {
     }
 }
 
+impl GraphDot for G<'_> {
+    fn cluster_str(
+        &self,
+        node: NodeIdx,
+        cluster_num: &mut usize,
+        is_killed: bool,
+        handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
+        handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
+        depth: usize,
+        as_mermaid: bool,
+    ) -> Option<String>
+    where
+        Self: std::marker::Sized {
+        todo!()
+    }
+
+    fn dot_str(&self) -> String
+    where
+        Self: std::marker::Sized,
+        Self: shared::AnalyzerLike {
+        todo!()
+    }
+
+    fn dot_str_no_tmps(&self) -> String
+    where
+        Self: std::marker::Sized,
+        Self: GraphLike + shared::AnalyzerLike {
+        todo!()
+    }
+
+    fn mermaid_str(&self) -> String
+    where
+        Self: std::marker::Sized,
+        Self: shared::AnalyzerLike {
+        todo!()
+    }
+}
+
 impl GraphBackend for G<'_> {}
 
 pub fn mermaid_node(
@@ -654,6 +698,7 @@ pub fn mermaid_node(
     indent: &str,
     node: NodeIdx,
     style: bool,
+    loc: bool,
     loc: bool,
     class: Option<&str>,
 ) -> String {
@@ -671,19 +716,54 @@ pub fn mermaid_node(
         ));
     }
 
+    // if loc {
+    //     match g.node(node) {
+    //         Node::ContextVar(..) => {
+    //             match graph::nodes::ContextVarNode::from(node).loc(g).unwrap() {
+    //                 solang_parser::pt::Loc::File(f, s, e) => {
+    //                     node_str.push_str(&format!(
+    //                         "\n{indent}class {} loc_{f}_{s}_{e}",
+    //                         petgraph::graph::GraphIndex::index(&node)
+    //                     ));
+    //                 }
+    //                 _ => {}
+    //             }
+    //         },
+    //         _ => {}
+    //     }
+    // }
     if loc {
-        match g.node(node) {
+        let mut current_node = node;
+        match g.node(current_node) {
             Node::ContextVar(..) => {
-                if let solang_parser::pt::Loc::File(f, s, e) =
-                    graph::nodes::ContextVarNode::from(node).loc(g).unwrap()
-                {
+                // highlight self
+                if let Ok(loc) = graph::nodes::ContextVarNode::from(current_node).loc(g) {
+                    if let solang_parser::pt::Loc::File(f, s, e) = loc {
+                        node_str.push_str(&format!(
+                            "\n{indent}class {} loc_{f}_{s}_{e}",
+                            petgraph::graph::GraphIndex::index(&current_node)
+                        ));
+                    }
+                }
+    
+                // color the forks
+                let ctx_node = graph::nodes::ContextVarNode::from(current_node).ctx(g);
+                gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+            },
+            Node::Context(ctx) => {
+                // highlight self
+                if let solang_parser::pt::Loc::File(f, s, e) = ctx.loc {
                     node_str.push_str(&format!(
                         "\n{indent}class {} loc_{f}_{s}_{e}",
-                        petgraph::graph::GraphIndex::index(&node)
+                        petgraph::graph::GraphIndex::index(&current_node)
                     ));
                 }
-            }
-            _ => {}
+
+                // color the forks
+                let ctx_node = graph::nodes::ContextNode::from(current_node);
+                gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+            },
+            _ => {},
         }
     }
 
@@ -695,4 +775,48 @@ pub fn mermaid_node(
     }
 
     node_str
+}
+
+fn gather_context_info(
+    g: &impl GraphBackend,
+    indent: &str,
+    mut ctx_node: ContextNode,
+    original_cvar_node: NodeIdx,
+    node_str: &mut String,
+) {
+
+    loop {
+        // warn!("in loop, {:?}", ctx_node);
+
+        let mut found_continue = false;
+        let mut current_loc = ctx_node.underlying(g).unwrap().loc;
+        for edge in g.graph().edges_directed(ctx_node.into(), Direction::Outgoing) {
+            if let Edge::Context(ContextEdge::Continue(true_or_false)) = edge.weight() {
+                let target_node = edge.target();
+                if let Node::Context(ctx) = g.node(target_node) {
+                    // error!("found continue pointing to node");
+                    ctx_node = target_node.into(); 
+                    found_continue = true;
+                    // Gather the edge weight and the loc of the Context node it points to
+                    if let solang_parser::pt::Loc::File(f, s, e) = current_loc {
+                        let fork_str = format!(
+                            "\n{indent}class {} fork_{f}_{s}_{e}_{}",
+                            petgraph::graph::GraphIndex::index(&original_cvar_node),
+                            match *true_or_false {
+                                "fork_true" => true,
+                                "fork_false" => false,
+                                _ => false,
+                            }
+                        );
+                        // error!("in gather_context_info, {:?}", fork_str);
+                        node_str.push_str(&fork_str);
+                    }
+                    break;
+                }
+            }
+        }
+        if !found_continue {
+            break;
+        }
+    }
 }

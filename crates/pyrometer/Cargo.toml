@@ -24,6 +24,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 ahash.workspace = true
 serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 
 

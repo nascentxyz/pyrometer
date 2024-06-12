@@ -13,6 +13,7 @@ repository.workspace = true
 [dependencies]
 graph.workspace = true
 shared.workspace = true
+tracing.workspace = true
 
 solang-parser.workspace = true
 ariadne.workspace = true
