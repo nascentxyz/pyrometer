@@ -1,14 +1,18 @@
 use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
-use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx};
+use shared::{AnalyzerLike, GraphDot, GraphLike, Heirarchical, NodeIdx};
 
 use lazy_static::lazy_static;
 use solang_parser::pt::Identifier;
 
 use std::collections::HashMap;
 
-pub trait GraphBackend: GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> {}
+
+pub trait GraphBackend:
+    GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>>
+        + GraphDot
+{}
 pub trait AnalyzerBackend:
     AnalyzerLike<
         Builtin = Builtin,

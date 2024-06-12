@@ -14,6 +14,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::runtime::Runtime;
+use tracing::{error, trace};
+
+pub static mut USE_DEBUG_SITE: bool = false;
+
 pub type NodeIdx = NodeIndex<usize>;
 pub type EdgeIdx = EdgeIndex<usize>;
 pub type RangeArenaIdx = usize;
@@ -34,7 +42,7 @@ pub trait GraphLike {
     /// Get a reference to the graph
     fn graph(&self) -> &Graph<Self::Node, Self::Edge, Directed, usize>;
     /// Add a node to the graph
-    fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx {
+    fn _add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx {
         let res = self.graph_mut().add_node(node.into());
         res
     }
@@ -51,7 +59,7 @@ pub trait GraphLike {
             .expect("Index not in graph")
     }
     /// Add an edge to the graph
-    fn add_edge(
+    fn _add_edge(
         &mut self,
         from_node: impl Into<NodeIdx>,
         to_node: impl Into<NodeIdx>,
@@ -146,6 +154,74 @@ pub trait GraphDot: GraphLike {
             .expect("failed to execute process");
     }
 
+    fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        let res = self.graph_mut().add_node(node.into());
+        if unsafe { USE_DEBUG_SITE } {
+            self.post_to_site();
+        }
+        res
+    }
+
+    fn add_edge(
+        &mut self,
+        from_node: impl Into<NodeIdx>,
+        to_node: impl Into<NodeIdx>,
+        edge: impl Into<Self::Edge>,
+    ) where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        self.graph_mut()
+            .add_edge(from_node.into(), to_node.into(), edge.into());
+
+        if unsafe { USE_DEBUG_SITE } {
+            self.post_to_site();
+        }
+    }
+
+    fn post_to_site(&self)
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            self.post_to_site_async().await;
+        });
+    }
+
+    async fn post_to_site_async(&self)
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        let client = Client::new();
+        let graph_msg = GraphMessage {
+            graph: self.mermaid_str(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_secs(),
+        };
+
+        let res = client
+            .post("http://127.0.0.1:8545/addgraph")
+            .json(&graph_msg)
+            .send()
+            .await
+            .expect("Failed to send request");
+
+        if res.status().is_success() {
+            trace!("Successfully posted dot to site");
+        } else {
+            error!("Failed to post graph to site: {:?}", res.status());
+        }
+    }
+
     /// Creates a subgraph for visually identifying contexts and subcontexts
     fn cluster_str(
         &self,
@@ -176,4 +252,10 @@ pub trait GraphDot: GraphLike {
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike;
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct GraphMessage {
+    graph: String,
+    timestamp: u64,
 }
