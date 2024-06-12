@@ -176,4 +176,5 @@ pub trait AnalyzerLike: GraphLike {
     }
 
     fn join_stats_mut(&mut self) -> &mut JoinStats;
+    fn file_mapping(&self) -> BTreeMap<usize, String>;
 }

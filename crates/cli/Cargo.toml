@@ -16,7 +16,6 @@ analyzers.workspace = true
 shared.workspace = true
 pyrometer.workspace = true
 graph.workspace = true
-# queries.workspace = true
 
 ariadne.workspace = true
 tracing.workspace = true
@@ -25,8 +24,9 @@ tracing-tree.workspace = true
 petgraph.workspace = true
 ethers-core.workspace = true
 
-
 clap = { version = "4.1.4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 [[bin]]
 name = "pyrometer"

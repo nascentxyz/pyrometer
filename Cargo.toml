@@ -44,7 +44,7 @@ tracing-subscriber = { version = "0.3", features = ["registry", "env-filter", "f
 tracing-tree = "0.3.0"
 ethers-core = "*"
 hex = "0.4.3"
-ariadne = "0.2.0"
+ariadne = "0.4.1"
 petgraph = "0.6.2"
 ahash = "0.8.10"
 
@@ -52,10 +52,6 @@ ahash = "0.8.10"
 
 # [workspace]
 # members = ["cli", "shared"]
-
-# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
-[patch.crates-io]
-ariadne = {git = "https://github.com/brockelmore/ariadne"}
 
 # ######################################
 # # Benchmarks

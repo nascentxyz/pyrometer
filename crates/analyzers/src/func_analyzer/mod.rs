@@ -111,6 +111,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                         .with_cross_gap(false)
                         .with_underlines(true)
                         .with_tab_width(4)
+                        .with_index_type(ariadne::IndexType::Byte)
                         .with_multiline_arrows(false),
                 );
 

@@ -66,6 +66,7 @@ impl ReportDisplay for VarBoundAnalysis {
             Config::default()
                 .with_cross_gap(false)
                 .with_underlines(true)
+                .with_index_type(ariadne::IndexType::Byte)
                 .with_tab_width(4),
         );
 

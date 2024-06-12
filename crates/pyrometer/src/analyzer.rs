@@ -1,11 +1,15 @@
 use crate::builtin_fns;
 use graph::elem::Elem;
-use shared::RangeArena;
-
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use shared::{RangeArena, USE_DEBUG_SITE};
+use shared::GraphDot;
 use analyzers::LocStrSpan;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, Search};
 use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
+use tokio::runtime::Runtime;
+use tracing::{debug, error, info, trace, warn};
 
 use ahash::AHashMap;
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
@@ -160,7 +164,7 @@ impl Default for Analyzer {
             builtin_fn_inputs: Default::default(),
             expr_errs: Default::default(),
             max_depth: 200,
-            max_width: 2_i32.pow(14) as usize,
+            max_width: 2_i32.pow(14) as usize, // 14 splits == 16384 contexts
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
             fn_calls_fns: Default::default(),
@@ -468,7 +472,8 @@ impl Analyzer {
                         Config::default()
                             .with_cross_gap(false)
                             .with_underlines(true)
-                            .with_tab_width(4),
+                            .with_tab_width(4)
+                            .with_index_type(ariadne::IndexType::Byte),
                     )
                     .with_label(
                         Label::new(str_span)
@@ -486,6 +491,9 @@ impl Analyzer {
         let file_no = self.file_no;
         self.sources
             .push((current_path.clone(), src.to_string(), Some(file_no), None));
+        if unsafe { USE_DEBUG_SITE } {
+            Self::post_source_to_site(file_no, &current_path.path_to_solidity_source(), src);
+        }
         match solang_parser::parse(src, file_no) {
             Ok((source_unit, _comments)) => {
                 let parent =
@@ -945,7 +953,7 @@ impl Analyzer {
 
         let normalized_remapped = normalize_path(remapped.path_to_solidity_source());
         // take self.sources entry with the same path as remapped and update the file_no
-        if let Some((_, _, optional_file_no, _)) =
+        if let Some((source_path, source, optional_file_no, _)) =
             self.sources.iter_mut().find(|(path, _, _, _)| {
                 normalize_path(path.path_to_solidity_source()) == normalized_remapped
             })
@@ -957,6 +965,10 @@ impl Analyzer {
             self.file_no += 1;
             let file_no = self.file_no;
             *optional_file_no = Some(file_no);
+            if unsafe { USE_DEBUG_SITE } {
+                // send the source to the site
+                Self::post_source_to_site(file_no, &source_path.path_to_solidity_source(), source);
+            }
         }
 
         let maybe_entry = self.parse(&sol, &remapped, false);
@@ -1345,6 +1357,42 @@ impl Analyzer {
         };
         ty_node
     }
+
+    fn post_source_to_site(file_no: usize, path: &PathBuf, source: &str) 
+    where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            Self::post_source_to_site_async(file_no, path, source).await;
+        });
+    }
+
+    async fn post_source_to_site_async(file_no: usize, path: &PathBuf, source: &str) where
+        Self: std::marker::Sized,
+        Self: AnalyzerLike,
+    {
+        let client = Client::new();
+        let source_msg = SourceMessage {
+            file_number: file_no,
+            path: path.to_path_buf(),
+            source: source.to_string(),
+        };
+        let res = client
+            .post("http://127.0.0.1:8545/addsource")
+            .json(&source_msg)
+            .send()
+            .await
+            .expect("Failed to send request");
+
+        if res.status().is_success() {
+            trace!("Successfully posted source to site");
+        } else {
+            error!("Failed to post source to site: {:?}", res.status());
+        }
+
+    }
 }
 
 /// Print the report of parser's diagnostics
@@ -1404,4 +1452,11 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
     }
 
     normalized_path
+}
+
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+struct SourceMessage {
+    file_number: usize,
+    path: PathBuf,
+    source: String,
 }

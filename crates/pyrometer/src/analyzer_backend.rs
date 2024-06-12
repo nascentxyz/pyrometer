@@ -1,5 +1,5 @@
 use crate::Analyzer;
-
+use shared::GraphDot;
 use graph::{
     nodes::{
         BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionNode, FunctionParam,
@@ -14,7 +14,7 @@ use ahash::AHashMap;
 use ethers_core::types::U256;
 use solang_parser::{helpers::CodeLocation, pt::Expression};
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 impl AnalyzerBackend for Analyzer {}
 
@@ -246,5 +246,18 @@ impl AnalyzerLike for Analyzer {
 
     fn join_stats_mut(&mut self) -> &mut JoinStats {
         &mut self.join_stats
+    }
+    
+    fn file_mapping(&self) -> BTreeMap<usize, String> {
+        let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
+        for (source_path, _, o_file_no, _) in self.sources.iter() {
+            if let Some(file_no) = o_file_no {
+                file_mapping.insert(
+                    *file_no,
+                    source_path.path_to_solidity_source().display().to_string(),
+                );
+            }
+        }
+        file_mapping
     }
 }
