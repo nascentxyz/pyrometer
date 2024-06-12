@@ -1,7 +1,7 @@
 use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
-use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx, RangeArena};
+use shared::{AnalyzerLike, GraphDot, GraphLike, Heirarchical, NodeIdx, RangeArena};
 
 use lazy_static::lazy_static;
 use petgraph::{Directed, Graph};
@@ -9,7 +9,11 @@ use solang_parser::pt::{Identifier, Loc};
 
 use std::collections::HashMap;
 
-pub trait GraphBackend: GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> {}
+
+pub trait GraphBackend:
+    GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>>
+        + GraphDot
+{}
 pub trait AnalyzerBackend:
     AnalyzerLike<
         Builtin = Builtin,
