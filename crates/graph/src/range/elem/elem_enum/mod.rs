@@ -1,11 +1,13 @@
+mod arena;
 mod impls;
 mod ops;
 mod range_elem;
 mod traits;
 
 use crate::range::elem::{RangeConcrete, RangeDyn, RangeExpr, Reference};
-
 use shared::RangeArenaIdx;
+
+pub use arena::RangeArenaLike;
 
 /// A core range element.
 #[derive(Default, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]

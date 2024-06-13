@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 impl RangeUnary<Concrete> for RangeConcrete<Concrete> {
     fn range_not(&self) -> Option<Elem<Concrete>> {
         match self.val {
@@ -57,6 +59,7 @@ pub fn exec_and(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
         lhs_min.range_and(rhs_min),
@@ -65,7 +68,7 @@ pub fn exec_and(
         lhs_max.range_and(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -88,6 +91,7 @@ pub fn exec_or(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
         lhs_min.range_or(rhs_min),
@@ -96,7 +100,7 @@ pub fn exec_or(
         lhs_max.range_or(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -119,11 +123,12 @@ pub fn exec_not(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     assert!(matches!(rhs_min, Elem::Null) && matches!(rhs_max, Elem::Null));
     let candidates = vec![lhs_min.range_not(), lhs_max.range_not()];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });

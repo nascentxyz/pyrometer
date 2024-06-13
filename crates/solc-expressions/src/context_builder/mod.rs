@@ -2,9 +2,11 @@
 use crate::{ExprErr, IntoExprErr};
 
 use graph::{
-    nodes::{ContextNode, ContextVarNode, ExprRet, KilledKind},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, ContextVarNode, ExprRet, KilledKind},
     AnalyzerBackend, ContextEdge, Edge, GraphError,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -91,7 +93,13 @@ pub trait ContextBuilder:
         &mut self,
         ctx: ContextNode,
         loc: Loc,
-        closure: &impl Fn(&mut Self, ContextNode, Loc) -> Result<(), ExprErr>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        closure: &impl Fn(
+            &mut Self,
+            &mut RangeArena<Elem<Concrete>>,
+            ContextNode,
+            Loc,
+        ) -> Result<(), ExprErr>,
     ) -> Result<(), ExprErr> {
         let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
         tracing::trace!(
@@ -106,14 +114,14 @@ pub trait ContextBuilder:
                 } else {
                     live_edges
                         .iter()
-                        .try_for_each(|ctx| closure(self, *ctx, loc))
+                        .try_for_each(|ctx| closure(self, arena, *ctx, loc))
                 }
             } else if live_edges.is_empty() {
-                closure(self, ctx, loc)
+                closure(self, arena, ctx, loc)
             } else {
                 live_edges
                     .iter()
-                    .try_for_each(|ctx| closure(self, *ctx, loc))
+                    .try_for_each(|ctx| closure(self, arena, *ctx, loc))
             }
         } else {
             Ok(())
@@ -126,7 +134,13 @@ pub trait ContextBuilder:
         &mut self,
         ctx: ContextNode,
         loc: Loc,
-        closure: &impl Fn(&mut Self, ContextNode, Loc) -> Result<T, ExprErr>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        closure: &impl Fn(
+            &mut Self,
+            &mut RangeArena<Elem<Concrete>>,
+            ContextNode,
+            Loc,
+        ) -> Result<T, ExprErr>,
     ) -> Result<Vec<T>, ExprErr> {
         let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
         tracing::trace!(
@@ -136,11 +150,11 @@ pub trait ContextBuilder:
         );
 
         if live_edges.is_empty() {
-            Ok(vec![closure(self, ctx, loc)?])
+            Ok(vec![closure(self, arena, ctx, loc)?])
         } else {
             live_edges
                 .iter()
-                .map(|ctx| closure(self, *ctx, loc))
+                .map(|ctx| closure(self, arena, *ctx, loc))
                 .collect::<Result<Vec<T>, ExprErr>>()
         }
     }

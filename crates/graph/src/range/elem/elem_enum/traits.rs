@@ -8,7 +8,7 @@ use solang_parser::pt::Loc;
 
 use std::hash::{Hash, Hasher};
 
-impl Hash for Elem<Concrete> {
+impl<T: Hash> Hash for Elem<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Elem::Reference(r) => r.hash(state),

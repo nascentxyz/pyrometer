@@ -2,6 +2,8 @@ use crate::nodes::{Builtin, Concrete};
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{H256, U256};
 use std::collections::BTreeMap;
 
@@ -168,6 +170,7 @@ pub fn exec_cast(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // the weird thing about cast is that we really dont know until after the cast due to sizing things
     // so we should just try them all then compare
@@ -178,7 +181,7 @@ pub fn exec_cast(
         lhs_max.range_cast(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });

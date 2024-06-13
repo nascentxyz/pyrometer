@@ -1,9 +1,12 @@
 use crate::{
-    nodes::{ContextVar, ContextVarNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
+    nodes::{
+        Concrete, ContextVar, ContextVarNode, ContractNode, SourceUnitNode, SourceUnitPartNode,
+    },
+    range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
-use shared::{NodeIdx, Search};
+use shared::{NodeIdx, RangeArena, Search};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{
@@ -46,11 +49,12 @@ impl VarNode {
     pub fn parse_initializer(
         &self,
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
         parent: NodeIdx,
     ) -> Result<(), GraphError> {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
             tracing::trace!("Parsing variable initializer");
-            let init = analyzer.parse_expr(&expr, Some(parent));
+            let init = analyzer.parse_expr(arena, &expr, Some(parent));
             let underlying = self.underlying(analyzer)?.clone();
             let mut set = false;
             if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
@@ -174,12 +178,16 @@ impl VarNode {
 }
 
 impl AsDotStr for VarNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{}{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
-                var_ty.as_dot_str(analyzer)
+                var_ty.as_dot_str(analyzer, arena)
             } else {
                 "".to_string()
             },
@@ -237,11 +245,12 @@ impl From<Var> for Node {
 impl Var {
     pub fn new(
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
         var: VariableDefinition,
         in_contract: bool,
     ) -> Var {
         tracing::trace!("Parsing Var type");
-        let ty = analyzer.parse_expr(&var.ty, None);
+        let ty = analyzer.parse_expr(arena, &var.ty, None);
         Var {
             loc: var.loc,
             ty,

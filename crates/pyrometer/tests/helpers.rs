@@ -2,9 +2,14 @@ use analyzers::FunctionVarsBoundAnalyzer;
 use analyzers::ReportConfig;
 use analyzers::ReportDisplay;
 use ariadne::sources;
-use graph::{nodes::FunctionNode, Edge};
+use graph::{
+    elem::Elem,
+    nodes::{Concrete, FunctionNode},
+    Edge,
+};
 use pyrometer::{Analyzer, SourcePath};
 use shared::NodeIdx;
+use shared::RangeArena;
 use shared::Search;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -13,8 +18,10 @@ use std::path::PathBuf;
 pub fn assert_no_parse_errors(path_str: String) {
     let sol = std::fs::read_to_string(path_str.clone()).unwrap();
     let mut analyzer = Analyzer::default();
+    let mut arena_base = Default::default();
+    let arena = &mut arena_base;
     let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
-    let _ = analyzer.parse(&sol, &current_path, true);
+    let _ = analyzer.parse(arena, &sol, &current_path, true);
     assert!(
         analyzer.expr_errs.is_empty(),
         "Analyzer encountered parse errors in {}",
@@ -24,22 +31,30 @@ pub fn assert_no_parse_errors(path_str: String) {
 
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();
+    let mut arena_base = Default::default();
+    let arena = &mut arena_base;
     let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
-    let maybe_entry = analyzer.parse(sol, &current_path, true);
+    let maybe_entry = analyzer.parse(arena, sol, &current_path, true);
     let entry = maybe_entry.unwrap();
-    no_ctx_killed(analyzer, entry);
+    no_ctx_killed(analyzer, arena, entry);
 }
 
 pub fn remapping_assert_no_ctx_killed(path_str: String, remapping_file: String, sol: &str) {
     let mut analyzer = Analyzer::default();
     analyzer.set_remappings_and_root(remapping_file);
     let current_path = SourcePath::SolidityFile(PathBuf::from(path_str.clone()));
-    let maybe_entry = analyzer.parse(sol, &current_path, true);
+    let mut arena_base = Default::default();
+    let arena = &mut arena_base;
+    let maybe_entry = analyzer.parse(arena, sol, &current_path, true);
     let entry = maybe_entry.unwrap();
-    no_ctx_killed(analyzer, entry);
+    no_ctx_killed(analyzer, arena, entry);
 }
 
-pub fn no_ctx_killed(mut analyzer: Analyzer, entry: NodeIdx) {
+pub fn no_ctx_killed(
+    mut analyzer: Analyzer,
+    arena: &mut RangeArena<Elem<Concrete>>,
+    entry: NodeIdx,
+) {
     assert!(
         analyzer.expr_errs.is_empty(),
         "Analyzer encountered parse errors"
@@ -78,17 +93,17 @@ pub fn no_ctx_killed(mut analyzer: Analyzer, entry: NodeIdx) {
         if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
             if ctx.killed_loc(&analyzer).unwrap().is_some() {
                 analyzer
-                    .bounds_for_all(&file_mapping, ctx, config)
+                    .bounds_for_all(arena, &file_mapping, ctx, config)
                     .as_cli_compat(&file_mapping)
-                    .print_reports(&mut source_map, &analyzer);
+                    .print_reports(&mut source_map, &analyzer, arena);
                 panic!("Killed context in test");
             }
             ctx.all_edges(&analyzer).unwrap().iter().for_each(|subctx| {
                 if subctx.killed_loc(&analyzer).unwrap().is_some() {
                     analyzer
-                        .bounds_for_all(&file_mapping, *subctx, config)
+                        .bounds_for_all(arena, &file_mapping, *subctx, config)
                         .as_cli_compat(&file_mapping)
-                        .print_reports(&mut source_map, &analyzer);
+                        .print_reports(&mut source_map, &analyzer, arena);
                     panic!("Killed context in test");
                 }
             });

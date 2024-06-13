@@ -75,6 +75,8 @@ fn bench(c: &mut Criterion) {
 /// * `sol` - A string containing the Solidity source code.
 fn parse(path: &Path, sol: String) {
     let mut analyzer = Analyzer::default();
+    let mut arena_base = Default::default();
+    let arena = &mut arena_base;
     let current_path = SourcePath::SolidityFile(path.to_path_buf());
-    let _maybe_entry = analyzer.parse(&sol, &current_path, true);
+    let _maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
 }

@@ -4,6 +4,8 @@ use crate::{
     range::{elem::*, exec_traits::*},
 };
 
+use shared::RangeArena;
+
 use ethers_core::types::U256;
 use solang_parser::pt::Loc;
 
@@ -73,14 +75,15 @@ pub fn exec_get_length(
     lhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     if maximize {
         let new = lhs_max.clone();
-        let new_max = new.simplify_maximize(analyzer).ok()?;
+        let new_max = new.simplify_maximize(analyzer, arena).ok()?;
 
         new_max.range_get_length()
     } else {
-        let new_min = lhs_min.simplify_minimize(analyzer).ok()?;
+        let new_min = lhs_min.simplify_minimize(analyzer, arena).ok()?;
 
         new_min.range_get_length()
     }
@@ -93,6 +96,7 @@ pub fn exec_get_index(
     rhs: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     println!("get index: {lhs} {rhs}");
     // for each key in LHS, check if it overlaps the RHS index range
@@ -119,27 +123,27 @@ pub fn exec_get_index(
         lhs: &Elem<Concrete>,
         rhs: &Elem<Concrete>,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
         candidates: &mut Vec<Elem<Concrete>>,
     ) {
         match lhs {
-            Elem::Arena(_) => match_lhs(
-                &lhs.dearenaize(analyzer).borrow(),
-                rhs,
-                analyzer,
-                candidates,
-            ),
+            Elem::Arena(_) => {
+                let (d, idx) = lhs.dearenaize(arena);
+                match_lhs(&d, rhs, analyzer, arena, candidates);
+                lhs.rearenaize(d, idx, arena);
+            }
             Elem::Reference(_) => {
-                if let Ok(min) = lhs.minimize(analyzer) {
-                    match_lhs(&min, rhs, analyzer, candidates);
+                if let Ok(min) = lhs.minimize(analyzer, arena) {
+                    match_lhs(&min, rhs, analyzer, arena, candidates);
                 }
 
-                if let Ok(max) = lhs.maximize(analyzer) {
-                    match_lhs(&max, rhs, analyzer, candidates);
+                if let Ok(max) = lhs.maximize(analyzer, arena) {
+                    match_lhs(&max, rhs, analyzer, arena, candidates);
                 }
             }
             Elem::ConcreteDyn(d) => {
                 d.val.iter().for_each(|(k, (v, _op))| {
-                    if let Ok(Some(true)) = k.overlaps(rhs, true, analyzer) {
+                    if let Ok(Some(true)) = k.overlaps(rhs, true, analyzer, arena) {
                         candidates.push(v.clone())
                     }
                 });
@@ -152,7 +156,7 @@ pub fn exec_get_index(
                     while curr < size {
                         let as_rc = RangeConcrete::new(Concrete::from(curr), Loc::Implicit);
                         let as_elem = Elem::from(as_rc.clone());
-                        if let Ok(Some(true)) = as_elem.overlaps(rhs, true, analyzer) {
+                        if let Ok(Some(true)) = as_elem.overlaps(rhs, true, analyzer, arena) {
                             if let Some(val) = c.range_get_index(&as_rc) {
                                 candidates.push(val)
                             }
@@ -163,23 +167,23 @@ pub fn exec_get_index(
             }
             _ => {}
         };
-    };
+    }
 
-    match_lhs(lhs, rhs, analyzer, &mut candidates);
+    match_lhs(lhs, rhs, analyzer, arena, &mut candidates);
 
     candidates = candidates
         .into_iter()
         .filter_map(|val| {
             if maximize {
-                val.maximize(analyzer).ok()
+                val.maximize(analyzer, arena).ok()
             } else {
-                val.minimize(analyzer).ok()
+                val.minimize(analyzer, arena).ok()
             }
         })
         .collect();
 
     // Sort the candidates
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -286,6 +290,7 @@ mod tests {
     #[test]
     fn exec_dyn_get_ref_idx_low() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let idx0 = test_reference(1, 12.into(), 100.into());
         let idx1 = test_reference(2, 220.into(), 1000.into());
         let val0 = rc_uint256(200).into();
@@ -294,7 +299,7 @@ mod tests {
 
         let get_idx = test_reference(3, 0.into(), 12.into());
 
-        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g)
+        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
@@ -304,6 +309,7 @@ mod tests {
     #[test]
     fn exec_dyn_get_ref_idx_high() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let idx0 = test_reference(1, 12.into(), 100.into());
         let idx1 = test_reference(2, 220.into(), 1000.into());
         let val0 = rc_uint256(200).into();
@@ -312,7 +318,7 @@ mod tests {
 
         let get_idx = test_reference(3, 400.into(), 400.into());
 
-        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g)
+        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
@@ -322,6 +328,7 @@ mod tests {
     #[test]
     fn exec_dyn_get_ref_idx_all() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let idx0 = test_reference(1, 12.into(), 100.into());
         let idx1 = test_reference(2, 220.into(), 1000.into());
         let val0 = rc_uint256(200).into();
@@ -330,7 +337,7 @@ mod tests {
 
         let get_idx = test_reference(3, 0.into(), U256::MAX);
 
-        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g)
+        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
@@ -340,6 +347,7 @@ mod tests {
     #[test]
     fn exec_dyn_get_ref_idx_null() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let idx0 = test_reference(1, 12.into(), 100.into());
         let idx1 = test_reference(2, 220.into(), 1000.into());
         let val0 = rc_uint256(200).into();
@@ -348,20 +356,21 @@ mod tests {
 
         let get_idx = test_reference(3, 0.into(), 2.into());
 
-        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g);
+        let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena);
         assert_eq!(result.unwrap(), Elem::Null);
     }
 
     #[test]
     fn exec_concrete_get_ref_idx_low() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let x: RangeConcrete<Concrete> = RangeConcrete::new(
             Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
             Loc::Implicit,
         );
         let get_idx = test_reference(1, 0.into(), 2.into());
 
-        let result = exec_get_index(&Elem::Concrete(x), &get_idx, true, &g)
+        let result = exec_get_index(&Elem::Concrete(x), &get_idx, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
@@ -371,13 +380,14 @@ mod tests {
     #[test]
     fn exec_concrete_get_ref_idx_null() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let x: RangeConcrete<Concrete> = RangeConcrete::new(
             Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
             Loc::Implicit,
         );
         let get_idx = test_reference(1, 6.into(), 8.into());
 
-        let result = exec_get_index(&Elem::Concrete(x), &get_idx, true, &g);
+        let result = exec_get_index(&Elem::Concrete(x), &get_idx, true, &g, &mut arena);
         assert_eq!(result.unwrap(), Elem::Null);
     }
 

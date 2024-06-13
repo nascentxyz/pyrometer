@@ -2,17 +2,16 @@ use crate::{
     BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExprErr, ExpressionParser,
     IntoExprErr, ListAccess, StructAccess,
 };
-use graph::nodes::Concrete;
-use graph::nodes::ConcreteNode;
 
 use graph::{
+    elem::Elem,
     nodes::{
-        BuiltInNode, ContextNode, ContextVar, ContextVarNode, ContractNode, EnumNode, ExprRet,
-        FunctionNode, StructNode, TyNode,
+        BuiltInNode, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ContractNode,
+        EnumNode, ExprRet, FunctionNode, StructNode, TyNode,
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
@@ -40,6 +39,7 @@ pub trait MemberAccess:
     #[tracing::instrument(level = "trace", skip_all)]
     fn member_access(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         member_expr: &Expression,
         ident: &Identifier,
@@ -47,11 +47,11 @@ pub trait MemberAccess:
     ) -> Result<(), ExprErr> {
         // TODO: this is wrong as it overwrites a function call of the form elem.length(...) i believe
         if ident.name == "length" {
-            return self.length(loc, member_expr, ctx);
+            return self.length(arena, loc, member_expr, ctx);
         }
 
-        self.parse_ctx_expr(member_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, member_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,

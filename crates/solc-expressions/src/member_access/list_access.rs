@@ -5,6 +5,7 @@ use graph::{
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, Range, SolcRange, VarType,
 };
+use shared::RangeArena;
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
@@ -16,12 +17,13 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     /// Get the length member of an array/list
     fn length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         input_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(input_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, input_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,
@@ -32,7 +34,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            analyzer.match_length(ctx, loc, ret, true)
+            analyzer.match_length(arena, ctx, loc, ret, true)
         })
     }
 
@@ -40,6 +42,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     /// Get the length member of an array/list
     fn match_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         elem_path: ExprRet,
@@ -52,7 +55,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             }
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Single(arr) => {
-                self.get_length(ctx, loc, arr.into(), false)?;
+                self.get_length(arena, ctx, loc, arr.into(), false)?;
                 Ok(())
             }
             e => todo!("here: {e:?}"),
@@ -61,6 +64,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
     fn get_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         array: ContextVarNode,
@@ -78,7 +82,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 Ok(Some(len_node))
             }
         } else {
-            self.create_length(ctx, loc, array, next_arr, return_var)
+            self.create_length(arena, ctx, loc, array, next_arr, return_var)
             // no length variable, create one
             // let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
 
@@ -141,6 +145,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
     fn create_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         array: ContextVarNode,
@@ -151,7 +156,6 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
 
         // Create the range from the current length or default to [0, uint256.max]
-
         let len_min = Elem::from(array)
             .get_length()
             .max(Elem::from(Concrete::from(U256::zero())));
@@ -192,10 +196,10 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
         // Update the array
         next_target_arr
-            .set_range_min(self, update_array_len.clone())
+            .set_range_min(self, arena, update_array_len.clone())
             .into_expr_err(loc)?;
         next_target_arr
-            .set_range_max(self, update_array_len.clone())
+            .set_range_max(self, arena, update_array_len.clone())
             .into_expr_err(loc)?;
 
         if !return_var {
@@ -211,6 +215,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     /// Get the length member of an array/list and create it as a temporary variable
     fn tmp_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         arr: ContextVarNode,
         array_ctx: ContextNode,
         loc: Loc,
@@ -255,26 +260,26 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 .unwrap()
             {
                 if let Some(r) = next_arr.ref_range(self).unwrap() {
-                    let min = r.simplified_range_min(self).unwrap();
-                    let max = r.simplified_range_max(self).unwrap();
+                    let min = r.simplified_range_min(self, arena).unwrap();
+                    let max = r.simplified_range_max(self, arena).unwrap();
                     if let Some(mut rd) = min.maybe_range_dyn() {
                         ContextVarNode::from(len_node)
-                            .set_range_min(self, *rd.len.clone())
+                            .set_range_min(self, arena, *rd.len.clone())
                             .unwrap();
                         rd.len = Box::new(Elem::from(len_node));
                         let res = next_arr
-                            .set_range_min(self, Elem::ConcreteDyn(rd))
+                            .set_range_min(self, arena, Elem::ConcreteDyn(rd))
                             .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
 
                     if let Some(mut rd) = max.maybe_range_dyn() {
                         ContextVarNode::from(len_node)
-                            .set_range_max(self, *rd.len.clone())
+                            .set_range_max(self, arena, *rd.len.clone())
                             .unwrap();
                         rd.len = Box::new(Elem::from(len_node));
                         let res = next_arr
-                            .set_range_max(self, Elem::ConcreteDyn(rd))
+                            .set_range_max(self, arena, Elem::ConcreteDyn(rd))
                             .into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }

@@ -8,7 +8,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
 };
 
-use shared::{Search, StorageLocation};
+use shared::{RangeArena, Search, StorageLocation};
 
 use ethers_core::types::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
@@ -207,9 +207,13 @@ impl ContextVarNode {
             })
     }
 
-    pub fn is_const(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn is_const(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        underlying.ty.is_const(analyzer)
+        underlying.ty.is_const(analyzer, arena)
     }
 
     pub fn is_symbolic(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
@@ -320,6 +324,7 @@ impl ContextVarNode {
         &self,
         other: &Self,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         let min_expr = Elem::Expr(RangeExpr::new(
             self.range_min(analyzer)?.expect("Should have a minimum"),
@@ -333,8 +338,8 @@ impl ContextVarNode {
             Elem::from(*other),
         ));
 
-        self.set_range_min(analyzer, min_expr)?;
-        self.set_range_max(analyzer, max_expr)?;
+        self.set_range_min(analyzer, arena, min_expr)?;
+        self.set_range_max(analyzer, arena, max_expr)?;
         Ok(())
     }
 
@@ -382,6 +387,7 @@ impl ContextVarNode {
         &self,
         to_ty: VarType,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
         if !from_ty.ty_eq(&to_ty, analyzer)? {
@@ -392,8 +398,8 @@ impl ContextVarNode {
             if let (Some(mut r), Some(r2)) =
                 (self.ty_mut(analyzer)?.take_range(), to_ty.range(analyzer)?)
             {
-                r.min.arenaize(analyzer)?;
-                r.max.arenaize(analyzer)?;
+                r.min.arenaize(analyzer, arena)?;
+                r.max.arenaize(analyzer, arena)?;
 
                 let mut min_expr = r
                     .min
@@ -406,11 +412,11 @@ impl ContextVarNode {
                     .cast(r2.min.clone())
                     .max(r.max.clone().cast(r2.min));
 
-                min_expr.arenaize(analyzer)?;
-                max_expr.arenaize(analyzer)?;
+                min_expr.arenaize(analyzer, arena)?;
+                max_expr.arenaize(analyzer, arena)?;
 
                 let zero = Elem::from(Concrete::from(U256::zero()));
-                if r.contains_elem(&zero, analyzer) {
+                if r.contains_elem(&zero, analyzer, arena) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
                 }
@@ -426,7 +432,7 @@ impl ContextVarNode {
                                 let int_min = int.min_concrete().unwrap();
                                 let bit_repr = int_min.bit_representation().unwrap();
                                 let bit_repr = bit_repr.into();
-                                if r.contains_elem(&bit_repr, analyzer) {
+                                if r.contains_elem(&bit_repr, analyzer, arena) {
                                     min_expr = min_expr.min(int_min.clone().into());
                                     max_expr = max_expr.max(int_min.into());
                                 }
@@ -436,7 +442,7 @@ impl ContextVarNode {
                             // from ty is int, to ty is uint
                             if let Some(r) = self.ref_range(analyzer)? {
                                 let neg1 = Concrete::from(I256::from(-1i32));
-                                if r.contains_elem(&neg1.clone().into(), analyzer) {
+                                if r.contains_elem(&neg1.clone().into(), analyzer, arena) {
                                     max_expr =
                                         max_expr.max(neg1.bit_representation().unwrap().into());
                                 }
@@ -447,8 +453,8 @@ impl ContextVarNode {
                 }
                 r.min = min_expr;
                 r.max = max_expr;
-                r.min.arenaize(analyzer)?;
-                r.max.arenaize(analyzer)?;
+                r.min.arenaize(analyzer, arena)?;
+                r.max.arenaize(analyzer, arena)?;
                 self.set_range(analyzer, r)?;
             }
         }
@@ -482,9 +488,13 @@ impl ContextVarNode {
         Ok(())
     }
 
-    pub fn try_increase_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
+    pub fn try_increase_size(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         let from_ty = self.ty(analyzer)?.clone();
-        self.cast_from_ty(from_ty.max_size(analyzer)?, analyzer)?;
+        self.cast_from_ty(from_ty.max_size(analyzer)?, analyzer, arena)?;
         Ok(())
     }
 
@@ -496,6 +506,7 @@ impl ContextVarNode {
         &self,
         to_ty: &VarType,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
         if let Some(to_range) = to_ty.range(analyzer)? {
             let mut min_expr = (*self)
@@ -516,7 +527,7 @@ impl ContextVarNode {
 
             if let Some(r) = self.ref_range(analyzer)? {
                 let zero = Elem::from(Concrete::from(U256::zero()));
-                if r.contains_elem(&zero, analyzer) {
+                if r.contains_elem(&zero, analyzer, arena) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
                 }
@@ -533,7 +544,7 @@ impl ContextVarNode {
                             let int_min = int.min_concrete().unwrap();
                             let bit_repr = int_min.bit_representation().unwrap();
                             let bit_repr = bit_repr.into();
-                            if r.contains_elem(&bit_repr, analyzer) {
+                            if r.contains_elem(&bit_repr, analyzer, arena) {
                                 min_expr = min_expr.min(int_min.clone().into());
                                 max_expr = max_expr.max(int_min.into());
                             }
@@ -543,7 +554,7 @@ impl ContextVarNode {
                         // from ty is int, to ty is uint
                         if let Some(r) = self.ref_range(analyzer)? {
                             let neg1 = Concrete::from(I256::from(-1i32));
-                            if r.contains_elem(&neg1.clone().into(), analyzer) {
+                            if r.contains_elem(&neg1.clone().into(), analyzer, arena) {
                                 max_expr = max_expr.max(neg1.bit_representation().unwrap().into());
                             }
                         }

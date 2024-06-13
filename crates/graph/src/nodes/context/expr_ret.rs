@@ -1,5 +1,9 @@
-use crate::{nodes::context::ContextVarNode, AsDotStr, GraphBackend, GraphError, Node, VarType};
-use shared::NodeIdx;
+use crate::{
+    nodes::{context::ContextVarNode, Concrete},
+    range::elem::Elem,
+    AsDotStr, GraphBackend, GraphError, Node, VarType,
+};
+use shared::{NodeIdx, RangeArena};
 
 /// The reason a context was killed
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -198,14 +202,18 @@ impl ExprRet {
     }
 
     /// Try to convert to a solidity-like function input string, i.e. `(uint256, uint256, bytes32)`
-    pub fn try_as_func_input_str(&self, analyzer: &impl GraphBackend) -> String {
+    pub fn try_as_func_input_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => {
                 let idx = inner;
                 match VarType::try_from_idx(analyzer, *idx) {
                     Some(var_ty) => {
                         if let Ok(ty) = var_ty.unresolved_as_resolved(analyzer) {
-                            format!("({})", ty.as_dot_str(analyzer))
+                            format!("({})", ty.as_dot_str(analyzer, arena))
                         } else {
                             "<UnresolvedType>".to_string()
                         }
@@ -216,7 +224,10 @@ impl ExprRet {
             ExprRet::Multi(inner) => {
                 let mut strs = vec![];
                 for ret in inner.iter() {
-                    strs.push(ret.try_as_func_input_str(analyzer).replace(['(', ')'], ""));
+                    strs.push(
+                        ret.try_as_func_input_str(analyzer, arena)
+                            .replace(['(', ')'], ""),
+                    );
                 }
                 format!("({})", strs.join(", "))
             }

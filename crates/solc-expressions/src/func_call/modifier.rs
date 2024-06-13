@@ -6,9 +6,11 @@ use crate::{
 };
 
 use graph::{
-    nodes::{Context, ContextNode, ExprRet, FunctionNode, ModifierState},
+    elem::Elem,
+    nodes::{Concrete, Context, ContextNode, ExprRet, FunctionNode, ModifierState},
     AnalyzerBackend, Edge, GraphBackend, Node,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{CodeLocation, Expression, Loc};
 
@@ -32,6 +34,7 @@ pub trait ModifierCaller:
     #[tracing::instrument(level = "trace", skip_all)]
     fn call_modifier_for_fn(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         func_ctx: ContextNode,
         func_node: FunctionNode,
@@ -50,8 +53,8 @@ pub trait ModifierCaller:
 
         input_exprs
             .iter()
-            .try_for_each(|expr| self.parse_ctx_expr(expr, func_ctx))?;
-        self.apply_to_edges(func_ctx, loc, &|analyzer, ctx, loc| {
+            .try_for_each(|expr| self.parse_ctx_expr(arena, expr, func_ctx))?;
+        self.apply_to_edges(func_ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let input_paths = if input_exprs.is_empty() {
                 ExprRet::Multi(vec![])
             } else {
@@ -71,6 +74,7 @@ pub trait ModifierCaller:
             };
 
             analyzer.func_call(
+                arena,
                 ctx,
                 loc,
                 &input_paths,
@@ -85,6 +89,7 @@ pub trait ModifierCaller:
     #[tracing::instrument(level = "trace", skip_all)]
     fn resume_from_modifier(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         modifier_state: ModifierState,
     ) -> Result<(), ExprErr> {
@@ -95,88 +100,98 @@ pub trait ModifierCaller:
         );
 
         let mods = modifier_state.parent_fn.modifiers(self);
-        self.apply_to_edges(ctx, modifier_state.loc, &|analyzer, ctx, loc| {
-            if modifier_state.num + 1 < mods.len() {
-                // use the next modifier
-                let mut mstate = modifier_state.clone();
-                mstate.num += 1;
+        self.apply_to_edges(
+            ctx,
+            modifier_state.loc,
+            arena,
+            &|analyzer, arena, ctx, loc| {
+                if modifier_state.num + 1 < mods.len() {
+                    // use the next modifier
+                    let mut mstate = modifier_state.clone();
+                    mstate.num += 1;
 
-                let loc = mods[mstate.num]
-                    .underlying(analyzer)
-                    .into_expr_err(mstate.loc)?
-                    .loc;
-
-                let pctx = Context::new_subctx(
-                    ctx,
-                    Some(modifier_state.parent_ctx),
-                    loc,
-                    None,
-                    None,
-                    false,
-                    analyzer,
-                    Some(modifier_state.clone()),
-                )
-                .unwrap();
-                let new_parent_subctx = ContextNode::from(analyzer.add_node(Node::Context(pctx)));
-
-                new_parent_subctx
-                    .set_continuation_ctx(
-                        analyzer,
-                        modifier_state.parent_ctx,
-                        "resume_from_modifier_nonfinal",
-                    )
-                    .into_expr_err(loc)?;
-                ctx.set_child_call(new_parent_subctx, analyzer)
-                    .into_expr_err(modifier_state.loc)?;
-
-                analyzer.call_modifier_for_fn(
-                    mods[mstate.num]
+                    let loc = mods[mstate.num]
                         .underlying(analyzer)
                         .into_expr_err(mstate.loc)?
-                        .loc,
-                    new_parent_subctx,
-                    mstate.parent_fn,
-                    mstate,
-                )?;
-                Ok(())
-            } else {
-                let pctx = Context::new_subctx(
-                    ctx,
-                    Some(modifier_state.parent_ctx),
-                    modifier_state.loc,
-                    None,
-                    None,
-                    false,
-                    analyzer,
-                    None,
-                )
-                .unwrap();
-                let new_parent_subctx = ContextNode::from(analyzer.add_node(Node::Context(pctx)));
-                new_parent_subctx
-                    .set_continuation_ctx(
-                        analyzer,
-                        modifier_state.parent_ctx,
-                        "resume_from_modifier_final",
-                    )
-                    .into_expr_err(loc)?;
-                ctx.set_child_call(new_parent_subctx, analyzer)
-                    .into_expr_err(modifier_state.loc)?;
+                        .loc;
 
-                // actually execute the parent function
-                analyzer.execute_call_inner(
-                    modifier_state.loc,
-                    ctx,
-                    new_parent_subctx,
-                    modifier_state.parent_fn,
-                    &modifier_state.renamed_inputs,
-                    None,
-                )
-            }
-        })
+                    let pctx = Context::new_subctx(
+                        ctx,
+                        Some(modifier_state.parent_ctx),
+                        loc,
+                        None,
+                        None,
+                        false,
+                        analyzer,
+                        Some(modifier_state.clone()),
+                    )
+                    .unwrap();
+                    let new_parent_subctx =
+                        ContextNode::from(analyzer.add_node(Node::Context(pctx)));
+
+                    new_parent_subctx
+                        .set_continuation_ctx(
+                            analyzer,
+                            modifier_state.parent_ctx,
+                            "resume_from_modifier_nonfinal",
+                        )
+                        .into_expr_err(loc)?;
+                    ctx.set_child_call(new_parent_subctx, analyzer)
+                        .into_expr_err(modifier_state.loc)?;
+
+                    analyzer.call_modifier_for_fn(
+                        arena,
+                        mods[mstate.num]
+                            .underlying(analyzer)
+                            .into_expr_err(mstate.loc)?
+                            .loc,
+                        new_parent_subctx,
+                        mstate.parent_fn,
+                        mstate,
+                    )?;
+                    Ok(())
+                } else {
+                    let pctx = Context::new_subctx(
+                        ctx,
+                        Some(modifier_state.parent_ctx),
+                        modifier_state.loc,
+                        None,
+                        None,
+                        false,
+                        analyzer,
+                        None,
+                    )
+                    .unwrap();
+                    let new_parent_subctx =
+                        ContextNode::from(analyzer.add_node(Node::Context(pctx)));
+                    new_parent_subctx
+                        .set_continuation_ctx(
+                            analyzer,
+                            modifier_state.parent_ctx,
+                            "resume_from_modifier_final",
+                        )
+                        .into_expr_err(loc)?;
+                    ctx.set_child_call(new_parent_subctx, analyzer)
+                        .into_expr_err(modifier_state.loc)?;
+
+                    // actually execute the parent function
+                    analyzer.execute_call_inner(
+                        arena,
+                        modifier_state.loc,
+                        ctx,
+                        new_parent_subctx,
+                        modifier_state.parent_fn,
+                        &modifier_state.renamed_inputs,
+                        None,
+                    )
+                }
+            },
+        )
     }
 
     fn modifiers(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         func: FunctionNode,
     ) -> Result<Vec<FunctionNode>, ExprErr> {
@@ -210,15 +225,19 @@ pub trait ModifierCaller:
                                 let callee_ctx =
                                     ContextNode::from(self.add_node(Node::Context(mctx)));
                                 let _res = ctx.set_child_call(callee_ctx, self);
-                                self.parse_ctx_expr(expr, callee_ctx)?;
-                                let f: Vec<String> =
-                                    self.take_from_edge(ctx, expr.loc(), &|analyzer, ctx, loc| {
+                                self.parse_ctx_expr(arena, expr, callee_ctx)?;
+                                let f: Vec<String> = self.take_from_edge(
+                                    ctx,
+                                    expr.loc(),
+                                    arena,
+                                    &|analyzer, arena, ctx, loc| {
                                         let ret = ctx
                                             .pop_expr_latest(loc, analyzer)
                                             .into_expr_err(loc)?
                                             .unwrap();
-                                        Ok(ret.try_as_func_input_str(analyzer))
-                                    })?;
+                                        Ok(ret.try_as_func_input_str(analyzer, arena))
+                                    },
+                                )?;
 
                                 ctx.delete_child(self).into_expr_err(expr.loc())?;
                                 Ok(f.first().unwrap().clone())
@@ -247,8 +266,13 @@ pub trait ModifierCaller:
     }
 
     /// Sets the modifiers for a function
-    fn set_modifiers(&mut self, func: FunctionNode, ctx: ContextNode) -> Result<(), ExprErr> {
-        let modifiers = self.modifiers(ctx, func)?;
+    fn set_modifiers(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        func: FunctionNode,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        let modifiers = self.modifiers(arena, ctx, func)?;
         modifiers
             .iter()
             .enumerate()

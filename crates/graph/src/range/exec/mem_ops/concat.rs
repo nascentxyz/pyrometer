@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{H256, U256};
 use std::collections::BTreeMap;
 
@@ -124,6 +126,7 @@ pub fn exec_concat(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // TODO: improve with smarter stuff
     let candidates = vec![
@@ -133,7 +136,7 @@ pub fn exec_concat(
         lhs_max.range_concat(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -224,6 +227,7 @@ mod tests {
     #[test]
     fn dyn_concrete_bytes() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let x = RangeDyn::from_concrete(
             Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
             Loc::Implicit,
@@ -242,13 +246,18 @@ mod tests {
             )
             .unwrap(),
         );
-        let result = x.range_concat(&y).unwrap().maximize(&g).unwrap();
+        let result = x
+            .range_concat(&y)
+            .unwrap()
+            .maximize(&g, &mut arena)
+            .unwrap();
         assert_eq!(result, expected);
     }
 
     #[test]
     fn dyn_dyn_bytes() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let x = RangeDyn::from_concrete(
             Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
             Loc::Implicit,
@@ -268,31 +277,45 @@ mod tests {
             )
             .unwrap(),
         );
-        let result = x.range_concat(&y).unwrap().maximize(&g).unwrap();
+        let result = x
+            .range_concat(&y)
+            .unwrap()
+            .maximize(&g, &mut arena)
+            .unwrap();
         assert_eq!(result, expected);
     }
 
     #[test]
     fn dyn_concrete_str() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let x = RangeDyn::from_concrete(Concrete::from("hello"), Loc::Implicit).unwrap();
         let y = RangeConcrete::new(Concrete::from("world"), Loc::Implicit);
         let expected: Elem<_> = Elem::ConcreteDyn(
             RangeDyn::from_concrete(Concrete::from("helloworld"), Loc::Implicit).unwrap(),
         );
-        let result = x.range_concat(&y).unwrap().maximize(&g).unwrap();
+        let result = x
+            .range_concat(&y)
+            .unwrap()
+            .maximize(&g, &mut arena)
+            .unwrap();
         assert_eq!(result, expected);
     }
 
     #[test]
     fn dyn_dyn_str() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let x = RangeDyn::from_concrete(Concrete::from("hello"), Loc::Implicit).unwrap();
         let y = RangeDyn::from_concrete(Concrete::from("world"), Loc::Implicit).unwrap();
         let expected: Elem<_> = Elem::ConcreteDyn(
             RangeDyn::from_concrete(Concrete::from("helloworld"), Loc::Implicit).unwrap(),
         );
-        let result = x.range_concat(&y).unwrap().maximize(&g).unwrap();
+        let result = x
+            .range_concat(&y)
+            .unwrap()
+            .maximize(&g, &mut arena)
+            .unwrap();
         assert_eq!(result, expected);
     }
 }

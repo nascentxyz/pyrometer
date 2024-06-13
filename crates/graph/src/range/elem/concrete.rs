@@ -1,10 +1,10 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{Elem, RangeElem},
+    range::elem::{Elem, RangeArenaLike, RangeElem},
     GraphBackend, GraphError,
 };
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use std::hash::{Hash, Hasher};
 
@@ -56,7 +56,7 @@ impl<T: std::cmp::PartialEq> PartialEq for RangeConcrete<T> {
 }
 impl<T: std::cmp::PartialEq> Eq for RangeConcrete<T> {}
 
-impl Hash for RangeConcrete<Concrete> {
+impl<T: Hash> Hash for RangeConcrete<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.val.hash(state);
     }
@@ -72,15 +72,24 @@ impl From<Concrete> for RangeConcrete<Concrete> {
 }
 
 impl RangeConcrete<Concrete> {
-    pub fn as_bytes(&self, _analyzer: &impl GraphBackend, _maximize: bool) -> Option<Vec<u8>> {
+    pub fn as_bytes(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _maximize: bool,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<Vec<u8>> {
         Some(self.val.as_bytes())
     }
 }
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     type GraphError = GraphError;
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        let _ = analyzer.range_arena_idx_or_upsert(Elem::Concrete(self.clone()));
+    fn arenaize(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        let _ = arena.idx_or_upsert(Elem::Concrete(self.clone()), analyzer);
         Ok(())
     }
 
@@ -88,6 +97,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         &self,
         _seen: &mut Vec<ContextVarNode>,
         _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, Self::GraphError> {
         Ok(false)
     }
@@ -97,6 +107,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         _var: ContextVarNode,
         _seen: &mut Vec<ContextVarNode>,
         _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, Self::GraphError> {
         Ok(false)
     }
@@ -105,23 +116,36 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         &self,
         _maximize: bool,
         _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
 
-    fn is_flatten_cached(&self, _analyzer: &impl GraphBackend) -> bool {
+    fn is_flatten_cached(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         true
     }
 
-    fn is_min_max_cached(&self, _analyzer: &impl GraphBackend) -> (bool, bool) {
+    fn is_min_max_cached(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> (bool, bool) {
         (true, true)
     }
 
-    fn cache_flatten(&mut self, _: &mut impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_flatten(
+        &mut self,
+        _: &mut impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         Ok(())
     }
 
-    fn range_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
+    fn range_eq(&self, other: &Self, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => self_val == other_val,
             _ => match (&self.val, &other.val) {
@@ -137,7 +161,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
 
                             let b = RangeConcrete::new(b.clone(), other.loc);
 
-                            a.range_eq(&b, analyzer)
+                            a.range_eq(&b, arena)
                         })
                     } else {
                         false
@@ -148,7 +172,11 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         }
     }
 
-    fn range_ord(&self, other: &Self, _analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
+    fn range_ord(
+        &self,
+        other: &Self,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<std::cmp::Ordering> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => Some(self_val.cmp(&other_val)),
             (Some(_), _) => {
@@ -182,37 +210,66 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         }
     }
 
-    fn dependent_on(&self, _analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+    fn dependent_on(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<ContextVarNode> {
         vec![]
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, _analyzer: &mut impl GraphBackend) {}
+    fn filter_recursion(
+        &mut self,
+        _: NodeIdx,
+        _: NodeIdx,
+        _analyzer: &mut impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+    }
 
-    fn maximize(&self, _analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+    fn maximize(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
-    fn minimize(&self, _analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+    fn minimize(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
 
     fn simplify_maximize(
         &self,
         _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
     fn simplify_minimize(
         &self,
         _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         Ok(Elem::Concrete(self.clone()))
     }
 
-    fn cache_maximize(&mut self, _g: &mut impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_maximize(
+        &mut self,
+        _g: &mut impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         Ok(())
     }
 
-    fn cache_minimize(&mut self, _g: &mut impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_minimize(
+        &mut self,
+        _g: &mut impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         Ok(())
     }
     fn uncache(&mut self) {}
@@ -220,6 +277,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     fn recursive_dependent_on(
         &self,
         _: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
         Ok(vec![])
     }

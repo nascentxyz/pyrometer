@@ -5,6 +5,8 @@ use crate::{
     GraphBackend, GraphError,
 };
 
+use shared::RangeArena;
+
 use ethers_core::types::{I256, U256};
 use itertools::Itertools;
 use petgraph::{
@@ -62,7 +64,11 @@ pub struct DLSolveResult {
 }
 
 impl DLSolver {
-    pub fn new(mut constraints: Vec<SolverAtom>, analyzer: &mut impl GraphBackend) -> Self {
+    pub fn new(
+        mut constraints: Vec<SolverAtom>,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Self {
         constraints.iter_mut().for_each(|c| {
             c.update_max_ty();
         });
@@ -74,7 +80,7 @@ impl DLSolver {
             root_node,
             ..Default::default()
         };
-        s.add_constraints(vec![], analyzer);
+        s.add_constraints(vec![], analyzer, arena);
         s
     }
 
@@ -102,6 +108,7 @@ impl DLSolver {
         &mut self,
         constraints: Vec<SolverAtom>,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>> {
         // println!("adding constriants: {constraints:#?}");
         let constraints: Vec<_> = constraints
@@ -143,7 +150,7 @@ impl DLSolver {
             .collect();
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
-            let deps = constraint.dependent_on(analyzer);
+            let deps = constraint.dependent_on(analyzer, arena);
             deps.into_iter().for_each(|dep| {
                 if let Some(entry) = dep_to_solve_ty.get_mut(&dep) {
                     if constraint.ty == OpType::Const {
@@ -167,7 +174,7 @@ impl DLSolver {
 
         // println!("unique constraints: {constraints:#?}");
         constraints.iter().for_each(|constraint| {
-            let deps = constraint.dependent_on(analyzer);
+            let deps = constraint.dependent_on(analyzer, arena);
             deps.into_iter().for_each(|dep| {
                 if let Some(entry) = dep_to_solve_ty.get_mut(&dep) {
                     if constraint.ty == OpType::Const {
@@ -217,7 +224,7 @@ impl DLSolver {
         let still_unknown_constraints: Vec<_> = constraints
             .into_iter()
             .filter(|constraint| {
-                let deps = constraint.dependent_on(analyzer);
+                let deps = constraint.dependent_on(analyzer, arena);
                 !deps.iter().all(|dep| const_solves.contains_key(dep))
             })
             .cloned()
@@ -232,7 +239,7 @@ impl DLSolver {
         let res = still_unknown_constraints
             .into_iter()
             .filter(|constraint| {
-                let deps = constraint.dependent_on(analyzer);
+                let deps = constraint.dependent_on(analyzer, arena);
                 deps.iter().all(|dep| {
                     dep_to_solve_ty
                         .get(dep)
@@ -246,7 +253,7 @@ impl DLSolver {
             .map(|constraint| {
                 (
                     constraint.clone(),
-                    Self::dl_atom_normalize(constraint.clone().clone(), analyzer),
+                    Self::dl_atom_normalize(constraint.clone().clone(), analyzer, arena),
                 )
             })
             .collect::<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>();
@@ -260,12 +267,13 @@ impl DLSolver {
 
     pub fn solve_partial(
         &mut self,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<SolveStatus, GraphError> {
         // println!("constraints {:#?}", self.constraints);
         let mut dep_to_solve_ty: BTreeMap<ContextVarNode, Vec<SolverAtom>> = BTreeMap::default();
         self.constraints.iter().for_each(|constraint| {
-            let deps = constraint.dependent_on(analyzer);
+            let deps = constraint.dependent_on(analyzer, arena);
             deps.into_iter().for_each(|dep| {
                 if let Some(entry) = dep_to_solve_ty.get_mut(&dep) {
                     if constraint.ty == OpType::Const {
@@ -286,7 +294,7 @@ impl DLSolver {
             atoms.iter().any(|atom| {
                 atom.op == RangeOp::Neq
                     && atom.lhs == atom.rhs
-                    && !atom.lhs.dependent_on(analyzer).is_empty()
+                    && !atom.lhs.dependent_on(analyzer, arena).is_empty()
             })
         }) {
             return Ok(SolveStatus::Unsat);
@@ -327,7 +335,7 @@ impl DLSolver {
             .clone()
             .into_iter()
             .filter(|constraint| {
-                let deps = constraint.dependent_on(analyzer);
+                let deps = constraint.dependent_on(analyzer, arena);
                 !deps.iter().all(|dep| const_solves.contains_key(dep))
             })
             .collect();
@@ -378,7 +386,7 @@ impl DLSolver {
         // check if basics are unsat, if so the extra constraints wont help that
         // so its truly unsat
         // println!("basic: {basic:#?}");
-        let basic_solve = self.dl_solve(basic.clone(), analyzer)?;
+        let basic_solve = self.dl_solve(basic.clone(), analyzer, arena)?;
         if matches!(basic_solve.status, SolveStatus::Unsat) {
             return Ok(SolveStatus::Unsat);
         }
@@ -433,7 +441,7 @@ impl DLSolver {
                     .collect();
                 // add the constant paths
                 flattened.extend(basic.clone());
-                let solve = self.dl_solve(flattened, analyzer)?;
+                let solve = self.dl_solve(flattened, analyzer, arena)?;
                 // remove the added constraints, keeping the basic graph in tact
                 self.remove_added(&solve);
                 // now that we checked that
@@ -474,7 +482,8 @@ impl DLSolver {
     pub fn dl_solve(
         &mut self,
         normalized_constraints: Vec<SolverAtom>,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<DLSolveResult, GraphError> {
         if self.graph.node_count() == 0 {
             let root_node = self.graph.add_node(AtomOrPart::Part(Elem::Null));
@@ -509,8 +518,8 @@ impl DLSolver {
             };
 
             let rhs_atom = constraint.rhs.expect_atom();
-            let rhs_lhs_deps = rhs_atom.lhs.dependent_on(analyzer);
-            let rhs_rhs_deps = rhs_atom.rhs.dependent_on(analyzer);
+            let rhs_lhs_deps = rhs_atom.lhs.dependent_on(analyzer, arena);
+            let rhs_rhs_deps = rhs_atom.rhs.dependent_on(analyzer, arena);
             let ((dyn_elem, dep), const_elem) =
                 match (!rhs_lhs_deps.is_empty(), !rhs_rhs_deps.is_empty()) {
                     (true, true) => {
@@ -522,7 +531,7 @@ impl DLSolver {
                         if matches!(rhs_atom.op, RangeOp::Sub(_)) {
                             let const_elem = (rhs_atom.rhs.into_elem()
                                 * Elem::from(Concrete::from(I256::from(-1))))
-                            .maximize(analyzer)
+                            .maximize(analyzer, arena)
                             .unwrap();
                             (
                                 (rhs_atom.lhs, Some(rhs_lhs_deps[0])),
@@ -536,7 +545,7 @@ impl DLSolver {
                         if matches!(rhs_atom.op, RangeOp::Sub(_)) {
                             let const_elem = (rhs_atom.lhs.into_elem()
                                 * Elem::from(Concrete::from(I256::from(-1))))
-                            .maximize(analyzer)
+                            .maximize(analyzer, arena)
                             .unwrap();
                             (
                                 (rhs_atom.rhs, Some(rhs_rhs_deps[0])),
@@ -583,7 +592,7 @@ impl DLSolver {
             );
         });
 
-        if find_negative_cycle(&self.graph, root_node, analyzer).is_some() {
+        if find_negative_cycle(&self.graph, root_node, analyzer, arena).is_some() {
             return Ok(DLSolveResult {
                 status: SolveStatus::Unsat,
                 added_atoms,
@@ -591,13 +600,13 @@ impl DLSolver {
             });
         }
 
-        let (mut dists, _) = bellman_ford_initialize_relax(&self.graph, root_node, analyzer);
+        let (mut dists, _) = bellman_ford_initialize_relax(&self.graph, root_node, analyzer, arena);
 
         dists = dists
             .into_iter()
             .map(|dist| {
                 (dist * Elem::from(Concrete::from(I256::from(-1))))
-                    .maximize(analyzer)
+                    .maximize(analyzer, arena)
                     .unwrap()
             })
             .collect();
@@ -634,6 +643,7 @@ impl DLSolver {
     pub fn dl_atom_normalize(
         constraint: SolverAtom,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Vec<Vec<SolverAtom>> {
         let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
         let false_part = AtomOrPart::Part(Elem::from(Concrete::from(false)));
@@ -653,19 +663,19 @@ impl DLSolver {
             }
             (true, false) => {
                 // lhs is just a boolean, drop it
-                return Self::dl_atom_normalize(constraint.rhs.as_solver_atom(), analyzer);
+                return Self::dl_atom_normalize(constraint.rhs.as_solver_atom(), analyzer, arena);
             }
             (false, true) => {
                 // rhs is just a boolean, drop it
-                return Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer);
+                return Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer, arena);
             }
             _ => {}
         }
 
         // x <==> y
         // x + x + y => AtomOrPart::Atom(Atom { lhs x, op: +, rhs: AtomOrPart::Atom(Atom { lhs: x, op: +, rhs: y})})
-        let lhs_symbs = constraint.lhs.dependent_on(analyzer);
-        let rhs_symbs = constraint.rhs.dependent_on(analyzer);
+        let lhs_symbs = constraint.lhs.dependent_on(analyzer, arena);
+        let rhs_symbs = constraint.rhs.dependent_on(analyzer, arena);
         let constraint = match (!lhs_symbs.is_empty(), !rhs_symbs.is_empty()) {
             (true, true) => {
                 // TODO: in theory could have x <op> x + y
@@ -774,6 +784,7 @@ impl DLSolver {
                         })),
                     },
                     analyzer,
+                    arena,
                 );
 
                 assert!(res.len() == 1);
@@ -791,6 +802,7 @@ impl DLSolver {
                             })),
                         },
                         analyzer,
+                        arena,
                     )
                     .remove(0),
                 );
@@ -813,6 +825,7 @@ impl DLSolver {
                         })),
                     },
                     analyzer,
+                    arena,
                 );
 
                 assert!(res.len() == 1);
@@ -833,6 +846,7 @@ impl DLSolver {
                             })),
                         },
                         analyzer,
+                        arena,
                     )
                     .remove(0),
                 );
@@ -845,7 +859,7 @@ impl DLSolver {
                     .rhs
                     .into_elem()
                     .wrapping_sub(Elem::from(Concrete::from(U256::one())))
-                    .atoms_or_part(analyzer);
+                    .atoms_or_part(analyzer, arena);
                 Self::dl_atom_normalize(
                     SolverAtom {
                         ty: OpType::DL,
@@ -854,6 +868,7 @@ impl DLSolver {
                         rhs: Rc::new(new_rhs),
                     },
                     analyzer,
+                    arena,
                 )
             }
             RangeOp::Gte => Self::dl_atom_normalize(
@@ -864,6 +879,7 @@ impl DLSolver {
                     rhs: constraint.lhs,
                 },
                 analyzer,
+                arena,
             ),
             RangeOp::Gt => Self::dl_atom_normalize(
                 SolverAtom {
@@ -873,12 +889,15 @@ impl DLSolver {
                     rhs: constraint.lhs,
                 },
                 analyzer,
+                arena,
             ),
             RangeOp::Or => {
-                let mut res = Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer);
+                let mut res =
+                    Self::dl_atom_normalize(constraint.lhs.as_solver_atom(), analyzer, arena);
                 res.extend(Self::dl_atom_normalize(
                     constraint.rhs.as_solver_atom(),
                     analyzer,
+                    arena,
                 ));
                 res
             }
@@ -886,8 +905,8 @@ impl DLSolver {
                 if constraint.lhs.is_atom() {
                     // some form of (x + k <= y)
                     let lhs_atom = constraint.lhs.expect_atom();
-                    let atom_lhs_is_symb = !lhs_atom.lhs.dependent_on(analyzer).is_empty();
-                    let atom_rhs_is_symb = !lhs_atom.rhs.dependent_on(analyzer).is_empty();
+                    let atom_lhs_is_symb = !lhs_atom.lhs.dependent_on(analyzer, arena).is_empty();
+                    let atom_rhs_is_symb = !lhs_atom.rhs.dependent_on(analyzer, arena).is_empty();
 
                     match lhs_atom.op {
                         RangeOp::Sub(_) => {
@@ -909,6 +928,7 @@ impl DLSolver {
                                             })),
                                         },
                                         analyzer,
+                                        arena,
                                     )
                                 }
                                 _ => {
@@ -927,6 +947,7 @@ impl DLSolver {
                                             })),
                                         },
                                         analyzer,
+                                        arena,
                                     )
                                 }
                             }
@@ -941,6 +962,7 @@ impl DLSolver {
                                         rhs: constraint.rhs,
                                     },
                                     analyzer,
+                                    arena,
                                 )
                             } else if lhs_atom.rhs == zero_part.into() {
                                 Self::dl_atom_normalize(
@@ -951,6 +973,7 @@ impl DLSolver {
                                         rhs: constraint.rhs,
                                     },
                                     analyzer,
+                                    arena,
                                 )
                             } else {
                                 // (k + x <= y) || (x + k <= y)
@@ -968,6 +991,7 @@ impl DLSolver {
                                         })),
                                     },
                                     analyzer,
+                                    arena,
                                 )
                             }
                         }
@@ -980,6 +1004,7 @@ impl DLSolver {
                                     rhs: constraint.rhs.clone(),
                                 },
                                 analyzer,
+                                arena,
                             );
 
                             let mut rhs = Self::dl_atom_normalize(
@@ -990,6 +1015,7 @@ impl DLSolver {
                                     rhs: constraint.rhs.clone(),
                                 },
                                 analyzer,
+                                arena,
                             );
                             match (res.len() > 1, rhs.len() > 1) {
                                 (true, true) => {
@@ -1061,6 +1087,7 @@ impl DLSolver {
                             rhs: Rc::new(new_rhs),
                         },
                         analyzer,
+                        arena,
                     )
                 } else {
                     vec![vec![constraint]]
@@ -1068,7 +1095,7 @@ impl DLSolver {
             }
             _other => {
                 // println!("other: {}, {}", other.to_string(), constraint.into_expr_elem());
-                Self::dl_atom_normalize(constraint, analyzer)
+                Self::dl_atom_normalize(constraint, analyzer, arena)
             }
         }
     }
@@ -1077,13 +1104,14 @@ impl DLSolver {
 pub fn find_negative_cycle(
     g: &DLGraph,
     source: NodeIndex<usize>,
-    analyzer: &impl GraphBackend,
+    analyzer: &mut impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Vec<NodeIndex<usize>>> {
     let ix = |i| g.to_index(i);
     let mut path = Vec::<NodeIndex<usize>>::new();
 
     // Step 1: initialize and relax
-    let (distance, predecessor) = bellman_ford_initialize_relax(g, source, analyzer);
+    let (distance, predecessor) = bellman_ford_initialize_relax(g, source, analyzer, arena);
 
     // Step 2: Check for negative weight cycle
     'outer: for i in g.node_identifiers() {
@@ -1091,10 +1119,10 @@ pub fn find_negative_cycle(
             let j = edge.target();
             let w = edge.weight();
             let dist = (distance[ix(i)].clone() + w.into_elem())
-                .maximize(analyzer)
+                .maximize(analyzer, arena)
                 .unwrap();
             let lt = matches!(
-                dist.range_ord(&distance[ix(j)], analyzer),
+                dist.range_ord(&distance[ix(j)], arena),
                 Some(std::cmp::Ordering::Less)
             );
             if lt {
@@ -1151,7 +1179,8 @@ pub fn find_negative_cycle(
 fn bellman_ford_initialize_relax(
     g: &DLGraph,
     source: NodeIndex<usize>,
-    analyzer: &impl GraphBackend,
+    analyzer: &mut impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> (Vec<Elem<Concrete>>, Vec<Option<NodeIndex<usize>>>) {
     // Step 1: initialize graph
     let mut predecessor = vec![None; g.node_bound()];
@@ -1167,10 +1196,10 @@ fn bellman_ford_initialize_relax(
                 let j = edge.target();
                 let w = edge.weight();
                 let dist = (distance[ix(i)].clone() + w.into_elem())
-                    .maximize(analyzer)
+                    .maximize(analyzer, arena)
                     .unwrap();
                 let lt = matches!(
-                    dist.range_ord(&distance[ix(j)], analyzer),
+                    dist.range_ord(&distance[ix(j)], arena),
                     Some(std::cmp::Ordering::Less)
                 );
                 if lt {

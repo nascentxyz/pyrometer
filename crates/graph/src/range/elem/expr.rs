@@ -1,7 +1,7 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{
-        elem::{Elem, MinMaxed, RangeElem, RangeOp},
+        elem::{Elem, MinMaxed, RangeArenaLike, RangeElem, RangeOp},
         exec_traits::*,
     },
     GraphBackend, GraphError,
@@ -10,7 +10,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use ethers_core::types::U256;
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 pub static SINGLETON_EQ_OPS: &[RangeOp] = &[
     RangeOp::Eq,
@@ -53,7 +53,7 @@ impl<T: std::cmp::PartialEq> PartialEq for RangeExpr<T> {
 }
 impl<T: std::cmp::PartialEq> Eq for RangeExpr<T> {}
 
-impl Hash for RangeExpr<Concrete> {
+impl<T: Hash> Hash for RangeExpr<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         (*self.lhs).hash(state);
         self.op.hash(state);
@@ -113,33 +113,38 @@ impl RangeExpr<Concrete> {
         }
     }
 
-    pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Elem<Concrete> {
+    pub fn recurse_dearenaize(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Elem<Concrete> {
         Elem::Expr(Self::new(
-            self.lhs.recurse_dearenaize(analyzer).clone(),
+            self.lhs.recurse_dearenaize(analyzer, arena).clone(),
             self.op,
-            self.rhs.recurse_dearenaize(analyzer).clone(),
+            self.rhs.recurse_dearenaize(analyzer, arena).clone(),
         ))
     }
 
-    pub fn arena_idx(&self, analyzer: &impl GraphBackend) -> Option<usize> {
+    pub fn arena_idx(&self, arena: &RangeArena<Elem<Concrete>>) -> Option<usize> {
         let expr = Elem::Expr(RangeExpr::new(
-            Elem::Arena(analyzer.range_arena_idx(&self.lhs)?),
+            Elem::Arena(arena.idx(&self.lhs)?),
             self.op,
-            Elem::Arena(analyzer.range_arena_idx(&self.rhs)?),
+            Elem::Arena(arena.idx(&self.rhs)?),
         ));
-        analyzer.range_arena_idx(&expr)
+        arena.idx(&expr)
     }
 
     pub fn arenaized_cache(
         &self,
         max: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<MinMaxed<Concrete>> {
-        if let Some(idx) = self.arena_idx(analyzer) {
-            let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() else {
+        if let Some(idx) = self.arena_idx(arena) {
+            let Some(ref mut t) = arena.ranges.get_mut(idx) else {
                 return None;
             };
-            let Elem::Expr(ref arenaized) = *t else {
+            let Elem::Expr(ref mut arenaized) = *t else {
                 return None;
             };
             return if max {
@@ -154,13 +159,13 @@ impl RangeExpr<Concrete> {
     pub fn arenaized_flat_cache(
         &self,
         max: bool,
-        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<Box<Elem<Concrete>>> {
-        if let Some(idx) = self.arena_idx(analyzer) {
-            let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() else {
+        if let Some(idx) = self.arena_idx(arena) {
+            let Some(ref mut t) = arena.ranges.get_mut(idx) else {
                 return None;
             };
-            let Elem::Expr(ref arenaized) = *t else {
+            let Elem::Expr(ref mut arenaized) = *t else {
                 return None;
             };
             return if max {
@@ -176,10 +181,10 @@ impl RangeExpr<Concrete> {
         &self,
         max: bool,
         elem: Elem<Concrete>,
-        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        if let Some(idx) = self.arena_idx(analyzer) {
-            if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
+        if let Some(idx) = self.arena_idx(arena) {
+            if let Some(mut t) = arena.ranges.get_mut(idx) {
                 let Elem::Expr(arenaized) = &mut *t else {
                     return;
                 };
@@ -217,18 +222,22 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        if self.arena_idx(analyzer).is_none() {
+    fn arenaize(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        if self.arena_idx(arena).is_none() {
             let lhs = std::mem::take(&mut self.lhs);
             let rhs = std::mem::take(&mut self.rhs);
-            self.lhs = Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*lhs)));
-            self.rhs = Box::new(Elem::Arena(analyzer.range_arena_idx_or_upsert(*rhs)));
-            let _ = analyzer.range_arena_idx_or_upsert(Elem::Expr(self.clone()));
+            self.lhs = Box::new(Elem::Arena(arena.idx_or_upsert(*lhs, analyzer)));
+            self.rhs = Box::new(Elem::Arena(arena.idx_or_upsert(*rhs, analyzer)));
+            let _ = arena.idx_or_upsert(Elem::Expr(self.clone()), analyzer);
         }
         Ok(())
     }
 
-    fn range_eq(&self, _other: &Self, _analyzer: &impl GraphBackend) -> bool {
+    fn range_eq(&self, _other: &Self, _arena: &mut RangeArena<Elem<Concrete>>) -> bool {
         false
     }
 
@@ -237,6 +246,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         &self,
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
             (true, _, Some(flat)) | (false, Some(flat), _) => {
@@ -245,21 +255,25 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             _ => {}
         }
 
-        if let Some(arenaized) = self.arenaized_flat_cache(maximize, analyzer) {
+        if let Some(arenaized) = self.arenaized_flat_cache(maximize, arena) {
             return Ok(*arenaized);
         }
 
         Ok(Elem::Expr(RangeExpr::new(
-            self.lhs.flatten(maximize, analyzer)?,
+            self.lhs.flatten(maximize, analyzer, arena)?,
             self.op,
-            self.rhs.flatten(maximize, analyzer)?,
+            self.rhs.flatten(maximize, analyzer, arena)?,
         )))
     }
 
-    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
+    fn is_flatten_cached(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some() || {
-            if let Some(idx) = self.arena_idx(analyzer) {
-                if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = self.arena_idx(arena) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Expr(ref arenaized) = *t {
                         arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
                     } else {
@@ -274,10 +288,14 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         }
     }
 
-    fn is_min_max_cached(&self, analyzer: &impl GraphBackend) -> (bool, bool) {
+    fn is_min_max_cached(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> (bool, bool) {
         let (arena_cached_min, arena_cached_max) = {
-            if let Some(idx) = self.arena_idx(analyzer) {
-                if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = self.arena_idx(arena) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Expr(ref arenaized) = *t {
                         (arenaized.minimized.is_some(), arenaized.maximized.is_some())
                     } else {
@@ -299,14 +317,18 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn range_ord(
         &self,
         _other: &Self,
-        _analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<std::cmp::Ordering> {
         todo!()
     }
 
-    fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
-        let mut deps = self.lhs.dependent_on(analyzer);
-        deps.extend(self.rhs.dependent_on(analyzer));
+    fn dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<ContextVarNode> {
+        let mut deps = self.lhs.dependent_on(analyzer, arena);
+        deps.extend(self.rhs.dependent_on(analyzer, arena));
         deps
     }
 
@@ -314,9 +336,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn recursive_dependent_on(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        let mut deps = self.lhs.recursive_dependent_on(analyzer)?;
-        deps.extend(self.rhs.recursive_dependent_on(analyzer)?);
+        let mut deps = self.lhs.recursive_dependent_on(analyzer, arena)?;
+        deps.extend(self.rhs.recursive_dependent_on(analyzer, arena)?);
         Ok(deps)
     }
 
@@ -325,9 +348,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         &self,
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
-        let lhs_has_cycle = self.lhs.has_cycle(seen, analyzer)?;
-        let rhs_has_cycle = self.rhs.has_cycle(seen, analyzer)?;
+        let lhs_has_cycle = self.lhs.has_cycle(seen, analyzer, arena)?;
+        let rhs_has_cycle = self.rhs.has_cycle(seen, analyzer, arena)?;
         Ok(lhs_has_cycle || rhs_has_cycle)
     }
 
@@ -336,9 +360,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         var: ContextVarNode,
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, Self::GraphError> {
-        let lhs_deps_on = self.lhs.depends_on(var, seen, analyzer)?;
-        let rhs_deps_on = self.rhs.depends_on(var, seen, analyzer)?;
+        let lhs_deps_on = self.lhs.depends_on(var, seen, analyzer, arena)?;
+        let rhs_deps_on = self.rhs.depends_on(var, seen, analyzer, arena)?;
         Ok(lhs_deps_on || rhs_deps_on)
     }
 
@@ -348,35 +373,50 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         node_idx: NodeIdx,
         new_idx: NodeIdx,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        let _ = self.arenaize(analyzer);
-        self.lhs.filter_recursion(node_idx, new_idx, analyzer);
-        self.rhs.filter_recursion(node_idx, new_idx, analyzer);
+        let _ = self.arenaize(analyzer, arena);
+        self.lhs
+            .filter_recursion(node_idx, new_idx, analyzer, arena);
+        self.rhs
+            .filter_recursion(node_idx, new_idx, analyzer, arena);
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+    fn maximize(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
             Ok(*cached)
-        } else if let Some(MinMaxed::Maximized(cached)) = self.arenaized_cache(true, analyzer) {
+        } else if let Some(MinMaxed::Maximized(cached)) =
+            self.arenaized_cache(true, analyzer, arena)
+        {
             Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
-            self.simplify_exec_op(true, analyzer)
+            self.simplify_exec_op(true, analyzer, arena)
         } else {
-            self.exec_op(true, analyzer)
+            self.exec_op(true, analyzer, arena)
         }
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+    fn minimize(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
             Ok(*cached)
-        } else if let Some(MinMaxed::Minimized(cached)) = self.arenaized_cache(false, analyzer) {
+        } else if let Some(MinMaxed::Minimized(cached)) =
+            self.arenaized_cache(false, analyzer, arena)
+        {
             Ok(*cached)
         } else if self.op == RangeOp::SetIndices {
-            self.simplify_exec_op(false, analyzer)
+            self.simplify_exec_op(false, analyzer, arena)
         } else {
-            self.exec_op(false, analyzer)
+            self.exec_op(false, analyzer, arena)
         }
     }
 
@@ -384,27 +424,32 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn simplify_maximize(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_max) = &self.flattened_max {
             return Ok(*simp_max.clone());
         }
 
-        if let Some(arenaized) = self.arenaized_flat_cache(true, analyzer) {
+        if let Some(arenaized) = self.arenaized_flat_cache(true, arena) {
             return Ok(*arenaized);
         }
 
-        let l = self.lhs.simplify_maximize(analyzer)?;
-        let r = self.rhs.simplify_maximize(analyzer)?;
-        let collapsed = collapse(&l, self.op, &r, analyzer);
+        let l = self.lhs.simplify_maximize(analyzer, arena)?;
+        let r = self.rhs.simplify_maximize(analyzer, arena)?;
+        let collapsed = collapse(&l, self.op, &r, analyzer, arena);
         let res = match collapsed {
-            MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(true, analyzer),
+            MaybeCollapsed::Concretes(..) => {
+                RangeExpr::new(l, self.op, r).exec_op(true, analyzer, arena)
+            }
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
-                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer)?;
+                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer, arena)?;
                 match res {
                     Elem::Expr(expr) => {
-                        match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
-                            MaybeCollapsed::Concretes(..) => return expr.exec_op(true, analyzer),
+                        match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
+                            MaybeCollapsed::Concretes(..) => {
+                                return expr.exec_op(true, analyzer, arena)
+                            }
                             MaybeCollapsed::Collapsed(collapsed) => return Ok(collapsed),
                             _ => {}
                         }
@@ -414,7 +459,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 }
             }
         }?;
-        self.set_arenaized_flattened(true, res.clone(), analyzer);
+        self.set_arenaized_flattened(true, res.clone(), arena);
         Ok(res)
     }
 
@@ -422,30 +467,35 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     fn simplify_minimize(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_min) = &self.flattened_min {
             return Ok(*simp_min.clone());
         }
 
-        if let Some(arenaized) = self.arenaized_flat_cache(false, analyzer) {
+        if let Some(arenaized) = self.arenaized_flat_cache(false, arena) {
             return Ok(*arenaized);
         }
 
-        let l = self.lhs.simplify_minimize(analyzer)?;
-        self.lhs.set_arenaized_flattened(false, &l, analyzer);
-        let r = self.rhs.simplify_minimize(analyzer)?;
-        self.rhs.set_arenaized_flattened(false, &r, analyzer);
+        let l = self.lhs.simplify_minimize(analyzer, arena)?;
+        self.lhs.set_arenaized_flattened(false, &l, arena);
+        let r = self.rhs.simplify_minimize(analyzer, arena)?;
+        self.rhs.set_arenaized_flattened(false, &r, arena);
 
-        let collapsed = collapse(&l, self.op, &r, analyzer);
+        let collapsed = collapse(&l, self.op, &r, analyzer, arena);
         let res = match collapsed {
-            MaybeCollapsed::Concretes(..) => RangeExpr::new(l, self.op, r).exec_op(false, analyzer),
+            MaybeCollapsed::Concretes(..) => {
+                RangeExpr::new(l, self.op, r).exec_op(false, analyzer, arena)
+            }
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
             MaybeCollapsed::Not(..) => {
-                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(false, analyzer)?;
+                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(false, analyzer, arena)?;
                 match res {
                     Elem::Expr(expr) => {
-                        match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
-                            MaybeCollapsed::Concretes(..) => return expr.exec_op(false, analyzer),
+                        match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
+                            MaybeCollapsed::Concretes(..) => {
+                                return expr.exec_op(false, analyzer, arena)
+                            }
                             MaybeCollapsed::Collapsed(collapsed) => return Ok(collapsed),
                             _ => {}
                         }
@@ -456,21 +506,26 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             }
         }?;
 
-        self.set_arenaized_flattened(false, res.clone(), analyzer);
+        self.set_arenaized_flattened(false, res.clone(), arena);
         Ok(res)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
-        self.arenaize(g)?;
+    fn cache_flatten(
+        &mut self,
+        g: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        self.arenaize(g, arena)?;
 
         fn simp_minimize(
             this: &mut Elem<Concrete>,
             analyzer: &mut impl GraphBackend,
+            arena: &mut RangeArena<Elem<Concrete>>,
         ) -> Result<Elem<Concrete>, GraphError> {
             let Elem::Expr(this) = this else {
-                this.cache_flatten(analyzer)?;
-                if let Some(t) = this.arenaized_flattened(false, analyzer) {
+                this.cache_flatten(analyzer, arena)?;
+                if let Some(t) = this.arenaized_flattened(false, analyzer, arena) {
                     return Ok(*t);
                 } else {
                     return Ok(this.clone());
@@ -481,34 +536,35 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 return Ok(*simp_min.clone());
             }
 
-            if let Some(arenaized) = this.arenaized_flat_cache(false, analyzer) {
+            if let Some(arenaized) = this.arenaized_flat_cache(false, arena) {
                 return Ok(*arenaized);
             }
 
-            let l = simp_minimize(&mut this.lhs, analyzer)?;
-            let r = simp_minimize(&mut this.rhs, analyzer)?;
-            let collapsed = collapse(&l, this.op, &r, analyzer);
+            let l = simp_minimize(&mut this.lhs, analyzer, arena)?;
+            let r = simp_minimize(&mut this.rhs, analyzer, arena)?;
+            let collapsed = collapse(&l, this.op, &r, analyzer, arena);
             let res = match collapsed {
                 MaybeCollapsed::Concretes(..) => {
-                    RangeExpr::new(l, this.op, r).exec_op(false, analyzer)
+                    RangeExpr::new(l, this.op, r).exec_op(false, analyzer, arena)
                 }
                 MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
                 MaybeCollapsed::Not(..) => {
-                    let res = RangeExpr::new(l, this.op, r).simplify_exec_op(false, analyzer)?;
+                    let res =
+                        RangeExpr::new(l, this.op, r).simplify_exec_op(false, analyzer, arena)?;
 
-                    let idx = analyzer.range_arena_idx_or_upsert(res.clone());
+                    let idx = arena.idx_or_upsert(res.clone(), analyzer);
                     match res {
                         Elem::Expr(expr) => {
-                            match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
+                            match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
                                 MaybeCollapsed::Concretes(..) => {
-                                    let exec_res = expr.exec_op(false, analyzer)?;
+                                    let exec_res = expr.exec_op(false, analyzer, arena)?;
                                     Elem::Arena(idx)
-                                        .set_arenaized_flattened(false, &exec_res, analyzer);
+                                        .set_arenaized_flattened(false, &exec_res, arena);
                                     return Ok(exec_res);
                                 }
                                 MaybeCollapsed::Collapsed(collapsed) => {
                                     Elem::Arena(idx)
-                                        .set_arenaized_flattened(false, &collapsed, analyzer);
+                                        .set_arenaized_flattened(false, &collapsed, arena);
                                     return Ok(collapsed);
                                 }
                                 _ => {}
@@ -520,17 +576,18 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 }
             }?;
 
-            this.set_arenaized_flattened(false, res.clone(), analyzer);
+            this.set_arenaized_flattened(false, res.clone(), arena);
             Ok(res)
         }
 
         fn simp_maximize(
             this: &mut Elem<Concrete>,
             analyzer: &mut impl GraphBackend,
+            arena: &mut RangeArena<Elem<Concrete>>,
         ) -> Result<Elem<Concrete>, GraphError> {
             let Elem::Expr(this) = this else {
-                this.cache_flatten(analyzer)?;
-                if let Some(t) = this.arenaized_flattened(true, analyzer) {
+                this.cache_flatten(analyzer, arena)?;
+                if let Some(t) = this.arenaized_flattened(true, analyzer, arena) {
                     return Ok(*t);
                 } else {
                     return Ok(this.clone());
@@ -541,34 +598,35 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 return Ok(*simp_min.clone());
             }
 
-            if let Some(arenaized) = this.arenaized_flat_cache(false, analyzer) {
+            if let Some(arenaized) = this.arenaized_flat_cache(false, arena) {
                 return Ok(*arenaized);
             }
 
-            let l = simp_maximize(&mut this.lhs, analyzer)?;
-            let r = simp_maximize(&mut this.rhs, analyzer)?;
-            let collapsed = collapse(&l, this.op, &r, analyzer);
+            let l = simp_maximize(&mut this.lhs, analyzer, arena)?;
+            let r = simp_maximize(&mut this.rhs, analyzer, arena)?;
+            let collapsed = collapse(&l, this.op, &r, analyzer, arena);
             let res = match collapsed {
                 MaybeCollapsed::Concretes(..) => {
-                    RangeExpr::new(l, this.op, r).exec_op(true, analyzer)
+                    RangeExpr::new(l, this.op, r).exec_op(true, analyzer, arena)
                 }
                 MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
                 MaybeCollapsed::Not(..) => {
-                    let res = RangeExpr::new(l, this.op, r).simplify_exec_op(true, analyzer)?;
+                    let res =
+                        RangeExpr::new(l, this.op, r).simplify_exec_op(true, analyzer, arena)?;
 
-                    let idx = analyzer.range_arena_idx_or_upsert(res.clone());
+                    let idx = arena.idx_or_upsert(res.clone(), analyzer);
                     match res {
                         Elem::Expr(expr) => {
-                            match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
+                            match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
                                 MaybeCollapsed::Concretes(..) => {
-                                    let exec_res = expr.exec_op(true, analyzer)?;
+                                    let exec_res = expr.exec_op(true, analyzer, arena)?;
                                     Elem::Arena(idx)
-                                        .set_arenaized_flattened(true, &exec_res, analyzer);
+                                        .set_arenaized_flattened(true, &exec_res, arena);
                                     return Ok(exec_res);
                                 }
                                 MaybeCollapsed::Collapsed(collapsed) => {
                                     Elem::Arena(idx)
-                                        .set_arenaized_flattened(true, &collapsed, analyzer);
+                                        .set_arenaized_flattened(true, &collapsed, arena);
                                     return Ok(collapsed);
                                 }
                                 _ => {}
@@ -580,13 +638,13 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 }
             }?;
 
-            this.set_arenaized_flattened(false, res.clone(), analyzer);
+            this.set_arenaized_flattened(false, res.clone(), arena);
             Ok(res)
         }
 
         if self.flattened_max.is_none() {
-            if let Some(idx) = self.arena_idx(g) {
-                if let Ok(t) = g.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = self.arena_idx(arena) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Expr(ref arenaized) = *t {
                         if arenaized.flattened_max.is_some() {
                             return Ok(());
@@ -594,21 +652,21 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                     }
                 };
             } else {
-                self.arenaize(g)?;
+                self.arenaize(g, arena)?;
             }
 
-            self.lhs.cache_flatten(g)?;
-            self.rhs.cache_flatten(g)?;
+            self.lhs.cache_flatten(g, arena)?;
+            self.rhs.cache_flatten(g, arena)?;
 
-            let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = simplify_maximize(flat_max, g)?;
-            simplified_flat_max.clone().arenaize(g)?;
+            let mut flat_max = self.flatten(true, g, arena)?;
+            let simplified_flat_max = simp_maximize(&mut flat_max, g, arena)?;
+            simplified_flat_max.clone().arenaize(g, arena)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
 
         if self.flattened_min.is_none() {
-            if let Some(idx) = self.arena_idx(g) {
-                if let Ok(t) = g.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = self.arena_idx(arena) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Expr(ref arenaized) = *t {
                         if arenaized.flattened_min.is_some() {
                             return Ok(());
@@ -616,40 +674,48 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                     }
                 };
             } else {
-                self.arenaize(g)?;
+                self.arenaize(g, arena)?;
             }
 
-            self.lhs.cache_flatten(g)?;
-            self.rhs.cache_flatten(g)?;
+            self.lhs.cache_flatten(g, arena)?;
+            self.rhs.cache_flatten(g, arena)?;
 
-            let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = simplify_minimize(flat_min, g)?;
-            simplified_flat_min.clone().arenaize(g)?;
+            let mut flat_min = self.flatten(false, g, arena)?;
+            let simplified_flat_min = simp_minimize(&mut flat_min, g, arena)?;
+            simplified_flat_min.clone().arenaize(g, arena)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_maximize(
+        &mut self,
+        g: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         tracing::trace!("cache maximizing: {}", Elem::Expr(self.clone()));
-        self.arenaize(g)?;
+        self.arenaize(g, arena)?;
         if self.maximized.is_none() {
-            self.lhs.cache_maximize(g)?;
-            self.rhs.cache_maximize(g)?;
-            self.cache_exec_op(true, g)?;
+            self.lhs.cache_maximize(g, arena)?;
+            self.rhs.cache_maximize(g, arena)?;
+            self.cache_exec_op(true, g, arena)?;
         }
         Ok(())
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_minimize(
+        &mut self,
+        g: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         tracing::trace!("cache minimizing: {}", Elem::Expr(self.clone()));
-        self.arenaize(g)?;
+        self.arenaize(g, arena)?;
         if self.minimized.is_none() {
-            self.lhs.cache_minimize(g)?;
-            self.rhs.cache_minimize(g)?;
-            self.cache_exec_op(false, g)?;
+            self.lhs.cache_minimize(g, arena)?;
+            self.rhs.cache_minimize(g, arena)?;
+            self.cache_exec_op(false, g, arena)?;
         }
         Ok(())
     }
@@ -670,30 +736,25 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
     op: RangeOp,
     r: &'b Elem<Concrete>,
     analyzer: &'c impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> MaybeCollapsed<'a, 'b> {
     let zero = Elem::from(Concrete::from(U256::zero()));
     let one = Elem::from(Concrete::from(U256::one()));
     match (l, r) {
         (Elem::Arena(_), r) => {
-            if let Ok(t) = l.dearenaize(analyzer).try_borrow() {
-                match collapse(&t, op, r, analyzer) {
-                    MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
-                    MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
-                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
-                }
-            } else {
-                MaybeCollapsed::Not(l, r)
+            let t = l.dearenaize_clone(arena);
+            match collapse(&t, op, r, analyzer, arena) {
+                MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
+                MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
+                MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
             }
         }
         (l, Elem::Arena(_)) => {
-            if let Ok(t) = r.dearenaize(analyzer).try_borrow() {
-                match collapse(l, op, &t, analyzer) {
-                    MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
-                    MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
-                    MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
-                }
-            } else {
-                MaybeCollapsed::Not(l, r)
+            let t = r.dearenaize_clone(arena);
+            match collapse(l, op, &t, analyzer, arena) {
+                MaybeCollapsed::Not(..) => MaybeCollapsed::Not(l, r),
+                MaybeCollapsed::Concretes(..) => MaybeCollapsed::Concretes(l, r),
+                MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
             }
         }
         (Elem::Concrete(_), Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
@@ -703,26 +764,26 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
             let y = &*expr.rhs;
             let z = d;
 
-            let x_ord_z = x.range_ord(z, analyzer);
+            let x_ord_z = x.range_ord(z, arena);
             let x_eq_z = matches!(x_ord_z, Some(std::cmp::Ordering::Equal));
 
-            let y_ord_z = y.range_ord(z, analyzer);
+            let y_ord_z = y.range_ord(z, arena);
             let y_eq_z = matches!(y_ord_z, Some(std::cmp::Ordering::Equal));
 
             let y_eq_zero = matches!(
-                y.range_ord(&zero, analyzer),
+                y.range_ord(&zero, arena),
                 Some(std::cmp::Ordering::Equal) | None
             );
             let x_eq_zero = matches!(
-                x.range_ord(&zero, analyzer),
+                x.range_ord(&zero, arena),
                 Some(std::cmp::Ordering::Equal) | None
             );
             let y_eq_one = matches!(
-                y.range_ord(&one, analyzer),
+                y.range_ord(&one, arena),
                 Some(std::cmp::Ordering::Equal) | None
             );
             let x_eq_one = matches!(
-                x.range_ord(&one, analyzer),
+                x.range_ord(&one, arena),
                 Some(std::cmp::Ordering::Equal) | None
             );
             match (expr.op, op) {
@@ -765,10 +826,10 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                     // min{x - y, z}
                     // if x <= z, then x - y will be the minimum if y >= 0
                     if matches!(
-                        x.range_ord(z, analyzer),
+                        x.range_ord(z, arena),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Less)
                     ) && matches!(
-                        y.range_ord(&zero, analyzer),
+                        y.range_ord(&zero, arena),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     ) {
                         MaybeCollapsed::Collapsed(l.clone())
@@ -781,16 +842,16 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                     // if x >= z, then x + y will be the maximum if y >= 0
                     // or if y >= z, then x + y will be the maximum if x >= 0
                     if (matches!(
-                        x.range_ord(z, analyzer),
+                        x.range_ord(z, arena),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     ) && matches!(
-                        y.range_ord(&zero, analyzer),
+                        y.range_ord(&zero, arena),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     )) || (matches!(
-                        y.range_ord(z, analyzer),
+                        y.range_ord(z, arena),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     ) && matches!(
-                        x.range_ord(&zero, analyzer),
+                        x.range_ord(&zero, arena),
                         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
                     )) {
                         MaybeCollapsed::Collapsed(l.clone())
@@ -801,11 +862,11 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 (RangeOp::Eq, RangeOp::Eq) => {
                     // ((x == y) == z)
                     // can skip if x and z eq
-                    if let Some(std::cmp::Ordering::Equal) = x.range_ord(z, analyzer) {
+                    if let Some(std::cmp::Ordering::Equal) = x.range_ord(z, arena) {
                         MaybeCollapsed::Collapsed(l.clone())
-                    } else if let Some(std::cmp::Ordering::Equal) = y.range_ord(z, analyzer) {
+                    } else if let Some(std::cmp::Ordering::Equal) = y.range_ord(z, arena) {
                         MaybeCollapsed::Collapsed(l.clone())
-                    } else if z.range_eq(&Elem::from(Concrete::from(true)), analyzer) {
+                    } else if z.range_eq(&Elem::from(Concrete::from(true)), arena) {
                         MaybeCollapsed::Collapsed(l.clone())
                     } else {
                         MaybeCollapsed::Not(l, r)
@@ -831,7 +892,7 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 (RangeOp::Add(l_op), RangeOp::Sub(r_op)) => {
                     // ((x + y) - z) => k - y || x + k
                     if l_op == r_op {
-                        match y.range_ord(z, analyzer) {
+                        match y.range_ord(z, arena) {
                             Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater) => {
                                 // y and z are concrete && y >= z ==> x + (y - z)
                                 let op_fn = if l_op {
@@ -871,7 +932,7 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                             None => {
                                 // x and z are concrete, if x >= z, just do (x - z) + y
                                 // else do (y - (z - x))
-                                match x.range_ord(z, analyzer) {
+                                match x.range_ord(z, arena) {
                                     Some(std::cmp::Ordering::Equal)
                                     | Some(std::cmp::Ordering::Greater) => {
                                         let op_fn = if l_op {
@@ -921,7 +982,7 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 (RangeOp::Sub(l_op), RangeOp::Add(r_op)) => {
                     // ((x - y) + z) => k - y || x + k
                     if l_op == r_op {
-                        match y.range_ord(z, analyzer) {
+                        match y.range_ord(z, arena) {
                             Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater) => {
                                 // y and z are concrete && z <= y ==> x - (y - z)
                                 let op_fn = if l_op {
@@ -1060,30 +1121,28 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                     // ((x * y) == z) => (x == (z / y)) || (y == (z / x))
                     // ((x * y) != z) => (x != (z / y)) || (y != (z / x))
                     if let Some(new) = div_op(z, x) {
-                        let new_op = if matches!(
-                            x.range_ord(&zero, analyzer),
-                            Some(std::cmp::Ordering::Less)
-                        ) && FLIP_INEQ_OPS.contains(&op)
-                        {
-                            op.inverse().unwrap()
-                        } else {
-                            op
-                        };
+                        let new_op =
+                            if matches!(x.range_ord(&zero, arena), Some(std::cmp::Ordering::Less))
+                                && FLIP_INEQ_OPS.contains(&op)
+                            {
+                                op.inverse().unwrap()
+                            } else {
+                                op
+                            };
                         MaybeCollapsed::Collapsed(Elem::Expr(RangeExpr::new(
                             y.clone(),
                             new_op,
                             new,
                         )))
                     } else if let Some(new) = div_op(z, y) {
-                        let new_op = if matches!(
-                            y.range_ord(&zero, analyzer),
-                            Some(std::cmp::Ordering::Less)
-                        ) && FLIP_INEQ_OPS.contains(&op)
-                        {
-                            op.inverse().unwrap()
-                        } else {
-                            op
-                        };
+                        let new_op =
+                            if matches!(y.range_ord(&zero, arena), Some(std::cmp::Ordering::Less))
+                                && FLIP_INEQ_OPS.contains(&op)
+                            {
+                                op.inverse().unwrap()
+                            } else {
+                                op
+                            };
                         MaybeCollapsed::Collapsed(Elem::Expr(RangeExpr::new(
                             x.clone(),
                             new_op,
@@ -1109,15 +1168,14 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                     // ..
                     // ((x / y) != z) => (x != (z / y)) || (y != (x / z))
                     if let Some(new) = mul_op(z, y) {
-                        let new_op = if matches!(
-                            y.range_ord(&zero, analyzer),
-                            Some(std::cmp::Ordering::Less)
-                        ) && FLIP_INEQ_OPS.contains(&op)
-                        {
-                            op.inverse().unwrap()
-                        } else {
-                            op
-                        };
+                        let new_op =
+                            if matches!(y.range_ord(&zero, arena), Some(std::cmp::Ordering::Less))
+                                && FLIP_INEQ_OPS.contains(&op)
+                            {
+                                op.inverse().unwrap()
+                            } else {
+                                op
+                            };
                         MaybeCollapsed::Collapsed(Elem::Expr(RangeExpr::new(
                             x.clone(),
                             new_op,
@@ -1142,9 +1200,9 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 }
                 (_, RangeOp::Eq) => {
                     // (x _ y) == z ==> (x _ y if z == true)
-                    if z.range_eq(&Elem::from(Concrete::from(true)), analyzer) {
+                    if z.range_eq(&Elem::from(Concrete::from(true)), arena) {
                         MaybeCollapsed::Collapsed(l.clone())
-                    } else if z.range_eq(&Elem::from(Concrete::from(false)), analyzer) {
+                    } else if z.range_eq(&Elem::from(Concrete::from(false)), arena) {
                         // (!x && !y)
                         match (
                             x.inverse_if_boolean(),
@@ -1162,10 +1220,10 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 }
                 (_, RangeOp::Neq) => {
                     // (x _ y) != z ==> (x _ y if z != false)
-                    if z.range_eq(&Elem::from(Concrete::from(false)), analyzer) {
+                    if z.range_eq(&Elem::from(Concrete::from(false)), arena) {
                         // != false is == true
                         MaybeCollapsed::Collapsed(l.clone())
-                    } else if z.range_eq(&Elem::from(Concrete::from(true)), analyzer) {
+                    } else if z.range_eq(&Elem::from(Concrete::from(true)), arena) {
                         // != true is == false, to make it == true, inverse everything
                         match (
                             x.inverse_if_boolean(),
@@ -1184,24 +1242,21 @@ pub fn collapse<'a, 'b, 'c: 'a + 'b>(
                 _ => MaybeCollapsed::Not(l, r),
             }
         }
-        (Elem::Concrete(_c), Elem::Expr(_expr)) => match collapse(r, op, l, analyzer) {
+        (Elem::Concrete(_c), Elem::Expr(_expr)) => match collapse(r, op, l, analyzer, arena) {
             MaybeCollapsed::Collapsed(inner) => MaybeCollapsed::Collapsed(inner.clone()),
             MaybeCollapsed::Not(_, _) => MaybeCollapsed::Not(l, r),
             MaybeCollapsed::Concretes(_, _) => unreachable!(),
         },
         (le @ Elem::Reference(_), c @ Elem::Concrete(_)) => match op {
             RangeOp::Sub(_) | RangeOp::Add(_) => {
-                if matches!(
-                    c.range_ord(&zero, analyzer),
-                    Some(std::cmp::Ordering::Equal)
-                ) {
+                if matches!(c.range_ord(&zero, arena), Some(std::cmp::Ordering::Equal)) {
                     MaybeCollapsed::Collapsed(le.clone())
                 } else {
                     MaybeCollapsed::Not(l, r)
                 }
             }
             RangeOp::Mul(_) | RangeOp::Div(_) => {
-                if matches!(c.range_ord(&one, analyzer), Some(std::cmp::Ordering::Equal)) {
+                if matches!(c.range_ord(&one, arena), Some(std::cmp::Ordering::Equal)) {
                     MaybeCollapsed::Collapsed(le.clone())
                 } else {
                     MaybeCollapsed::Not(l, r)

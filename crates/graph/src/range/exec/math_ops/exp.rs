@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::U256;
 
 impl RangeExp<Concrete> for RangeConcrete<Concrete> {
@@ -79,6 +81,7 @@ pub fn exec_exp(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // TODO: Improve this
     let candidates = vec![
@@ -88,7 +91,7 @@ pub fn exec_exp(
         lhs_max.range_exp(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -176,20 +179,23 @@ mod tests {
     #[test]
     fn exec_sized_uint_uint_saturating() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(2).into();
         let lhs_max = rc_uint_sized(150).into();
         let rhs_min = rc_uint_sized(3).into();
         let rhs_max = rc_uint_sized(200).into();
 
-        let max_result = exec_exp(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g)
+        let max_result = exec_exp(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete()
             .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
-        let min_result = exec_exp(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_exp(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(8)));
     }
 }

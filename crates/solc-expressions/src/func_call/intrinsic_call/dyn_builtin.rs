@@ -4,10 +4,11 @@ use crate::{
 };
 
 use graph::{
-    elem::RangeElem,
+    elem::{Elem, RangeElem},
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -19,13 +20,14 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     /// Perform a dynamic builtin type's builtin function call
     fn dyn_builtin_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_name: String,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match &*func_name {
-            "concat" => self.concat(&loc, input_exprs, ctx),
+            "concat" => self.concat(arena, &loc, input_exprs, ctx),
             _ => Err(ExprErr::FunctionNotFound(
                 loc,
                 format!(
@@ -40,6 +42,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     /// Concatenate two dynamic builtins
     fn concat(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: &Loc,
         input_exprs: &NamedOrUnnamedArgs,
         ctx: ContextNode,
@@ -47,8 +50,8 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
         input_exprs.unnamed_args().unwrap()[1..]
             .iter()
             .try_for_each(|expr| {
-                self.parse_ctx_expr(expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, expr, ctx)?;
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     let input = ctx
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
@@ -57,7 +60,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 })
             })?;
 
-        self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+        self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(inputs) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()));
             };
@@ -73,9 +76,9 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
             } else {
                 let start = &inputs[0];
                 if inputs.len() > 1 {
-                    analyzer.match_concat(ctx, loc, start.clone(), &inputs[1..], false)
+                    analyzer.match_concat(arena, ctx, loc, start.clone(), &inputs[1..], false)
                 } else {
-                    analyzer.match_concat(ctx, loc, start.clone(), &[], false)
+                    analyzer.match_concat(arena, ctx, loc, start.clone(), &[], false)
                 }
             }
         })
@@ -84,6 +87,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     /// Match on the expression returns
     fn match_concat(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         curr: ExprRet,
@@ -111,7 +115,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                         .display_name = format!("concat({name}, {next_name})");
 
                     // concat into it
-                    self.concat_inner(loc, accum_node, next_var)?;
+                    self.concat_inner(arena, loc, accum_node, next_var)?;
 
                     // add it back to the stack
                     ctx.push_expr(ExprRet::Single(accum_node.into()), self)
@@ -122,7 +126,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 ExprRet::Null => Ok(()),
                 ExprRet::Multi(inner) => inner
                     .into_iter()
-                    .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, true)),
+                    .try_for_each(|i| self.match_concat(arena, ctx, loc, i, inputs, true)),
                 ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             }
         } else {
@@ -139,11 +143,11 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
 
                     inputs
                         .iter()
-                        .map(|i| self.match_concat(ctx, loc, i.clone(), inputs, true))
+                        .map(|i| self.match_concat(arena, ctx, loc, i.clone(), inputs, true))
                         .collect::<Result<Vec<_>, ExprErr>>()?;
 
                     // create the length variable
-                    let _ = self.tmp_length(acc.latest_version(self), ctx, loc);
+                    let _ = self.tmp_length(arena, acc.latest_version(self), ctx, loc);
 
                     Ok(())
                 }
@@ -153,7 +157,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 )),
                 ExprRet::Multi(inner) => inner
                     .into_iter()
-                    .try_for_each(|i| self.match_concat(ctx, loc, i, inputs, false)),
+                    .try_for_each(|i| self.match_concat(arena, ctx, loc, i, inputs, false)),
                 ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             }
         }
@@ -162,6 +166,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     /// Perform the concatenation
     fn concat_inner(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         accum: ContextVarNode,
         right: ContextVarNode,
@@ -229,8 +234,8 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 let range = SolcRange::from(underlying.clone()).unwrap();
                 let min = range.min.clone().concat(r2.min.clone());
                 let max = range.max.clone().concat(r2.max.clone());
-                accum.set_range_min(self, min).into_expr_err(loc)?;
-                accum.set_range_max(self, max).into_expr_err(loc)?;
+                accum.set_range_min(self, arena, min).into_expr_err(loc)?;
+                accum.set_range_max(self, arena, max).into_expr_err(loc)?;
 
                 let new_ty =
                     VarType::BuiltIn(self.builtin_or_add(Builtin::String).into(), Some(range));
@@ -242,16 +247,16 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                     .min
                     .clone()
                     .concat(r2.min.clone())
-                    .simplify_minimize(self)
+                    .simplify_minimize(self, arena)
                     .into_expr_err(loc)?;
                 let max = r
                     .max
                     .clone()
                     .concat(r2.max.clone())
-                    .simplify_maximize(self)
+                    .simplify_maximize(self, arena)
                     .into_expr_err(loc)?;
-                accum.set_range_min(self, min).into_expr_err(loc)?;
-                accum.set_range_max(self, max).into_expr_err(loc)?;
+                accum.set_range_min(self, arena, min).into_expr_err(loc)?;
+                accum.set_range_max(self, arena, max).into_expr_err(loc)?;
                 Ok(())
             }
             (_, _) => Ok(()),

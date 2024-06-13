@@ -4,7 +4,7 @@ use crate::{
     AsDotStr, GraphBackend, GraphError,
 };
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::Loc;
@@ -39,20 +39,24 @@ pub struct SolcRange {
 }
 
 impl AsDotStr for SolcRange {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         format!(
             "[{}, {}] excluding: [{}]",
-            self.evaled_range_min(analyzer)
+            self.evaled_range_min(analyzer, arena)
                 .unwrap()
-                .to_range_string(false, analyzer)
+                .to_range_string(false, analyzer, arena)
                 .s,
-            self.evaled_range_max(analyzer)
+            self.evaled_range_max(analyzer, arena)
                 .unwrap()
-                .to_range_string(true, analyzer)
+                .to_range_string(true, analyzer, arena)
                 .s,
             self.exclusions
                 .iter()
-                .map(|excl| Elem::Arena(*excl).to_range_string(false, analyzer).s)
+                .map(|excl| Elem::Arena(*excl).to_range_string(false, analyzer, arena).s)
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -74,9 +78,13 @@ impl From<Elem<Concrete>> for SolcRange {
 
 impl SolcRange {
     /// Get all ContextVarNodes that this range references
-    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
-        let mut deps = self.range_min().dependent_on(analyzer);
-        deps.extend(self.range_max().dependent_on(analyzer));
+    pub fn dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<ContextVarNode> {
+        let mut deps = self.range_min().dependent_on(analyzer, arena);
+        deps.extend(self.range_max().dependent_on(analyzer, arena));
         deps.dedup();
 
         deps.into_iter().map(ContextVarNode::from).collect()
@@ -85,9 +93,10 @@ impl SolcRange {
     pub fn recursive_dependent_on(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        let mut deps = self.range_min().recursive_dependent_on(analyzer)?;
-        deps.extend(self.range_max().recursive_dependent_on(analyzer)?);
+        let mut deps = self.range_min().recursive_dependent_on(analyzer, arena)?;
+        deps.extend(self.range_max().recursive_dependent_on(analyzer, arena)?);
         deps.dedup();
 
         Ok(deps)
@@ -109,26 +118,46 @@ impl SolcRange {
         to_replace: NodeIdx,
         replacement: Elem<Concrete>,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
         if let Some(ref mut flattened) = &mut self.flattened {
-            Elem::Arena(flattened.min).replace_dep(to_replace, replacement.clone(), analyzer);
-            Elem::Arena(flattened.max).replace_dep(to_replace, replacement.clone(), analyzer);
+            Elem::Arena(flattened.min).replace_dep(
+                to_replace,
+                replacement.clone(),
+                analyzer,
+                arena,
+            );
+            Elem::Arena(flattened.max).replace_dep(
+                to_replace,
+                replacement.clone(),
+                analyzer,
+                arena,
+            );
         }
         self.min
-            .replace_dep(to_replace, replacement.clone(), analyzer);
-        self.max.replace_dep(to_replace, replacement, analyzer);
+            .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+        self.max
+            .replace_dep(to_replace, replacement, analyzer, arena);
         self.min_cached = None;
         self.max_cached = None;
     }
 
-    pub fn is_const(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        let min = self.evaled_range_min(analyzer)?;
-        let max = self.evaled_range_max(analyzer)?;
-        Ok(min.range_eq(&max, analyzer))
+    pub fn is_const(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<bool, GraphError> {
+        let min = self.evaled_range_min(analyzer, arena)?;
+        let max = self.evaled_range_max(analyzer, arena)?;
+        Ok(min.range_eq(&max, arena))
     }
 
-    pub fn min_is_negative(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        self.min.is_negative(false, analyzer)
+    pub fn min_is_negative(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<bool, GraphError> {
+        self.min.is_negative(false, analyzer, arena)
     }
 
     pub fn default_bool() -> Self {
@@ -521,23 +550,24 @@ impl SolcRange {
     pub fn into_flattened_range(
         &mut self,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<FlattenedRange, GraphError> {
         if let Some(cached) = &self.flattened {
             return Ok(cached.clone());
         }
 
-        let mut min = Elem::Arena(analyzer.range_arena_idx_or_upsert(self.min.clone()));
-        let mut max = Elem::Arena(analyzer.range_arena_idx_or_upsert(self.max.clone()));
-        min.cache_flatten(analyzer)?;
-        max.cache_flatten(analyzer)?;
+        let mut min = Elem::Arena(arena.idx_or_upsert(self.min.clone(), analyzer));
+        let mut max = Elem::Arena(arena.idx_or_upsert(self.max.clone(), analyzer));
+        min.cache_flatten(analyzer, arena)?;
+        max.cache_flatten(analyzer, arena)?;
 
         self.min = min.clone();
         self.max = max.clone();
 
-        let simp_min = min.simplify_minimize(analyzer)?;
-        let simp_max = max.simplify_maximize(analyzer)?;
-        let min = analyzer.range_arena_idx_or_upsert(simp_min);
-        let max = analyzer.range_arena_idx_or_upsert(simp_max);
+        let simp_min = min.simplify_minimize(analyzer, arena)?;
+        let simp_max = max.simplify_maximize(analyzer, arena)?;
+        let min = arena.idx_or_upsert(simp_min, analyzer);
+        let max = arena.idx_or_upsert(simp_max, analyzer);
 
         let flat_range = FlattenedRange {
             min,
@@ -566,57 +596,71 @@ impl Range<Concrete> for SolcRange {
         &mut self.max
     }
 
-    fn cache_eval(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+    fn cache_eval(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         let min = std::mem::take(&mut self.min);
         let max = std::mem::take(&mut self.max);
-        self.min = Elem::Arena(analyzer.range_arena_idx_or_upsert(min));
-        self.max = Elem::Arena(analyzer.range_arena_idx_or_upsert(max));
+        self.min = Elem::Arena(arena.idx_or_upsert(min, analyzer));
+        self.max = Elem::Arena(arena.idx_or_upsert(max, analyzer));
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
-            max.cache_maximize(analyzer)?;
-            self.max_cached =
-                Some(analyzer.range_arena_idx_or_upsert(self.range_max().maximize(analyzer)?));
+            max.cache_maximize(analyzer, arena)?;
+            let res = self.range_max().maximize(analyzer, arena)?;
+            self.max_cached = Some(arena.idx_or_upsert(res, analyzer));
         }
         if self.min_cached.is_none() {
             let min = self.range_min_mut();
-            min.cache_minimize(analyzer)?;
-            self.min_cached =
-                Some(analyzer.range_arena_idx_or_upsert(self.range_min().minimize(analyzer)?));
+            min.cache_minimize(analyzer, arena)?;
+            let res = self.range_min().minimize(analyzer, arena)?;
+            self.min_cached = Some(arena.idx_or_upsert(res, analyzer));
         }
         Ok(())
     }
 
-    fn evaled_range_min(&self, analyzer: &impl GraphBackend) -> Result<Self::ElemTy, GraphError> {
+    fn evaled_range_min(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Self::ElemTy, GraphError> {
         if let Some(cached) = &self.min_cached {
-            Ok(Elem::Arena(*cached).dearenaize(analyzer).borrow().clone())
+            Ok(Elem::Arena(*cached).dearenaize_clone(arena))
         } else {
-            self.range_min().minimize(analyzer)
+            self.range_min().minimize(analyzer, arena)
         }
     }
 
-    fn evaled_range_max(&self, analyzer: &impl GraphBackend) -> Result<Self::ElemTy, GraphError> {
+    fn evaled_range_max(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Self::ElemTy, GraphError> {
         if let Some(cached) = &self.max_cached {
-            Ok(Elem::Arena(*cached).dearenaize(analyzer).borrow().clone())
+            Ok(Elem::Arena(*cached).dearenaize_clone(arena))
         } else {
-            self.range_max().maximize(analyzer)
+            self.range_max().maximize(analyzer, arena)
         }
     }
 
     fn simplified_range_min(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Self::ElemTy, GraphError> {
         self.range_min()
-            .flatten(false, analyzer)?
-            .simplify_minimize(analyzer)
+            .flatten(false, analyzer, arena)?
+            .simplify_minimize(analyzer, arena)
     }
     fn simplified_range_max(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Self::ElemTy, GraphError> {
         self.range_max()
-            .flatten(true, analyzer)?
-            .simplify_maximize(analyzer)
+            .flatten(true, analyzer, arena)?
+            .simplify_maximize(analyzer, arena)
     }
 
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
@@ -650,21 +694,29 @@ impl Range<Concrete> for SolcRange {
         self_idx: NodeIdx,
         new_idx: NodeIdx,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        self.min.filter_recursion(self_idx, new_idx, analyzer);
+        self.min
+            .filter_recursion(self_idx, new_idx, analyzer, arena);
     }
     fn filter_max_recursion(
         &mut self,
         self_idx: NodeIdx,
         new_idx: NodeIdx,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        self.max.filter_recursion(self_idx, new_idx, analyzer);
+        self.max
+            .filter_recursion(self_idx, new_idx, analyzer, arena);
     }
 
-    fn cache_flatten(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), Self::GraphError> {
+    fn cache_flatten(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), Self::GraphError> {
         if self.flattened.is_none() {
-            self.into_flattened_range(analyzer)?;
+            self.into_flattened_range(analyzer, arena)?;
         }
         Ok(())
     }
@@ -672,12 +724,13 @@ impl Range<Concrete> for SolcRange {
     fn flattened_range<'a>(
         &'a mut self,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Cow<'a, FlattenedRange>, Self::GraphError>
     where
         Self: Sized + Clone,
     {
         if self.flattened.is_none() {
-            self.cache_flatten(analyzer)?;
+            self.cache_flatten(analyzer, arena)?;
             let Some(flat) = &self.flattened else {
                 unreachable!();
             };
@@ -693,6 +746,7 @@ impl Range<Concrete> for SolcRange {
     fn take_flattened_range(
         &mut self,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<FlattenedRange, Self::GraphError>
     where
         Self: Sized,
@@ -701,46 +755,56 @@ impl Range<Concrete> for SolcRange {
         if let Some(flat) = taken {
             Ok(flat)
         } else {
-            self.cache_flatten(analyzer)?;
-            self.take_flattened_range(analyzer)
+            self.cache_flatten(analyzer, arena)?;
+            self.take_flattened_range(analyzer, arena)
         }
     }
 }
 
 impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
     #[tracing::instrument(level = "trace", skip_all)]
-    fn sat(&self, analyzer: &impl GraphBackend) -> bool {
+    fn sat(&self, analyzer: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
         matches!(
-            self.evaled_range_min(analyzer)
+            self.evaled_range_min(analyzer, arena)
                 .unwrap()
-                .range_ord(&self.evaled_range_max(analyzer).unwrap(), analyzer),
+                .range_ord(&self.evaled_range_max(analyzer, arena).unwrap(), arena),
             None | Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         )
     }
 
-    fn contains(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
+    fn contains(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         let min_contains = matches!(
-            self.evaled_range_min(analyzer)
+            self.evaled_range_min(analyzer, arena)
                 .unwrap()
-                .range_ord(&other.evaled_range_min(analyzer).unwrap(), analyzer),
+                .range_ord(&other.evaled_range_min(analyzer, arena).unwrap(), arena),
             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
         );
 
         let max_contains = matches!(
-            self.evaled_range_max(analyzer)
+            self.evaled_range_max(analyzer, arena)
                 .unwrap()
-                .range_ord(&other.evaled_range_max(analyzer).unwrap(), analyzer),
+                .range_ord(&other.evaled_range_max(analyzer, arena).unwrap(), arena),
             Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
         );
 
         min_contains && max_contains
     }
 
-    fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphBackend) -> bool {
+    fn contains_elem(
+        &self,
+        other: &Elem<Concrete>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         let min_contains = match self
-            .evaled_range_min(analyzer)
+            .evaled_range_min(analyzer, arena)
             .unwrap()
-            .range_ord(&other.minimize(analyzer).unwrap(), analyzer)
+            .range_ord(&other.minimize(analyzer, arena).unwrap(), arena)
         {
             Some(std::cmp::Ordering::Less) => true,
             Some(std::cmp::Ordering::Equal) => return true,
@@ -748,9 +812,9 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         };
 
         let max_contains = match self
-            .evaled_range_max(analyzer)
+            .evaled_range_max(analyzer, arena)
             .unwrap()
-            .range_ord(&other.maximize(analyzer).unwrap(), analyzer)
+            .range_ord(&other.maximize(analyzer, arena).unwrap(), arena)
         {
             Some(std::cmp::Ordering::Greater) => true,
             Some(std::cmp::Ordering::Equal) => return true,
@@ -760,18 +824,23 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
         min_contains && max_contains
     }
 
-    fn overlaps(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
-        let lhs_min = self.evaled_range_min(analyzer).unwrap();
-        let rhs_max = other.evaled_range_max(analyzer).unwrap();
+    fn overlaps(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
+        let lhs_min = self.evaled_range_min(analyzer, arena).unwrap();
+        let rhs_max = other.evaled_range_max(analyzer, arena).unwrap();
 
-        match lhs_min.range_ord(&rhs_max, analyzer) {
+        match lhs_min.range_ord(&rhs_max, arena) {
             Some(std::cmp::Ordering::Less) => {
                 // we know our min is less than the other max
                 // check that the max is greater than or eq their min
-                let lhs_max = self.evaled_range_max(analyzer).unwrap();
-                let rhs_min = other.evaled_range_min(analyzer).unwrap();
+                let lhs_max = self.evaled_range_max(analyzer, arena).unwrap();
+                let rhs_min = other.evaled_range_min(analyzer, arena).unwrap();
                 matches!(
-                    lhs_max.range_ord(&rhs_min, analyzer),
+                    lhs_max.range_ord(&rhs_min, arena),
                     Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                 )
             }
@@ -782,21 +851,37 @@ impl RangeEval<Concrete, Elem<Concrete>> for SolcRange {
 }
 
 impl RangeEval<Concrete, Elem<Concrete>> for FlattenedRange {
-    fn sat(&self, analyzer: &impl GraphBackend) -> bool {
-        <FlattenedRange as Into<SolcRange>>::into(self.clone()).sat(analyzer)
+    fn sat(&self, analyzer: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
+        <FlattenedRange as Into<SolcRange>>::into(self.clone()).sat(analyzer, arena)
     }
-    fn unsat(&self, analyzer: &impl GraphBackend) -> bool {
-        !self.sat(analyzer)
+    fn unsat(&self, analyzer: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
+        !self.sat(analyzer, arena)
     }
-    fn contains(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
+    fn contains(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         let other = <FlattenedRange as Into<SolcRange>>::into(other.clone());
-        <FlattenedRange as Into<SolcRange>>::into(self.clone()).contains(&other, analyzer)
+        <FlattenedRange as Into<SolcRange>>::into(self.clone()).contains(&other, analyzer, arena)
     }
-    fn contains_elem(&self, other: &Elem<Concrete>, analyzer: &impl GraphBackend) -> bool {
-        <FlattenedRange as Into<SolcRange>>::into(self.clone()).contains_elem(other, analyzer)
+    fn contains_elem(
+        &self,
+        other: &Elem<Concrete>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
+        <FlattenedRange as Into<SolcRange>>::into(self.clone())
+            .contains_elem(other, analyzer, arena)
     }
-    fn overlaps(&self, other: &Self, analyzer: &impl GraphBackend) -> bool {
+    fn overlaps(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         let other = <FlattenedRange as Into<SolcRange>>::into(other.clone());
-        <FlattenedRange as Into<SolcRange>>::into(self.clone()).overlaps(&other, analyzer)
+        <FlattenedRange as Into<SolcRange>>::into(self.clone()).overlaps(&other, analyzer, arena)
     }
 }

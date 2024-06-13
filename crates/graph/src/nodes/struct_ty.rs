@@ -1,6 +1,9 @@
-use crate::{AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node, VarType};
+use crate::{
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError,
+    Node, VarType,
+};
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableDeclaration};
@@ -64,7 +67,11 @@ impl StructNode {
 }
 
 impl AsDotStr for StructNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "struct {} {{ {} }}",
@@ -75,7 +82,7 @@ impl AsDotStr for StructNode {
             },
             self.fields(analyzer)
                 .iter()
-                .map(|field_node| { field_node.as_dot_str(analyzer) })
+                .map(|field_node| { field_node.as_dot_str(analyzer, arena) })
                 .collect::<Vec<_>>()
                 .join("; ")
         )
@@ -152,12 +159,16 @@ impl FieldNode {
 }
 
 impl AsDotStr for FieldNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
-                var_ty.as_dot_str(analyzer)
+                var_ty.as_dot_str(analyzer, arena)
             } else {
                 "".to_string()
             },
@@ -198,9 +209,10 @@ impl From<Field> for Node {
 impl Field {
     pub fn new(
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
         var_def: VariableDeclaration,
     ) -> Field {
-        let ty_idx = analyzer.parse_expr(&var_def.ty, None);
+        let ty_idx = analyzer.parse_expr(arena, &var_def.ty, None);
         Field {
             loc: var_def.loc,
             ty: ty_idx,

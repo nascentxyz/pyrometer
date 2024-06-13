@@ -4,6 +4,8 @@ use crate::{
     range::{elem::*, exec_traits::*},
 };
 
+use shared::RangeArena;
+
 use ethers_core::types::{H256, U256};
 
 use std::collections::BTreeMap;
@@ -213,18 +215,19 @@ pub fn exec_set_indices(
     rhs: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     if maximize {
         if let Some(t) = lhs_max.range_set_indices(rhs_max) {
             Some(t)
         } else {
-            let max = rhs.simplify_maximize(analyzer).ok()?;
+            let max = rhs.simplify_maximize(analyzer, arena).ok()?;
             lhs_max.range_set_indices(&max)
         }
     } else if let Some(t) = lhs_min.range_set_indices(rhs_min) {
         Some(t)
     } else {
-        let min = rhs.simplify_minimize(analyzer).ok()?;
+        let min = rhs.simplify_minimize(analyzer, arena).ok()?;
         lhs_min.range_set_indices(&min)
     }
 }

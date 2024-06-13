@@ -1,6 +1,9 @@
-use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node, VarType};
+use crate::{
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+    VarType,
+};
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc, TypeDefinition};
 
@@ -38,12 +41,16 @@ impl From<NodeIdx> for TyNode {
 }
 
 impl AsDotStr for TyNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
             if let Some(var_ty) = VarType::try_from_idx(analyzer, underlying.ty) {
-                var_ty.as_dot_str(analyzer)
+                var_ty.as_dot_str(analyzer, arena)
             } else {
                 "".to_string()
             },
@@ -66,10 +73,14 @@ impl From<Ty> for Node {
 }
 
 impl Ty {
-    pub fn new(analyzer: &mut impl AnalyzerBackend<Expr = Expression>, ty: TypeDefinition) -> Ty {
+    pub fn new(
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ty: TypeDefinition,
+    ) -> Ty {
         Ty {
             loc: ty.loc,
-            ty: analyzer.parse_expr(&ty.ty, None),
+            ty: analyzer.parse_expr(arena, &ty.ty, None),
             name: ty.name,
         }
     }

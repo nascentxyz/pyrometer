@@ -9,6 +9,7 @@ use crate::{
     },
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
+use shared::RangeArena;
 
 use shared::NodeIdx;
 
@@ -22,7 +23,11 @@ pub enum VarType {
 }
 
 impl AsDotStr for VarType {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         self.as_string(analyzer).unwrap()
     }
 }
@@ -488,15 +493,19 @@ impl VarType {
         }
     }
 
-    pub fn is_const(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+    pub fn is_const(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<bool, GraphError> {
         match self {
             Self::Concrete(_) => Ok(true),
             Self::User(TypeNode::Func(_), _) => Ok(false),
             _ => {
                 if let Some(range) = self.ref_range(analyzer)? {
-                    let min = range.evaled_range_min(analyzer)?;
-                    let max = range.evaled_range_max(analyzer)?;
-                    Ok(min.range_eq(&max, analyzer))
+                    let min = range.evaled_range_min(analyzer, arena)?;
+                    let max = range.evaled_range_max(analyzer, arena)?;
+                    Ok(min.range_eq(&max, arena))
                 } else {
                     Ok(false)
                 }
@@ -514,11 +523,12 @@ impl VarType {
     pub fn evaled_range(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<(Elem<Concrete>, Elem<Concrete>)>, GraphError> {
         Ok(self.ref_range(analyzer)?.map(|range| {
             (
-                range.evaled_range_min(analyzer).unwrap(),
-                range.evaled_range_max(analyzer).unwrap(),
+                range.evaled_range_min(analyzer, arena).unwrap(),
+                range.evaled_range_max(analyzer, arena).unwrap(),
             )
         }))
     }
@@ -533,13 +543,13 @@ impl VarType {
     //         Self::BuiltIn(node, Some(r)) => {
     //             if let Builtin::Bytes(size) = node.underlying(analyzer)? {
     //                 if r.is_const(analyzer)? && index.is_const(analyzer)? {
-    //                     let Some(min) = r.evaled_range_min(analyzer)?.maybe_concrete() else {
+    //                     let Some(min) = r.evaled_range_min(analyzer, arena)?.maybe_concrete() else {
     //                         return Ok(None);
     //                     };
     //                     let Concrete::Bytes(_, val) = min.val else {
     //                         return Ok(None);
     //                     };
-    //                     let Some(idx) = index.evaled_range_min(analyzer)?.unwrap().maybe_concrete()
+    //                     let Some(idx) = index.evaled_range_min(analyzer, arena)?.unwrap().maybe_concrete()
     //                     else {
     //                         return Ok(None);
     //                     };
@@ -570,7 +580,7 @@ impl VarType {
     //                             _ => false,
     //                         },
     //                         c @ Elem::Concrete(..) if is_const => {
-    //                             let index_val = index.evaled_range_min(analyzer).unwrap().unwrap();
+    //                             let index_val = index.evaled_range_min(analyzer, arena).unwrap().unwrap();
     //                             index_val.range_eq(c)
     //                         }
     //                         _ => false,
@@ -589,7 +599,7 @@ impl VarType {
     //         Self::Concrete(node) => {
     //             if index.is_const(analyzer)? {
     //                 let idx = index
-    //                     .evaled_range_min(analyzer)
+    //                     .evaled_range_min(analyzer, arena)
     //                     .unwrap()
     //                     .unwrap()
     //                     .concrete()

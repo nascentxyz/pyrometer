@@ -1,9 +1,12 @@
 use crate::{FunctionVarsBoundAnalysis, LocSpan, LocStrSpan, ReportConfig, VarBoundAnalysis};
 
 use graph::{
-    nodes::ContextNode, range_string::ToRangeString, GraphBackend, Range, RangeEval, SolcRange,
+    elem::Elem,
+    nodes::{Concrete, ContextNode},
+    range_string::ToRangeString,
+    GraphBackend, Range, RangeEval, SolcRange,
 };
-use shared::StorageLocation;
+use shared::{RangeArena, StorageLocation};
 
 use ariadne::{Color, Fmt, Label, Span};
 use std::collections::{BTreeMap, BTreeSet};
@@ -71,9 +74,13 @@ pub struct OrderedAnalysis {
 }
 
 impl OrderedAnalysis {
-    pub fn from_bound_analysis(ba: VarBoundAnalysis, analyzer: &impl GraphBackend) -> Self {
+    pub fn from_bound_analysis(
+        ba: VarBoundAnalysis,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Self {
         let mut analyses: BTreeMap<usize, BTreeSet<StrippedAnalysisItem>> = Default::default();
-        if let Some(init) = ba.init_item(analyzer) {
+        if let Some(init) = ba.init_item(analyzer, arena) {
             let source: usize = *LocSpan(init.loc.1).source();
             let mut set = BTreeSet::new();
             set.insert(init.into());
@@ -83,7 +90,8 @@ impl OrderedAnalysis {
             .iter()
             .enumerate()
             .for_each(|(_i, bound_change)| {
-                let (parts, unsat) = range_parts(analyzer, &ba.report_config, &bound_change.1);
+                let (parts, unsat) =
+                    range_parts(analyzer, arena, &ba.report_config, &bound_change.1);
                 let item = StrippedAnalysisItem {
                     init: false,
                     name: ba.var_display_name.clone(),
@@ -91,7 +99,7 @@ impl OrderedAnalysis {
                     order: (bound_change.0.end() - bound_change.0.start()) as i32, //i as i32,
                     // storage: ba.storage.clone(),
                     ctx: ba.ctx,
-                    ctx_conditionals: ba.conditionals(analyzer),
+                    ctx_conditionals: ba.conditionals(analyzer, arena),
                     parts,
                     unsat,
                 };
@@ -107,11 +115,12 @@ impl OrderedAnalysis {
     pub fn from_func_analysis(
         fvba: FunctionVarsBoundAnalysis,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Self {
         let mut analyses = Self::default();
         fvba.vars_by_ctx.iter().for_each(|(_ctx, bas)| {
             bas.iter().for_each(|ba| {
-                analyses.extend(Self::from_bound_analysis(ba.clone(), analyzer));
+                analyses.extend(Self::from_bound_analysis(ba.clone(), analyzer, arena));
             })
         });
         analyses
@@ -254,39 +263,40 @@ impl ToString for RangePart {
 /// Creates an Vec<[RangePart]> from a range based on the current [ReportConfig]
 pub fn range_parts(
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
     report_config: &ReportConfig,
     range: &SolcRange,
 ) -> (Vec<RangePart>, bool) {
     let mut parts = vec![];
     let min = if report_config.eval_bounds {
         range
-            .evaled_range_min(analyzer)
+            .evaled_range_min(analyzer, arena)
             .unwrap()
-            .to_range_string(false, analyzer)
+            .to_range_string(false, analyzer, arena)
             .s
     } else if report_config.simplify_bounds {
         range
-            .simplified_range_min(analyzer)
+            .simplified_range_min(analyzer, arena)
             .unwrap()
-            .to_range_string(false, analyzer)
+            .to_range_string(false, analyzer, arena)
             .s
     } else {
-        range.range_min().to_range_string(false, analyzer).s
+        range.range_min().to_range_string(false, analyzer, arena).s
     };
     let max = if report_config.eval_bounds {
         range
-            .evaled_range_max(analyzer)
+            .evaled_range_max(analyzer, arena)
             .unwrap()
-            .to_range_string(true, analyzer)
+            .to_range_string(true, analyzer, arena)
             .s
     } else if report_config.simplify_bounds {
         range
-            .simplified_range_max(analyzer)
+            .simplified_range_max(analyzer, arena)
             .unwrap()
-            .to_range_string(true, analyzer)
+            .to_range_string(true, analyzer, arena)
             .s
     } else {
-        range.range_max().to_range_string(true, analyzer).s
+        range.range_max().to_range_string(true, analyzer, arena).s
     };
 
     if min == max {
@@ -301,8 +311,8 @@ pub fn range_parts(
             let mut excls = range_excl
                 .iter()
                 .map(|range| {
-                    let min = range.to_range_string(false, analyzer).s;
-                    let max = range.to_range_string(true, analyzer).s;
+                    let min = range.to_range_string(false, analyzer, arena).s;
+                    let max = range.to_range_string(true, analyzer, arena).s;
                     if min == max {
                         RangePart::Equal(min)
                     } else {
@@ -314,6 +324,6 @@ pub fn range_parts(
             excls
         }));
     }
-    let unsat = range.unsat(analyzer);
+    let unsat = range.unsat(analyzer, arena);
     (parts, unsat)
 }

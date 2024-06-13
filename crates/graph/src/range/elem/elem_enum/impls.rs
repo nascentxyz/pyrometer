@@ -1,14 +1,14 @@
-use crate::elem::MinMaxed;
+use crate::elem::{MinMaxed, RangeArenaLike};
 use crate::{
     nodes::Concrete,
     range::elem::{Elem, RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference},
     GraphBackend, GraphError,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::I256;
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::collections::BTreeMap;
 
 impl Elem<Concrete> {
     pub fn wrapping_add(self, other: Elem<Concrete>) -> Self {
@@ -221,6 +221,7 @@ impl Elem<Concrete> {
         to_replace: NodeIdx,
         replacement: Self,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Self>,
     ) {
         match self {
             Elem::Reference(Reference { idx, .. }) => {
@@ -231,46 +232,73 @@ impl Elem<Concrete> {
             Elem::Concrete(_) => {}
             Elem::Expr(expr) => {
                 expr.lhs
-                    .replace_dep(to_replace, replacement.clone(), analyzer);
-                expr.rhs.replace_dep(to_replace, replacement, analyzer);
+                    .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+                expr.rhs
+                    .replace_dep(to_replace, replacement, analyzer, arena);
                 expr.maximized = None;
                 expr.minimized = None;
             }
             Elem::ConcreteDyn(d) => {
-                d.len.replace_dep(to_replace, replacement.clone(), analyzer);
+                d.len
+                    .replace_dep(to_replace, replacement.clone(), analyzer, arena);
                 let vals = std::mem::take(&mut d.val);
                 d.val = vals
                     .into_iter()
                     .map(|(mut k, (mut v, op))| {
-                        k.replace_dep(to_replace, replacement.clone(), analyzer);
-                        v.replace_dep(to_replace, replacement.clone(), analyzer);
+                        k.replace_dep(to_replace, replacement.clone(), analyzer, arena);
+                        v.replace_dep(to_replace, replacement.clone(), analyzer, arena);
                         (k, (v, op))
                     })
                     .collect();
             }
             Elem::Null => {}
             Elem::Arena(_) => {
-                let mut s = (*self.dearenaize(analyzer).borrow()).clone();
-                s.replace_dep(to_replace, replacement, analyzer);
-                *self = Elem::Arena(analyzer.range_arena_idx_or_upsert(s));
+                let (mut s, idx) = self.dearenaize(arena);
+                s.replace_dep(to_replace, replacement, analyzer, arena);
+                self.rearenaize(s, idx, arena);
             }
         }
     }
 
-    pub fn recurse_dearenaize(&self, analyzer: &impl GraphBackend) -> Self {
+    pub fn recurse_dearenaize(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Self>,
+    ) -> Self {
         match self {
-            Self::Arena(arena_idx) => (*analyzer.range_arena().ranges[*arena_idx].borrow())
+            Self::Arena(arena_idx) => arena
+                .ranges
+                .get(*arena_idx)
+                .unwrap()
                 .clone()
-                .recurse_dearenaize(analyzer),
-            Self::Expr(expr) => expr.recurse_dearenaize(analyzer),
+                .recurse_dearenaize(analyzer, arena),
+            Self::Expr(expr) => expr.recurse_dearenaize(analyzer, arena),
             e => e.clone(),
         }
     }
 
-    pub fn dearenaize(&self, analyzer: &impl GraphBackend) -> Rc<RefCell<Self>> {
+    pub fn dearenaize_clone(&self, arena: &mut RangeArena<Self>) -> Self {
         match self {
-            Self::Arena(arena_idx) => analyzer.range_arena().ranges[*arena_idx].clone(),
+            Self::Arena(arena_idx) => arena.ranges.get(*arena_idx).cloned().unwrap_or_default(),
             _ => unreachable!(),
+        }
+    }
+
+    pub fn dearenaize(&self, arena: &mut RangeArena<Self>) -> (Self, usize) {
+        match self {
+            Self::Arena(arena_idx) => (
+                arena.take_nonnull(*arena_idx).unwrap_or_default(),
+                *arena_idx,
+            ),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn rearenaize(&self, elem: Self, idx: usize, arena: &mut RangeArena<Self>) {
+        if !matches!(elem, Elem::Null) {
+            if let Some(t) = arena.ranges.get_mut(idx) {
+                *t = elem;
+            }
         }
     }
 
@@ -294,16 +322,21 @@ impl Elem<Concrete> {
             _ => false,
         }
     }
-    pub fn as_bytes(&self, analyzer: &impl GraphBackend, maximize: bool) -> Option<Vec<u8>> {
+    pub fn as_bytes(
+        &self,
+        analyzer: &impl GraphBackend,
+        maximize: bool,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<Vec<u8>> {
         let evaled = if maximize {
-            self.maximize(analyzer).ok()?
+            self.maximize(analyzer, arena).ok()?
         } else {
-            self.minimize(analyzer).ok()?
+            self.minimize(analyzer, arena).ok()?
         };
 
         match evaled {
-            Elem::Concrete(c) => c.as_bytes(analyzer, maximize),
-            Elem::ConcreteDyn(c) => c.as_bytes(analyzer, maximize),
+            Elem::Concrete(c) => c.as_bytes(analyzer, maximize, arena),
+            Elem::ConcreteDyn(c) => c.as_bytes(analyzer, maximize, arena),
             _ => None,
         }
     }
@@ -313,6 +346,7 @@ impl Elem<Concrete> {
         other: &Self,
         eval: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match (self, other) {
             (Elem::Concrete(s), Elem::Concrete(o)) => Ok(Some(o.val == s.val)),
@@ -320,17 +354,17 @@ impl Elem<Concrete> {
                 if s == o {
                     Ok(Some(true))
                 } else if eval {
-                    let lhs_min = s.minimize(analyzer)?;
-                    let rhs_max = o.maximize(analyzer)?;
+                    let lhs_min = s.minimize(analyzer, arena)?;
+                    let rhs_max = o.maximize(analyzer, arena)?;
 
-                    match lhs_min.range_ord(&rhs_max, analyzer) {
+                    match lhs_min.range_ord(&rhs_max, arena) {
                         Some(std::cmp::Ordering::Less) => {
                             // we know our min is less than the other max
                             // check that the max is greater than or eq their min
-                            let lhs_max = s.maximize(analyzer)?;
-                            let rhs_min = o.minimize(analyzer)?;
+                            let lhs_max = s.maximize(analyzer, arena)?;
+                            let rhs_min = o.minimize(analyzer, arena)?;
                             Ok(Some(matches!(
-                                lhs_max.range_ord(&rhs_min, analyzer),
+                                lhs_max.range_ord(&rhs_min, arena),
                                 Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                             )))
                         }
@@ -343,15 +377,15 @@ impl Elem<Concrete> {
             }
             (Elem::Reference(s), c @ Elem::Concrete(_)) => {
                 if eval {
-                    let lhs_min = s.minimize(analyzer)?;
+                    let lhs_min = s.minimize(analyzer, arena)?;
 
-                    match lhs_min.range_ord(c, analyzer) {
+                    match lhs_min.range_ord(c, arena) {
                         Some(std::cmp::Ordering::Less) => {
                             // we know our min is less than the other max
                             // check that the max is greater than or eq their min
-                            let lhs_max = s.maximize(analyzer)?;
+                            let lhs_max = s.maximize(analyzer, arena)?;
                             Ok(Some(matches!(
-                                lhs_max.range_ord(c, analyzer),
+                                lhs_max.range_ord(c, arena),
                                 Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                             )))
                         }
@@ -362,7 +396,7 @@ impl Elem<Concrete> {
                     Ok(None)
                 }
             }
-            (Elem::Concrete(_), Elem::Reference(_)) => other.overlaps(self, eval, analyzer),
+            (Elem::Concrete(_), Elem::Reference(_)) => other.overlaps(self, eval, analyzer, arena),
             _ => Ok(None),
         }
     }
@@ -373,22 +407,23 @@ impl Elem<Concrete> {
         rhs_min: &Self,
         rhs_max: &Self,
         eval: bool,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match self {
             Self::Reference(d) => {
                 if eval {
-                    let lhs_min = d.minimize(analyzer)?;
-                    let rhs_max = rhs_max.maximize(analyzer)?;
+                    let lhs_min = d.minimize(analyzer, arena)?;
+                    let rhs_max = rhs_max.maximize(analyzer, arena)?;
 
-                    match lhs_min.range_ord(&rhs_max, analyzer) {
+                    match lhs_min.range_ord(&rhs_max, arena) {
                         Some(std::cmp::Ordering::Less) => {
                             // we know our min is less than the other max
                             // check that the max is greater than or eq their min
-                            let lhs_max = d.maximize(analyzer)?;
-                            let rhs_min = rhs_min.minimize(analyzer)?;
+                            let lhs_max = d.maximize(analyzer, arena)?;
+                            let rhs_min = rhs_min.minimize(analyzer, arena)?;
                             Ok(Some(matches!(
-                                lhs_max.range_ord(&rhs_min, analyzer),
+                                lhs_max.range_ord(&rhs_min, arena),
                                 Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                             )))
                         }
@@ -403,14 +438,17 @@ impl Elem<Concrete> {
             }
             Self::Concrete(_) => {
                 let (min, max) = if eval {
-                    (rhs_min.minimize(analyzer)?, rhs_max.maximize(analyzer)?)
+                    (
+                        rhs_min.minimize(analyzer, arena)?,
+                        rhs_max.maximize(analyzer, arena)?,
+                    )
                 } else {
                     (rhs_min.clone(), rhs_max.clone())
                 };
 
-                match min.range_ord(self, analyzer) {
+                match min.range_ord(self, arena) {
                     Some(std::cmp::Ordering::Less) => Ok(Some(matches!(
-                        max.range_ord(self, analyzer),
+                        max.range_ord(self, arena),
                         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
                     ))),
                     Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
@@ -424,6 +462,7 @@ impl Elem<Concrete> {
         &self,
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         let res = match self {
             Elem::Concrete(RangeConcrete {
@@ -432,16 +471,20 @@ impl Elem<Concrete> {
             }) if val < &I256::zero() => true,
             Elem::Reference(dy) => {
                 if maximize {
-                    dy.maximize(analyzer)?.is_negative(maximize, analyzer)?
+                    dy.maximize(analyzer, arena)?
+                        .is_negative(maximize, analyzer, arena)?
                 } else {
-                    dy.minimize(analyzer)?.is_negative(maximize, analyzer)?
+                    dy.minimize(analyzer, arena)?
+                        .is_negative(maximize, analyzer, arena)?
                 }
             }
             Elem::Expr(expr) => {
                 if maximize {
-                    expr.maximize(analyzer)?.is_negative(maximize, analyzer)?
+                    expr.maximize(analyzer, arena)?
+                        .is_negative(maximize, analyzer, arena)?
                 } else {
-                    expr.minimize(analyzer)?.is_negative(maximize, analyzer)?
+                    expr.minimize(analyzer, arena)?
+                        .is_negative(maximize, analyzer, arena)?
                 }
             }
             _ => false,
@@ -475,11 +518,12 @@ impl Elem<Concrete> {
     pub fn arenaized_flattened(
         &self,
         max: bool,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<Box<Elem<Concrete>>> {
-        if let Some(idx) = analyzer.range_arena_idx(self) {
-            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
-                match &*t {
+        if let Some(idx) = arena.idx(self) {
+            if let Some(t) = arena.ranges.get(idx) {
+                match t {
                     Elem::Expr(ref arenaized) => {
                         if max {
                             arenaized.flattened_max.clone()
@@ -503,7 +547,7 @@ impl Elem<Concrete> {
                     }
                     c @ Elem::Concrete(_) => Some(Box::new(c.clone())),
                     c @ Elem::Null => Some(Box::new(c.clone())),
-                    a @ Elem::Arena(_) => a.arenaized_flattened(max, analyzer),
+                    Elem::Arena(idx) => Elem::Arena(*idx).arenaized_flattened(max, analyzer, arena),
                 }
             } else {
                 None
@@ -517,10 +561,10 @@ impl Elem<Concrete> {
         &self,
         max: bool,
         elem: &Elem<Concrete>,
-        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        if let Some(idx) = analyzer.range_arena_idx(self) {
-            if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
+        if let Some(idx) = arena.idx(self) {
+            if let Some(ref mut t) = arena.ranges.get_mut(idx) {
                 match &mut *t {
                     Elem::Expr(ref mut arenaized) => {
                         if max {
@@ -553,10 +597,10 @@ impl Elem<Concrete> {
         &self,
         max: bool,
         elem: &Elem<Concrete>,
-        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        if let Some(idx) = analyzer.range_arena_idx(self) {
-            if let Ok(mut t) = analyzer.range_arena().ranges[idx].try_borrow_mut() {
+        if let Some(idx) = arena.idx(self) {
+            if let Some(mut t) = arena.ranges.get_mut(idx) {
                 match &mut *t {
                     Elem::Expr(ref mut arenaized) => {
                         if max {

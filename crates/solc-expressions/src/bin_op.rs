@@ -10,6 +10,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node, RangeEval, SolcRange, VarType,
 };
+use shared::RangeArena;
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
@@ -21,6 +22,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn op_expr(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         lhs_expr: &Expression,
         rhs_expr: &Expression,
@@ -30,8 +32,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
             .into_expr_err(loc)?;
-        self.parse_ctx_expr(rhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, rhs_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
             };
@@ -41,8 +43,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
             let rhs_paths = rhs_paths.flatten();
             let rhs_ctx = ctx;
-            analyzer.parse_ctx_expr(lhs_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            analyzer.parse_ctx_expr(arena, lhs_expr, ctx)?;
+            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                 let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}, rhs ctx: {}, curr ctx: {}", rhs_ctx.path(analyzer), ctx.path(analyzer))))
                 };
@@ -51,13 +53,14 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     return Ok(());
                 }
                 let lhs_paths = lhs_paths.flatten();
-                analyzer.op_match(ctx, loc, &lhs_paths, &rhs_paths, op, assign)
+                analyzer.op_match(arena, ctx, loc, &lhs_paths, &rhs_paths, op, assign)
             })
         })
     }
 
     fn op_match(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         lhs_paths: &ExprRet,
@@ -77,50 +80,62 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                lhs_cvar.try_increase_size(self).into_expr_err(loc)?;
-                rhs_cvar.try_increase_size(self).into_expr_err(loc)?;
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
-                    .into_expr_err(loc)?;
+                lhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
+                rhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
+                ctx.push_expr(
+                    self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 ContextVarNode::from(*lhs)
-                    .cast_from(&ContextVarNode::from(*rhs), self)
+                    .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
-                    .into_expr_err(loc)?;
+                ctx.push_expr(
+                    self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 ContextVarNode::from(*rhs)
-                    .cast_from(&ContextVarNode::from(*lhs), self)
+                    .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
-                    .into_expr_err(loc)?;
+                ctx.push_expr(
+                    self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.op(loc, lhs_cvar, rhs_cvar, ctx, op, assign)?, self)
-                    .into_expr_err(loc)?;
+                ctx.push_expr(
+                    self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
+                    self,
+                )
+                .into_expr_err(loc)?;
                 Ok(())
             }
             (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides
                     .iter()
-                    .map(|expr_ret| self.op_match(ctx, loc, lhs, expr_ret, op, assign))
+                    .map(|expr_ret| self.op_match(arena, ctx, loc, lhs, expr_ret, op, assign))
                     .collect::<Result<Vec<()>, ExprErr>>()?;
                 Ok(())
             }
             (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => {
                 lhs_sides
                     .iter()
-                    .map(|expr_ret| self.op_match(ctx, loc, expr_ret, rhs, op, assign))
+                    .map(|expr_ret| self.op_match(arena, ctx, loc, expr_ret, rhs, op, assign))
                     .collect::<Result<Vec<()>, ExprErr>>()?;
                 Ok(())
             }
@@ -141,6 +156,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn op(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
@@ -157,7 +173,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         );
 
         // if rhs_cvar.is_const(self).unwrap() {
-        //     let int = rhs_cvar.evaled_range_max(self).unwrap().unwrap();
+        //     let int = rhs_cvar.minimize(self, arena).unwrap().unwrap();
         //     match collapse(&Elem::from(lhs_cvar), op, &int, self) {
         //         MaybeCollapsed::Collapsed(c) => {
         //             println!("collapsed: {c:?}");
@@ -170,7 +186,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         //         }
         //     }
         // } else if lhs_cvar.is_const(self).unwrap() {
-        //     let int = lhs_cvar.evaled_range_max(self).unwrap().unwrap();
+        //     let int = lhs_cvar.minimize(self, arena).unwrap().unwrap();
         //     match collapse(&int, op, &Elem::from(rhs_cvar), self) {
         //         MaybeCollapsed::Collapsed(c) => {
         //             println!("collapsed: {c:?}");
@@ -207,7 +223,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ContextVar::new_bin_op_tmp(lhs_cvar, op, rhs_cvar, ctx, loc, self)
                     .into_expr_err(loc)?;
             if let Ok(Some(existing)) =
-                self.get_unchanged_tmp_variable(&new_lhs_underlying.display_name, ctx)
+                self.get_unchanged_tmp_variable(arena, &new_lhs_underlying.display_name, ctx)
             {
                 self.advance_var_in_ctx_forcible(existing, loc, ctx, true)?
             } else {
@@ -244,13 +260,13 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             match op {
                 RangeOp::Div(..) | RangeOp::Mod => {
                     // x / y
-                    if new_rhs.is_const(self).into_expr_err(loc)? {
+                    if new_rhs.is_const(self, arena).into_expr_err(loc)? {
                         // y is constant, do a check if it is 0
                         if new_rhs
-                            .evaled_range_min(self)
+                            .evaled_range_min(self, arena)
                             .into_expr_err(loc)?
                             .expect("No range?")
-                            .range_eq(&Elem::from(Concrete::from(U256::zero())), self)
+                            .range_eq(&Elem::from(Concrete::from(U256::zero())), arena)
                         {
                             let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
                             let _ = self.add_if_err(res);
@@ -271,6 +287,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         if self
                             .require(
+                                arena,
                                 tmp_rhs,
                                 zero_node.into(),
                                 ctx,
@@ -287,14 +304,14 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
                 RangeOp::Sub(..) => {
                     let lhs_cvar = lhs_cvar.latest_version(self);
-                    if lhs_cvar.is_const(self).into_expr_err(loc)? {
+                    if lhs_cvar.is_const(self, arena).into_expr_err(loc)? {
                         if !lhs_cvar.is_int(self).into_expr_err(loc)? {
                             if let (Some(lmax), Some(rmin)) = (
-                                lhs_cvar.evaled_range_max(self).into_expr_err(loc)?,
-                                rhs_cvar.evaled_range_min(self).into_expr_err(loc)?,
+                                lhs_cvar.evaled_range_max(self, arena).into_expr_err(loc)?,
+                                rhs_cvar.evaled_range_min(self, arena).into_expr_err(loc)?,
                             ) {
                                 if matches!(
-                                    lmax.range_ord(&rmin, self),
+                                    lmax.range_ord(&rmin, arena),
                                     Some(std::cmp::Ordering::Less)
                                         | Some(std::cmp::Ordering::Equal)
                                 ) {
@@ -309,6 +326,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         // let tmp_rhs = self.advance_var_in_ctx_forcible(new_rhs, loc, ctx, true)?;
                         if self
                             .require(
+                                arena,
                                 tmp_lhs,
                                 new_rhs,
                                 ctx,
@@ -327,7 +345,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Elem::from(rhs_cvar),
                         );
                         let tmp_lhs = tmp_lhs.latest_version(self);
-                        tmp_lhs.set_range_min(self, min).into_expr_err(loc)?;
+                        tmp_lhs.set_range_min(self, arena, min).into_expr_err(loc)?;
 
                         // let tmp_var = ContextVar {
                         //     loc: Some(loc),
@@ -372,7 +390,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Elem::from(Concrete::from(U256::MAX)) - Elem::from(rhs_cvar),
                         );
 
-                        tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
+                        tmp_lhs.set_range_max(self, arena, max).into_expr_err(loc)?;
 
                         let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
                         let tmp_max = ContextVar::new_from_concrete(
@@ -384,6 +402,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
                         let tmp_rhs = self.op(
+                            arena,
                             loc,
                             max_node.into(),
                             new_rhs,
@@ -411,6 +430,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         if self
                             .require(
+                                arena,
                                 tmp_lhs,
                                 tmp_rhs.into(),
                                 ctx,
@@ -428,8 +448,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 RangeOp::Mul(..) => 'mul: {
                     let lhs_cvar = lhs_cvar.latest_version(self);
                     if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        if new_rhs.is_const(self).into_expr_err(loc)?
-                            && new_rhs.evaled_range_min(self).into_expr_err(loc)?
+                        if new_rhs.is_const(self, arena).into_expr_err(loc)?
+                            && new_rhs.evaled_range_min(self, arena).into_expr_err(loc)?
                                 == Some(Elem::from(Concrete::from(U256::zero())))
                         {
                             break 'mul;
@@ -446,7 +466,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 ),
                         );
 
-                        tmp_lhs.set_range_max(self, max).into_expr_err(loc)?;
+                        tmp_lhs.set_range_max(self, arena, max).into_expr_err(loc)?;
 
                         let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
                         let tmp_max = ContextVar::new_from_concrete(
@@ -458,6 +478,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
 
                         let tmp_rhs = self.op(
+                            arena,
                             loc,
                             max_node.into(),
                             new_rhs,
@@ -485,6 +506,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         if self
                             .require(
+                                arena,
                                 tmp_lhs,
                                 tmp_rhs.into(),
                                 ctx,
@@ -533,13 +555,13 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     }
                 }
                 RangeOp::Exp => {
-                    if new_rhs.is_const(self).into_expr_err(loc)? {
+                    if new_rhs.is_const(self, arena).into_expr_err(loc)? {
                         if matches!(
                             new_rhs
-                                .evaled_range_min(self)
+                                .evaled_range_min(self, arena)
                                 .into_expr_err(loc)?
                                 .expect("No range")
-                                .range_ord(&Elem::from(Concrete::from(U256::zero())), self),
+                                .range_ord(&Elem::from(Concrete::from(U256::zero())), arena),
                             Some(std::cmp::Ordering::Less)
                         ) {
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
@@ -556,7 +578,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             Elem::from(Concrete::from(U256::zero())),
                         );
 
-                        tmp_rhs.set_range_min(self, min).into_expr_err(loc)?;
+                        tmp_rhs.set_range_min(self, arena, min).into_expr_err(loc)?;
 
                         let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
                         let tmp_zero = ContextVar::new_from_concrete(
@@ -570,6 +592,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                         if self
                             .require(
+                                arena,
                                 tmp_rhs,
                                 zero_node.into(),
                                 ctx,
@@ -616,7 +639,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         };
 
                         let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+                        ctx.add_ctx_dep(cvar, self, arena).into_expr_err(loc)?;
                         new_rhs = tmp_rhs;
                     }
                 }
@@ -640,11 +663,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         // let new_range = func(lhs_range, new_rhs);
         new_lhs
             .latest_version(self)
-            .set_range_min(self, expr.clone())
+            .set_range_min(self, arena, expr.clone())
             .into_expr_err(loc)?;
         new_lhs
             .latest_version(self)
-            .set_range_max(self, expr)
+            .set_range_max(self, arena, expr)
             .into_expr_err(loc)?;
 
         // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
@@ -662,10 +685,12 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // We have to check if the the lhs and the right hand side contain the zero range.
                 // If they both do, we have to set the minimum to zero due to 0**0 = 1, but 0**x = 0.
                 // This is technically a slight widening of the interval and could be improved.
-                if old_lhs_range.contains(&zero_range, self)
-                    && rhs_range.contains(&zero_range, self)
+                if old_lhs_range.contains(&zero_range, self, arena)
+                    && rhs_range.contains(&zero_range, self, arena)
                 {
-                    new_lhs.set_range_min(self, zero).into_expr_err(loc)?;
+                    new_lhs
+                        .set_range_min(self, arena, zero)
+                        .into_expr_err(loc)?;
                 }
             }
         }
@@ -675,12 +700,13 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn bit_not(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         lhs_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(lhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, lhs_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(
                     loc,
@@ -692,13 +718,14 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            analyzer.bit_not_inner(ctx, loc, lhs.flatten())
+            analyzer.bit_not_inner(arena, ctx, loc, lhs.flatten())
         })
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
     fn bit_not_inner(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         lhs_expr: ExprRet,
@@ -713,9 +740,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // TODO: try to pop from the stack and if there is a single element there
                 // use it as a type hint, then place it back on the stack
                 ContextVarNode::from(lhs)
-                    .try_increase_size(self)
+                    .try_increase_size(self, arena)
                     .into_expr_err(loc)?;
-                self.bit_not_inner(ctx, loc, ExprRet::Single(lhs))?;
+                self.bit_not_inner(arena, ctx, loc, ExprRet::Single(lhs))?;
                 Ok(())
             }
             ExprRet::Single(lhs) => {
@@ -750,9 +777,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let out_var = ContextVarNode::from(self.add_node(Node::ContextVar(out_var)));
 
                 out_var
-                    .set_range_min(self, expr.clone())
+                    .set_range_min(self, arena, expr.clone())
                     .into_expr_err(loc)?;
-                out_var.set_range_max(self, expr).into_expr_err(loc)?;
+                out_var
+                    .set_range_max(self, arena, expr)
+                    .into_expr_err(loc)?;
 
                 self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
                 ctx.push_expr(ExprRet::Single(out_var.into()), self)

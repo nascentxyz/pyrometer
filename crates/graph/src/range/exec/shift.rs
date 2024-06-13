@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{I256, U256};
 
 impl RangeShift<Concrete> for RangeConcrete<Concrete> {
@@ -151,6 +153,7 @@ pub fn exec_shl(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
         lhs_min.range_shl(rhs_min),
@@ -159,7 +162,7 @@ pub fn exec_shl(
         lhs_max.range_shl(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -184,6 +187,7 @@ pub fn exec_shr(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
         lhs_min.range_shr(rhs_min),
@@ -192,7 +196,7 @@ pub fn exec_shr(
         lhs_max.range_shr(rhs_max),
     ];
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });

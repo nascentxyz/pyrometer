@@ -9,6 +9,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
+use shared::RangeArena;
 
 use ethers_core::types::I256;
 use solang_parser::{
@@ -26,15 +27,20 @@ pub trait ExpressionParser:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
 {
     /// Perform setup for parsing an expression
-    fn parse_ctx_expr(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
+    fn parse_ctx_expr(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        expr: &Expression,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
         if !ctx.killed_or_ret(self).unwrap() {
             let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
             if edges.is_empty() {
-                self.parse_ctx_expr_inner(expr, ctx)
+                self.parse_ctx_expr_inner(arena, expr, ctx)
             } else {
                 edges
                     .iter()
-                    .try_for_each(|fork_ctx| self.parse_ctx_expr(expr, *fork_ctx))?;
+                    .try_for_each(|fork_ctx| self.parse_ctx_expr(arena, expr, *fork_ctx))?;
                 Ok(())
             }
         } else {
@@ -44,7 +50,12 @@ pub trait ExpressionParser:
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self).replace('.', "\n\t.")))]
     /// Perform parsing of an expression
-    fn parse_ctx_expr_inner(&mut self, expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
+    fn parse_ctx_expr_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        expr: &Expression,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
         use Expression::*;
         // tracing::trace!(
         //     "ctx: {}, current stack: {:?}, \nexpr: {:?}\n",
@@ -70,7 +81,7 @@ pub trait ExpressionParser:
             HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexLiteral(hexes) => self.hex_literals(ctx, hexes),
             RationalNumberLiteral(loc, integer, fraction, exp, unit) => {
-                self.rational_number_literal(ctx, *loc, integer, fraction, exp, unit)
+                self.rational_number_literal(arena, ctx, *loc, integer, fraction, exp, unit)
             }
             Negate(_loc, expr) => match &**expr {
                 NumberLiteral(loc, int, exp, unit) => {
@@ -78,8 +89,8 @@ pub trait ExpressionParser:
                 }
                 HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, true),
                 e => {
-                    self.parse_ctx_expr(e, ctx)?;
-                    self.apply_to_edges(ctx, e.loc(), &|analyzer, ctx, loc| {
+                    self.parse_ctx_expr(arena, e, ctx)?;
+                    self.apply_to_edges(ctx, e.loc(), arena, &|analyzer, arena, ctx, loc| {
                         tracing::trace!("Negate variable pop");
                         let Some(rhs_paths) =
                             ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
@@ -119,11 +130,12 @@ pub trait ExpressionParser:
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
 
                         ContextVarNode::from(node)
-                            .cast_from(&ContextVarNode::from(zero), analyzer)
+                            .cast_from(&ContextVarNode::from(zero), analyzer, arena)
                             .into_expr_err(loc)?;
 
                         let lhs_paths = ExprRet::Single(zero);
                         analyzer.op_match(
+                            arena,
                             ctx,
                             loc,
                             &lhs_paths,
@@ -140,9 +152,10 @@ pub trait ExpressionParser:
 
             // Binary ops
             Power(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Exp, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Exp, false)
             }
             Add(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
                 *loc,
                 lhs_expr,
                 rhs_expr,
@@ -151,6 +164,7 @@ pub trait ExpressionParser:
                 false,
             ),
             AssignAdd(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
                 *loc,
                 lhs_expr,
                 rhs_expr,
@@ -159,6 +173,7 @@ pub trait ExpressionParser:
                 true,
             ),
             Subtract(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
                 *loc,
                 lhs_expr,
                 rhs_expr,
@@ -167,6 +182,7 @@ pub trait ExpressionParser:
                 false,
             ),
             AssignSubtract(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
                 *loc,
                 lhs_expr,
                 rhs_expr,
@@ -175,6 +191,7 @@ pub trait ExpressionParser:
                 true,
             ),
             Multiply(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
                 *loc,
                 lhs_expr,
                 rhs_expr,
@@ -183,6 +200,7 @@ pub trait ExpressionParser:
                 false,
             ),
             AssignMultiply(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
                 *loc,
                 lhs_expr,
                 rhs_expr,
@@ -190,62 +208,76 @@ pub trait ExpressionParser:
                 RangeOp::Mul(ctx.unchecked(self).into_expr_err(*loc)?),
                 true,
             ),
-            Divide(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Div(false), false)
-            }
-            AssignDivide(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Div(false), true)
-            }
+            Divide(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
+                *loc,
+                lhs_expr,
+                rhs_expr,
+                ctx,
+                RangeOp::Div(false),
+                false,
+            ),
+            AssignDivide(loc, lhs_expr, rhs_expr) => self.op_expr(
+                arena,
+                *loc,
+                lhs_expr,
+                rhs_expr,
+                ctx,
+                RangeOp::Div(false),
+                true,
+            ),
             Modulo(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Mod, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Mod, false)
             }
             AssignModulo(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Mod, true)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Mod, true)
             }
             ShiftLeft(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Shl, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Shl, false)
             }
             AssignShiftLeft(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Shl, true)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Shl, true)
             }
             ShiftRight(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Shr, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Shr, false)
             }
             AssignShiftRight(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::Shr, true)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::Shr, true)
             }
             ConditionalOperator(loc, if_expr, true_expr, false_expr) => {
-                self.cond_op_expr(*loc, if_expr, true_expr, false_expr, ctx)
+                self.cond_op_expr(arena, *loc, if_expr, true_expr, false_expr, ctx)
             }
 
             // Bitwise ops
             BitwiseAnd(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, false)
             }
             AssignAnd(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, true)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::BitAnd, true)
             }
             BitwiseXor(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitXor, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::BitXor, false)
             }
             AssignXor(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitXor, true)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::BitXor, true)
             }
             BitwiseOr(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, false)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, false)
             }
             AssignOr(loc, lhs_expr, rhs_expr) => {
-                self.op_expr(*loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, true)
+                self.op_expr(arena, *loc, lhs_expr, rhs_expr, ctx, RangeOp::BitOr, true)
             }
-            BitwiseNot(loc, lhs_expr) => self.bit_not(*loc, lhs_expr, ctx),
+            BitwiseNot(loc, lhs_expr) => self.bit_not(arena, *loc, lhs_expr, ctx),
 
             // assign
-            Assign(loc, lhs_expr, rhs_expr) => self.assign_exprs(*loc, lhs_expr, rhs_expr, ctx),
-            List(loc, params) => self.list(ctx, *loc, params),
+            Assign(loc, lhs_expr, rhs_expr) => {
+                self.assign_exprs(arena, *loc, lhs_expr, rhs_expr, ctx)
+            }
+            List(loc, params) => self.list(arena, ctx, *loc, params),
             // array
-            ArraySubscript(_loc, ty_expr, None) => self.array_ty(ty_expr, ctx),
+            ArraySubscript(_loc, ty_expr, None) => self.array_ty(arena, ty_expr, ctx),
             ArraySubscript(loc, ty_expr, Some(index_expr)) => {
-                self.index_into_array(*loc, ty_expr, index_expr, ctx)
+                self.index_into_array(arena, *loc, ty_expr, index_expr, ctx)
             }
             ArraySlice(loc, _lhs_expr, _maybe_middle_expr, _maybe_rhs) => Err(ExprErr::Todo(
                 *loc,
@@ -257,17 +289,17 @@ pub trait ExpressionParser:
             )),
 
             // Comparator
-            Equal(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Eq, rhs, ctx),
-            NotEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Neq, rhs, ctx),
-            Less(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Lt, rhs, ctx),
-            More(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Gt, rhs, ctx),
-            LessEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Lte, rhs, ctx),
-            MoreEqual(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Gte, rhs, ctx),
+            Equal(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Eq, rhs, ctx),
+            NotEqual(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Neq, rhs, ctx),
+            Less(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Lt, rhs, ctx),
+            More(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Gt, rhs, ctx),
+            LessEqual(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Lte, rhs, ctx),
+            MoreEqual(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Gte, rhs, ctx),
 
             // Logical
-            Not(loc, expr) => self.not(*loc, expr, ctx),
-            And(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::And, rhs, ctx),
-            Or(loc, lhs, rhs) => self.cmp(*loc, lhs, RangeOp::Or, rhs, ctx),
+            Not(loc, expr) => self.not(arena, *loc, expr, ctx),
+            And(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::And, rhs, ctx),
+            Or(loc, lhs, rhs) => self.cmp(arena, *loc, lhs, RangeOp::Or, rhs, ctx),
 
             // Function calls
             FunctionCallBlock(loc, _func_expr, _input_exprs) => {
@@ -279,7 +311,7 @@ pub trait ExpressionParser:
                 ))
             }
             NamedFunctionCall(loc, func_expr, input_args) => {
-                self.named_fn_call_expr(ctx, loc, func_expr, input_args)
+                self.named_fn_call_expr(arena, ctx, loc, func_expr, input_args)
             }
             FunctionCall(loc, func_expr, input_exprs) => {
                 let updated_func_expr = match **func_expr {
@@ -296,14 +328,14 @@ pub trait ExpressionParser:
                     _ => func_expr.clone(),
                 };
 
-                self.fn_call_expr(ctx, loc, &updated_func_expr, input_exprs)
+                self.fn_call_expr(arena, ctx, loc, &updated_func_expr, input_exprs)
             }
             // member
             New(loc, expr) => {
                 match &**expr {
                     Expression::FunctionCall(_loc, func, inputs) => {
                         // parse the type
-                        self.new_call(loc, func, inputs, ctx)
+                        self.new_call(arena, loc, func, inputs, ctx)
                     }
                     _ => panic!("Bad new call"),
                 }
@@ -323,7 +355,7 @@ pub trait ExpressionParser:
                 Ok(())
             }
             MemberAccess(loc, member_expr, ident) => {
-                self.member_access(*loc, member_expr, ident, ctx)
+                self.member_access(arena, *loc, member_expr, ident, ctx)
             }
 
             Delete(loc, expr) => {
@@ -352,8 +384,8 @@ pub trait ExpressionParser:
                     }
                 }
 
-                self.parse_ctx_expr(expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, expr, ctx)?;
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     tracing::trace!("Delete variable pop");
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
@@ -373,15 +405,15 @@ pub trait ExpressionParser:
             }
 
             // de/increment stuff
-            PreIncrement(loc, expr) => self.pre_increment(expr, *loc, ctx),
-            PostIncrement(loc, expr) => self.post_increment(expr, *loc, ctx),
-            PreDecrement(loc, expr) => self.pre_decrement(expr, *loc, ctx),
-            PostDecrement(loc, expr) => self.post_decrement(expr, *loc, ctx),
+            PreIncrement(loc, expr) => self.pre_increment(arena, expr, *loc, ctx),
+            PostIncrement(loc, expr) => self.post_increment(arena, expr, *loc, ctx),
+            PreDecrement(loc, expr) => self.pre_decrement(arena, expr, *loc, ctx),
+            PostDecrement(loc, expr) => self.post_decrement(arena, expr, *loc, ctx),
 
             // Misc.
-            Variable(ident) => self.variable(ident, ctx, None),
+            Variable(ident) => self.variable(arena, ident, ctx, None),
             Type(loc, ty) => {
-                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
+                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self, arena) {
                     if let Some(idx) = self.builtins().get(&builtin) {
                         ctx.push_expr(ExprRet::Single(*idx), self)
                             .into_expr_err(*loc)?;
@@ -398,7 +430,7 @@ pub trait ExpressionParser:
                     Ok(())
                 }
             }
-            Parenthesis(_loc, expr) => self.parse_ctx_expr(expr, ctx),
+            Parenthesis(_loc, expr) => self.parse_ctx_expr(arena, expr, ctx),
         }
     }
 }

@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{I256, U256};
 
 impl RangeSub<Concrete> for RangeConcrete<Concrete> {
@@ -188,6 +190,7 @@ pub fn exec_sub(
     maximize: bool,
     wrapping: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // quick check if rhs is const and zero, if so return min or max
     if wrapping {
@@ -198,12 +201,11 @@ pub fn exec_sub(
                              rhs: &Elem<Concrete>,
                              candidates: &mut Vec<Elem<Concrete>>,
                              all_overflowed: &mut bool,
-                             one_overflowed: &mut bool| {
+                             one_overflowed: &mut bool,
+                             arena: &mut RangeArena<Elem<Concrete>>| {
             if let Some(c) = lhs.range_wrapping_sub(rhs) {
-                let overflowed = matches!(
-                    c.range_ord(lhs, analyzer),
-                    Some(std::cmp::Ordering::Greater)
-                );
+                let overflowed =
+                    matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Greater));
 
                 if *all_overflowed && !overflowed {
                     *all_overflowed = false;
@@ -223,6 +225,7 @@ pub fn exec_sub(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
         add_candidate(
             lhs_min,
@@ -230,6 +233,7 @@ pub fn exec_sub(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
         add_candidate(
             lhs_max,
@@ -237,6 +241,7 @@ pub fn exec_sub(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
         add_candidate(
             lhs_max,
@@ -244,6 +249,7 @@ pub fn exec_sub(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
 
         // If we have a conditional overflow, add the min and max of the type of lhs to the candidates
@@ -264,7 +270,7 @@ pub fn exec_sub(
             add_extremes(lhs_max, &mut candidates);
         }
 
-        candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+        candidates.sort_by(|a, b| match a.range_ord(b, arena) {
             Some(r) => r,
             _ => std::cmp::Ordering::Less,
         });
@@ -424,80 +430,100 @@ mod tests {
     #[test]
     fn exec_sized_uint_uint_saturating() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(105).into();
         let lhs_max = rc_uint_sized(150).into();
         let rhs_min = rc_uint_sized(10).into();
         let rhs_max = rc_uint_sized(200).into();
 
-        let max_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(140)));
-        let min_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
     }
 
     #[test]
     fn exec_sized_wrapping_uint_uint() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(105).into();
         let lhs_max = rc_uint_sized(150).into();
         let rhs_min = rc_uint_sized(10).into();
         let rhs_max = rc_uint_sized(200).into();
 
-        let max_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
-        let min_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
     }
 
     #[test]
     fn exec_sized_wrapping_int_uint() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(127).into();
         let rhs_min = rc_uint_sized(0).into();
         let rhs_max = rc_uint_sized(255).into();
 
-        let max_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
-        let min_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
     }
 
     #[test]
     fn exec_sized_wrapping_int_int_max() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(-100).into();
         let rhs_min = rc_int_sized(-5).into();
         let rhs_max = rc_int_sized(5).into();
 
-        let max_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
-        let min_result = exec_sub(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_sub(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
     }
 }

@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::Loc;
 
@@ -117,6 +119,7 @@ pub fn exec_div(
     maximize: bool,
     wrapping: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let mut candidates = vec![];
     let saturating_div = |lhs: &Elem<_>, rhs: &Elem<_>, candidates: &mut Vec<Elem<Concrete>>| {
@@ -129,12 +132,12 @@ pub fn exec_div(
     let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
     let min_contains = matches!(
-        rhs_min.range_ord(&one, analyzer),
+        rhs_min.range_ord(&one, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        rhs_max.range_ord(&one, analyzer),
+        rhs_max.range_ord(&one, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -145,19 +148,19 @@ pub fn exec_div(
     }
 
     let min_contains_neg_one = matches!(
-        rhs_min.range_ord(&negative_one, analyzer),
+        rhs_min.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains_neg_one = matches!(
-        rhs_max.range_ord(&negative_one, analyzer),
+        rhs_max.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
     if min_contains_neg_one && max_contains_neg_one {
         // if the divisor contains -1, we can just saturating multiply by -1
         if matches!(
-            lhs_min.range_ord(&negative_one, analyzer),
+            lhs_min.range_ord(&negative_one, arena),
             Some(std::cmp::Ordering::Less)
         ) {
             // lhs can be negative, check if it contains int_min
@@ -167,12 +170,12 @@ pub fn exec_div(
             let min_plus_one = Elem::Concrete(rc_i256_sized(int_val + I256::from(1i32)));
 
             let lhs_contains_int_min = matches!(
-                lhs_min.range_ord(&min, analyzer),
+                lhs_min.range_ord(&min, arena),
                 Some(std::cmp::Ordering::Equal)
             );
 
             let max_contains_int_min_plus_one = matches!(
-                rhs_max.range_ord(&min_plus_one, analyzer),
+                rhs_max.range_ord(&min_plus_one, arena),
                 Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
             );
 
@@ -202,18 +205,19 @@ pub fn exec_div(
                              rhs: &Elem<Concrete>,
                              candidates: &mut Vec<Elem<Concrete>>,
                              all_overflowed: &mut bool,
-                             one_overflowed: &mut bool| {
+                             one_overflowed: &mut bool,
+                             arena: &mut RangeArena<Elem<Concrete>>| {
             if let Some(c) = lhs.range_wrapping_div(rhs) {
                 let mut overflowed = false;
                 let neg_one =
                     RangeConcrete::new(Concrete::Int(8, I256::from(-1i32)), Loc::Implicit).into();
                 if matches!(
-                    lhs.range_ord(&neg_one, analyzer),
+                    lhs.range_ord(&neg_one, arena),
                     Some(std::cmp::Ordering::Less)
                 ) {
                     // rhs == -1
                     let div_neg_one = matches!(
-                        rhs.range_ord(&neg_one, analyzer,),
+                        rhs.range_ord(&neg_one, arena),
                         Some(std::cmp::Ordering::Equal)
                     );
 
@@ -222,10 +226,8 @@ pub fn exec_div(
                     let min = RangeConcrete::new(type_min, Loc::Implicit).into();
 
                     // lhs == INT_MIN
-                    let num_int_min = matches!(
-                        lhs.range_ord(&min, analyzer),
-                        Some(std::cmp::Ordering::Equal)
-                    );
+                    let num_int_min =
+                        matches!(lhs.range_ord(&min, arena), Some(std::cmp::Ordering::Equal));
                     if div_neg_one && num_int_min {
                         overflowed = true;
                     }
@@ -249,6 +251,7 @@ pub fn exec_div(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
         add_candidate(
             lhs_min,
@@ -256,6 +259,7 @@ pub fn exec_div(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
         add_candidate(
             lhs_max,
@@ -263,6 +267,7 @@ pub fn exec_div(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
         add_candidate(
             lhs_max,
@@ -270,6 +275,7 @@ pub fn exec_div(
             &mut candidates,
             &mut all_overflowed,
             &mut one_overflowed,
+            arena,
         );
 
         if one_overflowed {
@@ -293,7 +299,7 @@ pub fn exec_div(
     }
 
     // Sort the candidates
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -389,80 +395,100 @@ mod tests {
     #[test]
     fn exec_sized_uint_uint_saturating() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(5).into();
         let lhs_max = rc_uint_sized(15).into();
         let rhs_min = rc_uint_sized(1).into();
         let rhs_max = rc_uint_sized(20).into();
 
-        let max_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(15)));
-        let min_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
     }
 
     #[test]
     fn exec_sized_wrapping_uint_uint() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(5).into();
         let lhs_max = rc_uint_sized(15).into();
         let rhs_min = rc_uint_sized(1).into();
         let rhs_max = rc_uint_sized(16).into();
 
-        let max_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(15)));
-        let min_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
     }
 
     #[test]
     fn exec_sized_wrapping_int_uint() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(127).into();
         let rhs_min = rc_uint_sized(0).into();
         let rhs_max = rc_uint_sized(255).into();
 
-        let max_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
-        let min_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
     }
 
     #[test]
     fn exec_sized_wrapping_int_int_max() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(-100).into();
         let rhs_min = rc_int_sized(-5).into();
         let rhs_max = rc_int_sized(5).into();
 
-        let max_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
-        let min_result = exec_div(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_div(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
     }
 }

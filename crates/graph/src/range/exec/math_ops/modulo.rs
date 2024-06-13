@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{I256, U256};
 
 impl RangeMod<Concrete> for RangeConcrete<Concrete> {
@@ -66,33 +68,34 @@ pub fn exec_mod(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
-    let is_const = |l: &Elem<_>, r: &Elem<_>| -> bool {
-        matches!(l.range_ord(r, analyzer), Some(std::cmp::Ordering::Equal))
+    let is_const = |l: &Elem<_>, r: &Elem<_>, arena: &mut RangeArena<Elem<_>>| -> bool {
+        matches!(l.range_ord(r, arena), Some(std::cmp::Ordering::Equal))
     };
 
-    if is_const(lhs_min, lhs_max) && is_const(rhs_min, rhs_max) {
+    if is_const(lhs_min, lhs_max, arena) && is_const(rhs_min, rhs_max, arena) {
         return lhs_min.range_mod(rhs_min);
     }
 
     let zero = Elem::from(Concrete::from(U256::zero()));
 
     let lhs_min_is_pos = matches!(
-        lhs_min.range_ord(&zero, analyzer),
+        lhs_min.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
     );
 
     let lhs_max_is_pos = matches!(
-        lhs_max.range_ord(&zero, analyzer),
+        lhs_max.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
     );
     let mod_min_is_pos = matches!(
-        rhs_min.range_ord(&zero, analyzer),
+        rhs_min.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
     );
 
     let mod_max_is_pos = matches!(
-        rhs_max.range_ord(&zero, analyzer),
+        rhs_max.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Equal) | Some(std::cmp::Ordering::Greater)
     );
 
@@ -101,7 +104,7 @@ pub fn exec_mod(
         && lhs_max_is_pos
         && mod_max_is_pos
         && matches!(
-            lhs_max.range_ord(rhs_max, analyzer),
+            lhs_max.range_ord(rhs_max, arena),
             Some(std::cmp::Ordering::Less)
         )
     {
@@ -131,7 +134,7 @@ pub fn exec_mod(
 
     if !lhs_min_is_pos {
         if let Some(neg_max) = rhs_max.range_mul(&negative_one) {
-            match neg_max.range_ord(lhs_min, analyzer) {
+            match neg_max.range_ord(lhs_min, arena) {
                 None => {}
                 Some(std::cmp::Ordering::Less) => candidates.push(lhs_min.clone()),
                 Some(std::cmp::Ordering::Greater) => {
@@ -143,7 +146,7 @@ pub fn exec_mod(
     }
 
     // Sort the candidates
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -230,82 +233,94 @@ mod tests {
     #[test]
     fn exec_sized_uint_uint_1() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(5).into();
         let lhs_max = rc_uint_sized(15).into();
         let rhs_min = rc_uint_sized(1).into();
         let rhs_max = rc_uint_sized(20).into();
 
-        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g)
+        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete()
             .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(15)));
-        let min_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_mod(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
     }
 
     #[test]
     fn exec_sized_uint_uint_2() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_uint_sized(16).into();
         let lhs_max = rc_uint_sized(160).into();
         let rhs_min = rc_uint_sized(1).into();
         let rhs_max = rc_uint_sized(16).into();
 
-        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g)
+        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete()
             .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(15)));
-        let min_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_mod(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
     }
 
     #[test]
     fn exec_sized_int_uint() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(127).into();
         let rhs_min = rc_uint_sized(0).into();
         let rhs_max = rc_uint_sized(255).into();
 
-        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g)
+        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete()
             .unwrap();
         assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
-        let min_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_mod(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
     }
 
     #[test]
     fn exec_sized_int_int_max() {
         let g = DummyGraph::default();
+        let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(-100).into();
         let rhs_min = rc_int_sized(-5).into();
         let rhs_max = rc_int_sized(5).into();
 
-        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g)
+        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
             .unwrap()
             .maybe_concrete()
             .unwrap();
         // TODO: improve mod calc to consider lhs being entirely negative
         // assert_eq!(max_result.val, Concrete::Int(8, I256::from(0i32)));
         assert_eq!(max_result.val, Concrete::Int(8, I256::from(4i32)));
-        let min_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let min_result = exec_mod(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-4i32)));
     }
 }

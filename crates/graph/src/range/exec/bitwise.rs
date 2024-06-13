@@ -2,6 +2,8 @@ use crate::nodes::{Builtin, Concrete};
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use ethers_core::types::{H256, I256, U256};
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
@@ -241,6 +243,7 @@ pub fn exec_bit_and(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max, rhs_min, rhs_max) {
         (Elem::ConcreteDyn(d), _, _, _) => {
@@ -251,6 +254,7 @@ pub fn exec_bit_and(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, Elem::ConcreteDyn(d), _, _) => {
@@ -261,6 +265,7 @@ pub fn exec_bit_and(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, _, Elem::ConcreteDyn(d), _) => {
@@ -271,6 +276,7 @@ pub fn exec_bit_and(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, _, _, Elem::ConcreteDyn(d)) => {
@@ -281,6 +287,7 @@ pub fn exec_bit_and(
                 &d.as_sized_bytes()?,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         _ => {}
@@ -294,7 +301,7 @@ pub fn exec_bit_and(
     };
 
     // the max is the min of the maxes
-    match lhs_max.range_ord(rhs_max, analyzer) {
+    match lhs_max.range_ord(rhs_max, arena) {
         Some(std::cmp::Ordering::Less) => {
             candidates.push(lhs_max.clone());
         }
@@ -313,12 +320,12 @@ pub fn exec_bit_and(
     let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
     let min_contains = matches!(
-        rhs_min.range_ord(&zero, analyzer),
+        rhs_min.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        rhs_max.range_ord(&zero, analyzer),
+        rhs_max.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -327,12 +334,12 @@ pub fn exec_bit_and(
     }
 
     let min_contains = matches!(
-        rhs_min.range_ord(&negative_one, analyzer),
+        rhs_min.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        rhs_max.range_ord(&negative_one, analyzer),
+        rhs_max.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -342,7 +349,7 @@ pub fn exec_bit_and(
     }
 
     // Sort the candidates
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -381,6 +388,7 @@ pub fn exec_bit_or(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max, rhs_min, rhs_max) {
         (Elem::ConcreteDyn(d), _, _, _) => {
@@ -391,6 +399,7 @@ pub fn exec_bit_or(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, Elem::ConcreteDyn(d), _, _) => {
@@ -401,6 +410,7 @@ pub fn exec_bit_or(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, _, Elem::ConcreteDyn(d), _) => {
@@ -411,6 +421,7 @@ pub fn exec_bit_or(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, _, _, Elem::ConcreteDyn(d)) => {
@@ -421,6 +432,7 @@ pub fn exec_bit_or(
                 &d.as_sized_bytes()?,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         _ => {}
@@ -441,12 +453,12 @@ pub fn exec_bit_or(
     let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
     let min_contains = matches!(
-        rhs_min.range_ord(&negative_one, analyzer),
+        rhs_min.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        rhs_max.range_ord(&negative_one, analyzer),
+        rhs_max.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -456,7 +468,7 @@ pub fn exec_bit_or(
     }
 
     // Sort the candidates
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -495,6 +507,7 @@ pub fn exec_bit_xor(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max, rhs_min, rhs_max) {
         (Elem::ConcreteDyn(d), _, _, _) => {
@@ -505,6 +518,7 @@ pub fn exec_bit_xor(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, Elem::ConcreteDyn(d), _, _) => {
@@ -515,6 +529,7 @@ pub fn exec_bit_xor(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, _, Elem::ConcreteDyn(d), _) => {
@@ -525,6 +540,7 @@ pub fn exec_bit_xor(
                 rhs_max,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         (_, _, _, Elem::ConcreteDyn(d)) => {
@@ -535,6 +551,7 @@ pub fn exec_bit_xor(
                 &d.as_sized_bytes()?,
                 maximize,
                 analyzer,
+                arena,
             );
         }
         _ => {}
@@ -551,12 +568,12 @@ pub fn exec_bit_xor(
     let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
 
     let min_contains = matches!(
-        rhs_min.range_ord(&zero, analyzer),
+        rhs_min.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        rhs_max.range_ord(&zero, analyzer),
+        rhs_max.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -566,12 +583,12 @@ pub fn exec_bit_xor(
     }
 
     let min_contains = matches!(
-        rhs_min.range_ord(&negative_one, analyzer),
+        rhs_min.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        rhs_max.range_ord(&negative_one, analyzer),
+        rhs_max.range_ord(&negative_one, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -581,7 +598,7 @@ pub fn exec_bit_xor(
     }
 
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });
@@ -618,13 +635,14 @@ pub fn exec_bit_not(
     lhs_max: &Elem<Concrete>,
     maximize: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max) {
         (Elem::ConcreteDyn(d), _) => {
-            return exec_bit_not(&d.as_sized_bytes()?, lhs_max, maximize, analyzer);
+            return exec_bit_not(&d.as_sized_bytes()?, lhs_max, maximize, analyzer, arena);
         }
         (_, Elem::ConcreteDyn(d)) => {
-            return exec_bit_not(lhs_min, &d.as_sized_bytes()?, maximize, analyzer);
+            return exec_bit_not(lhs_min, &d.as_sized_bytes()?, maximize, analyzer, arena);
         }
         _ => {}
     }
@@ -633,12 +651,12 @@ pub fn exec_bit_not(
     let zero = Elem::from(Concrete::from(U256::from(0)));
 
     let min_contains = matches!(
-        lhs_min.range_ord(&zero, analyzer),
+        lhs_min.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
     );
 
     let max_contains = matches!(
-        lhs_max.range_ord(&zero, analyzer),
+        lhs_max.range_ord(&zero, arena),
         Some(std::cmp::Ordering::Greater) | Some(std::cmp::Ordering::Equal)
     );
 
@@ -661,7 +679,7 @@ pub fn exec_bit_not(
     }
 
     let mut candidates = candidates.into_iter().flatten().collect::<Vec<_>>();
-    candidates.sort_by(|a, b| match a.range_ord(b, analyzer) {
+    candidates.sort_by(|a, b| match a.range_ord(b, arena) {
         Some(r) => r,
         _ => std::cmp::Ordering::Less,
     });

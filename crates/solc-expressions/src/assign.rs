@@ -5,10 +5,11 @@ use crate::{
 
 use graph::{
     elem::{Elem, RangeElem},
-    nodes::{ContextNode, ContextVarNode, ExprRet},
+    nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, GraphError, Node,
 };
 
+use shared::RangeArena;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Assign for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
@@ -18,13 +19,14 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     /// Parse an assignment expression
     fn assign_exprs(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         lhs_expr: &Expression,
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(rhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, rhs_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(
                     loc,
@@ -36,8 +38,8 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            analyzer.parse_ctx_expr(lhs_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            analyzer.parse_ctx_expr(arena, lhs_expr, ctx)?;
+            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                 let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(
                         loc,
@@ -48,7 +50,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                     ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                     return Ok(());
                 }
-                analyzer.match_assign_sides(ctx, loc, &lhs_paths.flatten(), &rhs_paths)?;
+                analyzer.match_assign_sides(arena, ctx, loc, &lhs_paths.flatten(), &rhs_paths)?;
                 Ok(())
             })
         })
@@ -57,6 +59,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     /// Match on the [`ExprRet`]s of an assignment expression
     fn match_assign_sides(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         lhs_paths: &ExprRet,
@@ -75,36 +78,36 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                     .literal_cast_from(&lhs_cvar, self)
                     .into_expr_err(loc);
                 let _ = self.add_if_err(res);
-                ctx.push_expr(self.assign(loc, lhs_cvar, rhs_cvar, ctx)?, self)
+                ctx.push_expr(self.assign(arena, loc, lhs_cvar, rhs_cvar, ctx)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                ctx.push_expr(self.assign(loc, lhs_cvar, rhs_cvar, ctx)?, self)
+                ctx.push_expr(self.assign(arena, loc, lhs_cvar, rhs_cvar, ctx)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
             }
             (l @ ExprRet::Single(_), ExprRet::Multi(rhs_sides)) => rhs_sides
                 .iter()
-                .try_for_each(|expr_ret| self.match_assign_sides(ctx, loc, l, expr_ret)),
+                .try_for_each(|expr_ret| self.match_assign_sides(arena, ctx, loc, l, expr_ret)),
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
                 lhs_sides
                     .iter()
-                    .try_for_each(|expr_ret| self.match_assign_sides(ctx, loc, expr_ret, r))
+                    .try_for_each(|expr_ret| self.match_assign_sides(arena, ctx, loc, expr_ret, r))
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
                     lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
-                            self.match_assign_sides(ctx, loc, lhs_expr_ret, rhs_expr_ret)
+                            self.match_assign_sides(arena, ctx, loc, lhs_expr_ret, rhs_expr_ret)
                         },
                     )
                 } else {
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
-                        self.match_assign_sides(ctx, loc, lhs_paths, rhs_expr_ret)
+                        self.match_assign_sides(arena, ctx, loc, lhs_paths, rhs_expr_ret)
                     })
                 }
             }
@@ -115,6 +118,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     /// Perform an assignment
     fn assign(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
@@ -132,10 +136,10 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         );
 
         let needs_forcible = new_lower_bound
-            .depends_on(lhs_cvar, &mut vec![], self)
+            .depends_on(lhs_cvar, &mut vec![], self, arena)
             .into_expr_err(loc)?
             || new_upper_bound
-                .depends_on(lhs_cvar, &mut vec![], self)
+                .depends_on(lhs_cvar, &mut vec![], self, arena)
                 .into_expr_err(loc)?;
 
         let new_lhs = if needs_forcible {
@@ -209,11 +213,11 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 }
             };
 
-            let _ = new_lhs.try_set_range_min(self, new_lower_bound.cast(cast_to_min));
-            let _ = new_lhs.try_set_range_max(self, new_upper_bound.cast(cast_to_max));
+            let _ = new_lhs.try_set_range_min(self, arena, new_lower_bound.cast(cast_to_min));
+            let _ = new_lhs.try_set_range_max(self, arena, new_upper_bound.cast(cast_to_max));
         } else {
-            let _ = new_lhs.try_set_range_min(self, new_lower_bound);
-            let _ = new_lhs.try_set_range_max(self, new_upper_bound);
+            let _ = new_lhs.try_set_range_min(self, arena, new_lower_bound);
+            let _ = new_lhs.try_set_range_max(self, arena, new_upper_bound);
         }
         if let Some(rhs_range) = rhs_cvar.ref_range(self).into_expr_err(loc)? {
             let res = new_lhs
@@ -225,14 +229,14 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         if rhs_cvar.is_indexable(self).into_expr_err(loc)? {
             // rhs is indexable. get the length attribute, create a new length for the lhs,
             // and perform assign
-            let rhs_len_cvar = self.get_length(ctx, loc, rhs_cvar, true)?.unwrap();
-            let lhs_len_cvar = self.get_length(ctx, loc, lhs_cvar, true)?.unwrap();
-            self.assign(loc, lhs_len_cvar, rhs_len_cvar, ctx)?;
+            let rhs_len_cvar = self.get_length(arena, ctx, loc, rhs_cvar, true)?.unwrap();
+            let lhs_len_cvar = self.get_length(arena, ctx, loc, lhs_cvar, true)?.unwrap();
+            self.assign(arena, loc, lhs_len_cvar, rhs_len_cvar, ctx)?;
             // update the range
-            self.update_array_if_length_var(ctx, loc, lhs_len_cvar.latest_version(self))?;
+            self.update_array_if_length_var(arena, ctx, loc, lhs_len_cvar.latest_version(self))?;
         }
 
-        self.update_array_if_index_access(ctx, loc, lhs_cvar, rhs_cvar)?;
+        self.update_array_if_index_access(arena, ctx, loc, lhs_cvar, rhs_cvar)?;
 
         // handle struct assignment
         if let Ok(fields) = rhs_cvar.struct_to_fields(self) {

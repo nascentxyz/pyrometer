@@ -8,17 +8,18 @@ use crate::{
     member_access::MemberAccess,
     ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
 };
-use graph::nodes::ContextVar;
-use graph::ContextEdge;
+use graph::nodes::{Concrete, ContextVar};
 use graph::Edge;
 use graph::VarType;
+use graph::{ContextEdge, Range};
 
 use graph::{
+    elem::Elem,
     nodes::{ContextNode, ContextVarNode, ExprRet, FunctionNode},
     AnalyzerBackend, GraphBackend, Node,
 };
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
@@ -34,6 +35,7 @@ pub trait NameSpaceFuncCaller:
     /// Call a namedspaced function, i.e. `MyContract.myFunc(...)`
     fn call_name_spaced_func(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: &Loc,
         member_expr: &Expression,
@@ -48,7 +50,7 @@ pub trait NameSpaceFuncCaller:
                 let fn_node = self
                     .builtin_fn_or_maybe_add(&func_name)
                     .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
-                return self.intrinsic_func_call(loc, &input_exprs, fn_node, ctx);
+                return self.intrinsic_func_call(arena, loc, &input_exprs, fn_node, ctx);
             } else if name == "super" {
                 if let Some(contract) = ctx.maybe_associated_contract(self).into_expr_err(*loc)? {
                     let supers = contract.super_contracts(self);
@@ -70,8 +72,8 @@ pub trait NameSpaceFuncCaller:
                             "Could not find function in super".to_string(),
                         ));
                     }
-                    input_exprs.parse(self, ctx, *loc)?;
-                    return self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    input_exprs.parse(arena, self, ctx, *loc)?;
+                    return self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                         let inputs = if let Some(inputs) =
                             ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         {
@@ -97,7 +99,14 @@ pub trait NameSpaceFuncCaller:
                                     .kill(analyzer, loc, inputs.killed_kind().unwrap())
                                     .into_expr_err(loc);
                             }
-                            analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
+                            analyzer.setup_fn_call(
+                                arena,
+                                &ident.loc,
+                                &inputs,
+                                func.into(),
+                                ctx,
+                                None,
+                            )
                         } else {
                             // this is the annoying case due to function overloading & type inference on number literals
                             let mut lits = vec![false];
@@ -124,12 +133,13 @@ pub trait NameSpaceFuncCaller:
                                     .into_expr_err(loc);
                             }
                             if let Some(func) = analyzer.disambiguate_fn_call(
+                                arena,
                                 &ident.name,
                                 lits,
                                 &inputs,
                                 &possible_funcs,
                             ) {
-                                analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
+                                analyzer.setup_fn_call(arena, &loc, &inputs, func.into(), ctx, None)
                             } else {
                                 Err(ExprErr::FunctionNotFound(
                                     loc,
@@ -142,8 +152,8 @@ pub trait NameSpaceFuncCaller:
             }
         }
 
-        self.parse_ctx_expr(member_expr, ctx)?;
-        self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, member_expr, ctx)?;
+        self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,
@@ -156,13 +166,14 @@ pub trait NameSpaceFuncCaller:
                 return Ok(());
             }
 
-            analyzer.match_namespaced_member(ctx, loc, member_expr, ident, &input_exprs, ret)
+            analyzer.match_namespaced_member(arena, ctx, loc, member_expr, ident, &input_exprs, ret)
         })
     }
 
     /// Match the expression return for getting the member node
     fn match_namespaced_member(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         member_expr: &Expression,
@@ -173,6 +184,7 @@ pub trait NameSpaceFuncCaller:
         match ret {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => self
                 .call_name_spaced_func_inner(
+                    arena,
                     ctx,
                     loc,
                     member_expr,
@@ -182,7 +194,7 @@ pub trait NameSpaceFuncCaller:
                     true,
                 ),
             ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
-                self.match_namespaced_member(ctx, loc, member_expr, ident, input_exprs, ret)
+                self.match_namespaced_member(arena, ctx, loc, member_expr, ident, input_exprs, ret)
             }),
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Null => Err(ExprErr::NoLhs(
@@ -196,6 +208,7 @@ pub trait NameSpaceFuncCaller:
     /// Actually perform the namespaced function call
     fn call_name_spaced_func_inner(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         member_expr: &Expression,
@@ -226,8 +239,8 @@ pub trait NameSpaceFuncCaller:
         ctx.push_expr(ExprRet::Single(member), self)
             .into_expr_err(loc)?;
 
-        input_exprs.parse(self, ctx, loc)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        input_exprs.parse(arena, self, ctx, loc)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(mut inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,
@@ -293,11 +306,11 @@ pub trait NameSpaceFuncCaller:
                             return Ok(());
                         }
 
-                        analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
+                        analyzer.match_assign_sides(arena, ctx, loc, &field_as_ret, &assignment)?;
                         let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                         Ok(())
                     })?;
-                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
                         ctx.push_expr(ExprRet::Single(cvar), analyzer)
                             .into_expr_err(loc)?;
                         Ok(())
@@ -323,7 +336,7 @@ pub trait NameSpaceFuncCaller:
                 }
                 let inputs = ExprRet::Multi(inputs);
 
-                let as_input_str = inputs.try_as_func_input_str(analyzer);
+                let as_input_str = inputs.try_as_func_input_str(analyzer, arena);
 
                 let lits = inputs.literals_list().into_expr_err(loc)?;
                 if lits.iter().any(|i| *i) {
@@ -375,6 +388,7 @@ pub trait NameSpaceFuncCaller:
                         Some(possible_builtins[0])
                     } else {
                         analyzer.disambiguate_fn_call(
+                            arena,
                             &ident.name,
                             lits,
                             &inputs,
@@ -395,8 +409,8 @@ pub trait NameSpaceFuncCaller:
                                     .to_string(),
                             },
                         );
-                        analyzer.parse_ctx_expr(expr, ctx)?;
-                        analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        analyzer.parse_ctx_expr(arena, expr, ctx)?;
+                        analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                             let Some(ret) =
                                 ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                             else {
@@ -412,6 +426,7 @@ pub trait NameSpaceFuncCaller:
                             let mut modifier_input_exprs = vec![member_expr.clone()];
                             modifier_input_exprs.extend(input_exprs.exprs());
                             analyzer.match_intrinsic_fallback(
+                                arena,
                                 ctx,
                                 &loc,
                                 &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs),
@@ -440,8 +455,8 @@ pub trait NameSpaceFuncCaller:
                             name: format!("{}{}", ident.name, as_input_str),
                         },
                     );
-                    analyzer.parse_ctx_expr(expr, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    analyzer.parse_ctx_expr(arena, expr, ctx)?;
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                         let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoLhs(
@@ -456,6 +471,7 @@ pub trait NameSpaceFuncCaller:
                         let mut modifier_input_exprs = vec![member_expr.clone()];
                         modifier_input_exprs.extend(input_exprs.exprs());
                         analyzer.match_intrinsic_fallback(
+                            arena,
                             ctx,
                             &loc,
                             &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs),
@@ -485,7 +501,7 @@ pub trait NameSpaceFuncCaller:
                         .into_expr_err(loc);
                 }
 
-                analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
+                analyzer.setup_fn_call(arena, &ident.loc, &inputs, func.into(), ctx, None)
             } else {
                 // Add the member back in if its a context variable
                 let mut inputs = inputs.as_vec();
@@ -518,9 +534,9 @@ pub trait NameSpaceFuncCaller:
                         .into_expr_err(loc);
                 }
                 if let Some(func) =
-                    analyzer.disambiguate_fn_call(&ident.name, lits, &inputs, &possible_funcs)
+                    analyzer.disambiguate_fn_call(arena, &ident.name, lits, &inputs, &possible_funcs)
                 {
-                    analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
+                    analyzer.setup_fn_call(arena, &loc, &inputs, func.into(), ctx, None)
                 } else {
                     Err(ExprErr::FunctionNotFound(
                         loc,

@@ -42,65 +42,13 @@ impl GraphLike for Analyzer {
         &mut self.range_arena
     }
 
-    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
-        if let Elem::Arena(idx) = elem {
-            Some(*idx)
-        } else {
-            self.range_arena().map.get(elem).copied()
-        }
-    }
-
-    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
-        // tracing::trace!("arenaizing: {}", elem);
-        if let Elem::Arena(idx) = elem {
-            return idx;
-        }
-
-        if let Some(idx) = self.range_arena_idx(&elem) {
-            let existing = &self.range_arena().ranges[idx];
-            let Ok(existing) = existing.try_borrow_mut() else {
-                return idx;
-            };
-            let (min_cached, max_cached) = existing.is_min_max_cached(self);
-            let mut existing_count = 0;
-            if min_cached {
-                existing_count += 1;
-            }
-            if max_cached {
-                existing_count += 1;
-            }
-            if existing.is_flatten_cached(self) {
-                existing_count += 1;
-            }
-
-            let (min_cached, max_cached) = elem.is_min_max_cached(self);
-            let mut new_count = 0;
-            if min_cached {
-                new_count += 1;
-            }
-            if max_cached {
-                new_count += 1;
-            }
-            if elem.is_flatten_cached(self) {
-                new_count += 1;
-            }
-
-            drop(existing);
-
-            if new_count >= existing_count {
-                self.range_arena_mut().ranges[idx] = Rc::new(RefCell::new(elem));
-            }
-
-            idx
-        } else {
-            let idx = self.range_arena().ranges.len();
-            self.range_arena_mut()
-                .ranges
-                .push(Rc::new(RefCell::new(elem.clone())));
-            self.range_arena_mut().map.insert(elem, idx);
-            idx
-        }
-    }
+    // fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
+    //     if let Elem::Arena(idx) = elem {
+    //         Some(*idx)
+    //     } else {
+    //         self.range_arena().map.get(elem).copied()
+    //     }
+    // }
 }
 
 // fn calculate_hash<T: Hash>(t: &T) -> u64 {
@@ -112,8 +60,10 @@ impl GraphLike for Analyzer {
 impl GraphBackend for Analyzer {}
 
 impl GraphDot for Analyzer {
+    type T = Elem<Concrete>;
     fn cluster_str(
         &self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         node: NodeIdx,
         cluster_num: &mut usize,
         is_killed: bool,
@@ -185,6 +135,7 @@ impl GraphDot for Analyzer {
                     Node::Context(c) => {
                         *cluster_num += 2;
                         if let Some(inner) = self.cluster_str(
+                            arena,
                             *child,
                             cluster_num,
                             c.killed.is_some(),
@@ -207,6 +158,7 @@ impl GraphDot for Analyzer {
                         let r_ctx = ContextNode::from(*r_fork);
                         *cluster_num += 1;
                         let l_fork = if let Some(inner) = self.cluster_str(
+                            arena,
                             *l_fork,
                             cluster_num,
                             l_ctx.is_killed(self).ok()?,
@@ -222,6 +174,7 @@ impl GraphDot for Analyzer {
 
                         *cluster_num += 2;
                         let r_fork = if let Some(inner) = self.cluster_str(
+                            arena,
                             *r_fork,
                             cluster_num,
                             r_ctx.is_killed(self).ok()?,
@@ -243,6 +196,7 @@ impl GraphDot for Analyzer {
                         let func = child_iter.next()?;
                         let func_ctx = ContextNode::from(*func);
                         if let Some(inner) = self.cluster_str(
+                            arena,
                             *func,
                             cluster_num,
                             func_ctx.is_killed(self).ok()?,
@@ -271,6 +225,7 @@ impl GraphDot for Analyzer {
                                 }
                                 mermaid_node(
                                     self,
+                                    arena,
                                     &indent,
                                     *child,
                                     true,
@@ -296,7 +251,15 @@ impl GraphDot for Analyzer {
                     }
                     Some(format!(
                         "{}\n{indent}{post_str}",
-                        mermaid_node(self, &indent, *child, true, true, Some(&curr_cluster_name),)
+                        mermaid_node(
+                            self,
+                            arena,
+                            &indent,
+                            *child,
+                            true,
+                            true,
+                            Some(&curr_cluster_name),
+                        )
                     ))
                 } else {
                     {
@@ -309,7 +272,7 @@ impl GraphDot for Analyzer {
                     Some(format!(
                         "{indent}{} [label = \"{}\", color = \"{}\"]\n{}",
                         petgraph::graph::GraphIndex::index(child),
-                        as_dot_str(*child, g).replace('\"', "\'"),
+                        as_dot_str(*child, g, arena).replace('\"', "\'"),
                         self.node(*child).dot_str_color(),
                         post_str
                     ))
@@ -344,7 +307,15 @@ impl GraphDot for Analyzer {
                     {
                         handled_nodes.lock().unwrap().insert(node);
                     }
-                    mermaid_node(self, &indent, node, true, true, Some(&curr_cluster_name))
+                    mermaid_node(
+                        self,
+                        arena,
+                        &indent,
+                        node,
+                        true,
+                        true,
+                        Some(&curr_cluster_name),
+                    )
                 }
             };
 
@@ -378,7 +349,7 @@ impl GraphDot for Analyzer {
                     "bgcolor=\"#1a1b26\""
                 },
                 node.index(),
-                as_dot_str(node, g).replace('\"', "\'"),
+                as_dot_str(node, g, arena).replace('\"', "\'"),
                 self.node(node).dot_str_color(),
                 child_node_str,
                 edge_str,
@@ -386,7 +357,7 @@ impl GraphDot for Analyzer {
         }
     }
 
-    fn dot_str(&self) -> String
+    fn dot_str(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerBackend,
@@ -423,6 +394,7 @@ impl GraphDot for Analyzer {
                         Node::Function(_) => {
                             cluster_num += 2;
                             Some(self.cluster_str(
+                                arena,
                                 *node,
                                 &mut cluster_num,
                                 false,
@@ -435,7 +407,7 @@ impl GraphDot for Analyzer {
                         n => Some(format!(
                             "    {} [label = \"{}\", color = \"{}\"]",
                             petgraph::graph::GraphIndex::index(node),
-                            as_dot_str(*node, self).replace('\"', "\'"),
+                            as_dot_str(*node, self, arena).replace('\"', "\'"),
                             n.dot_str_color()
                         )),
                     }
@@ -472,7 +444,7 @@ impl GraphDot for Analyzer {
         dot_str.join("\n")
     }
 
-    fn dot_str_no_tmps(&self) -> String
+    fn dot_str_no_tmps(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + AnalyzerBackend,
@@ -517,7 +489,7 @@ impl GraphDot for Analyzer {
                     let inner = match node_ref {
                         Node::ContextVar(cvar) => {
                             let range_str = if let Some(r) = cvar.ty.ref_range(self).unwrap() {
-                                r.as_dot_str(self)
+                                r.as_dot_str(self, &mut arena.clone())
                                 // format!("[{}, {}]", r.min.eval(self).to_range_string(self).s, r.max.eval(self).to_range_string(self).s)
                             } else {
                                 "".to_string()
@@ -530,7 +502,7 @@ impl GraphDot for Analyzer {
                                 range_str
                             )
                         }
-                        _ => as_dot_str(idx, &G { graph: &new_graph }),
+                        _ => as_dot_str(idx, &G { graph: &new_graph }, &mut arena.clone()),
                     };
                     format!(
                         "label = \"{}\", color = \"{}\"",
@@ -546,7 +518,7 @@ impl GraphDot for Analyzer {
         dot_str.join("\n")
     }
 
-    fn mermaid_str(&self) -> String
+    fn mermaid_str(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerBackend,
@@ -599,6 +571,7 @@ flowchart BT
                         Node::Function(_) => {
                             cluster_num += 2;
                             Some(self.cluster_str(
+                                arena,
                                 *node,
                                 &mut cluster_num,
                                 false,
@@ -614,7 +587,7 @@ flowchart BT
                             Some(format!(
                                 "    {}(\"{}\")\n    style {} stroke:{}",
                                 petgraph::graph::GraphIndex::index(node),
-                                as_dot_str(*node, self).replace('\"', "\'"),
+                                as_dot_str(*node, self, arena).replace('\"', "\'"),
                                 petgraph::graph::GraphIndex::index(node),
                                 n.dot_str_color()
                             ))
@@ -674,20 +647,13 @@ impl GraphLike for G<'_> {
     fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
         panic!("Should not call this")
     }
-
-    fn range_arena_idx(&self, _elem: &Self::RangeElem) -> Option<usize> {
-        panic!("Should not call this")
-    }
-
-    fn range_arena_idx_or_upsert(&mut self, _elem: Self::RangeElem) -> usize {
-        panic!("Should not call this")
-    }
 }
 
 impl GraphBackend for G<'_> {}
 
 pub fn mermaid_node(
     g: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
     indent: &str,
     node: NodeIdx,
     style: bool,
@@ -697,7 +663,7 @@ pub fn mermaid_node(
     let mut node_str = format!(
         "{indent}{}(\"{}\")",
         petgraph::graph::GraphIndex::index(&node),
-        as_dot_str(node, g).replace('\"', "\'"),
+        as_dot_str(node, g, arena).replace('\"', "\'"),
     );
 
     if style {

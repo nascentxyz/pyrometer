@@ -1,10 +1,12 @@
 use crate::{
+    nodes::Concrete,
     nodes::{ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
+    range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, SolcRange,
     VarType,
 };
 
-use shared::{NodeIdx, Search, StorageLocation};
+use shared::{NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
@@ -377,6 +379,7 @@ impl FunctionNode {
     pub fn set_params_and_ret(
         &self,
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         let underlying = self.underlying(analyzer)?.clone();
         let mut params_strs = vec![];
@@ -386,7 +389,7 @@ impl FunctionNode {
             .enumerate()
             .filter_map(|(i, (_loc, input))| {
                 if let Some(input) = input {
-                    let param = FunctionParam::new(analyzer, input, i);
+                    let param = FunctionParam::new(analyzer, arena, input, i);
                     let input_node = analyzer.add_node(param);
                     params_strs.push(
                         FunctionParamNode::from(input_node)
@@ -405,7 +408,7 @@ impl FunctionNode {
             .into_iter()
             .filter_map(|(_loc, output)| {
                 if let Some(output) = output {
-                    let ret = FunctionReturn::new(analyzer, output);
+                    let ret = FunctionReturn::new(analyzer, arena, output);
                     let output_node = analyzer.add_node(ret);
                     analyzer.add_edge(output_node, *self, Edge::FunctionReturn);
                     Some(output_node.into())
@@ -512,11 +515,15 @@ impl FunctionNode {
 }
 
 impl AsDotStr for FunctionNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let inputs = self
             .params(analyzer)
             .iter()
-            .map(|param_node: &FunctionParamNode| param_node.as_dot_str(analyzer))
+            .map(|param_node: &FunctionParamNode| param_node.as_dot_str(analyzer, arena))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -769,12 +776,16 @@ impl From<VariableDefinition> for Function {
 pub struct FunctionParamNode(pub usize);
 
 impl AsDotStr for FunctionParamNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).unwrap().ty)
             .expect("Non-typeable as type");
         format!(
             "{}{}{}",
-            var_ty.as_dot_str(analyzer),
+            var_ty.as_dot_str(analyzer, arena),
             if let Some(stor) = &self.underlying(analyzer).unwrap().storage {
                 format!(" {stor} ")
             } else {
@@ -840,7 +851,7 @@ impl FunctionParamNode {
         let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer)?.ty).ok_or(
             GraphError::NodeConfusion("Non-typeable as type".to_string()),
         )?;
-        Ok(var_ty.as_dot_str(analyzer))
+        var_ty.as_string(analyzer)
     }
 
     pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<NodeIdx, GraphError> {
@@ -878,12 +889,13 @@ impl From<FunctionParam> for Node {
 impl FunctionParam {
     pub fn new(
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
         param: Parameter,
         order: usize,
     ) -> Self {
         FunctionParam {
             loc: param.loc,
-            ty: analyzer.parse_expr(&param.ty, None),
+            ty: analyzer.parse_expr(arena, &param.ty, None),
             order,
             storage: param.storage.map(|s| s.into()),
             name: param.name,
@@ -895,12 +907,16 @@ impl FunctionParam {
 pub struct FunctionReturnNode(pub usize);
 
 impl AsDotStr for FunctionReturnNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let var_ty = VarType::try_from_idx(analyzer, self.underlying(analyzer).unwrap().ty)
             .expect("Non-typeable as type");
         format!(
             "{}{}{}",
-            var_ty.as_dot_str(analyzer),
+            var_ty.as_dot_str(analyzer, arena),
             if let Some(stor) = &self.underlying(analyzer).unwrap().storage {
                 format!(" {stor} ")
             } else {
@@ -976,10 +992,14 @@ pub struct FunctionReturn {
 }
 
 impl FunctionReturn {
-    pub fn new(analyzer: &mut impl AnalyzerBackend<Expr = Expression>, param: Parameter) -> Self {
+    pub fn new(
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        param: Parameter,
+    ) -> Self {
         FunctionReturn {
             loc: param.loc,
-            ty: analyzer.parse_expr(&param.ty, None),
+            ty: analyzer.parse_expr(arena, &param.ty, None),
             storage: param.storage.map(|s| s.into()),
             name: param.name,
         }

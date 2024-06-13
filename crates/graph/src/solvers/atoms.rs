@@ -8,6 +8,7 @@ use crate::{
     },
     GraphBackend,
 };
+use shared::RangeArena;
 
 use ethers_core::types::U256;
 use std::{collections::BTreeMap, rc::Rc};
@@ -42,16 +43,17 @@ impl AtomOrPart {
         &self,
         solves: &BTreeMap<ContextVarNode, Elem<Concrete>>,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Self {
         match self {
             AtomOrPart::Part(part) => {
                 let mut new_part = part.clone();
                 solves.iter().for_each(|(dep, replacement)| {
-                    new_part.replace_dep(dep.0.into(), replacement.clone(), analyzer)
+                    new_part.replace_dep(dep.0.into(), replacement.clone(), analyzer, arena)
                 });
                 AtomOrPart::Part(new_part)
             }
-            AtomOrPart::Atom(atom) => AtomOrPart::Atom(atom.replace_deps(solves, analyzer)),
+            AtomOrPart::Atom(atom) => AtomOrPart::Atom(atom.replace_deps(solves, analyzer, arena)),
         }
     }
 
@@ -86,10 +88,14 @@ impl AtomOrPart {
         }
     }
 
-    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+    pub fn dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<ContextVarNode> {
         match self {
-            AtomOrPart::Part(e) => e.dependent_on(analyzer),
-            AtomOrPart::Atom(a) => a.dependent_on(analyzer),
+            AtomOrPart::Part(e) => e.dependent_on(analyzer, arena),
+            AtomOrPart::Atom(a) => a.dependent_on(analyzer, arena),
         }
     }
 }
@@ -126,11 +132,21 @@ pub struct SolverAtom {
 }
 
 impl ToRangeString for SolverAtom {
-    fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {
-        self.into_expr_elem().def_string(analyzer)
+    fn def_string(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
+        self.into_expr_elem().def_string(analyzer, arena)
     }
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
-        self.into_expr_elem().to_range_string(maximize, analyzer)
+    fn to_range_string(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
+        self.into_expr_elem()
+            .to_range_string(maximize, analyzer, arena)
     }
 }
 
@@ -139,12 +155,13 @@ impl SolverAtom {
         &self,
         solves: &BTreeMap<ContextVarNode, Elem<Concrete>>,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Self {
         SolverAtom {
             ty: self.ty,
-            lhs: Rc::new(self.lhs.clone().replace_deps(solves, analyzer)),
+            lhs: Rc::new(self.lhs.clone().replace_deps(solves, analyzer, arena)),
             op: self.op,
-            rhs: Rc::new(self.rhs.clone().replace_deps(solves, analyzer)),
+            rhs: Rc::new(self.rhs.clone().replace_deps(solves, analyzer, arena)),
         }
     }
 
@@ -167,9 +184,13 @@ impl SolverAtom {
         self.ty = self.max_ty();
     }
 
-    pub fn dependent_on(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
-        let mut deps = self.lhs.dependent_on(analyzer);
-        deps.extend(self.rhs.dependent_on(analyzer));
+    pub fn dependent_on(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<ContextVarNode> {
+        let mut deps = self.lhs.dependent_on(analyzer, arena);
+        deps.extend(self.rhs.dependent_on(analyzer, arena));
         deps
     }
 
@@ -247,33 +268,45 @@ pub static LIA_OPS: &[RangeOp] = &[
 ];
 
 pub trait Atomize {
-    fn atoms_or_part(&self, analyzer: &mut impl GraphBackend) -> AtomOrPart;
-    fn atomize(&self, analyzer: &mut impl GraphBackend) -> Option<SolverAtom>;
+    fn atoms_or_part(
+        &self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> AtomOrPart;
+    fn atomize(
+        &self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<SolverAtom>;
 }
 
 impl Atomize for Elem<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
-    fn atoms_or_part(&self, analyzer: &mut impl GraphBackend) -> AtomOrPart {
+    fn atoms_or_part(
+        &self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> AtomOrPart {
         match self {
-            Elem::Arena(_) => self.dearenaize(analyzer).borrow().atoms_or_part(analyzer),
+            Elem::Arena(_) => self.dearenaize_clone(arena).atoms_or_part(analyzer, arena),
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             _e @ Elem::Expr(expr) => {
                 // println!("collapsing: {e}");
-                match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer) {
+                match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
                     MaybeCollapsed::Concretes(_l, r) => {
-                        let exec_res = expr.exec_op(true, analyzer).unwrap();
-                        return exec_res.atoms_or_part(analyzer);
+                        let exec_res = expr.exec_op(true, analyzer, arena).unwrap();
+                        return exec_res.atoms_or_part(analyzer, arena);
                     }
                     MaybeCollapsed::Collapsed(elem) => {
-                        return elem.atoms_or_part(analyzer);
+                        return elem.atoms_or_part(analyzer, arena);
                     }
                     MaybeCollapsed::Not(..) => {}
                 }
 
                 match (
-                    expr.lhs.atoms_or_part(analyzer),
-                    expr.rhs.atoms_or_part(analyzer),
+                    expr.lhs.atoms_or_part(analyzer, arena),
+                    expr.rhs.atoms_or_part(analyzer, arena),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         // println!("part part");
@@ -326,12 +359,12 @@ impl Atomize for Elem<Concrete> {
                                 todo!("here4");
                             }
                             (Elem::Concrete(_), Elem::Concrete(_)) => {
-                                let _ = expr.clone().arenaize(analyzer);
-                                let res = expr.exec_op(true, analyzer).unwrap();
+                                let _ = expr.clone().arenaize(analyzer, arena);
+                                let res = expr.exec_op(true, analyzer, arena).unwrap();
                                 if res == Elem::Expr(expr.clone()) {
                                     AtomOrPart::Part(res)
                                 } else {
-                                    res.atoms_or_part(analyzer)
+                                    res.atoms_or_part(analyzer, arena)
                                 }
                             }
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),
@@ -360,7 +393,11 @@ impl Atomize for Elem<Concrete> {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    fn atomize(&self, analyzer: &mut impl GraphBackend) -> Option<SolverAtom> {
+    fn atomize(
+        &self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<SolverAtom> {
         use Elem::*;
 
         match self {
@@ -370,24 +407,29 @@ impl Atomize for Elem<Concrete> {
             ConcreteDyn(_) => None, //{ println!("was concDyn"); None},
             Expr(_) => {
                 // println!("atomized: was expr");
-                let AtomOrPart::Atom(mut a) = self.atoms_or_part(analyzer) else {
+                let AtomOrPart::Atom(mut a) = self.atoms_or_part(analyzer, arena) else {
                     // println!("returning none");
                     return None;
                 };
                 a.update_max_ty();
                 Some(a)
             }
-            Arena(_) => match &*self.dearenaize(analyzer).borrow() {
-                e @ Expr(_) => {
-                    let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer) else {
-                        // println!("returning none arena");
-                        return None;
-                    };
-                    a.update_max_ty();
-                    Some(a)
-                }
-                _ => None,
-            },
+            Arena(_) => {
+                let (dearenized, idx) = self.dearenaize(arena);
+                let res = match &dearenized {
+                    e @ Expr(_) => {
+                        let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer, arena) else {
+                            // println!("returning none arena");
+                            return None;
+                        };
+                        a.update_max_ty();
+                        Some(a)
+                    }
+                    _ => None,
+                };
+                self.rearenaize(dearenized, idx, arena);
+                res
+            }
         }
     }
 }

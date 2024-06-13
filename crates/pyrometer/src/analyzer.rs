@@ -168,7 +168,7 @@ impl Default for Analyzer {
             fn_calls_fns: Default::default(),
             join_stats: JoinStats::default(),
             range_arena: RangeArena {
-                ranges: vec![Rc::new(RefCell::new(Elem::Null))],
+                ranges: vec![Elem::Null],
                 map: {
                     let mut map: AHashMap<Elem<Concrete>, usize> = Default::default();
                     map.insert(Elem::Null, 0);
@@ -343,6 +343,7 @@ impl Analyzer {
 
     pub fn complicated_parse(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         expr: &Expression,
         parent: Option<NodeIdx>,
     ) -> Option<ExprRet> {
@@ -371,7 +372,7 @@ impl Analyzer {
         };
 
         let full_stmt = solang_parser::pt::Statement::Return(expr.loc(), Some(expr.clone()));
-        self.parse_ctx_statement(&full_stmt, false, Some(ctx));
+        self.parse_ctx_statement(arena, &full_stmt, false, Some(ctx));
         let edges = self.add_if_err(ctx.successful_edges(self).into_expr_err(expr.loc()))?;
         if edges.len() == 1 {
             let res = edges[0].return_nodes(self).into_expr_err(expr.loc());
@@ -484,8 +485,13 @@ impl Analyzer {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn parse(&mut self, src: &str, current_path: &SourcePath, entry: bool) -> Option<NodeIdx> {
-        // tracing::trace!("parsing: {:?}", current_path);
+    pub fn parse(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        src: &str,
+        current_path: &SourcePath,
+        entry: bool,
+    ) -> Option<NodeIdx> {
         let file_no = self.file_no;
         self.sources
             .push((current_path.clone(), src.to_string(), Some(file_no), None));
@@ -494,11 +500,16 @@ impl Analyzer {
                 let parent =
                     self.add_node(Node::SourceUnit(graph::nodes::SourceUnit::new(file_no)));
                 self.add_edge(parent, self.entry, Edge::Source);
-                let final_pass_part =
-                    self.parse_source_unit(source_unit, file_no, parent.into(), current_path);
+                let final_pass_part = self.parse_source_unit(
+                    arena,
+                    source_unit,
+                    file_no,
+                    parent.into(),
+                    current_path,
+                );
                 self.final_pass_items.push(final_pass_part);
                 if entry {
-                    self.final_pass();
+                    self.final_pass(arena);
                 }
 
                 Some(parent)
@@ -511,7 +522,7 @@ impl Analyzer {
         }
     }
 
-    pub fn final_pass(&mut self) {
+    pub fn final_pass(&mut self, arena: &mut RangeArena<Elem<Concrete>>) {
         let elems = self.final_pass_items.clone();
         elems.iter().for_each(|final_pass_item| {
             final_pass_item
@@ -522,18 +533,20 @@ impl Analyzer {
                 });
             final_pass_item.funcs.iter().for_each(|func| {
                 // add params now that parsing is done
-                func.set_params_and_ret(self).unwrap();
+                func.set_params_and_ret(self, arena).unwrap();
             });
 
             final_pass_item
                 .usings
                 .iter()
                 .for_each(|(using, scope_node)| {
-                    self.parse_using(using, *scope_node);
+                    self.parse_using(arena, using, *scope_node);
                 });
             final_pass_item.vars.iter().for_each(|(var, parent)| {
                 let loc = var.underlying(self).unwrap().loc;
-                let res = var.parse_initializer(self, *parent).into_expr_err(loc);
+                let res = var
+                    .parse_initializer(self, arena, *parent)
+                    .into_expr_err(loc);
                 let _ = self.add_if_err(res);
             });
         });
@@ -570,7 +583,7 @@ impl Analyzer {
                 } else {
                     self.handled_funcs.push(*func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(body, false, Some(*func));
+                        self.parse_ctx_statement(arena, body, false, Some(*func));
                     }
                 }
             });
@@ -588,7 +601,7 @@ impl Analyzer {
                 if !self.handled_funcs.contains(func) {
                     self.handled_funcs.push(*func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(body, false, Some(*func));
+                        self.parse_ctx_statement(arena, body, false, Some(*func));
                     }
                 }
             });
@@ -596,7 +609,7 @@ impl Analyzer {
             final_pass_item.funcs.into_iter().for_each(|func| {
                 if !self.handled_funcs.contains(&func) {
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(body, false, Some(func));
+                        self.parse_ctx_statement(arena, body, false, Some(func));
                     }
                 }
             });
@@ -608,6 +621,7 @@ impl Analyzer {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_source_unit(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         source_unit: SourceUnit,
         file_no: usize,
         parent: SourceUnitNode,
@@ -623,6 +637,7 @@ impl Analyzer {
             .enumerate()
             .for_each(|(unit_part, source_unit_part)| {
                 let (sup, funcs, usings, inherits, vars) = self.parse_source_unit_part(
+                    arena,
                     source_unit_part,
                     file_no,
                     unit_part,
@@ -641,6 +656,7 @@ impl Analyzer {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_source_unit_part(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         sup: &SourceUnitPart,
         file_no: usize,
         unit_part: usize,
@@ -670,7 +686,7 @@ impl Analyzer {
         match sup {
             ContractDefinition(def) => {
                 let (node, funcs, con_usings, unhandled_inherits, unhandled_vars) =
-                    self.parse_contract_def(def, parent);
+                    self.parse_contract_def(arena, def, parent);
                 s_node.add_contract(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Contract);
                 func_nodes.extend(funcs);
@@ -679,7 +695,7 @@ impl Analyzer {
                 vars.extend(unhandled_vars);
             }
             StructDefinition(def) => {
-                let node = self.parse_struct_def(def);
+                let node = self.parse_struct_def(arena, def);
                 s_node.add_struct(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Struct);
             }
@@ -688,11 +704,11 @@ impl Analyzer {
                 self.add_edge(node, sup_node, Edge::Enum);
             }
             ErrorDefinition(def) => {
-                let node = self.parse_err_def(def);
+                let node = self.parse_err_def(arena, def);
                 self.add_edge(node, sup_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let (node, maybe_func, needs_final_pass) = self.parse_var_def(def, false);
+                let (node, maybe_func, needs_final_pass) = self.parse_var_def(arena, def, false);
                 s_node.add_constant(node, self).unwrap();
                 if let Some(func) = maybe_func {
                     let func = self.handle_func(func, None);
@@ -714,7 +730,7 @@ impl Analyzer {
                 self.add_edge(node, sup_node, Edge::Func);
             }
             TypeDefinition(def) => {
-                let node = self.parse_ty_def(def);
+                let node = self.parse_ty_def(arena, def);
                 self.add_edge(node, sup_node, Edge::Ty);
             }
             EventDefinition(_def) => todo!(),
@@ -723,7 +739,7 @@ impl Analyzer {
             StraySemicolon(_loc) => todo!(),
             PragmaDirective(_, _, _) => {}
             ImportDirective(import) => {
-                self.parse_import(import, current_path, parent);
+                self.parse_import(arena, import, current_path, parent);
             }
         }
 
@@ -733,6 +749,7 @@ impl Analyzer {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_import(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         import: &Import,
         current_path: &SourcePath,
         parent: SourceUnitNode,
@@ -961,7 +978,7 @@ impl Analyzer {
             *optional_file_no = Some(file_no);
         }
 
-        let maybe_entry = self.parse(&sol, &remapped, false);
+        let maybe_entry = self.parse(arena, &sol, &remapped, false);
 
         // take self.sources entry with the same path as remapped and update the entry node
         if let Some((_, _, _, optional_entry)) = self.sources.iter_mut().find(|(path, _, _, _)| {
@@ -979,6 +996,7 @@ impl Analyzer {
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn parse_contract_def(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         contract_def: &ContractDefinition,
         source: SourceUnitNode,
     ) -> (
@@ -1030,7 +1048,7 @@ impl Analyzer {
         let mut vars = vec![];
         contract_def.parts.iter().for_each(|cpart| match cpart {
             StructDefinition(def) => {
-                let node = self.parse_struct_def(def);
+                let node = self.parse_struct_def(arena, def);
                 self.add_edge(node, con_node, Edge::Struct);
             }
             EnumDefinition(def) => {
@@ -1038,11 +1056,11 @@ impl Analyzer {
                 self.add_edge(node, con_node, Edge::Enum);
             }
             ErrorDefinition(def) => {
-                let node = self.parse_err_def(def);
+                let node = self.parse_err_def(arena, def);
                 self.add_edge(node, con_node, Edge::Error);
             }
             VariableDefinition(def) => {
-                let (node, maybe_func, needs_final_pass) = self.parse_var_def(def, true);
+                let (node, maybe_func, needs_final_pass) = self.parse_var_def(arena, def, true);
                 if let Some(func) = maybe_func {
                     func_nodes.push(self.handle_func(func, Some(con_node)));
                 }
@@ -1058,7 +1076,7 @@ impl Analyzer {
                 func_nodes.push(node);
             }
             TypeDefinition(def) => {
-                let node = self.parse_ty_def(def);
+                let node = self.parse_ty_def(arena, def);
                 self.add_edge(node, con_node, Edge::Ty);
             }
             EventDefinition(_def) => {}
@@ -1070,7 +1088,12 @@ impl Analyzer {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn parse_using(&mut self, using_def: &Using, scope_node: NodeIdx) {
+    pub fn parse_using(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        using_def: &Using,
+        scope_node: NodeIdx,
+    ) {
         tracing::trace!("Parsing \"using\" {:?}", using_def);
         let Some(ref using_def_ty) = using_def.ty else {
             self.add_expr_err(ExprErr::Todo(
@@ -1079,7 +1102,7 @@ impl Analyzer {
             ));
             return;
         };
-        let maybe_cvar_idx = self.parse_expr(using_def_ty, None);
+        let maybe_cvar_idx = self.parse_expr(arena, using_def_ty, None);
         let ty_idx = match VarType::try_from_idx(self, maybe_cvar_idx) {
             Some(v_ty) => v_ty.ty_idx(),
             None => {
@@ -1210,7 +1233,11 @@ impl Analyzer {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn parse_struct_def(&mut self, struct_def: &StructDefinition) -> StructNode {
+    pub fn parse_struct_def(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        struct_def: &StructDefinition,
+    ) -> StructNode {
         tracing::trace!("Parsing struct {:?}", struct_def.name);
         let strukt = Struct::from(struct_def.clone());
 
@@ -1229,7 +1256,7 @@ impl Analyzer {
             };
 
         struct_def.fields.iter().for_each(|field| {
-            let f = Field::new(self, field.clone());
+            let f = Field::new(self, arena, field.clone());
             let field_node = self.add_node(f);
             self.add_edge(field_node, strukt_node, Edge::Field);
         });
@@ -1237,11 +1264,15 @@ impl Analyzer {
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
-    pub fn parse_err_def(&mut self, err_def: &ErrorDefinition) -> ErrorNode {
+    pub fn parse_err_def(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        err_def: &ErrorDefinition,
+    ) -> ErrorNode {
         tracing::trace!("Parsing error {:?}", err_def);
         let err_node = ErrorNode(self.add_node(Error::from(err_def.clone())).index());
         err_def.fields.iter().for_each(|field| {
-            let param = ErrorParam::new(self, field.clone());
+            let param = ErrorParam::new(self, arena, field.clone());
             let field_node = self.add_node(param);
             self.add_edge(field_node, err_node, Edge::ErrorParam);
         });
@@ -1316,11 +1347,12 @@ impl Analyzer {
 
     pub fn parse_var_def(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         var_def: &VariableDefinition,
         in_contract: bool,
     ) -> (VarNode, Option<Function>, bool) {
         tracing::trace!("Parsing variable definition: {:?}", var_def.name);
-        let var = Var::new(self, var_def.clone(), in_contract);
+        let var = Var::new(self, arena, var_def.clone(), in_contract);
         let mut func = None;
         if var.is_public() {
             func = Some(Function::from(var_def.clone()));
@@ -1332,9 +1364,13 @@ impl Analyzer {
         (var_node, func, needs_final_pass)
     }
 
-    pub fn parse_ty_def(&mut self, ty_def: &TypeDefinition) -> TyNode {
+    pub fn parse_ty_def(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ty_def: &TypeDefinition,
+    ) -> TyNode {
         tracing::trace!("Parsing type definition");
-        let ty = Ty::new(self, ty_def.clone());
+        let ty = Ty::new(self, arena, ty_def.clone());
         let name = ty.name.name.clone();
         let ty_node: TyNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
             let unresolved = self.node_mut(user_ty_node);

@@ -1,9 +1,11 @@
 use crate::{assign::Assign, env::Env, ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    nodes::{ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, GraphError, Node, VarType,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{Expression, Identifier, Loc, VariableDeclaration};
 
@@ -14,6 +16,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
     /// Get a variable based on an identifier
     fn variable(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ident: &Identifier,
         ctx: ContextNode,
         recursion_target: Option<ContextNode>,
@@ -33,14 +36,19 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         // solang doesnt have `super` as a keyword
         if let Some(cvar) = ctx.var_by_name(self, &ident.name) {
             let cvar = cvar.latest_version(self);
-            self.apply_to_edges(target_ctx, ident.loc, &|analyzer, edge_ctx, _loc| {
-                let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
-                edge_ctx
-                    .push_expr(ExprRet::Single(var.into()), analyzer)
-                    .into_expr_err(ident.loc)
-            })
+            self.apply_to_edges(
+                target_ctx,
+                ident.loc,
+                arena,
+                &|analyzer, arena, edge_ctx, _loc| {
+                    let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
+                    edge_ctx
+                        .push_expr(ExprRet::Single(var.into()), analyzer)
+                        .into_expr_err(ident.loc)
+                },
+            )
         } else if ident.name == "_" {
-            self.env_variable(ident, target_ctx)?;
+            self.env_variable(arena, ident, target_ctx)?;
             Ok(())
         } else if let Some(cvar) = ctx
             .var_by_name_or_recurse(self, &ident.name)
@@ -48,18 +56,23 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         {
             // check if we can inherit it
             let cvar = cvar.latest_version(self);
-            self.apply_to_edges(target_ctx, ident.loc, &|analyzer, edge_ctx, _loc| {
-                let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
-                edge_ctx
-                    .push_expr(ExprRet::Single(var.into()), analyzer)
-                    .into_expr_err(ident.loc)
-            })
+            self.apply_to_edges(
+                target_ctx,
+                ident.loc,
+                arena,
+                &|analyzer, arena, edge_ctx, _loc| {
+                    let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
+                    edge_ctx
+                        .push_expr(ExprRet::Single(var.into()), analyzer)
+                        .into_expr_err(ident.loc)
+                },
+            )
             // if let Some(recursion_target) = recursion_target {
             //     self.variable(ident, parent_ctx, Some(recursion_target))
             // } else {
             //     self.variable(ident, parent_ctx, Some(target_ctx))
             // }
-        } else if (self.env_variable(ident, target_ctx)?).is_some() {
+        } else if (self.env_variable(arena, ident, target_ctx)?).is_some() {
             Ok(())
         } else if let Some(idx) = self.user_types().get(&ident.name).cloned() {
             let const_var = if let Node::Var(_v) = self.node(idx) {
@@ -141,6 +154,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
     fn get_unchanged_tmp_variable(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         name: &str,
         ctx: ContextNode,
     ) -> Result<Option<ContextVarNode>, GraphError> {
@@ -151,13 +165,13 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         if let Some(tmp) = var.tmp_of(self)? {
             if tmp.lhs.latest_version(self) != tmp.lhs {
                 let latest = tmp.lhs.latest_version(self);
-                let newest_min = latest.evaled_range_min(self)?;
-                let curr_min = tmp.lhs.evaled_range_min(self)?;
+                let newest_min = latest.evaled_range_min(self, arena)?;
+                let curr_min = tmp.lhs.evaled_range_min(self, arena)?;
                 if newest_min != curr_min {
                     return Ok(None);
                 }
-                let newest_max = latest.evaled_range_max(self)?;
-                let curr_max = tmp.lhs.evaled_range_max(self)?;
+                let newest_max = latest.evaled_range_max(self, arena)?;
+                let curr_max = tmp.lhs.evaled_range_max(self, arena)?;
                 if newest_max != curr_max {
                     return Ok(None);
                 }
@@ -166,13 +180,13 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             if let Some(rhs) = tmp.rhs {
                 if rhs.latest_version(self) != rhs {
                     let latest = rhs.latest_version(self);
-                    let newest_min = latest.evaled_range_min(self)?;
-                    let curr_min = rhs.evaled_range_min(self)?;
+                    let newest_min = latest.evaled_range_min(self, arena)?;
+                    let curr_min = rhs.evaled_range_min(self, arena)?;
                     if newest_min != curr_min {
                         return Ok(None);
                     }
-                    let newest_max = latest.evaled_range_max(self)?;
-                    let curr_max = rhs.evaled_range_max(self)?;
+                    let newest_max = latest.evaled_range_max(self, arena)?;
+                    let curr_max = rhs.evaled_range_max(self, arena)?;
                     if newest_max != curr_max {
                         return Ok(None);
                     }
@@ -188,6 +202,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
     /// Match on the [`ExprRet`]s of a variable definition and construct the variable
     fn match_var_def(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         var_decl: &VariableDeclaration,
         loc: Loc,
@@ -205,6 +220,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 let res = rhs_cvar.literal_cast_from_ty(ty, self).into_expr_err(loc);
                 let _ = self.add_if_err(res);
                 self.match_var_def(
+                    arena,
                     ctx,
                     var_decl,
                     loc,
@@ -232,8 +248,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 let rhs = ContextVarNode::from(*rhs);
 
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                    let _ = analyzer.assign(loc, lhs, rhs, ctx)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                    let _ = analyzer.assign(arena, loc, lhs, rhs, ctx)?;
                     // match_assign_ret(analyzer, ctx, ret);
                     Ok(())
                 })?;
@@ -262,19 +278,19 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             }
             (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => Ok(rhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(ctx, var_decl, loc, l, Some(expr_ret)))
+                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, l, Some(expr_ret)))
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => Ok(lhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(ctx, var_decl, loc, expr_ret, r))
+                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, expr_ret, r))
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), None) => Ok(lhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(ctx, var_decl, loc, expr_ret, None))
+                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, expr_ret, None))
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
@@ -285,7 +301,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .iter()
                         .zip(rhs_sides.iter())
                         .map(|(lhs_expr_ret, rhs_expr_ret)| {
-                            self.match_var_def(ctx, var_decl, loc, lhs_expr_ret, Some(rhs_expr_ret))
+                            self.match_var_def(
+                                arena,
+                                ctx,
+                                var_decl,
+                                loc,
+                                lhs_expr_ret,
+                                Some(rhs_expr_ret),
+                            )
                         })
                         .collect::<Result<Vec<_>, ExprErr>>()?
                         .iter()
@@ -294,7 +317,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     Ok(rhs_sides
                         .iter()
                         .map(|rhs_expr_ret| {
-                            self.match_var_def(ctx, var_decl, loc, lhs_paths, Some(rhs_expr_ret))
+                            self.match_var_def(
+                                arena,
+                                ctx,
+                                var_decl,
+                                loc,
+                                lhs_paths,
+                                Some(rhs_expr_ret),
+                            )
                         })
                         .collect::<Result<Vec<_>, ExprErr>>()?
                         .iter()

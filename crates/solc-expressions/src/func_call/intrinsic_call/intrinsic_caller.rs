@@ -14,10 +14,11 @@ use graph::nodes::ContextVarNode;
 use graph::nodes::ContractNode;
 
 use graph::{
-    nodes::{Builtin, ContextNode, ExprRet},
+    elem::Elem,
+    nodes::{Builtin, Concrete, ContextNode, ExprRet},
     AnalyzerBackend, Node,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -63,13 +64,14 @@ pub trait IntrinsicFuncCaller:
 {
     fn new_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: &Loc,
         ty_expr: &Expression,
         inputs: &[Expression],
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(ty_expr, ctx)?;
-        self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, ty_expr, ctx)?;
+        self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ty) =
                 ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
             else {
@@ -82,7 +84,7 @@ pub trait IntrinsicFuncCaller:
             match analyzer.node(ty_idx) {
                 Node::Builtin(Builtin::Array(_)) | Node::Builtin(Builtin::DynamicBytes) => {
                     // construct a new list
-                    analyzer.construct_array(ty_idx, &NamedOrUnnamedArgs::Unnamed(inputs), loc, ctx)
+                    analyzer.construct_array(arena,ty_idx, &NamedOrUnnamedArgs::Unnamed(inputs), loc, ctx)
                 }
                 Node::Contract(_c) => {
                     let cnode = ContractNode::from(ty_idx);
@@ -92,6 +94,7 @@ pub trait IntrinsicFuncCaller:
                             // call the constructor
                             let inputs = ExprRet::Multi(vec![]);
                             analyzer.func_call(
+                                arena,
                                 ctx,
                                 loc,
                                 &inputs,
@@ -99,7 +102,7 @@ pub trait IntrinsicFuncCaller:
                                 None,
                                 None,
                             )?;
-                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                                 let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
                                     Some(v) => v,
                                     None => {
@@ -118,8 +121,8 @@ pub trait IntrinsicFuncCaller:
                                     .into_expr_err(loc)
                             })
                         } else {
-                            analyzer.parse_inputs(ctx, loc, inputs)?;
-                            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                            analyzer.parse_inputs(arena,ctx, loc, inputs)?;
+                            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                                 let Some(input_paths) =
                                     ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                                 else {
@@ -130,6 +133,7 @@ pub trait IntrinsicFuncCaller:
                                 };
                                 // call the constructor
                                 analyzer.func_call(
+                                    arena,
                                     ctx,
                                     loc,
                                     &input_paths,
@@ -137,7 +141,7 @@ pub trait IntrinsicFuncCaller:
                                     None,
                                     None,
                                 )?;
-                                analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                                analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                                     let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
                                         Some(v) => v,
                                         None => {
@@ -185,6 +189,7 @@ pub trait IntrinsicFuncCaller:
     #[tracing::instrument(level = "trace", skip_all)]
     fn intrinsic_func_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: &Loc,
         input_exprs: &NamedOrUnnamedArgs,
         func_idx: NodeIdx,
@@ -196,7 +201,7 @@ pub trait IntrinsicFuncCaller:
                     match &*func_name.name {
                         // abi
                         _ if func_name.name.starts_with("abi.") => {
-                            self.abi_call(func_name.name.clone(), input_exprs, *loc, ctx)
+                            self.abi_call(arena, func_name.name.clone(), input_exprs, *loc, ctx)
                         }
                         // address
                         "delegatecall" | "staticcall" | "call" | "code" | "balance" => {
@@ -204,20 +209,25 @@ pub trait IntrinsicFuncCaller:
                         }
                         // array
                         "push" | "pop" => {
-                            self.array_call(func_name.name.clone(), input_exprs, *loc, ctx)
+                            self.array_call(arena, func_name.name.clone(), input_exprs, *loc, ctx)
                         }
                         // block
                         "blockhash" => {
-                            self.block_call(func_name.name.clone(), input_exprs, *loc, ctx)
+                            self.block_call(arena, func_name.name.clone(), input_exprs, *loc, ctx)
                         }
                         // dynamic sized builtins
-                        "concat" => {
-                            self.dyn_builtin_call(func_name.name.clone(), input_exprs, *loc, ctx)
-                        }
+                        "concat" => self.dyn_builtin_call(
+                            arena,
+                            func_name.name.clone(),
+                            input_exprs,
+                            *loc,
+                            ctx,
+                        ),
                         // msg
                         "gasleft" => self.msg_call(func_name.name.clone(), input_exprs, *loc, ctx),
                         // precompiles
                         "sha256" | "ripemd160" | "ecrecover" => self.precompile_call(
+                            arena,
                             func_name.name.clone(),
                             func_idx,
                             input_exprs,
@@ -225,11 +235,11 @@ pub trait IntrinsicFuncCaller:
                             ctx,
                         ),
                         // solidity
-                        "keccak256" | "addmod" | "mulmod" | "require" | "assert" => {
-                            self.solidity_call(func_name.name.clone(), input_exprs, *loc, ctx)
-                        }
+                        "keccak256" | "addmod" | "mulmod" | "require" | "assert" => self
+                            .solidity_call(arena, func_name.name.clone(), input_exprs, *loc, ctx),
                         // typing
                         "type" | "wrap" | "unwrap" => self.types_call(
+                            arena,
                             func_name.name.clone(),
                             func_idx,
                             input_exprs,
@@ -247,19 +257,19 @@ pub trait IntrinsicFuncCaller:
             }
             Node::Builtin(Builtin::Array(_)) => {
                 // construct a new array
-                self.construct_array(func_idx, input_exprs, *loc, ctx)
+                self.construct_array(arena, func_idx, input_exprs, *loc, ctx)
             }
             Node::Contract(_) => {
                 // construct a new contract
-                self.construct_contract(func_idx, input_exprs, *loc, ctx)
+                self.construct_contract(arena, func_idx, input_exprs, *loc, ctx)
             }
             Node::Struct(_) => {
                 // construct a struct
-                self.construct_struct(func_idx, input_exprs, *loc, ctx)
+                self.construct_struct(arena, func_idx, input_exprs, *loc, ctx)
             }
             Node::Builtin(ty) => {
                 // cast to type
-                self.cast(ty.clone(), func_idx, input_exprs, *loc, ctx)
+                self.cast(arena, ty.clone(), func_idx, input_exprs, *loc, ctx)
             }
             Node::ContextVar(_c) => {
                 // its a user type, just push it onto the stack
@@ -269,9 +279,9 @@ pub trait IntrinsicFuncCaller:
             }
             Node::Unresolved(_) => {
                 // Try to give a nice error
-                input_exprs.parse(self, ctx, *loc)?;
+                input_exprs.parse(arena, self, ctx, *loc)?;
 
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "Function call failed".to_string()))
                     };
@@ -291,7 +301,7 @@ pub trait IntrinsicFuncCaller:
                             format!(
                                 "Could not find function: \"{}{}\", context: {}, visible functions: {:#?}",
                                 ident.name,
-                                inputs.try_as_func_input_str(analyzer),
+                                inputs.try_as_func_input_str(analyzer, arena),
                                 ctx.path(analyzer),
                                 visible_funcs
                             )

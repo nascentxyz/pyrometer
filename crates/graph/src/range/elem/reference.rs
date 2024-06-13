@@ -1,7 +1,7 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{
-        elem::{Elem, MinMaxed, RangeConcrete, RangeElem},
+        elem::{Elem, MinMaxed, RangeArenaLike, RangeConcrete, RangeElem},
         Range,
     },
     GraphBackend, GraphError, TypeNode, VarType,
@@ -9,7 +9,7 @@ use crate::{
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::Loc;
 
@@ -28,7 +28,7 @@ pub struct Reference<T> {
     pub flattened_max: Option<Box<Elem<T>>>,
 }
 
-impl Hash for Reference<Concrete> {
+impl<T> Hash for Reference<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.idx.hash(state);
     }
@@ -56,19 +56,27 @@ impl<T> Reference<T> {
 impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
 
-    fn arenaize(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
-        let smol = Elem::Reference(Reference::new(self.idx));
-        if analyzer.range_arena_idx(&smol).is_none() {
-            let _ = analyzer.range_arena_idx_or_upsert(Elem::Reference(self.clone()));
-        }
+    fn arenaize(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        // let smol = Elem::Reference(Reference::new(self.idx));
+        // if analyzer.range_arena_idx(&smol).is_none() {
+        let _ = arena.idx_or_upsert(Elem::Reference(self.clone()), analyzer);
+        // }
         Ok(())
     }
 
-    fn range_eq(&self, _other: &Self, _analyzer: &impl GraphBackend) -> bool {
+    fn range_eq(&self, _other: &Self, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
         false
     }
 
-    fn range_ord(&self, other: &Self, _analyzer: &impl GraphBackend) -> Option<std::cmp::Ordering> {
+    fn range_ord(
+        &self,
+        other: &Self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<std::cmp::Ordering> {
         if self.idx == other.idx {
             Some(std::cmp::Ordering::Equal)
         } else {
@@ -76,13 +84,18 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn dependent_on(&self, _analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+    fn dependent_on(
+        &self,
+        _analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<ContextVarNode> {
         vec![self.idx.into()]
     }
 
     fn recursive_dependent_on(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
         let mut deps = ContextVarNode(self.idx.index()).dependent_on(analyzer, true)?;
         deps.push(ContextVarNode(self.idx.index()));
@@ -93,6 +106,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         &self,
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         let cvar = ContextVarNode::from(self.idx);
         let mut has_cycle = false;
@@ -101,8 +115,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         } else {
             seen.push(cvar);
             if let Some(range) = cvar.ref_range(analyzer)? {
-                has_cycle = has_cycle || range.min.has_cycle(seen, analyzer)?;
-                has_cycle = has_cycle || range.max.has_cycle(seen, analyzer)?;
+                has_cycle = has_cycle || range.min.has_cycle(seen, analyzer, arena)?;
+                has_cycle = has_cycle || range.max.has_cycle(seen, analyzer, arena)?;
                 Ok(has_cycle)
             } else {
                 Ok(false)
@@ -115,6 +129,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         var: ContextVarNode,
         seen: &mut Vec<ContextVarNode>,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, Self::GraphError> {
         let cvar = ContextVarNode::from(self.idx);
         if seen.contains(&cvar) {
@@ -125,8 +140,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             Ok(true)
         } else if let Some(range) = cvar.ref_range(analyzer)? {
             seen.push(cvar);
-            let mut deps_on = range.min.depends_on(var, seen, analyzer)?;
-            deps_on |= range.max.depends_on(var, seen, analyzer)?;
+            let mut deps_on = range.min.depends_on(var, seen, analyzer, arena)?;
+            deps_on |= range.max.depends_on(var, seen, analyzer, arena)?;
             Ok(deps_on)
         } else {
             Ok(false)
@@ -137,6 +152,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         &self,
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         match (maximize, &self.flattened_min, &self.flattened_max) {
             (true, _, Some(flat)) | (false, Some(flat), _) => {
@@ -154,21 +170,24 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         if maximize {
             cvar.range_max(analyzer)?
                 .unwrap_or(Elem::Null)
-                .flatten(maximize, analyzer)
+                .flatten(maximize, analyzer, arena)
         } else {
             let flattened = cvar
                 .range_min(analyzer)?
                 .unwrap_or(Elem::Null)
-                .flatten(maximize, analyzer)?;
+                .flatten(maximize, analyzer, arena)?;
             Ok(flattened)
         }
     }
 
-    fn is_flatten_cached(&self, analyzer: &impl GraphBackend) -> bool {
+    fn is_flatten_cached(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some() || {
-            if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx)))
-            {
-                if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Reference(ref arenaized) = *t {
                         arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
                     } else {
@@ -183,11 +202,14 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn is_min_max_cached(&self, analyzer: &impl GraphBackend) -> (bool, bool) {
+    fn is_min_max_cached(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> (bool, bool) {
         let (arena_cached_min, arena_cached_max) = {
-            if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx)))
-            {
-                if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Reference(ref arenaized) = *t {
                         (arenaized.minimized.is_some(), arenaized.maximized.is_some())
                     } else {
@@ -206,12 +228,16 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         )
     }
 
-    fn cache_flatten(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
-        self.arenaize(g)?;
+    fn cache_flatten(
+        &mut self,
+        g: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        self.arenaize(g, arena)?;
 
         if self.flattened_max.is_none() {
-            if let Some(idx) = g.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
-                if let Ok(t) = g.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Reference(ref arenaized) = *t {
                         if arenaized.flattened_max.is_some() {
                             tracing::trace!("reference cache flatten hit");
@@ -222,14 +248,14 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             }
 
             let cvar = ContextVarNode::from(self.idx);
-            cvar.cache_flattened_range(g)?;
-            let flat_max = self.flatten(true, g)?;
-            let simplified_flat_max = flat_max.simplify_maximize(g)?;
+            cvar.cache_flattened_range(g, arena)?;
+            let flat_max = self.flatten(true, g, arena)?;
+            let simplified_flat_max = flat_max.simplify_maximize(g, arena)?;
             self.flattened_max = Some(Box::new(simplified_flat_max));
         }
         if self.flattened_min.is_none() {
-            if let Some(idx) = g.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
-                if let Ok(t) = g.range_arena().ranges[idx].try_borrow() {
+            if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+                if let Some(t) = arena.ranges.get(idx) {
                     if let Elem::Reference(ref arenaized) = *t {
                         if arenaized.flattened_min.is_some() {
                             tracing::trace!("reference cache flatten hit");
@@ -239,23 +265,34 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 }
             }
             let cvar = ContextVarNode::from(self.idx);
-            cvar.cache_flattened_range(g)?;
-            let flat_min = self.flatten(false, g)?;
-            let simplified_flat_min = flat_min.simplify_minimize(g)?;
+            cvar.cache_flattened_range(g, arena)?;
+            let flat_min = self.flatten(false, g, arena)?;
+            let simplified_flat_min = flat_min.simplify_minimize(g, arena)?;
             self.flattened_min = Some(Box::new(simplified_flat_min));
         }
         Ok(())
     }
 
-    fn filter_recursion(&mut self, _: NodeIdx, _: NodeIdx, _analyzer: &mut impl GraphBackend) {}
+    fn filter_recursion(
+        &mut self,
+        _: NodeIdx,
+        _: NodeIdx,
+        _analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+    }
 
-    fn maximize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+    fn maximize(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
             return Ok(*cached);
         }
 
-        if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+        if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+            if let Some(t) = arena.ranges.get(idx) {
                 if let Elem::Reference(ref arenaized) = *t {
                     tracing::trace!("reference maximize cache hit");
                     if let Some(MinMaxed::Maximized(cached)) = arenaized.maximized.clone() {
@@ -272,7 +309,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             | VarType::User(TypeNode::Ty(_), maybe_range)
             | VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
-                    range.evaled_range_max(analyzer)
+                    range.evaled_range_max(analyzer, arena)
                 } else {
                     Ok(Elem::Reference(self.clone()))
                 }
@@ -285,13 +322,17 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
     }
 
-    fn minimize(&self, analyzer: &impl GraphBackend) -> Result<Elem<Concrete>, GraphError> {
+    fn minimize(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Minimized(cached)) = self.minimized.clone() {
             return Ok(*cached);
         }
 
-        if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+        if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+            if let Some(t) = arena.ranges.get(idx) {
                 if let Elem::Reference(ref arenaized) = *t {
                     if let Some(MinMaxed::Minimized(cached)) = arenaized.minimized.clone() {
                         tracing::trace!("reference minimize cache hit");
@@ -308,7 +349,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             | VarType::User(TypeNode::Ty(_), maybe_range)
             | VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
-                    range.evaled_range_min(analyzer)
+                    range.evaled_range_min(analyzer, arena)
                 } else {
                     Ok(Elem::Reference(self.clone()))
                 }
@@ -324,13 +365,14 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn simplify_maximize(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_max) = &self.flattened_max {
             return Ok(*simp_max.clone());
         }
 
-        if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+        if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+            if let Some(t) = arena.ranges.get(idx) {
                 if let Elem::Reference(ref arenaized) = *t {
                     if arenaized.flattened_max.is_some() {
                         tracing::trace!("reference simplify maximize cache hit");
@@ -348,20 +390,22 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 cvar.global_first_version(analyzer).into(),
             )))
         } else {
-            self.flatten(true, analyzer)?.simplify_maximize(analyzer)
+            self.flatten(true, analyzer, arena)?
+                .simplify_maximize(analyzer, arena)
         }
     }
 
     fn simplify_minimize(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(simp_min) = &self.flattened_min {
             return Ok(*simp_min.clone());
         }
 
-        if let Some(idx) = analyzer.range_arena_idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Ok(t) = analyzer.range_arena().ranges[idx].try_borrow() {
+        if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
+            if let Some(t) = arena.ranges.get(idx) {
                 if let Elem::Reference(ref arenaized) = *t {
                     if arenaized.flattened_min.is_some() {
                         tracing::trace!("reference simplify minimize cache hit");
@@ -377,29 +421,38 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 cvar.global_first_version(analyzer).into(),
             )))
         } else {
-            self.flatten(false, analyzer)?.simplify_minimize(analyzer)
+            self.flatten(false, analyzer, arena)?
+                .simplify_minimize(analyzer, arena)
         }
     }
 
-    fn cache_maximize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
-        self.arenaize(g)?;
+    fn cache_maximize(
+        &mut self,
+        g: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        self.arenaize(g, arena)?;
         if self.maximized.is_none() {
             let cvar = ContextVarNode::from(self.idx);
-            cvar.cache_eval_range(g)?;
-            let max = self.maximize(g)?;
-            Elem::Reference(Reference::new(self.idx)).set_arenaized_cache(true, &max, g);
+            cvar.cache_eval_range(g, arena)?;
+            let max = self.maximize(g, arena)?;
+            Elem::Reference(Reference::new(self.idx)).set_arenaized_cache(true, &max, arena);
             self.maximized = Some(MinMaxed::Maximized(Box::new(max)));
         }
         Ok(())
     }
 
-    fn cache_minimize(&mut self, g: &mut impl GraphBackend) -> Result<(), GraphError> {
-        self.arenaize(g)?;
+    fn cache_minimize(
+        &mut self,
+        g: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
+        self.arenaize(g, arena)?;
         if self.minimized.is_none() {
             let cvar = ContextVarNode::from(self.idx);
-            cvar.cache_eval_range(g)?;
-            let min = self.minimize(g)?;
-            Elem::Reference(Reference::new(self.idx)).set_arenaized_cache(false, &min, g);
+            cvar.cache_eval_range(g, arena)?;
+            let min = self.minimize(g, arena)?;
+            Elem::Reference(Reference::new(self.idx)).set_arenaized_cache(false, &min, arena);
             self.minimized = Some(MinMaxed::Minimized(Box::new(min)));
         }
 

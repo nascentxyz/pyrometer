@@ -2,6 +2,8 @@ use crate::nodes::Concrete;
 use crate::range::{elem::*, exec_traits::*};
 use crate::GraphBackend;
 
+use shared::RangeArena;
+
 use solang_parser::pt::Loc;
 
 impl RangeOrd<Concrete> for RangeConcrete<Concrete> {
@@ -239,12 +241,13 @@ pub fn exec_eq_neq(
     maximize: bool,
     eq: bool,
     analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // prevent trying to eval when we have dependents
-    if !lhs_min.dependent_on(analyzer).is_empty()
-        || !lhs_max.dependent_on(analyzer).is_empty()
-        || !rhs_min.dependent_on(analyzer).is_empty()
-        || !rhs_max.dependent_on(analyzer).is_empty()
+    if !lhs_min.dependent_on(analyzer, arena).is_empty()
+        || !lhs_max.dependent_on(analyzer, arena).is_empty()
+        || !rhs_min.dependent_on(analyzer, arena).is_empty()
+        || !rhs_max.dependent_on(analyzer, arena).is_empty()
     {
         return None;
     }
@@ -271,12 +274,12 @@ pub fn exec_eq_neq(
         // Check if lhs max > rhs min
         // LHS: <--?---| max
         // RHS:  min |----?---->
-        let lhs_max_rhs_min_ord = lhs_max.range_ord(rhs_min, analyzer);
+        let lhs_max_rhs_min_ord = lhs_max.range_ord(rhs_min, arena);
 
         // Check if lhs min < rhs max
         // LHS: min |----?---->
         // RHS: <--?---| max
-        let lhs_min_rhs_max_ord = lhs_min.range_ord(rhs_max, analyzer);
+        let lhs_min_rhs_max_ord = lhs_min.range_ord(rhs_max, arena);
 
         // if lhs max is less than the rhs min, it has to be false
         if matches!(lhs_max_rhs_min_ord, Some(std::cmp::Ordering::Less)) {
@@ -305,11 +308,11 @@ pub fn exec_eq_neq(
         // This only occurs when both sides are constant and equal
         match (
             // check if lhs is constant
-            lhs_min.range_ord(lhs_max, analyzer),
+            lhs_min.range_ord(lhs_max, arena),
             // check if rhs is constant
-            rhs_min.range_ord(rhs_max, analyzer),
+            rhs_min.range_ord(rhs_max, arena),
             // check if lhs is equal to rhs
-            lhs_min.range_ord(rhs_min, analyzer),
+            lhs_min.range_ord(rhs_min, arena),
         ) {
             // LHS & RHS are constant and equal
             (

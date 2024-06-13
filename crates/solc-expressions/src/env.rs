@@ -3,10 +3,11 @@ use crate::{
 };
 
 use graph::{
+    elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::StorageLocation;
+use shared::{RangeArena, StorageLocation};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 
@@ -15,6 +16,7 @@ impl<T> Env for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
 pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn env_variable(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ident: &Identifier,
         ctx: ContextNode,
     ) -> Result<Option<()>, ExprErr> {
@@ -44,7 +46,7 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 {
                     ctx.add_gas_cost(self, shared::gas::FUNC_CALL_GAS)
                         .into_expr_err(ident.loc)?;
-                    self.resume_from_modifier(ctx, mod_state.clone())?;
+                    self.resume_from_modifier(arena, ctx, mod_state.clone())?;
                     self.modifier_inherit_return(ctx, mod_state.parent_ctx);
                     Ok(Some(()))
                 } else {
