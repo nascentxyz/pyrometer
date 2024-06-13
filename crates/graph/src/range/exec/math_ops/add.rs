@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn exec_sized_uint_uint_saturating() {
-        let mut g = DummyGraph::default();
+        let g = DummyGraph::default();
         let mut arena = Default::default();
         let lhs_min = rc_uint_sized(105).into();
         let lhs_max = rc_uint_sized(150).into();
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn exec_sized_wrapping_uint_uint() {
-        let mut g = DummyGraph::default();
+        let g = DummyGraph::default();
         let mut arena = Default::default();
         let lhs_min = rc_uint_sized(105).into();
         let lhs_max = rc_uint_sized(150).into();
@@ -470,7 +470,7 @@ mod tests {
 
     #[test]
     fn exec_sized_wrapping_int_uint() {
-        let mut g = DummyGraph::default();
+        let g = DummyGraph::default();
         let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(127).into();
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn exec_sized_wrapping_int_int_max() {
-        let mut g = DummyGraph::default();
+        let g = DummyGraph::default();
         let mut arena = Default::default();
         let lhs_min = rc_int_sized(-128).into();
         let lhs_max = rc_int_sized(-100).into();

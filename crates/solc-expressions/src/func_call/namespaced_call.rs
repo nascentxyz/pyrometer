@@ -9,9 +9,9 @@ use crate::{
     ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
 };
 use graph::nodes::{Concrete, ContextVar};
+use graph::ContextEdge;
 use graph::Edge;
 use graph::VarType;
-use graph::{ContextEdge, Range};
 
 use graph::{
     elem::Elem,

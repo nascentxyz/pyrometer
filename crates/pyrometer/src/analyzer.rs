@@ -22,11 +22,9 @@ use solang_parser::{
 };
 
 use std::{
-    cell::RefCell,
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
-    rc::Rc,
 };
 
 /// A path to either a single solidity file or a Solc Standard JSON file

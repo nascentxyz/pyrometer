@@ -1,13 +1,10 @@
 use crate::Analyzer;
 use graph::elem::Elem;
-use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use shared::RangeArena;
-use std::cell::RefCell;
 // use std::collections::hash_map::DefaultHasher;
 // use std::hash::Hash;
 // use std::hash::Hasher;
-use std::rc::Rc;
 
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,

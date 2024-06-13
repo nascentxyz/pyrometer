@@ -7,10 +7,8 @@ use petgraph::{
 };
 
 use std::{
-    cell::RefCell,
     collections::BTreeSet,
     hash::Hash,
-    rc::Rc,
     sync::{Arc, Mutex},
 };
 

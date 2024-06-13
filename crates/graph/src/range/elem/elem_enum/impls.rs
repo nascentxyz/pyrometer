@@ -600,7 +600,7 @@ impl Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
         if let Some(idx) = arena.idx(self) {
-            if let Some(mut t) = arena.ranges.get_mut(idx) {
+            if let Some(t) = arena.ranges.get_mut(idx) {
                 match &mut *t {
                     Elem::Expr(ref mut arenaized) => {
                         if max {

@@ -151,42 +151,52 @@ pub trait YulCondOp:
             );
 
             let if_expr_loc = if_else_chain.if_expr.loc();
-            analyzer.apply_to_edges(true_subctx, if_expr_loc, arena, &|analyzer, arena, ctx, loc| {
-                analyzer.parse_ctx_yul_expr(arena, &if_else_chain.if_expr, true_subctx)?;
-                analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
-                    let Some(true_vars) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Yul switch statement was missing a case discriminator".to_string(),
-                        ));
-                    };
-
-                    if matches!(true_vars, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(true_vars, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.match_yul_true(arena, ctx, loc, &true_vars)?;
+            analyzer.apply_to_edges(
+                true_subctx,
+                if_expr_loc,
+                arena,
+                &|analyzer, arena, ctx, loc| {
+                    analyzer.parse_ctx_yul_expr(arena, &if_else_chain.if_expr, true_subctx)?;
                     analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
-                        analyzer.parse_ctx_yul_statement(arena, &if_else_chain.true_stmt, ctx);
-                        Ok(())
+                        let Some(true_vars) =
+                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        else {
+                            return Err(ExprErr::NoRhs(
+                                loc,
+                                "Yul switch statement was missing a case discriminator".to_string(),
+                            ));
+                        };
+
+                        if matches!(true_vars, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(true_vars, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        analyzer.match_yul_true(arena, ctx, loc, &true_vars)?;
+                        analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+                            analyzer.parse_ctx_yul_statement(arena, &if_else_chain.true_stmt, ctx);
+                            Ok(())
+                        })
                     })
-                })
-            })?;
+                },
+            )?;
 
             if let Some(next) = &if_else_chain.next {
                 match next {
-                    ElseOrDefault::Default(default) => {
-                        analyzer.apply_to_edges(false_subctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+                    ElseOrDefault::Default(default) => analyzer.apply_to_edges(
+                        false_subctx,
+                        loc,
+                        arena,
+                        &|analyzer, arena, ctx, _loc| {
                             analyzer.parse_ctx_yul_statement(arena, default, ctx);
                             Ok(())
-                        })
-                    }
-                    ElseOrDefault::Else(iec) => {
-                        analyzer.apply_to_edges(false_subctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                            analyzer.yul_if_else(arena, loc, iec, ctx)
-                        })
-                    }
+                        },
+                    ),
+                    ElseOrDefault::Else(iec) => analyzer.apply_to_edges(
+                        false_subctx,
+                        loc,
+                        arena,
+                        &|analyzer, arena, ctx, loc| analyzer.yul_if_else(arena, loc, iec, ctx),
+                    ),
                 }
             } else {
                 Ok(())

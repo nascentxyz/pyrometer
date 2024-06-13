@@ -1,19 +1,16 @@
 use crate::elem::Elem;
 use crate::{
-    as_dot_str,
     nodes::{Concrete, ContextNode, ContextVarNode},
-    range::{elem::RangeOp, Range},
+    range::Range,
     solvers::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,
     },
-    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+    AnalyzerBackend, GraphBackend, GraphError,
 };
 use std::borrow::Cow;
 
-use shared::{NodeIdx, RangeArena};
-
-use petgraph::dot::Dot;
+use shared::RangeArena;
 
 use std::collections::BTreeMap;
 

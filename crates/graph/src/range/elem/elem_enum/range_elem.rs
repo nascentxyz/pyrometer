@@ -151,7 +151,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.is_min_max_cached(analyzer, arena),
             Self::Null => (true, true),
             Self::Arena(_) => {
-                let (mut t, idx) = self.dearenaize(arena);
+                let (t, idx) = self.dearenaize(arena);
                 let res = t.is_min_max_cached(analyzer, arena);
                 self.rearenaize(t, idx, arena);
                 res
@@ -171,7 +171,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.dependent_on(analyzer, arena),
             Self::Null => vec![],
             Self::Arena(_) => {
-                let (mut t, idx) = self.dearenaize(arena);
+                let (t, idx) = self.dearenaize(arena);
                 let res = t.dependent_on(analyzer, arena);
                 self.rearenaize(t, idx, arena);
                 res
@@ -191,7 +191,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.recursive_dependent_on(analyzer, arena),
             Self::Null => Ok(vec![]),
             Self::Arena(_) => {
-                let (mut dearenaized, idx) = self.dearenaize(arena);
+                let (dearenaized, idx) = self.dearenaize(arena);
                 let res = dearenaized.recursive_dependent_on(analyzer, arena);
                 self.rearenaize(dearenaized, idx, arena);
                 res
@@ -212,7 +212,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.has_cycle(seen, analyzer, arena),
             Self::Null => Ok(false),
             Self::Arena(_) => {
-                let (mut dearenaized, idx) = self.dearenaize(arena);
+                let (dearenaized, idx) = self.dearenaize(arena);
                 let res = dearenaized.has_cycle(seen, analyzer, arena);
                 self.rearenaize(dearenaized, idx, arena);
                 res
@@ -234,7 +234,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Self::ConcreteDyn(d) => d.depends_on(var, seen, analyzer, arena),
             Self::Null => Ok(false),
             Self::Arena(_) => {
-                let (mut dearenaized, idx) = self.dearenaize(arena);
+                let (dearenaized, idx) = self.dearenaize(arena);
                 let res = dearenaized.depends_on(var, seen, analyzer, arena);
                 self.rearenaize(dearenaized, idx, arena);
                 res
@@ -365,7 +365,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
         if let Some(idx) = arena.idx(self) {
             if let Some(t) = arena.ranges.get(idx) {
-                match &*t {
+                match t {
                     Reference(dy) => {
                         if let Some(max) = &dy.flattened_max {
                             return Ok(*max.clone());
@@ -405,7 +405,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             },
             Null => Ok(Elem::Null),
             Arena(_) => {
-                let (mut dearenaized, idx) = self.dearenaize(arena);
+                let (dearenaized, idx) = self.dearenaize(arena);
                 let flat = dearenaized.flatten(true, analyzer, arena)?;
                 let max = flat.simplify_maximize(analyzer, arena)?;
                 self.rearenaize(dearenaized, idx, arena);
@@ -440,7 +440,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
         if let Some(idx) = arena.idx(self) {
             if let Some(t) = arena.ranges.get(idx) {
-                match &*t {
+                match t {
                     Reference(dy) => {
                         if let Some(min) = &dy.flattened_min {
                             return Ok(*min.clone());
@@ -481,7 +481,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             },
             Null => Ok(Elem::Null),
             Arena(_) => {
-                let (mut dearenaized, idx) = self.dearenaize(arena);
+                let (dearenaized, idx) = self.dearenaize(arena);
                 let flat = dearenaized.flatten(false, analyzer, arena)?;
                 let min = flat.simplify_minimize(analyzer, arena)?;
                 self.rearenaize(dearenaized, idx, arena);

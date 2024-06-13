@@ -448,16 +448,45 @@ pub trait FuncCaller:
 
         // get modifiers
         let mods = func_node.modifiers(self);
-        self.apply_to_edges(callee_ctx, loc, arena, &|analyzer, arena, callee_ctx, loc| {
-            if let Some(mod_state) = &ctx.underlying(analyzer).into_expr_err(loc)?.modifier_state {
-                // we are iterating through modifiers
-                if mod_state.num + 1 < mods.len() {
-                    // use the next modifier
-                    let mut mstate = mod_state.clone();
-                    mstate.num += 1;
-                    analyzer.call_modifier_for_fn(arena, loc, callee_ctx, func_node, mstate)
+        self.apply_to_edges(
+            callee_ctx,
+            loc,
+            arena,
+            &|analyzer, arena, callee_ctx, loc| {
+                if let Some(mod_state) =
+                    &ctx.underlying(analyzer).into_expr_err(loc)?.modifier_state
+                {
+                    // we are iterating through modifiers
+                    if mod_state.num + 1 < mods.len() {
+                        // use the next modifier
+                        let mut mstate = mod_state.clone();
+                        mstate.num += 1;
+                        analyzer.call_modifier_for_fn(arena, loc, callee_ctx, func_node, mstate)
+                    } else {
+                        // out of modifiers, execute the actual function call
+                        analyzer.execute_call_inner(
+                            arena,
+                            loc,
+                            ctx,
+                            callee_ctx,
+                            func_node,
+                            &renamed_inputs,
+                            func_call_str,
+                        )
+                    }
+                } else if !mods.is_empty() {
+                    // we have modifiers and havent executed them, start the process of executing them
+                    let state = ModifierState::new(
+                        0,
+                        loc,
+                        func_node,
+                        callee_ctx,
+                        ctx,
+                        renamed_inputs.clone(),
+                    );
+                    analyzer.call_modifier_for_fn(arena, loc, callee_ctx, func_node, state)
                 } else {
-                    // out of modifiers, execute the actual function call
+                    // no modifiers, just execute the function
                     analyzer.execute_call_inner(
                         arena,
                         loc,
@@ -468,24 +497,8 @@ pub trait FuncCaller:
                         func_call_str,
                     )
                 }
-            } else if !mods.is_empty() {
-                // we have modifiers and havent executed them, start the process of executing them
-                let state =
-                    ModifierState::new(0, loc, func_node, callee_ctx, ctx, renamed_inputs.clone());
-                analyzer.call_modifier_for_fn(arena, loc, callee_ctx, func_node, state)
-            } else {
-                // no modifiers, just execute the function
-                analyzer.execute_call_inner(
-                    arena,
-                    loc,
-                    ctx,
-                    callee_ctx,
-                    func_node,
-                    &renamed_inputs,
-                    func_call_str,
-                )
-            }
-        })
+            },
+        )
     }
 
     /// Actually executes the function

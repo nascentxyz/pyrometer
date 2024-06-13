@@ -184,7 +184,7 @@ impl RangeExpr<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
         if let Some(idx) = self.arena_idx(arena) {
-            if let Some(mut t) = arena.ranges.get_mut(idx) {
+            if let Some(t) = arena.ranges.get_mut(idx) {
                 let Elem::Expr(arenaized) = &mut *t else {
                     return;
                 };

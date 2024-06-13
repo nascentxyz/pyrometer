@@ -18,7 +18,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let idx = self.arena_idx(arena);
         if let Some(idx) = idx {
             if let Some(t) = arena.ranges.get(idx) {
-                if let Elem::Expr(expr) = &*t {
+                if let Elem::Expr(expr) = t {
                     if maximize {
                         if let Some(MinMaxed::Maximized(max)) = &expr.maximized {
                             return Ok(*max.clone());
@@ -33,7 +33,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let res = self.exec(self.spread(analyzer, arena)?, maximize, analyzer, arena)?;
 
         if let Some(idx) = idx {
-            if let Some(mut t) = arena.ranges.get_mut(idx) {
+            if let Some(t) = arena.ranges.get_mut(idx) {
                 if let Elem::Expr(expr) = &mut *t {
                     if maximize {
                         expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
@@ -66,7 +66,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(idx) = self.arena_idx(arena) {
-            if let Some(mut t) = arena.ranges.get_mut(idx) {
+            if let Some(t) = arena.ranges.get_mut(idx) {
                 if let Elem::Expr(expr) = &mut *t {
                     if maximize {
                         expr.maximized.clone_from(&self.maximized);
@@ -118,7 +118,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let lhs_is_conc = lhs_min.is_conc() && lhs_max.is_conc();
         let rhs_is_conc = rhs_min.is_conc() && rhs_max.is_conc();
 
-        let mut finished = false;
+        let finished = false;
         let mut ret = Ok(Elem::Null);
         // if self.op == RangeOp::Cast {
         //     // for a cast we can *actually* evaluate dynamic elem if lhs side is concrete
