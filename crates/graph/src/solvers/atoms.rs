@@ -151,6 +151,11 @@ impl ToRangeString for SolverAtom {
 }
 
 impl SolverAtom {
+    pub fn assert_nonnull(&self) {
+        self.lhs.into_elem().assert_nonnull();
+        self.rhs.into_elem().assert_nonnull();
+    }
+
     pub fn replace_deps(
         &self,
         solves: &BTreeMap<ContextVarNode, Elem<Concrete>>,
@@ -293,8 +298,8 @@ impl Atomize for Elem<Concrete> {
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             _e @ Elem::Expr(expr) => {
                 // println!("collapsing: {e}");
-                match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
-                    MaybeCollapsed::Concretes(_l, r) => {
+                match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
+                    MaybeCollapsed::Concretes(_l, _r) => {
                         let exec_res = expr.exec_op(true, analyzer, arena).unwrap();
                         return exec_res.atoms_or_part(analyzer, arena);
                     }
@@ -399,7 +404,7 @@ impl Atomize for Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<SolverAtom> {
         use Elem::*;
-
+        tracing::trace!("atomize: {}", self);
         match self {
             Reference(_) => None,   //{ println!("was dyn"); None},
             Null => None,           //{ println!("was null"); None},
@@ -416,17 +421,7 @@ impl Atomize for Elem<Concrete> {
             }
             Arena(_) => {
                 let (dearenized, idx) = self.dearenaize(arena);
-                let res = match &dearenized {
-                    e @ Expr(_) => {
-                        let AtomOrPart::Atom(mut a) = e.atoms_or_part(analyzer, arena) else {
-                            // println!("returning none arena");
-                            return None;
-                        };
-                        a.update_max_ty();
-                        Some(a)
-                    }
-                    _ => None,
-                };
+                let res = dearenized.atomize(analyzer, arena);
                 self.rearenaize(dearenized, idx, arena);
                 res
             }

@@ -111,6 +111,17 @@ impl<T: Clone> Elem<T> {
 }
 
 impl<T: Ord> Elem<T> {
+    pub fn assert_nonnull(&self) {
+        match self {
+            Elem::Expr(expr) => {
+                expr.lhs.assert_nonnull();
+                expr.rhs.assert_nonnull();
+            }
+            Elem::Null => panic!("was null"),
+            _ => {}
+        }
+    }
+
     pub fn contains_node(&self, node_idx: NodeIdx) -> bool {
         match self {
             Self::Reference(d) => d.idx == node_idx,
@@ -253,9 +264,10 @@ impl Elem<Concrete> {
             }
             Elem::Null => {}
             Elem::Arena(_) => {
-                let (mut s, idx) = self.dearenaize(arena);
-                s.replace_dep(to_replace, replacement, analyzer, arena);
-                self.rearenaize(s, idx, arena);
+                let mut cloned = self.dearenaize_clone(arena);
+                cloned.replace_dep(to_replace, replacement, analyzer, arena);
+                cloned.arenaize(analyzer, arena).unwrap();
+                *self = cloned;
             }
         }
     }
@@ -286,10 +298,13 @@ impl Elem<Concrete> {
 
     pub fn dearenaize(&self, arena: &mut RangeArena<Self>) -> (Self, usize) {
         match self {
-            Self::Arena(arena_idx) => (
-                arena.take_nonnull(*arena_idx).unwrap_or_default(),
-                *arena_idx,
-            ),
+            Self::Arena(arena_idx) => {
+                (
+                    arena.take_nonnull(*arena_idx).unwrap_or_default(),
+                    // arena.ranges.get(*arena_idx).cloned().unwrap_or_default(),
+                    *arena_idx,
+                )
+            }
             _ => unreachable!(),
         }
     }

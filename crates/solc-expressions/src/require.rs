@@ -972,11 +972,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         lhs_range: SolcRange,
         rhs_range: SolcRange,
     ) -> bool {
-        println!(
-            "lhs: {}, rhs: {}",
-            lhs_range.as_dot_str(self, arena),
-            rhs_range.as_dot_str(self, arena)
-        );
         // check that the op is satisfied, return it as a bool
         match op {
             RangeOp::Eq => !lhs_range
@@ -1397,7 +1392,10 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;
 
                 new_new_lhs
-                    .set_range_min(self, arena, new_min)
+                    .set_range_min(self, arena, new_min.clone())
+                    .into_expr_err(loc)?;
+                new_new_rhs
+                    .set_range_min(self, arena, new_max.clone())
                     .into_expr_err(loc)?;
                 new_new_rhs
                     .set_range_max(self, arena, new_max)
@@ -1447,7 +1445,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             RangeOp::Lte => {
                 let rhs_elem = Elem::from(new_rhs.latest_version(self));
-                let lhs_elem = Elem::from(new_lhs.latest_version(self));
+                let lhs_elem = Elem::from(new_lhs.latest_version(self))
+                    .max(rhs_range.range_min().into_owned());
 
                 // if nonconst min is > const, we can't make this true
                 let min = lhs_range.evaled_range_min(self, arena).into_expr_err(loc)?;
@@ -1468,11 +1467,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     .into_expr_err(loc)?;
                 new_rhs
                     .latest_version(self)
-                    .set_range_min(
-                        self,
-                        arena,
-                        lhs_elem.max(rhs_range.range_min().into_owned()),
-                    )
+                    .set_range_min(self, arena, lhs_elem.clone())
+                    .into_expr_err(loc)?;
+                new_rhs
+                    .latest_version(self)
+                    .set_range_max(self, arena, lhs_elem)
                     .into_expr_err(loc)?;
                 Ok(false)
             }

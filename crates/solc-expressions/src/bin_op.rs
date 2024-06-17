@@ -172,34 +172,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             assign
         );
 
-        // if rhs_cvar.is_const(self).unwrap() {
-        //     let int = rhs_cvar.minimize(self, arena).unwrap().unwrap();
-        //     match collapse(&Elem::from(lhs_cvar), op, &int, self) {
-        //         MaybeCollapsed::Collapsed(c) => {
-        //             println!("collapsed: {c:?}");
-        //         }
-        //         MaybeCollapsed::Concretes(_, _) => {
-        //             println!("concretes");
-        //         }
-        //         MaybeCollapsed::Not(..) => {
-        //             println!("not collapsed");
-        //         }
-        //     }
-        // } else if lhs_cvar.is_const(self).unwrap() {
-        //     let int = lhs_cvar.minimize(self, arena).unwrap().unwrap();
-        //     match collapse(&int, op, &Elem::from(rhs_cvar), self) {
-        //         MaybeCollapsed::Collapsed(c) => {
-        //             println!("collapsed: {c:?}");
-        //         }
-        //         MaybeCollapsed::Concretes(_, _) => {
-        //             println!("concretes");
-        //         }
-        //         MaybeCollapsed::Not(..) => {
-        //             println!("not collapsed");
-        //         }
-        //     }
-        // }
-
         let unchecked = match op {
             RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) | RangeOp::Div(u) => u,
             _ => false,
@@ -247,453 +219,58 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             op,
             Elem::from(Reference::new(rhs_cvar.latest_version(self).into())),
         ));
+        let new_lhs = new_lhs.latest_version(self);
+        new_lhs
+            .set_range_min(self, arena, expr.clone())
+            .into_expr_err(loc)?;
+        new_lhs
+            .set_range_max(self, arena, expr)
+            .into_expr_err(loc)?;
 
         // to prevent some recursive referencing, forcibly increase lhs_cvar
         self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?;
 
-        // TODO: If one of lhs_cvar OR rhs_cvar are not symbolic,
-        // apply the requirement on the symbolic expression side instead of
-        // ignoring the case where
-
-        // if lhs_cvar.is_symbolic(self) && new_rhs.is_symbolic(self) {
         if !unchecked {
             match op {
                 RangeOp::Div(..) | RangeOp::Mod => {
-                    // x / y
-                    if new_rhs.is_const(self, arena).into_expr_err(loc)? {
-                        // y is constant, do a check if it is 0
-                        if new_rhs
-                            .evaled_range_min(self, arena)
-                            .into_expr_err(loc)?
-                            .expect("No range?")
-                            .range_eq(&Elem::from(Concrete::from(U256::zero())), arena)
-                        {
-                            let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
-                            let _ = self.add_if_err(res);
-
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
-                    } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
-                        // y is symbolic, add
-                        let tmp_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
-                        let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                        let var = ContextVar::new_from_concrete(
-                            Loc::Implicit,
-                            ctx,
-                            zero_node.into(),
-                            self,
-                        );
-                        let zero_node = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
-
-                        if self
-                            .require(
-                                arena,
-                                tmp_rhs,
-                                zero_node.into(),
-                                ctx,
-                                loc,
-                                RangeOp::Neq,
-                                RangeOp::Neq,
-                                (RangeOp::Eq, RangeOp::Neq),
-                            )?
-                            .is_none()
-                        {
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
+                    if let Some(killed) =
+                        self.checked_require_mod_div(arena, lhs_cvar, new_rhs, loc, ctx)?
+                    {
+                        return Ok(killed);
                     }
                 }
                 RangeOp::Sub(..) => {
-                    let lhs_cvar = lhs_cvar.latest_version(self);
-                    if lhs_cvar.is_const(self, arena).into_expr_err(loc)? {
-                        if !lhs_cvar.is_int(self).into_expr_err(loc)? {
-                            if let (Some(lmax), Some(rmin)) = (
-                                lhs_cvar.evaled_range_max(self, arena).into_expr_err(loc)?,
-                                rhs_cvar.evaled_range_min(self, arena).into_expr_err(loc)?,
-                            ) {
-                                if matches!(
-                                    lmax.range_ord(&rmin, arena),
-                                    Some(std::cmp::Ordering::Less)
-                                        | Some(std::cmp::Ordering::Equal)
-                                ) {
-                                    ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-
-                                    return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                                }
-                            }
-                        }
-                    } else if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_lhs = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
-                        // let tmp_rhs = self.advance_var_in_ctx_forcible(new_rhs, loc, ctx, true)?;
-                        if self
-                            .require(
-                                arena,
-                                tmp_lhs,
-                                new_rhs,
-                                ctx,
-                                loc,
-                                RangeOp::Gte,
-                                RangeOp::Lte,
-                                (RangeOp::Lte, RangeOp::Gte),
-                            )?
-                            .is_none()
-                        {
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
-                        // the new min is max(lhs.min, rhs.min)
-                        let min = Elem::max(
-                            Elem::from(Reference::new(lhs_cvar.into())),
-                            Elem::from(rhs_cvar),
-                        );
-                        let tmp_lhs = tmp_lhs.latest_version(self);
-                        tmp_lhs.set_range_min(self, arena, min).into_expr_err(loc)?;
-
-                        // let tmp_var = ContextVar {
-                        //     loc: Some(loc),
-                        //     name: format!(
-                        //         "tmp{}({} >= {})",
-                        //         ctx.new_tmp(self).into_expr_err(loc)?,
-                        //         tmp_lhs.name(self).into_expr_err(loc)?,
-                        //         new_rhs.name(self).into_expr_err(loc)?,
-                        //     ),
-                        //     display_name: format!(
-                        //         "({} >= {})",
-                        //         tmp_lhs.display_name(self).unwrap(),
-                        //         new_rhs.display_name(self).unwrap(),
-                        //     ),
-                        //     storage: None,
-                        //     is_tmp: true,
-                        //     tmp_of: Some(TmpConstruction::new(
-                        //         tmp_lhs,
-                        //         RangeOp::Gte,
-                        //         Some(new_rhs),
-                        //     )),
-                        //     is_symbolic: true,
-                        //     is_return: false,
-                        //     ty: VarType::BuiltIn(
-                        //         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                        //         SolcRange::from(Concrete::Bool(true)),
-                        //     ),
-                        // };
-
-                        // let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        // ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+                    if let Some(killed) =
+                        self.checked_require_sub(arena, lhs_cvar, new_lhs, new_rhs, loc, ctx)?
+                    {
+                        return Ok(killed);
                     }
                 }
                 RangeOp::Add(..) => {
-                    let lhs_cvar = lhs_cvar.latest_version(self);
-                    if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
-
-                        // the new max is min(lhs.max, (2**256 - rhs.min))
-                        let max = Elem::min(
-                            Elem::from(Reference::new(lhs_cvar.into())),
-                            Elem::from(Concrete::from(U256::MAX)) - Elem::from(rhs_cvar),
-                        );
-
-                        tmp_lhs.set_range_max(self, arena, max).into_expr_err(loc)?;
-
-                        let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
-                        let tmp_max = ContextVar::new_from_concrete(
-                            Loc::Implicit,
-                            ctx,
-                            max_node.into(),
-                            self,
-                        );
-                        let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
-
-                        let tmp_rhs = self.op(
-                            arena,
-                            loc,
-                            max_node.into(),
-                            new_rhs,
-                            ctx,
-                            RangeOp::Sub(true),
-                            false,
-                        )?;
-
-                        if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
-                            return Ok(tmp_rhs);
-                        }
-
-                        let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
-
-                        let tmp_lhs = if new_rhs.latest_version(self) == tmp_lhs {
-                            self.advance_var_in_ctx_forcible(
-                                tmp_lhs.latest_version(self),
-                                loc,
-                                ctx,
-                                true,
-                            )?
-                        } else {
-                            tmp_lhs
-                        };
-
-                        if self
-                            .require(
-                                arena,
-                                tmp_lhs,
-                                tmp_rhs.into(),
-                                ctx,
-                                loc,
-                                RangeOp::Lte,
-                                RangeOp::Gte,
-                                (RangeOp::Gte, RangeOp::Lte),
-                            )?
-                            .is_none()
-                        {
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
+                    if let Some(killed) =
+                        self.checked_require_add(arena, lhs_cvar, new_lhs, new_rhs, loc, ctx)?
+                    {
+                        return Ok(killed);
                     }
                 }
-                RangeOp::Mul(..) => 'mul: {
-                    let lhs_cvar = lhs_cvar.latest_version(self);
-                    if lhs_cvar.is_symbolic(self).into_expr_err(loc)? {
-                        if new_rhs.is_const(self, arena).into_expr_err(loc)?
-                            && new_rhs.evaled_range_min(self, arena).into_expr_err(loc)?
-                                == Some(Elem::from(Concrete::from(U256::zero())))
-                        {
-                            break 'mul;
-                        }
-                        let tmp_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
-
-                        // the new max is min(lhs.max, (2**256 / max(1, rhs.min)))
-                        let max = Elem::min(
-                            Elem::from(Reference::new(lhs_cvar.into())),
-                            Elem::from(Concrete::from(U256::MAX))
-                                / Elem::max(
-                                    Elem::from(Concrete::from(U256::from(1))),
-                                    Elem::from(rhs_cvar),
-                                ),
-                        );
-
-                        tmp_lhs.set_range_max(self, arena, max).into_expr_err(loc)?;
-
-                        let max_node = self.add_node(Node::Concrete(Concrete::from(U256::MAX)));
-                        let tmp_max = ContextVar::new_from_concrete(
-                            Loc::Implicit,
-                            ctx,
-                            max_node.into(),
-                            self,
-                        );
-                        let max_node = self.add_node(Node::ContextVar(tmp_max.into_expr_err(loc)?));
-
-                        let tmp_rhs = self.op(
-                            arena,
-                            loc,
-                            max_node.into(),
-                            new_rhs,
-                            ctx,
-                            RangeOp::Div(true),
-                            false,
-                        )?;
-
-                        if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
-                            return Ok(tmp_rhs);
-                        }
-
-                        let tmp_rhs = tmp_rhs.expect_single().into_expr_err(loc)?;
-
-                        let tmp_lhs = if new_rhs.latest_version(self) == tmp_lhs {
-                            self.advance_var_in_ctx_forcible(
-                                tmp_lhs.latest_version(self),
-                                loc,
-                                ctx,
-                                true,
-                            )?
-                        } else {
-                            tmp_lhs
-                        };
-
-                        if self
-                            .require(
-                                arena,
-                                tmp_lhs,
-                                tmp_rhs.into(),
-                                ctx,
-                                loc,
-                                RangeOp::Lte,
-                                RangeOp::Gte,
-                                (RangeOp::Gte, RangeOp::Lte),
-                            )?
-                            .is_none()
-                        {
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
-
-                        // let tmp_rhs = ContextVarNode::from(tmp_rhs).latest_version(self);
-
-                        // let tmp_var = ContextVar {
-                        //     loc: Some(loc),
-                        //     name: format!(
-                        //         "tmp{}({} <= (2**256 - 1) / {})",
-                        //         ctx.new_tmp(self).into_expr_err(loc)?,
-                        //         tmp_lhs.name(self).into_expr_err(loc)?,
-                        //         new_rhs.name(self).into_expr_err(loc)?,
-                        //     ),
-                        //     display_name: format!(
-                        //         "({} <= (2**256 - 1) / {})",
-                        //         tmp_lhs.display_name(self).unwrap(),
-                        //         new_rhs.display_name(self).unwrap(),
-                        //     ),
-                        //     storage: None,
-                        //     is_tmp: true,
-                        //     tmp_of: Some(TmpConstruction::new(
-                        //         tmp_lhs,
-                        //         RangeOp::Lte,
-                        //         Some(tmp_rhs),
-                        //     )),
-                        //     is_symbolic: true,
-                        //     is_return: false,
-                        //     ty: VarType::BuiltIn(
-                        //         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                        //         SolcRange::from(Concrete::Bool(true)),
-                        //     ),
-                        // };
-
-                        // let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        // ctx.add_ctx_dep(cvar, self).into_expr_err(loc)?;
+                RangeOp::Mul(..) => {
+                    if let Some(killed) =
+                        self.checked_require_mul(arena, lhs_cvar, new_lhs, new_rhs, loc, ctx)?
+                    {
+                        return Ok(killed);
                     }
                 }
                 RangeOp::Exp => {
-                    if new_rhs.is_const(self, arena).into_expr_err(loc)? {
-                        if matches!(
-                            new_rhs
-                                .evaled_range_min(self, arena)
-                                .into_expr_err(loc)?
-                                .expect("No range")
-                                .range_ord(&Elem::from(Concrete::from(U256::zero())), arena),
-                            Some(std::cmp::Ordering::Less)
-                        ) {
-                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
-                    } else if new_rhs.is_symbolic(self).into_expr_err(loc)? {
-                        let tmp_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
-                        // the new min is max(lhs.min, rhs.min)
-                        let min = Elem::max(
-                            Elem::from(Reference::new(rhs_cvar.into())),
-                            // .range_min(self)
-                            // .into_expr_err(loc)?
-                            // .expect("No range minimum?"),
-                            Elem::from(Concrete::from(U256::zero())),
-                        );
-
-                        tmp_rhs.set_range_min(self, arena, min).into_expr_err(loc)?;
-
-                        let zero_node = self.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                        let tmp_zero = ContextVar::new_from_concrete(
-                            Loc::Implicit,
-                            ctx,
-                            zero_node.into(),
-                            self,
-                        );
-                        let zero_node =
-                            self.add_node(Node::ContextVar(tmp_zero.into_expr_err(loc)?));
-
-                        if self
-                            .require(
-                                arena,
-                                tmp_rhs,
-                                zero_node.into(),
-                                ctx,
-                                loc,
-                                RangeOp::Gte,
-                                RangeOp::Lte,
-                                (RangeOp::Lte, RangeOp::Gte),
-                            )?
-                            .is_none()
-                        {
-                            return Ok(ExprRet::CtxKilled(KilledKind::Revert));
-                        }
-
-                        let tmp_var = ContextVar {
-                            loc: Some(loc),
-                            name: format!(
-                                "tmp{}({} >= 0)",
-                                ctx.new_tmp(self).into_expr_err(loc)?,
-                                tmp_rhs.name(self).into_expr_err(loc)?,
-                            ),
-                            display_name: format!(
-                                "({} >= 0)",
-                                tmp_rhs.display_name(self).into_expr_err(loc)?,
-                            ),
-                            storage: None,
-                            is_tmp: true,
-                            tmp_of: Some(TmpConstruction::new(
-                                tmp_rhs,
-                                RangeOp::Gte,
-                                Some(zero_node.into()),
-                            )),
-                            dep_on: {
-                                let mut deps =
-                                    tmp_rhs.dependent_on(self, true).into_expr_err(loc)?;
-                                deps.push(zero_node.into());
-                                Some(deps)
-                            },
-                            is_symbolic: true,
-                            is_return: false,
-                            ty: VarType::BuiltIn(
-                                BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                                SolcRange::from(Concrete::Bool(true)),
-                            ),
-                        };
-
-                        let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
-                        ctx.add_ctx_dep(cvar, self, arena).into_expr_err(loc)?;
-                        new_rhs = tmp_rhs;
+                    if let Some(killed) =
+                        self.checked_require_exp(arena, lhs_cvar, new_lhs, new_rhs, loc, ctx)?
+                    {
+                        return Ok(killed);
                     }
                 }
                 _ => {}
             }
-        } else {
-
-            // self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;
         }
 
-        // let lhs_range = if let Some(lhs_range) = new_lhs.range(self).into_expr_err(loc)? {
-        //     lhs_range
-        // } else {
-        //     new_rhs
-        //         .range(self)
-        //         .into_expr_err(loc)?
-        //         .expect("Neither lhs nor rhs had a usable range")
-        // };
-
-        // let func = SolcRange::dyn_fn_from_op(op);
-        // let new_range = func(lhs_range, new_rhs);
-        new_lhs
-            .latest_version(self)
-            .set_range_min(self, arena, expr.clone())
-            .into_expr_err(loc)?;
-        new_lhs
-            .latest_version(self)
-            .set_range_max(self, arena, expr)
-            .into_expr_err(loc)?;
-
-        // last ditch effort to prevent exponentiation from having a minimum of 1 instead of 0.
-        // if the lhs is 0 check if the rhs is also 0, otherwise set minimum to 0.
-        if matches!(op, RangeOp::Exp) {
-            if let (Some(old_lhs_range), Some(rhs_range)) = (
-                lhs_cvar
-                    .latest_version(self)
-                    .ref_range(self)
-                    .into_expr_err(loc)?,
-                new_rhs.ref_range(self).into_expr_err(loc)?,
-            ) {
-                let zero = Elem::from(Concrete::from(U256::zero()));
-                let zero_range = SolcRange::new(zero.clone(), zero.clone(), vec![]);
-                // We have to check if the the lhs and the right hand side contain the zero range.
-                // If they both do, we have to set the minimum to zero due to 0**0 = 1, but 0**x = 0.
-                // This is technically a slight widening of the interval and could be improved.
-                if old_lhs_range.contains(&zero_range, self, arena)
-                    && rhs_range.contains(&zero_range, self, arena)
-                {
-                    new_lhs
-                        .set_range_min(self, arena, zero)
-                        .into_expr_err(loc)?;
-                }
-            }
-        }
         Ok(ExprRet::Single(new_lhs.latest_version(self).into()))
     }
 
@@ -797,5 +374,376 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 "No right hand side in `not` expression".to_string(),
             )),
         }
+    }
+
+    fn checked_require_mod_div(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        lhs: ContextVarNode,
+        rhs: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<Option<ExprRet>, ExprErr> {
+        // x / y || x % y
+        // revert if div or mod by 0
+        if rhs.is_const(self, arena).into_expr_err(loc)? {
+            if rhs
+                .evaled_range_min(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .range_eq(&Elem::from(Concrete::from(U256::zero())), arena)
+            {
+                let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
+                let _ = self.add_if_err(res);
+
+                return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+            }
+        }
+
+        // otherwise, require rhs != 0
+        let tmp_rhs = self.advance_var_in_ctx(rhs, loc, ctx)?;
+        let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::zero()), loc)?;
+
+        if self
+            .require(
+                arena,
+                tmp_rhs,
+                zero_node,
+                ctx,
+                loc,
+                RangeOp::Neq,
+                RangeOp::Neq,
+                (RangeOp::Eq, RangeOp::Neq),
+            )?
+            .is_none()
+        {
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+        }
+        Ok(None)
+    }
+
+    fn checked_require_sub(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        lhs: ContextVarNode,
+        new_lhs: ContextVarNode,
+        rhs: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<Option<ExprRet>, ExprErr> {
+        // x - y >= type(x).min
+        let new_lhs = new_lhs.latest_version(self);
+        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+
+        // in checked subtraction, we have to make sure x - y >= type(x).min ==> x >= type(x).min + y
+        // get the lhs min
+        let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
+        let min: ContextVarNode = self.add_concrete_var(ctx, min_conc, loc)?.into();
+
+        // require lhs - rhs >= type(lhs).min
+        if self
+            .require(
+                arena,
+                tmp_lhs.latest_version(self),
+                min,
+                ctx,
+                loc,
+                RangeOp::Gte,
+                RangeOp::Lte,
+                (RangeOp::Lte, RangeOp::Gte),
+            )?
+            .is_none()
+        {
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+        }
+
+        // If x and y are signed ints, we have to check that x - -y <= type(x).max
+        // because it could overflow in the positive direction
+        let lhs_is_int = lhs.is_int(self).into_expr_err(loc)?;
+        let rhs_is_int = rhs.is_int(self).into_expr_err(loc)?;
+        if lhs_is_int && rhs_is_int {
+            let rhs_min = rhs
+                .evaled_range_min(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?");
+            if rhs_min.is_negative(false, self, arena).into_expr_err(loc)? {
+                // rhs can be negative, require that lhs <= type(x).max + -rhs
+                // get the lhs max
+                let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
+                let max: ContextVarNode = self.add_concrete_var(ctx, max_conc, loc)?.into();
+
+                if self
+                    .require(
+                        arena,
+                        tmp_lhs.latest_version(self),
+                        max,
+                        ctx,
+                        loc,
+                        RangeOp::Lte,
+                        RangeOp::Gte,
+                        (RangeOp::Gte, RangeOp::Lte),
+                    )?
+                    .is_none()
+                {
+                    return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn checked_require_add(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        lhs: ContextVarNode,
+        new_lhs: ContextVarNode,
+        rhs: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<Option<ExprRet>, ExprErr> {
+        // lhs + rhs <= type(lhs).max
+        let new_lhs = new_lhs.latest_version(self);
+        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+
+        // get type(lhs).max
+        let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
+        let max = self.add_concrete_var(ctx, max_conc, loc)?.into();
+
+        // require lhs + rhs <= type(lhs).max
+        if self
+            .require(
+                arena,
+                tmp_lhs.latest_version(self),
+                max,
+                ctx,
+                loc,
+                RangeOp::Lte,
+                RangeOp::Gte,
+                (RangeOp::Gte, RangeOp::Lte),
+            )?
+            .is_none()
+        {
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+        }
+
+        // If x and y are signed ints, we have to check that x + -y >= type(x).min
+        // because it could overflow in the negative direction
+        let lhs_is_int = lhs.is_int(self).into_expr_err(loc)?;
+        let rhs_is_int = rhs.is_int(self).into_expr_err(loc)?;
+        if lhs_is_int && rhs_is_int {
+            let rhs_min_is_negative = rhs
+                .evaled_range_min(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .is_negative(false, self, arena)
+                .into_expr_err(loc)?;
+            if rhs_min_is_negative {
+                // rhs can be negative, require that lhs + rhs >= type(x).min
+                // get the lhs min
+                let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
+                let min = self.add_concrete_var(ctx, min_conc, loc)?.into();
+
+                if self
+                    .require(
+                        arena,
+                        new_lhs.latest_version(self),
+                        min,
+                        ctx,
+                        loc,
+                        RangeOp::Gte,
+                        RangeOp::Lte,
+                        (RangeOp::Lte, RangeOp::Gte),
+                    )?
+                    .is_none()
+                {
+                    return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn checked_require_mul(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        lhs: ContextVarNode,
+        new_lhs: ContextVarNode,
+        rhs: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<Option<ExprRet>, ExprErr> {
+        // lhs * rhs <= type(lhs).max
+        let new_lhs = new_lhs.latest_version(self);
+        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+
+        // get type(lhs).max
+        let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
+        let max = self.add_concrete_var(ctx, max_conc, loc)?.into();
+
+        // require lhs * rhs <= type(lhs).max
+        if self
+            .require(
+                arena,
+                tmp_lhs.latest_version(self),
+                max,
+                ctx,
+                loc,
+                RangeOp::Lte,
+                RangeOp::Gte,
+                (RangeOp::Gte, RangeOp::Lte),
+            )?
+            .is_none()
+        {
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+        }
+
+        // If x and y are signed ints, we have to check that x * -y >= type(x).min
+        // because it could overflow in the negative direction
+        let lhs_is_int = lhs.is_int(self).into_expr_err(loc)?;
+        let rhs_is_int = rhs.is_int(self).into_expr_err(loc)?;
+        if lhs_is_int || rhs_is_int {
+            let rhs_min_is_negative = rhs
+                .evaled_range_min(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .is_negative(false, self, arena)
+                .into_expr_err(loc)?;
+            let lhs_min_is_negative = lhs
+                .evaled_range_min(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .is_negative(false, self, arena)
+                .into_expr_err(loc)?;
+            let rhs_max_is_positive = !rhs
+                .evaled_range_max(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .is_negative(true, self, arena)
+                .into_expr_err(loc)?;
+            let lhs_max_is_positive = !lhs
+                .evaled_range_max(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .is_negative(true, self, arena)
+                .into_expr_err(loc)?;
+
+            let can_go_very_negative = lhs_min_is_negative && rhs_max_is_positive
+                || rhs_min_is_negative && lhs_max_is_positive;
+            if can_go_very_negative {
+                // signs can be opposite so require that lhs * rhs >= type(x).min
+                // get the lhs min
+                let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
+                let min = self.add_concrete_var(ctx, min_conc, loc)?.into();
+
+                if self
+                    .require(
+                        arena,
+                        new_lhs.latest_version(self),
+                        min,
+                        ctx,
+                        loc,
+                        RangeOp::Gte,
+                        RangeOp::Lte,
+                        (RangeOp::Lte, RangeOp::Gte),
+                    )?
+                    .is_none()
+                {
+                    return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn checked_require_exp(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        lhs: ContextVarNode,
+        new_lhs: ContextVarNode,
+        rhs: ContextVarNode,
+        loc: Loc,
+        ctx: ContextNode,
+    ) -> Result<Option<ExprRet>, ExprErr> {
+        // exponent must be greater or equal to zero
+        let zero = rhs.ty_zero_concrete(self).into_expr_err(loc)?.unwrap();
+        let zero = self.add_concrete_var(ctx, zero, loc)?.into();
+        if self
+            .require(
+                arena,
+                rhs,
+                zero,
+                ctx,
+                loc,
+                RangeOp::Gte,
+                RangeOp::Lte,
+                (RangeOp::Lte, RangeOp::Gte),
+            )?
+            .is_none()
+        {
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+        }
+
+        // lhs ** rhs <= type(lhs).max
+        let new_lhs = new_lhs.latest_version(self);
+        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+
+        // get type(lhs).max
+        let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
+        let max = self.add_concrete_var(ctx, max_conc, loc)?.into();
+
+        // require lhs ** rhs <= type(lhs).max
+        if self
+            .require(
+                arena,
+                tmp_lhs.latest_version(self),
+                max,
+                ctx,
+                loc,
+                RangeOp::Lte,
+                RangeOp::Gte,
+                (RangeOp::Gte, RangeOp::Lte),
+            )?
+            .is_none()
+        {
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+        }
+
+        // If x is signed int, we have to check that x ** y >= type(x).min
+        // because it could overflow in the negative direction
+        let lhs_is_int = lhs.is_int(self).into_expr_err(loc)?;
+        if lhs_is_int {
+            let lhs_min_is_negative = lhs
+                .evaled_range_min(self, arena)
+                .into_expr_err(loc)?
+                .expect("No range?")
+                .is_negative(false, self, arena)
+                .into_expr_err(loc)?;
+            if lhs_min_is_negative {
+                // rhs can be negative, require that lhs + rhs >= type(x).min
+                // get the lhs min
+                let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
+                let min = self.add_concrete_var(ctx, min_conc, loc)?.into();
+
+                if self
+                    .require(
+                        arena,
+                        new_lhs.latest_version(self),
+                        min,
+                        ctx,
+                        loc,
+                        RangeOp::Gte,
+                        RangeOp::Lte,
+                        (RangeOp::Lte, RangeOp::Gte),
+                    )?
+                    .is_none()
+                {
+                    return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
+                }
+            }
+        }
+
+        Ok(None)
     }
 }

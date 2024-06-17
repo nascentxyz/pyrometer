@@ -152,7 +152,7 @@ pub fn exec_shl(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![
@@ -186,7 +186,7 @@ pub fn exec_shr(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![

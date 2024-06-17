@@ -303,7 +303,7 @@ impl SolcSolver for BruteBinSearchSolver {
     fn simplify(
         &mut self,
         _analyzer: &impl AnalyzerBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) {
     }
 

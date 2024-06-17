@@ -330,7 +330,7 @@ impl ContextNode {
         //
         // each fork adds 1 world
 
-        let edges = self.all_edges(analyzer)?;
+        let _edges = self.all_edges(analyzer)?;
         let mut stack = std::collections::VecDeque::new();
         stack.push_front(*self);
 

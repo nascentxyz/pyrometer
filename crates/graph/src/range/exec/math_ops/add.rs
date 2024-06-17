@@ -4,7 +4,8 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::I256;
+use ethers_core::types::{I256, U256};
+use solang_parser::pt::Loc;
 
 impl RangeAdd<Concrete> for RangeConcrete<Concrete> {
     fn range_add(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -158,13 +159,19 @@ pub fn exec_add(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     wrapping: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
+    tracing::trace!("exec add: unchecked - {wrapping}; maximize - {maximize};");
     if wrapping {
         let mut candidates = vec![];
         let mut all_overflowed = true;
         let mut one_overflowed = false;
+
+        let zero = Elem::Concrete(RangeConcrete::new(
+            Concrete::from(U256::zero()),
+            Loc::Implicit,
+        ));
         let add_candidate = |lhs: &Elem<Concrete>,
                              rhs: &Elem<Concrete>,
                              candidates: &mut Vec<Elem<Concrete>>,
@@ -172,7 +179,23 @@ pub fn exec_add(
                              one_overflowed: &mut bool,
                              arena: &mut RangeArena<Elem<Concrete>>| {
             if let Some(c) = lhs.range_wrapping_add(rhs) {
-                let overflowed = matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Less));
+                let lhs_neg = matches!(lhs.range_ord(&zero, arena), Some(std::cmp::Ordering::Less));
+                let rhs_neg = matches!(rhs.range_ord(&zero, arena), Some(std::cmp::Ordering::Less));
+                let signed = lhs_neg || rhs_neg;
+
+                let overflowed = if signed {
+                    // signed safemath: (rhs >= 0 && c >= lhs) || (rhs < 0 && c < lhs) ==>  no overflowed --invert-> overflowed
+                    (rhs_neg
+                        || matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Greater)))
+                        && (!rhs_neg
+                            || matches!(
+                                c.range_ord(lhs, arena),
+                                Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                            ))
+                } else {
+                    // unsigned safemath: c < a ==> overflowed
+                    matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Less))
+                };
 
                 if *all_overflowed && !overflowed {
                     *all_overflowed = false;
@@ -344,6 +367,14 @@ mod tests {
     }
 
     #[test]
+    fn min_int_min_int() {
+        let x = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
+        let result = x.range_add(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(256, I256::MIN));
+    }
+
+    #[test]
     fn saturating_int_int() {
         let x = RangeConcrete::new(
             Concrete::Int(256, I256::MIN + I256::from(1i32)),
@@ -416,6 +447,24 @@ mod tests {
             .maybe_concrete_value()
             .unwrap();
         assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+    }
+
+    #[test]
+    fn exec_wrapping_min_int_min_int() {
+        let g = DummyGraph::default();
+        let mut arena = Default::default();
+        let min = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit).into();
+        let max = RangeConcrete::new(Concrete::Int(256, I256::MAX), Loc::Implicit).into();
+        let max_result = exec_add(&min, &min, &min, &max, true, true, &g, &mut arena)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(max_result.val, Concrete::Int(256, I256::MAX));
+        let min_result = exec_add(&min, &min, &min, &max, false, true, &g, &mut arena)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        assert_eq!(min_result.val, Concrete::Int(256, I256::MIN));
     }
 
     #[test]

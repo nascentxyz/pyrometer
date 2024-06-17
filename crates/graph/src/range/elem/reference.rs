@@ -68,14 +68,14 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         Ok(())
     }
 
-    fn range_eq(&self, _other: &Self, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
+    fn range_eq(&self, _other: &Self, _arena: &mut RangeArena<Elem<Concrete>>) -> bool {
         false
     }
 
     fn range_ord(
         &self,
         other: &Self,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<std::cmp::Ordering> {
         if self.idx == other.idx {
             Some(std::cmp::Ordering::Equal)
@@ -87,7 +87,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn dependent_on(
         &self,
         _analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Vec<ContextVarNode> {
         vec![self.idx.into()]
     }
@@ -95,7 +95,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     fn recursive_dependent_on(
         &self,
         analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
         let mut deps = ContextVarNode(self.idx.index()).dependent_on(analyzer, true)?;
         deps.push(ContextVarNode(self.idx.index()));
@@ -182,7 +182,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
     fn is_flatten_cached(
         &self,
-        analyzer: &impl GraphBackend,
+        _analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some() || {
@@ -204,7 +204,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
     fn is_min_max_cached(
         &self,
-        analyzer: &impl GraphBackend,
+        _analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> (bool, bool) {
         let (arena_cached_min, arena_cached_max) = {
@@ -278,7 +278,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         _: NodeIdx,
         _: NodeIdx,
         _analyzer: &mut impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) {
     }
 
@@ -400,6 +400,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
+        let cvar = ContextVarNode::from(self.idx);
         if let Some(simp_min) = &self.flattened_min {
             return Ok(*simp_min.clone());
         }
@@ -415,7 +416,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             }
         }
 
-        let cvar = ContextVarNode::from(self.idx);
         if cvar.is_fundamental(analyzer)? {
             Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),

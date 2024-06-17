@@ -1,4 +1,5 @@
 use crate::elem::Elem;
+
 use crate::{
     nodes::{Concrete, ContextNode, ContextVarNode},
     range::Range,
@@ -28,7 +29,7 @@ impl ContextNode {
                 tracing::trace!("{} is unreachable via UNSAT", self.path(analyzer));
                 Ok(true)
             }
-            e => {
+            _e => {
                 // println!("other: {e:?}");
                 Ok(false)
             }
@@ -117,7 +118,18 @@ impl ContextNode {
             if !self.underlying(analyzer)?.ctx_deps.contains(&dep) {
                 // dep.cache_flattened_range(analyzer)?;
                 let mut range = dep.range(analyzer)?.unwrap();
+
+                let min = range.simplified_range_min(analyzer, arena)?;
+                let max = range.simplified_range_max(analyzer, arena)?;
+
+                let true_elem = Elem::from(true);
+                let trivial_sat = min == true_elem && max == true_elem;
+                if trivial_sat || min == Elem::Null || max == Elem::Null {
+                    return Ok(());
+                }
+
                 let r = range.flattened_range(analyzer, arena)?.into_owned();
+
                 // add the atomic constraint
                 if let Some(atom) = Elem::Arena(r.min).atomize(analyzer, arena) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);

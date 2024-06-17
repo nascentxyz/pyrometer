@@ -15,7 +15,7 @@ impl AsDotStr for EnumNode {
     fn as_dot_str(
         &self,
         analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(

@@ -19,6 +19,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         if let Some(idx) = idx {
             if let Some(t) = arena.ranges.get(idx) {
                 if let Elem::Expr(expr) = t {
+                    tracing::trace!("hitting cache");
                     if maximize {
                         if let Some(MinMaxed::Maximized(max)) = &expr.maximized {
                             return Ok(*max.clone());
@@ -35,6 +36,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         if let Some(idx) = idx {
             if let Some(t) = arena.ranges.get_mut(idx) {
                 if let Elem::Expr(expr) = &mut *t {
+                    tracing::trace!("setting cache");
                     if maximize {
                         expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
                     } else {
@@ -54,11 +56,18 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        tracing::trace!("minimize lhs");
         self.lhs.cache_minimize(analyzer, arena)?;
+        tracing::trace!("maximize lhs");
         self.lhs.cache_maximize(analyzer, arena)?;
+        tracing::trace!("minimize rhs");
         self.rhs.cache_minimize(analyzer, arena)?;
+        tracing::trace!("maximize rhs");
         self.rhs.cache_maximize(analyzer, arena)?;
+        tracing::trace!("exec");
+
         let res = self.exec_op(maximize, analyzer, arena)?;
+
         if maximize {
             self.maximized = Some(MinMaxed::Maximized(Box::new(res)));
         } else {
@@ -437,7 +446,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Cast => exec_cast(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
-        };
-        Ok(res.unwrap_or_else(|| Elem::Expr(self.clone())))
+        }
+        .unwrap_or_else(|| Elem::Expr(self.clone()));
+        tracing::trace!("result: {res}");
+        Ok(res)
     }
 }

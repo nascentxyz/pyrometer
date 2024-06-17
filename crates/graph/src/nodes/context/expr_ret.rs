@@ -51,8 +51,12 @@ impl ExprRet {
     pub fn debug_str(&self, analyzer: &impl GraphBackend<Node = Node>) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
-                Node::ContextVar(_) => ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
-                e => format!("{:?}", e),
+                Node::ContextVar(_) => format!(
+                    "idx_{}: {}",
+                    inner.index(),
+                    ContextVarNode::from(*inner).display_name(analyzer).unwrap()
+                ),
+                e => format!("idx_{}: {:?}", inner.index(), e),
             },
             ExprRet::Multi(inner) => {
                 format!(

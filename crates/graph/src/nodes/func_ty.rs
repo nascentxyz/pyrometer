@@ -442,13 +442,34 @@ impl FunctionNode {
     //     // }
     // }
 
-    pub fn returns<'a>(&self, analyzer: &'a impl GraphBackend) -> &'a [FunctionReturnNode] {
-        self.underlying(analyzer)
-            .unwrap()
-            .cache
-            .returns
-            .as_ref()
-            .unwrap()
+    pub fn returns(
+        &self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+    ) -> Vec<FunctionReturnNode> {
+        if let Some(cached) = self.underlying(analyzer).unwrap().cache.returns.as_ref() {
+            cached.to_vec()
+        } else {
+            let underlying = self.underlying(analyzer).unwrap().clone();
+            let rets = underlying
+                .returns
+                .into_iter()
+                .filter_map(|(_loc, output)| {
+                    if let Some(output) = output {
+                        let ret = FunctionReturn::new(analyzer, arena, output);
+                        let output_node = analyzer.add_node(ret);
+                        analyzer.add_edge(output_node, *self, Edge::FunctionReturn);
+                        Some(output_node.into())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let underlying_mut = self.underlying_mut(analyzer).unwrap();
+            underlying_mut.cache.returns = Some(rets.clone());
+            rets
+        }
     }
 
     pub fn is_public_or_ext(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {

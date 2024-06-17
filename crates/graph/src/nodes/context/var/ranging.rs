@@ -223,16 +223,20 @@ impl ContextVarNode {
             }
         }
 
+        tracing::trace!("new min: {new_min}");
         new_min.arenaize(analyzer, arena)?;
 
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
 
         tracing::trace!(
-            "setting range minimum: {} (node idx: {}), current:{}, new_min:{}, deps: {:#?}",
+            "setting range minimum: {} (node idx: {}), current:{}, new_min:{} ({}), deps: {:#?}",
             self.display_name(analyzer)?,
             self.0,
-            self.range_min(analyzer)?.unwrap(),
+            self.range_min(analyzer)
+                .unwrap_or_default()
+                .unwrap_or_default(),
+            new_min.recurse_dearenaize(analyzer, arena),
             new_min,
             new_min.recursive_dependent_on(analyzer, arena)?
         );

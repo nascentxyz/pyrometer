@@ -223,7 +223,7 @@ impl ToRangeString for RangeExpr<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> RangeElemString {
         if let MaybeCollapsed::Collapsed(collapsed) =
-            collapse(&self.lhs, self.op, &self.rhs, analyzer, arena)
+            collapse(*self.lhs.clone(), self.op, *self.rhs.clone(), arena)
         {
             return collapsed.to_range_string(maximize, analyzer, arena);
         }

@@ -236,6 +236,44 @@ contract Mul {
     }
 }
 
+contract Exp {
+    function exp(uint256 x, uint256 y) public pure returns (uint256) {
+        return x ** y;
+    }
+
+    function int_exp(int256 x, uint256 y) public pure returns (int256) {
+        return x ** y;
+    }
+
+    function exp_conc() public pure returns (uint256) {
+        uint256 a1 = exp(0, 0);
+        require(a1 == 1);
+        uint256 a2 = exp(0, 1);
+        require(a2 == 0);
+        uint256 a3 = exp(100, 4);
+        require(a3 == 100000000);
+        uint256 a4 = exp(100, 8);
+        require(a4 == 10000000000000000);
+        uint256 a5 = exp(1000000000, 8);
+        require(a5 == 1000000000000000000000000000000000000000000000000000000000000000000000000);
+        uint256 a6 = exp(2, 24);
+        require(a6 == 16777216);
+    }
+
+    function int_exp_conc() public pure {
+        int256 a1 = int_exp(-100, 0);
+        require(a1 == 1);
+        int256 a2 = int_exp(-100, 2);
+        require(a2 == 10000);
+        int256 a3 = int_exp(-100, 3);
+        require(a3 == -1000000);
+        int256 a4 = int_exp(-100, 8);
+        require(a4 == 10000000000000000);
+        int256 a5 = int_exp(-2, 23);
+        require(a5 == -8388608);
+    }
+}
+
 contract Add {
     function add(uint256 x, uint256 y) public pure returns (uint256) {
         return x + y;

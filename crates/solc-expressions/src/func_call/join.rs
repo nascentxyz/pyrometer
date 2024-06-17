@@ -1,9 +1,10 @@
 use crate::context_builder::StatementParser;
 use crate::member_access::ListAccess;
+use crate::variable::Variable;
 use crate::{helper::CallerHelper, ExprErr, IntoExprErr};
 
 use graph::{
-    elem::{Elem, RangeElem},
+    elem::{Elem, RangeElem, RangeExpr, RangeOp},
     nodes::{
         Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
         FunctionParamNode, KilledKind,
@@ -83,7 +84,7 @@ pub trait FuncJoiner:
                                 "Branching pure join function: {}",
                                 func.name(self).into_expr_err(loc)?
                             );
-                            // self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                            // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                             let new_forks = ctx.set_join_forks(loc, edges.clone(), self).unwrap();
                             edges.into_iter().zip(new_forks.iter()).try_for_each(
                                 |(edge, new_fork)| {
@@ -116,169 +117,17 @@ pub trait FuncJoiner:
                         "Childless pure join: {}",
                         func.name(self).into_expr_err(loc)?
                     );
-                    let replacement_map = self.basic_inputs_replacement_map(
+                    self.join_pure(
                         arena,
-                        body_ctx,
                         loc,
+                        func,
                         params,
                         func_inputs,
+                        body_ctx,
+                        body_ctx,
+                        ctx,
+                        false,
                     )?;
-                    // 1. Create a new variable with name `<func_name>.<return_number>`
-                    // 2. Set the range to be the copy of the return's simplified range from the function
-                    // 3. Replace the fundamentals with the input data
-                    let mut rets: Vec<_> = body_ctx
-                        .return_nodes(self)
-                        .into_expr_err(loc)?
-                        .iter()
-                        .enumerate()
-                        .map(|(i, (_, ret_node))| {
-                            let mut new_var = ret_node.underlying(self).unwrap().clone();
-                            let new_name = format!("{}.{i}", func.name(self).unwrap());
-                            new_var.name.clone_from(&new_name);
-                            new_var.display_name = new_name;
-                            if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range: SolcRange =
-                                    range.take_flattened_range(self, arena).unwrap().into();
-                                replacement_map.iter().for_each(|(replace, replacement)| {
-                                    range.replace_dep(*replace, replacement.0.clone(), self, arena);
-                                });
-
-                                range.cache_eval(self, arena).unwrap();
-
-                                new_var.ty.set_range(range).unwrap();
-                            }
-
-                            if let Some(ref mut dep_on) = &mut new_var.dep_on {
-                                dep_on.iter_mut().for_each(|d| {
-                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) {
-                                        *d = *r
-                                    }
-                                });
-                            }
-
-                            let new_cvar =
-                                ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
-                            self.add_edge(new_cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.add_var(new_cvar, self).unwrap();
-
-                            // handle the case where the return node is a struct
-                            if let Ok(fields) = ret_node.struct_to_fields(self) {
-                                if !fields.is_empty() {
-                                    fields.iter().for_each(|field| {
-                                        let mut new_var = field.underlying(self).unwrap().clone();
-                                        let new_name = format!(
-                                            "{}.{i}.{}",
-                                            func.name(self).unwrap(),
-                                            field.name(self).unwrap()
-                                        );
-                                        new_var.name.clone_from(&new_name);
-                                        new_var.display_name = new_name;
-                                        if let Some(mut range) = new_var.ty.take_range() {
-                                            let mut range: SolcRange = range
-                                                .take_flattened_range(self, arena)
-                                                .unwrap()
-                                                .into();
-                                            replacement_map.iter().for_each(
-                                                |(replace, replacement)| {
-                                                    range.replace_dep(
-                                                        *replace,
-                                                        replacement.0.clone(),
-                                                        self,
-                                                        arena,
-                                                    );
-                                                },
-                                            );
-
-                                            range.cache_eval(self, arena).unwrap();
-
-                                            new_var.ty.set_range(range).unwrap();
-                                        }
-
-                                        if let Some(ref mut dep_on) = &mut new_var.dep_on {
-                                            dep_on.iter_mut().for_each(|d| {
-                                                if let Some((_, r)) =
-                                                    replacement_map.get(&(*d).into())
-                                                {
-                                                    *d = *r
-                                                }
-                                            });
-                                        }
-                                        let new_field = ContextVarNode::from(
-                                            self.add_node(Node::ContextVar(new_var)),
-                                        );
-                                        self.add_edge(
-                                            new_field,
-                                            new_cvar,
-                                            Edge::Context(ContextEdge::AttrAccess("field")),
-                                        );
-                                    });
-                                }
-                            }
-
-                            ExprRet::Single(new_cvar.into())
-                        })
-                        .collect();
-
-                    // println!("requires:");
-                    body_ctx
-                        .ctx_deps(self)
-                        .into_expr_err(loc)?
-                        .iter()
-                        .try_for_each(|dep| {
-                            let mut new_var = dep.underlying(self)?.clone();
-                            if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range: SolcRange =
-                                    range.take_flattened_range(self, arena).unwrap().into();
-                                replacement_map.iter().for_each(|(replace, replacement)| {
-                                    range.replace_dep(*replace, replacement.0.clone(), self, arena);
-                                });
-
-                                range.cache_eval(self, arena)?;
-                                new_var.ty.set_range(range)?;
-                            }
-
-                            // TODO: the naming isn't correct here and we move variables around
-                            // in a dumb way
-
-                            if let Some(ref mut dep_on) = &mut new_var.dep_on {
-                                dep_on.iter_mut().for_each(|d| {
-                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) {
-                                        *d = *r
-                                    }
-                                });
-                            }
-
-                            let new_cvar =
-                                ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
-
-                            self.add_edge(new_cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            ctx.add_var(new_cvar, self)?;
-                            ctx.add_ctx_dep(new_cvar, self, arena)
-                        })
-                        .into_expr_err(loc)?;
-
-                    #[allow(clippy::unnecessary_to_owned)]
-                    func.returns(self).to_vec().into_iter().for_each(|ret| {
-                        if let Some(var) = ContextVar::maybe_new_from_func_ret(
-                            self,
-                            ret.underlying(self).unwrap().clone(),
-                        ) {
-                            let cvar = self.add_node(Node::ContextVar(var));
-                            ctx.add_var(cvar.into(), self).unwrap();
-                            self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            rets.push(ExprRet::Single(cvar));
-                        }
-                    });
-
-                    ctx.underlying_mut(self).into_expr_err(loc)?.path = format!(
-                        "{}.{}.resume{{ {} }}",
-                        ctx.path(self),
-                        func.name(self).unwrap(),
-                        ctx.associated_fn_name(self).unwrap()
-                    );
-                    ctx.push_expr(ExprRet::Multi(rets), self)
-                        .into_expr_err(loc)?;
-                    self.add_completed_pure(true, true, false, body_ctx);
                     return Ok(true);
                 }
             } else {
@@ -395,7 +244,7 @@ pub trait FuncJoiner:
                     });
 
                     range.cache_eval(self, arena).unwrap();
-
+                    // TODO: change ty here to match ret type
                     new_var.ty.set_range(range).unwrap();
                 }
 
@@ -407,7 +256,9 @@ pub trait FuncJoiner:
                     });
                 }
 
-                let new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let mut new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
+                target_ctx.add_var(new_cvar, self).unwrap();
 
                 // handle the case where the return node is a struct
                 if let Ok(fields) = ret_node.struct_to_fields(self) {
@@ -449,11 +300,24 @@ pub trait FuncJoiner:
                             );
                         });
                     }
+                } else {
+                    let next_cvar = self
+                        .advance_var_in_ctx_forcible(new_cvar, loc, target_ctx, true)
+                        .unwrap();
+                    let casted = Elem::Expr(RangeExpr::new(
+                        Elem::from(new_cvar),
+                        RangeOp::Cast,
+                        Elem::from(*ret_node),
+                    ));
+                    next_cvar
+                        .set_range_min(self, arena, casted.clone())
+                        .unwrap();
+                    next_cvar.set_range_max(self, arena, casted).unwrap();
+
+                    new_cvar = next_cvar;
                 }
 
-                self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
-                target_ctx.add_var(new_cvar, self).unwrap();
-                ExprRet::Single(new_cvar.into())
+                ExprRet::Single(new_cvar.latest_version(self).into())
             })
             .collect();
 
@@ -470,8 +334,6 @@ pub trait FuncJoiner:
                     // range.take_flattened_range(self).unwrap().into();
                     let mut range: SolcRange =
                         range.flattened_range(self, arena)?.into_owned().into();
-                    // println!("[{:?}, {:?}]", range.min, range.max);
-                    // println!("[{:?}, {:?}]", range.min.dearenaize(self).borrow(), range.max.dearenaize(self).borrow());
                     replacement_map.iter().for_each(|(replace, replacement)| {
                         range.replace_dep(*replace, replacement.0.clone(), self, arena);
                     });
@@ -506,7 +368,7 @@ pub trait FuncJoiner:
         }
 
         #[allow(clippy::unnecessary_to_owned)]
-        func.returns(self).to_vec().into_iter().for_each(|ret| {
+        func.returns(arena, self).into_iter().for_each(|ret| {
             if let Some(var) =
                 ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
             {

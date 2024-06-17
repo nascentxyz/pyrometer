@@ -7,8 +7,6 @@ use crate::{
 
 use shared::{NodeIdx, RangeArena};
 
-use tracing::instrument;
-
 impl RangeElem<Concrete> for Elem<Concrete> {
     type GraphError = GraphError;
 
@@ -62,6 +60,36 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 }
             }
             (Self::Concrete(a), Self::Concrete(b)) => a.range_ord(b, arena),
+            (c @ Self::Concrete(_), Self::Reference(r)) => {
+                if let (Some(MinMaxed::Minimized(min)), Some(MinMaxed::Maximized(max))) =
+                    (&r.minimized, &r.maximized)
+                {
+                    let min_ord = c.range_ord(min, arena)?;
+                    let max_ord = c.range_ord(max, arena)?;
+                    if min_ord == max_ord {
+                        Some(min_ord)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            (Self::Reference(r), c @ Self::Concrete(_)) => {
+                if let (Some(MinMaxed::Minimized(min)), Some(MinMaxed::Maximized(max))) =
+                    (&r.minimized, &r.maximized)
+                {
+                    let min_ord = min.range_ord(c, arena)?;
+                    let max_ord = max.range_ord(c, arena)?;
+                    if min_ord == max_ord {
+                        Some(min_ord)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
             (Self::Reference(a), Self::Reference(b)) => a.range_ord(b, arena),
             (Elem::Null, Elem::Null) => None,
             (_a, Elem::Null) => Some(std::cmp::Ordering::Greater),
@@ -70,7 +98,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    #[instrument(level = "trace", skip_all)]
     fn flatten(
         &self,
         maximize: bool,
@@ -92,7 +119,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    #[instrument(level = "trace", skip_all)]
     fn cache_flatten(
         &mut self,
         analyzer: &mut impl GraphBackend,
@@ -118,7 +144,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         }
     }
 
-    #[instrument(level = "trace", skip_all)]
     fn is_flatten_cached(
         &self,
         analyzer: &impl GraphBackend,
@@ -391,7 +416,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.simplify_maximize(analyzer, arena),
             Concrete(inner) => inner.simplify_maximize(analyzer, arena),
             ConcreteDyn(inner) => inner.simplify_maximize(analyzer, arena),
-            Expr(expr) => match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
                 MaybeCollapsed::Collapsed(collapsed) => {
                     let res = collapsed.simplify_maximize(analyzer, arena)?;
                     collapsed.set_arenaized_flattened(true, &res, arena);
@@ -467,7 +492,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.simplify_minimize(analyzer, arena),
             Concrete(inner) => inner.simplify_minimize(analyzer, arena),
             ConcreteDyn(inner) => inner.simplify_minimize(analyzer, arena),
-            Expr(expr) => match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
                 MaybeCollapsed::Collapsed(collapsed) => {
                     let res = collapsed.simplify_minimize(analyzer, arena)?;
                     collapsed.set_arenaized_flattened(false, &res, arena);
@@ -519,7 +544,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.cache_maximize(analyzer, arena),
             Concrete(inner) => inner.cache_maximize(analyzer, arena),
             ConcreteDyn(inner) => inner.cache_maximize(analyzer, arena),
-            Expr(expr) => match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
                 MaybeCollapsed::Collapsed(mut collapsed) => {
                     collapsed.cache_maximize(analyzer, arena)?;
                     let max = collapsed.maximize(analyzer, arena)?;
@@ -554,7 +579,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             Reference(dy) => dy.cache_minimize(analyzer, arena),
             Concrete(inner) => inner.cache_minimize(analyzer, arena),
             ConcreteDyn(inner) => inner.cache_minimize(analyzer, arena),
-            Expr(expr) => match collapse(&expr.lhs, expr.op, &expr.rhs, analyzer, arena) {
+            Expr(expr) => match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
                 MaybeCollapsed::Collapsed(mut collapsed) => {
                     collapsed.cache_minimize(analyzer, arena)?;
                     let min = collapsed.minimize(analyzer, arena)?;

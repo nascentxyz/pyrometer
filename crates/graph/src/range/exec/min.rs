@@ -63,7 +63,7 @@ pub fn exec_min(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let candidates = vec![

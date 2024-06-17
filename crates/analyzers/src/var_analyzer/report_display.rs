@@ -13,7 +13,7 @@ impl ReportDisplay for VarBoundAnalysis {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> String {
+    fn msg(&self, analyzer: &impl GraphBackend, _arena: &mut RangeArena<Elem<Concrete>>) -> String {
         format!(
             "Bounds for {} in {}:",
             self.var_display_name,

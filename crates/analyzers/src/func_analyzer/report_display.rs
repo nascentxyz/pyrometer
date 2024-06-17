@@ -29,7 +29,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> String {
+    fn msg(&self, analyzer: &impl GraphBackend, _arena: &mut RangeArena<Elem<Concrete>>) -> String {
         format!(
             "Bounds for function: {}",
             format!(
@@ -46,7 +46,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn labels(
         &self,
         _analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Vec<Label<LocStrSpan>> {
         vec![]
     }

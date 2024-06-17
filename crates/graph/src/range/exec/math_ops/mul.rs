@@ -163,7 +163,7 @@ pub fn exec_mul(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     wrapping: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let mut candidates = vec![];

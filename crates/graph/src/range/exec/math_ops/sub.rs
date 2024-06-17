@@ -5,6 +5,7 @@ use crate::GraphBackend;
 use shared::RangeArena;
 
 use ethers_core::types::{I256, U256};
+use solang_parser::pt::Loc;
 
 impl RangeSub<Concrete> for RangeConcrete<Concrete> {
     fn range_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -197,6 +198,10 @@ pub fn exec_sub(
         let mut candidates = vec![];
         let mut all_overflowed = true;
         let mut one_overflowed = false;
+        let zero = Elem::Concrete(RangeConcrete::new(
+            Concrete::from(U256::zero()),
+            Loc::Implicit,
+        ));
         let add_candidate = |lhs: &Elem<Concrete>,
                              rhs: &Elem<Concrete>,
                              candidates: &mut Vec<Elem<Concrete>>,
@@ -204,8 +209,25 @@ pub fn exec_sub(
                              one_overflowed: &mut bool,
                              arena: &mut RangeArena<Elem<Concrete>>| {
             if let Some(c) = lhs.range_wrapping_sub(rhs) {
-                let overflowed =
-                    matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Greater));
+                let lhs_neg = matches!(lhs.range_ord(&zero, arena), Some(std::cmp::Ordering::Less));
+                let rhs_neg = matches!(rhs.range_ord(&zero, arena), Some(std::cmp::Ordering::Less));
+                let signed = lhs_neg || rhs_neg;
+
+                let overflowed = if signed {
+                    // signed safemath: (rhs >= 0 && c <= lhs) || (rhs < 0 && c > lhs) ==>  no overflowed --invert-> overflowed
+                    // ( rhs < 0 ∣∣ c > lhs) && ( rhs ≥ 0 ∣∣ c ≤ lhs)
+
+                    (rhs_neg
+                        || matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Greater)))
+                        && (!rhs_neg
+                            || matches!(
+                                c.range_ord(lhs, arena),
+                                Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
+                            ))
+                } else {
+                    // unsigned safemath: c < a ==> overflowed
+                    matches!(c.range_ord(lhs, arena), Some(std::cmp::Ordering::Greater))
+                };
 
                 if *all_overflowed && !overflowed {
                     *all_overflowed = false;
@@ -346,6 +368,22 @@ mod tests {
         let y = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(256, I256::from(0i32)));
+    }
+
+    #[test]
+    fn max_int_int() {
+        let x = RangeConcrete::new(Concrete::Int(256, I256::MAX), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
+        let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(256, I256::MAX));
+    }
+
+    #[test]
+    fn int_max_int() {
+        let x = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::MAX), Loc::Implicit);
+        let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
+        assert_eq!(result.val, Concrete::Int(256, I256::MIN));
     }
 
     #[test]

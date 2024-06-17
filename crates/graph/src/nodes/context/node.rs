@@ -16,7 +16,7 @@ impl AsDotStr for ContextNode {
     fn as_dot_str(
         &self,
         analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
         format!("Context {{ {} }}", self.path(analyzer))
     }

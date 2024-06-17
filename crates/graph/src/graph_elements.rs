@@ -5,7 +5,7 @@ use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx, RangeArena};
 
 use lazy_static::lazy_static;
 use petgraph::{Directed, Graph};
-use solang_parser::pt::Identifier;
+use solang_parser::pt::{Identifier, Loc};
 
 use std::collections::HashMap;
 
@@ -21,6 +21,12 @@ pub trait AnalyzerBackend:
         Function = Function,
     > + GraphBackend
 {
+    fn add_concrete_var(
+        &mut self,
+        ctx: ContextNode,
+        concrete: Concrete,
+        loc: Loc,
+    ) -> Result<ContextVarNode, Self::ExprErr>;
 }
 
 pub trait AsDotStr {

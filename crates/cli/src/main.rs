@@ -1,5 +1,6 @@
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
+    elem::RangeArenaLike,
     nodes::{ContractNode, FunctionNode},
     solvers::{AtomicSolveStatus, BruteBinSearchSolver, SolcSolver},
     Edge,
@@ -265,7 +266,7 @@ fn main() {
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
     if args.stats {
-        println!("{}", analyzer.stats(t_end));
+        println!("{}", analyzer.stats(t_end, arena));
     }
     // println!("Arena: {:#?}", analyzer.range_arena);
 

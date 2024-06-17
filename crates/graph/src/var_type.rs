@@ -26,7 +26,7 @@ impl AsDotStr for VarType {
     fn as_dot_str(
         &self,
         analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
         self.as_string(analyzer).unwrap()
     }

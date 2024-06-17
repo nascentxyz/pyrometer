@@ -169,7 +169,7 @@ pub fn exec_cast(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // the weird thing about cast is that we really dont know until after the cast due to sizing things

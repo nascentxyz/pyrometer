@@ -485,7 +485,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn is_flatten_cached(
         &self,
         _analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some()
     }
@@ -493,7 +493,7 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
     fn is_min_max_cached(
         &self,
         _analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> (bool, bool) {
         (self.minimized.is_some(), self.maximized.is_some())
     }

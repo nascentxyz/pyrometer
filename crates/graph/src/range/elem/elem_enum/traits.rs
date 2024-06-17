@@ -6,7 +6,10 @@ use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
 
-use std::hash::{Hash, Hasher};
+use std::{
+    borrow::Cow,
+    hash::{Hash, Hasher},
+};
 
 impl<T: Hash> Hash for Elem<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -18,6 +21,24 @@ impl<T: Hash> Hash for Elem<T> {
             Elem::Null => (-1i32).hash(state),
             Elem::Arena(idx) => idx.hash(state),
         }
+    }
+}
+
+impl<'a> Into<Cow<'a, Elem<Concrete>>> for &'a Elem<Concrete> {
+    fn into(self) -> Cow<'a, Elem<Concrete>> {
+        Cow::Borrowed(self)
+    }
+}
+
+impl<'a> Into<Cow<'a, Elem<Concrete>>> for Elem<Concrete> {
+    fn into(self) -> Cow<'a, Elem<Concrete>> {
+        Cow::Owned(self)
+    }
+}
+
+impl From<bool> for Elem<Concrete> {
+    fn from(c: bool) -> Self {
+        Elem::Concrete(RangeConcrete::new(Concrete::from(c), Loc::Implicit))
     }
 }
 
@@ -87,7 +108,7 @@ impl std::fmt::Display for Elem<Concrete> {
                 _ => write!(f, "({} {} {})", lhs, op.to_string(), rhs),
             },
             Elem::Arena(idx) => write!(f, "arena_idx_{idx}"),
-            Elem::Null => write!(f, ""),
+            Elem::Null => write!(f, "<null>"),
         }
     }
 }

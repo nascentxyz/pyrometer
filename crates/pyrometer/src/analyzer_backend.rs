@@ -3,8 +3,8 @@ use crate::Analyzer;
 use graph::{
     elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionNode, FunctionParam,
-        FunctionParamNode, FunctionReturn, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextVar, Function, FunctionNode,
+        FunctionParam, FunctionParamNode, FunctionReturn, MsgNode,
     },
     AnalyzerBackend, Edge, Node, VarType,
 };
@@ -13,11 +13,26 @@ use solc_expressions::{ExprErr, IntoExprErr};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
-use solang_parser::{helpers::CodeLocation, pt::Expression};
+use solang_parser::{
+    helpers::CodeLocation,
+    pt::{Expression, Loc},
+};
 
 use std::collections::BTreeMap;
 
-impl AnalyzerBackend for Analyzer {}
+impl AnalyzerBackend for Analyzer {
+    fn add_concrete_var(
+        &mut self,
+        ctx: graph::nodes::ContextNode,
+        concrete: Concrete,
+        loc: Loc,
+    ) -> Result<graph::nodes::ContextVarNode, Self::ExprErr> {
+        let cnode = self.add_node(Node::Concrete(concrete));
+        let var = ContextVar::new_from_concrete(loc, ctx, cnode.into(), self);
+        let cnode = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
+        Ok(cnode.into())
+    }
+}
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;

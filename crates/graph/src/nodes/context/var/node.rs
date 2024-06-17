@@ -151,13 +151,11 @@ impl ContextVarNode {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<String, GraphError> {
-        if let Some(ref_range) = self.ref_range(analyzer)? {
-            let min_name = ref_range
-                .range_min()
-                .simplify_minimize(analyzer, arena)?
-                .to_range_string(false, analyzer, arena)
-                .s;
-
+        if self.is_fundamental(analyzer)? {
+            self.display_name(analyzer)
+        } else if let Some(ref_range) = self.ref_range(analyzer)? {
+            let min_name = ref_range.range_min().simplify_minimize(analyzer, arena)?;
+            let min_name = min_name.to_range_string(false, analyzer, arena).s;
             let max_name = ref_range
                 .range_max()
                 .simplify_maximize(analyzer, arena)?

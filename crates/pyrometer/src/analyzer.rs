@@ -199,7 +199,11 @@ impl Default for Analyzer {
 }
 
 impl Analyzer {
-    pub fn stats(&self, duration: std::time::Duration) -> String {
+    pub fn stats(
+        &self,
+        duration: std::time::Duration,
+        arena: &RangeArena<Elem<Concrete>>,
+    ) -> String {
         let num_nodes = self.graph.node_count();
         let num_contracts = self.number_of_contracts();
         let num_funcs = self.number_of_functions();
@@ -234,7 +238,7 @@ impl Analyzer {
             format!(""),
             format!(
                 "   Unique Range Elements: {}",
-                self.range_arena.ranges.len()
+                arena.ranges.len()
             ),
             format!(""),
             format!(
@@ -523,16 +527,21 @@ impl Analyzer {
     pub fn final_pass(&mut self, arena: &mut RangeArena<Elem<Concrete>>) {
         let elems = self.final_pass_items.clone();
         elems.iter().for_each(|final_pass_item| {
+            final_pass_item.funcs.iter().for_each(|func| {
+                func.set_params_and_ret(self, arena).unwrap();
+            });
+        });
+        elems.iter().for_each(|final_pass_item| {
             final_pass_item
                 .inherits
                 .iter()
                 .for_each(|(contract, inherits)| {
                     contract.inherit(inherits.to_vec(), self);
                 });
-            final_pass_item.funcs.iter().for_each(|func| {
-                // add params now that parsing is done
-                func.set_params_and_ret(self, arena).unwrap();
-            });
+            // final_pass_item.funcs.iter().for_each(|func| {
+            //     // add params now that parsing is done
+            //     func.set_params_and_ret(self, arena).unwrap();
+            // });
 
             final_pass_item
                 .usings

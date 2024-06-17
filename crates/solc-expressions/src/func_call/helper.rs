@@ -402,8 +402,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     let func_rets = callee_ctx
                         .associated_fn(self)
                         .into_expr_err(loc)?
-                        .returns(self)
-                        .to_vec();
+                        .returns(arena, self);
                     func_rets
                         .iter()
                         .filter_map(|ret| {
@@ -461,14 +460,12 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             .parent_ctx
                             .associated_fn(self)
                             .into_expr_err(loc)?
-                            .returns(self)
-                            .to_vec()
+                            .returns(arena, self)
                     } else {
                         callee_ctx
                             .associated_fn(self)
                             .into_expr_err(loc)?
-                            .returns(self)
-                            .to_vec()
+                            .returns(arena, self)
                     };
 
                 let ret = rets

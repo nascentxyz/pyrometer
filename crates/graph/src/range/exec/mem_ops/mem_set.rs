@@ -102,59 +102,85 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
     }
 
     fn range_set_length(&self, other: &Self) -> Option<Elem<Concrete>> {
-        let new = match self.val {
-            Concrete::DynBytes(ref val) => Some(
-                val.iter()
-                    .enumerate()
-                    .map(|(i, v)| {
-                        let mut bytes = [0x00; 32];
-                        bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (Elem::from(Concrete::from(U256::from(i))), (v, i))
-                    })
-                    .collect::<BTreeMap<_, _>>(),
-            ),
-            Concrete::String(ref val) => Some(
-                val.chars()
-                    .enumerate()
-                    .map(|(i, v)| {
-                        let mut bytes = [0x00; 32];
-                        v.encode_utf8(&mut bytes[..]);
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (Elem::from(Concrete::from(U256::from(i))), (v, i))
-                    })
-                    .collect::<BTreeMap<_, _>>(),
-            ),
-            Concrete::Array(ref val) => Some(
-                val.iter()
-                    .enumerate()
-                    .map(|(i, v)| {
-                        let t = Elem::Concrete(RangeConcrete::new(v.clone(), self.loc));
-                        (Elem::from(Concrete::from(U256::from(i))), (t, i))
-                    })
-                    .collect::<BTreeMap<_, _>>(),
-            ),
-            Concrete::Bytes(size, val) => Some(
-                val.0
-                    .iter()
-                    .take(size as usize)
-                    .enumerate()
-                    .map(|(i, v)| {
-                        let mut bytes = [0x00; 32];
-                        bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (Elem::from(Concrete::from(U256::from(i))), (v, i))
-                    })
-                    .collect::<BTreeMap<_, _>>(),
-            ),
-            _ => None,
-        };
-
-        Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
-            Elem::Concrete(other.clone()),
-            new?,
-            self.loc,
-        )))
+        match other.val.into_u256() {
+            Some(len) if len <= U256::from(32) => match self.val {
+                Concrete::DynBytes(ref val) => Some(Elem::Concrete(RangeConcrete::new(
+                    Concrete::DynBytes({
+                        let mut v = val.clone();
+                        v.resize(len.as_usize(), 0);
+                        v
+                    }),
+                    self.loc,
+                ))),
+                Concrete::String(ref val) => Some(Elem::Concrete(RangeConcrete::new(
+                    Concrete::String({
+                        let mut v = val.clone();
+                        v.push_str(&" ".repeat(len.as_usize() - v.chars().count()));
+                        v
+                    }),
+                    self.loc,
+                ))),
+                Concrete::Bytes(_, val) => Some(Elem::Concrete(RangeConcrete::new(
+                    Concrete::Bytes(len.as_u32() as u8, val),
+                    self.loc,
+                ))),
+                _ => None,
+            },
+            _ => {
+                let new = match self.val {
+                    Concrete::DynBytes(ref val) => Some(
+                        val.iter()
+                            .enumerate()
+                            .map(|(i, v)| {
+                                let mut bytes = [0x00; 32];
+                                bytes[0] = *v;
+                                let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                                (Elem::from(Concrete::from(U256::from(i))), (v, i))
+                            })
+                            .collect::<BTreeMap<_, _>>(),
+                    ),
+                    Concrete::String(ref val) => Some(
+                        val.chars()
+                            .enumerate()
+                            .map(|(i, v)| {
+                                let mut bytes = [0x00; 32];
+                                v.encode_utf8(&mut bytes[..]);
+                                let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                                (Elem::from(Concrete::from(U256::from(i))), (v, i))
+                            })
+                            .collect::<BTreeMap<_, _>>(),
+                    ),
+                    Concrete::Array(ref val) => Some(
+                        val.iter()
+                            .enumerate()
+                            .map(|(i, v)| {
+                                let t = Elem::Concrete(RangeConcrete::new(v.clone(), self.loc));
+                                (Elem::from(Concrete::from(U256::from(i))), (t, i))
+                            })
+                            .collect::<BTreeMap<_, _>>(),
+                    ),
+                    Concrete::Bytes(size, val) => Some(
+                        val.0
+                            .iter()
+                            .take(size as usize)
+                            .enumerate()
+                            .map(|(i, v)| {
+                                let mut bytes = [0x00; 32];
+                                bytes[0] = *v;
+                                let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                                (Elem::from(Concrete::from(U256::from(i))), (v, i))
+                            })
+                            .collect::<BTreeMap<_, _>>(),
+                    ),
+                    _ => None,
+                };
+                Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
+                    Elem::Concrete(other.clone()),
+                    new?,
+                    self.loc,
+                )))
+            }
+        }
     }
 }
 

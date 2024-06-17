@@ -9,7 +9,10 @@ use ethers_core::types::{I256, U256};
 impl RangeMod<Concrete> for RangeConcrete<Concrete> {
     fn range_mod(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
-            (Some(lhs_val), Some(rhs_val)) if rhs_val != 0.into() => {
+            (Some(lhs_val), Some(rhs_val)) => {
+                if rhs_val == 0.into() {
+                    return None;
+                }
                 let op_res = lhs_val % rhs_val;
                 let val = self.val.u256_as_original(op_res);
                 let rc = RangeConcrete::new(val, self.loc);
@@ -67,7 +70,7 @@ pub fn exec_mod(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     let is_const = |l: &Elem<_>, r: &Elem<_>, arena: &mut RangeArena<Elem<_>>| -> bool {

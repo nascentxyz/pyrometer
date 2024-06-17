@@ -125,7 +125,7 @@ pub fn exec_concat(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // TODO: improve with smarter stuff
@@ -294,11 +294,8 @@ mod tests {
         let expected: Elem<_> = Elem::ConcreteDyn(
             RangeDyn::from_concrete(Concrete::from("helloworld"), Loc::Implicit).unwrap(),
         );
-        let result = x
-            .range_concat(&y)
-            .unwrap()
-            .maximize(&g, &mut arena)
-            .unwrap();
+        let result = x.range_concat(&y).unwrap();
+        let result = result.maximize(&g, &mut arena).unwrap();
         assert_eq!(result, expected);
     }
 

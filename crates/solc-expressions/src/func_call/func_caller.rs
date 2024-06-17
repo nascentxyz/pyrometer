@@ -421,8 +421,6 @@ pub trait FuncCaller:
             if let Ok(true) = self.join(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
                 return Ok(());
             }
-        } else {
-            println!("entry call");
         }
 
         // pseudocode:
@@ -517,20 +515,15 @@ pub trait FuncCaller:
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
             #[allow(clippy::unnecessary_to_owned)]
-            func_node
-                .returns(self)
-                .to_vec()
-                .into_iter()
-                .for_each(|ret| {
-                    if let Some(var) = ContextVar::maybe_new_from_func_ret(
-                        self,
-                        ret.underlying(self).unwrap().clone(),
-                    ) {
-                        let cvar = self.add_node(Node::ContextVar(var));
-                        callee_ctx.add_var(cvar.into(), self).unwrap();
-                        self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
-                    }
-                });
+            func_node.returns(arena, self).into_iter().for_each(|ret| {
+                if let Some(var) =
+                    ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
+                {
+                    let cvar = self.add_node(Node::ContextVar(var));
+                    callee_ctx.add_var(cvar.into(), self).unwrap();
+                    self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
+                }
+            });
 
             // parse the function body
             self.parse_ctx_statement(arena, &body, false, Some(callee_ctx));
@@ -578,8 +571,7 @@ pub trait FuncCaller:
             self.apply_to_edges(callee_ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                 #[allow(clippy::unnecessary_to_owned)]
                 func_node
-                    .returns(analyzer)
-                    .to_vec()
+                    .returns(arena, analyzer)
                     .into_iter()
                     .try_for_each(|ret| {
                         let underlying = ret.underlying(analyzer).unwrap();

@@ -19,6 +19,42 @@ impl ContextVarNode {
         Ok(&self.underlying(analyzer)?.ty)
     }
 
+    pub fn ty_max_concrete(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<Concrete>, GraphError> {
+        if let Ok(b) = self.underlying(analyzer)?.ty.as_builtin(analyzer) {
+            if let Some(zero) = b.zero_concrete() {
+                return Ok(Concrete::max_of_type(&zero));
+            }
+        }
+
+        Ok(None)
+    }
+    pub fn ty_min_concrete(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<Concrete>, GraphError> {
+        if let Ok(b) = self.underlying(analyzer)?.ty.as_builtin(analyzer) {
+            if let Some(zero) = b.zero_concrete() {
+                return Ok(Concrete::min_of_type(&zero));
+            }
+        }
+
+        Ok(None)
+    }
+
+    pub fn ty_zero_concrete(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<Concrete>, GraphError> {
+        if let Ok(b) = self.underlying(analyzer)?.ty.as_builtin(analyzer) {
+            return Ok(b.zero_concrete());
+        }
+
+        Ok(None)
+    }
+
     pub fn ty_eq_ty(
         &self,
         other: &VarType,
@@ -326,6 +362,11 @@ impl ContextVarNode {
         analyzer: &mut impl AnalyzerBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        let other_ty = other.ty(analyzer)?.clone();
+        if other_ty.ty_eq(&self.underlying(analyzer)?.ty, analyzer)? {
+            return Ok(());
+        }
+
         let min_expr = Elem::Expr(RangeExpr::new(
             self.range_min(analyzer)?.expect("Should have a minimum"),
             RangeOp::Cast,
@@ -337,6 +378,8 @@ impl ContextVarNode {
             RangeOp::Cast,
             Elem::from(*other),
         ));
+
+        self.underlying_mut(analyzer)?.ty = other_ty;
 
         self.set_range_min(analyzer, arena, min_expr)?;
         self.set_range_max(analyzer, arena, max_expr)?;

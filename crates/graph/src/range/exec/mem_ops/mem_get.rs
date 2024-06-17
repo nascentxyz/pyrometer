@@ -98,7 +98,6 @@ pub fn exec_get_index(
     analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
-    println!("get index: {lhs} {rhs}");
     // for each key in LHS, check if it overlaps the RHS index range
     // e.g.:
     //  lhs: {

@@ -537,7 +537,7 @@ pub trait StatementParser:
                                     let _ = analyzer.add_if_err(res);
                                     return Ok(());
                                 }
-                                analyzer.return_match(ctx, &loc, &paths);
+                                analyzer.return_match(arena, ctx, &loc, &paths, 0);
                                 Ok(())
                             },
                         );

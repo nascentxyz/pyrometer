@@ -31,7 +31,7 @@ impl AsDotStr for MsgNode {
     fn as_dot_str(
         &self,
         analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
+        _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
         format!("msg {{ {:?} }}", self.underlying(analyzer).unwrap())
     }

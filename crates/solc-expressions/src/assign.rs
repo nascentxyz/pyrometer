@@ -74,10 +74,10 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
                 let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                let res = rhs_cvar
-                    .literal_cast_from(&lhs_cvar, self)
-                    .into_expr_err(loc);
-                let _ = self.add_if_err(res);
+                // let res = rhs_cvar
+                //     .literal_cast_from(&lhs_cvar, self)
+                //     .into_expr_err(loc);
+                // let _ = self.add_if_err(res);
                 ctx.push_expr(self.assign(arena, loc, lhs_cvar, rhs_cvar, ctx)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
@@ -129,6 +129,10 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             rhs_cvar.display_name(self).unwrap(),
             lhs_cvar.display_name(self).unwrap(),
         );
+
+        rhs_cvar
+            .cast_from(&lhs_cvar, self, arena)
+            .into_expr_err(loc)?;
 
         let (new_lower_bound, new_upper_bound) = (
             Elem::from(rhs_cvar.latest_version(self)),
