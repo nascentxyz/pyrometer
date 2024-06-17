@@ -7,7 +7,7 @@ use graph::{
         ExprRet, KilledKind, TmpConstruction,
     },
     range_string::ToRangeString,
-    AnalyzerBackend, AsDotStr, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
 use shared::RangeArena;
 

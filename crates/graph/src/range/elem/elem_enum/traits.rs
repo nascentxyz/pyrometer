@@ -24,15 +24,15 @@ impl<T: Hash> Hash for Elem<T> {
     }
 }
 
-impl<'a> Into<Cow<'a, Elem<Concrete>>> for &'a Elem<Concrete> {
-    fn into(self) -> Cow<'a, Elem<Concrete>> {
-        Cow::Borrowed(self)
+impl<'a> From<&'a Elem<Concrete>> for Cow<'a, Elem<Concrete>> {
+    fn from(val: &'a Elem<Concrete>) -> Self {
+        Cow::Borrowed(val)
     }
 }
 
-impl<'a> Into<Cow<'a, Elem<Concrete>>> for Elem<Concrete> {
-    fn into(self) -> Cow<'a, Elem<Concrete>> {
-        Cow::Owned(self)
+impl<'a> From<Elem<Concrete>> for Cow<'a, Elem<Concrete>> {
+    fn from(val: Elem<Concrete>) -> Self {
+        Cow::Owned(val)
     }
 }
 

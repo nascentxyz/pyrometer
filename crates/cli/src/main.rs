@@ -1,6 +1,5 @@
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
-    elem::RangeArenaLike,
     nodes::{ContractNode, FunctionNode},
     solvers::{AtomicSolveStatus, BruteBinSearchSolver, SolcSolver},
     Edge,

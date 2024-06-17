@@ -5,10 +5,9 @@ use crate::{
 use graph::{
     elem::*,
     nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
-        KilledKind, TmpConstruction,
+        Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind, TmpConstruction,
     },
-    AnalyzerBackend, ContextEdge, Edge, Node, RangeEval, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::RangeArena;
 
@@ -212,7 +211,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
         };
 
-        let mut new_rhs = rhs_cvar.latest_version(self);
+        let new_rhs = rhs_cvar.latest_version(self);
 
         let expr = Elem::Expr(RangeExpr::<Concrete>::new(
             Elem::from(Reference::new(lhs_cvar.latest_version(self).into())),
@@ -386,18 +385,17 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<ExprRet>, ExprErr> {
         // x / y || x % y
         // revert if div or mod by 0
-        if rhs.is_const(self, arena).into_expr_err(loc)? {
-            if rhs
+        if rhs.is_const(self, arena).into_expr_err(loc)?
+            && rhs
                 .evaled_range_min(self, arena)
                 .into_expr_err(loc)?
                 .expect("No range?")
                 .range_eq(&Elem::from(Concrete::from(U256::zero())), arena)
-            {
-                let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
-                let _ = self.add_if_err(res);
+        {
+            let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
+            let _ = self.add_if_err(res);
 
-                return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
-            }
+            return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
         }
 
         // otherwise, require rhs != 0
@@ -438,7 +436,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         // in checked subtraction, we have to make sure x - y >= type(x).min ==> x >= type(x).min + y
         // get the lhs min
         let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
-        let min: ContextVarNode = self.add_concrete_var(ctx, min_conc, loc)?.into();
+        let min: ContextVarNode = self.add_concrete_var(ctx, min_conc, loc)?;
 
         // require lhs - rhs >= type(lhs).min
         if self
@@ -470,7 +468,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // rhs can be negative, require that lhs <= type(x).max + -rhs
                 // get the lhs max
                 let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
-                let max: ContextVarNode = self.add_concrete_var(ctx, max_conc, loc)?.into();
+                let max: ContextVarNode = self.add_concrete_var(ctx, max_conc, loc)?;
 
                 if self
                     .require(
@@ -507,7 +505,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         // get type(lhs).max
         let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
-        let max = self.add_concrete_var(ctx, max_conc, loc)?.into();
+        let max = self.add_concrete_var(ctx, max_conc, loc)?;
 
         // require lhs + rhs <= type(lhs).max
         if self
@@ -541,7 +539,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // rhs can be negative, require that lhs + rhs >= type(x).min
                 // get the lhs min
                 let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
-                let min = self.add_concrete_var(ctx, min_conc, loc)?.into();
+                let min = self.add_concrete_var(ctx, min_conc, loc)?;
 
                 if self
                     .require(
@@ -579,7 +577,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         // get type(lhs).max
         let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
-        let max = self.add_concrete_var(ctx, max_conc, loc)?.into();
+        let max = self.add_concrete_var(ctx, max_conc, loc)?;
 
         // require lhs * rhs <= type(lhs).max
         if self
@@ -634,7 +632,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // signs can be opposite so require that lhs * rhs >= type(x).min
                 // get the lhs min
                 let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
-                let min = self.add_concrete_var(ctx, min_conc, loc)?.into();
+                let min = self.add_concrete_var(ctx, min_conc, loc)?;
 
                 if self
                     .require(
@@ -668,7 +666,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<ExprRet>, ExprErr> {
         // exponent must be greater or equal to zero
         let zero = rhs.ty_zero_concrete(self).into_expr_err(loc)?.unwrap();
-        let zero = self.add_concrete_var(ctx, zero, loc)?.into();
+        let zero = self.add_concrete_var(ctx, zero, loc)?;
         if self
             .require(
                 arena,
@@ -691,7 +689,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         // get type(lhs).max
         let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
-        let max = self.add_concrete_var(ctx, max_conc, loc)?.into();
+        let max = self.add_concrete_var(ctx, max_conc, loc)?;
 
         // require lhs ** rhs <= type(lhs).max
         if self
@@ -724,7 +722,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // rhs can be negative, require that lhs + rhs >= type(x).min
                 // get the lhs min
                 let min_conc = lhs.ty_min_concrete(self).into_expr_err(loc)?.unwrap();
-                let min = self.add_concrete_var(ctx, min_conc, loc)?.into();
+                let min = self.add_concrete_var(ctx, min_conc, loc)?;
 
                 if self
                     .require(

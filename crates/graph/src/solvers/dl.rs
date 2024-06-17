@@ -253,11 +253,7 @@ impl DLSolver {
             .iter()
             .map(|constraint| {
                 let t = Self::dl_atom_normalize(constraint.clone().clone(), analyzer, arena);
-                if let Some(t) = t {
-                    Some((constraint.clone(), t))
-                } else {
-                    None
-                }
+                t.map(|t| (constraint.clone(), t))
             })
             .collect::<Option<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>>();
         // println!("normalized map: {res:#?}");
