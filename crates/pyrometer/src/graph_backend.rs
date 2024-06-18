@@ -1,18 +1,18 @@
 use crate::Analyzer;
 use std::{collections::HashMap, fmt::Display};
-use graph::{elem::Elem, nodes::ContextVarNode, range_string::ToRangeString, SolcRange, TOKYO_NIGHT_COLORS};
+use graph::{elem::Elem, nodes::ContextVarNode, TOKYO_NIGHT_COLORS};
 use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::{RangeArena, USE_DEBUG_SITE};
+use shared::{post_to_site, RangeArena, USE_DEBUG_SITE};
 use tokio::runtime::Runtime;
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::rc::Rc;
-use tracing::{trace, debug, error, warn};
+use tracing::{trace, error, warn};
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
     Node,
@@ -105,13 +105,36 @@ impl GraphLike for Analyzer {
             idx
         };
 
-        // if unsafe { USE_DEBUG_SITE } {
-        //     let elems = Elems::from(self.range_arena());
-        //     let elems_graph = elems.to_graph(self);
-        //     let elems_graph_mermaid_str = mermaid_str(&elems_graph);
-        //     post_to_site_arena(elems_graph_mermaid_str);
-        // }
         res_idx
+    }
+
+    fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx
+    where
+        Self: std::marker::Sized,
+        Self: GraphLike,
+    {
+        let res = self.graph_mut().add_node(node.into());
+        if unsafe { USE_DEBUG_SITE } {
+            post_to_site(self);
+        }
+        res
+    }
+
+    fn add_edge(
+        &mut self,
+        from_node: impl Into<NodeIdx>,
+        to_node: impl Into<NodeIdx>,
+        edge: impl Into<Self::Edge>,
+    ) where
+        Self: std::marker::Sized,
+        Self: GraphLike,
+    {
+        self.graph_mut()
+            .add_edge(from_node.into(), to_node.into(), edge.into());
+
+        if unsafe { USE_DEBUG_SITE } {
+            post_to_site(self);
+        }
     }
 }
 
@@ -122,7 +145,7 @@ pub fn post_to_site_arena(arena_str: String) {
     });
 }
 
-pub async fn post_to_site_arena_async(arena_str: String) {
+async fn post_to_site_arena_async(arena_str: String) {
     let client = Client::new();
     let graph_msg = ArenaMessage {
         arena: arena_str.to_string(),
@@ -175,7 +198,6 @@ impl ArenaNode {
             ArenaNode::ARENA(_) => TOKYO_NIGHT_COLORS.get("red1").unwrap(),
             ArenaNode::CVAR(_) => TOKYO_NIGHT_COLORS.get("deeporange").unwrap(),
             ArenaNode::ELEM(_) => TOKYO_NIGHT_COLORS.get("blue0").unwrap(),
-            _ => TOKYO_NIGHT_COLORS.get("default").unwrap(),
         };
         c.to_string()
     }
@@ -280,7 +302,7 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
         }
 
         // Add any missing entries to inner
-        for (elem, &idx) in missing_entries {
+        for (_elem, &idx) in missing_entries {
             if let Some(range_elem) = arena.ranges.get(idx) {
                 if let Ok(borrowed_elem) = range_elem.try_borrow() {
                     inner.push((idx, borrowed_elem.clone()));
@@ -323,7 +345,7 @@ impl Elems {
         let mut dependency_map: HashMap<ContextVarNode, petgraph::graph::NodeIndex<usize>> = HashMap::new();
 
         // FIRST PASS: create nodes for each arena index
-        self.inner.iter().for_each(|(arena_idx, elem)| {
+        self.inner.iter().for_each(|(arena_idx, _elem)| {
             // add an arena node to the graph for the index
             let arena_node_idx = graph.add_node(ArenaNode::ARENA(*arena_idx));
             arena_idx_to_node_idx.insert(arena_idx, arena_node_idx);
@@ -336,7 +358,7 @@ impl Elems {
 
             // add a node for what the arena index has underlying it, and maybe edges for that elem
             let underlying_node_idx = match elem {
-                Elem::Reference(reference) => {
+                Elem::Reference(_reference) => {
                     let node_str = elem.arena_graph_node_label();
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
 
@@ -358,12 +380,12 @@ impl Elems {
 
                     node_idx
                 },
-                Elem::ConcreteDyn(range_dyn) => {
+                Elem::ConcreteDyn(_range_dyn) => {
                     let node_str = elem.arena_graph_node_label();
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
                     node_idx
                 },
-                Elem::Concrete(range_concrete) => {
+                Elem::Concrete(_range_concrete) => {
                     let node_str = elem.arena_graph_node_label();
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
                     node_idx
@@ -375,7 +397,7 @@ impl Elems {
                     // Unbox and check the lhs and rhs to see if they are arena indices
                     let lhs_arena = match *range_expr.lhs.clone() {
                         Elem::Arena(lhs) => Some(lhs),
-                        Elem::Reference(lhs) => {
+                        Elem::Reference(_lhs) => {
                             // println!("LHS is a reference: {}", range_expr.lhs);
                             // attempt to add in the ContextVar node that the elem is referencing
                             let context_var_nodes = elem.dependent_on(graph_backend).into_iter().collect::<Vec<_>>();
@@ -401,7 +423,7 @@ impl Elems {
                             // println!("RHS is an arena index: {}", range_expr.rhs);
                             Some(rhs)
                         },
-                        Elem::Reference(rhs) => {
+                        Elem::Reference(_rhs) => {
                             // println!("RHS is a reference: {}", range_expr.rhs);
                             // attempt to add in the ContextVar node that the elem is referencing
                             let context_var_nodes = elem.dependent_on(graph_backend).into_iter().collect::<Vec<_>>();
@@ -421,7 +443,6 @@ impl Elems {
                             None
                         },
                         _ => {
-                            println!("RHS is not an arena index: {}", range_expr.rhs);
                             None
                         },
                     };
@@ -558,7 +579,7 @@ flowchart TB
 
     let edges_str = graph.edge_indices()
         .enumerate()
-        .map(|(i, edge)| {
+        .map(|(_i, edge)| {
             let (from, to) = graph.edge_endpoints(edge).unwrap();
             let edge_label = format!("{}", graph[edge]);
             if edge_label == "" {
@@ -587,7 +608,7 @@ flowchart TB
     // Make an invisible node that holds all our edge information for coloring later on frontend
     let data_str = graph.edge_indices()
         .enumerate()
-        .map(|(i, edge)| {
+        .map(|(_i, edge)| {
             let (from, to) = graph.edge_endpoints(edge).unwrap();
             format!(
                 "LS-{}_LE-{}_{}",
@@ -609,7 +630,7 @@ pub fn arena_mermaid_node(
     indent: &str,
     idx: NodeIdx,
     style: bool,
-    loc: bool,
+    _loc: bool,
     class: Option<&str>,
 ) -> String {
 
@@ -645,7 +666,7 @@ pub fn arena_mermaid_node(
     node_str
 }
 
-fn calculate_hash<T: Hash>(t: &T) -> u64 {
+fn _calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
     s.finish()
@@ -1314,7 +1335,7 @@ pub fn mermaid_node(
     }
 
     if loc {
-        let mut current_node = node;
+        let current_node = node;
         match g.node(current_node) {
             Node::ContextVar(..) => {
                 // highlight self
@@ -1368,11 +1389,11 @@ fn gather_context_info(
 
     loop {
         let mut found_continue = false;
-        let mut current_loc = ctx_node.underlying(g).unwrap().loc;
+        let current_loc = ctx_node.underlying(g).unwrap().loc;
         for edge in g.graph().edges_directed(ctx_node.into(), Direction::Outgoing) {
             if let Edge::Context(ContextEdge::Continue(true_or_false)) = edge.weight() {
                 let target_node = edge.target();
-                if let Node::Context(ctx) = g.node(target_node) {
+                if let Node::Context(_ctx) = g.node(target_node) {
                     // error!("found continue pointing to node");
                     ctx_node = target_node.into(); 
                     found_continue = true;
