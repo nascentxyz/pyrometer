@@ -290,6 +290,24 @@ fn main() {
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
+    // println!("Arena: {:#?}", analyzer.range_arena);
+    if unsafe { USE_DEBUG_SITE } {
+        use shared::GraphLike;
+        use pyrometer::graph_backend::mermaid_str;
+        use pyrometer::graph_backend::post_to_site_arena;
+        use pyrometer::graph_backend::Elems;
+        match Elems::try_from(analyzer.range_arena()) {
+            Ok(elems) => {
+                let elems_graph = elems.to_graph(&analyzer);
+                let elems_graph_mermaid_str = mermaid_str(&elems_graph);
+                post_to_site_arena(elems_graph_mermaid_str);
+            }
+            Err(e) => {
+                eprintln!("Can't post arena, error creating Elems: {:?}", e);
+            }
+        };
+    }
+
     if args.stats {
         println!("{}", analyzer.stats(t_end));
     }

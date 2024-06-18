@@ -215,6 +215,7 @@ lazy_static! {
         m.insert("bg", "#1a1b26");
         m.insert("font", "#c0caf5");
         m.insert("deepred", "#703440");
+        m.insert("deeporange", "#b5683c");
         m.insert("default", "#565f89");
         m
     };

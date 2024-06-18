@@ -39,6 +39,35 @@ pub enum Elem<T> {
     Null,
 }
 
+impl Elem<Concrete> {
+    pub fn arena_graph_node_label(&self) -> String {
+        match self {
+            Elem::Reference(reference) => {
+                format!("Ref-CVar{}", reference.idx.index())
+            }
+            Elem::ConcreteDyn(range_dyn) => {
+                format!("concdyn-{}", self)
+            }
+            Elem::Concrete(range_concrete) => {
+                format!("conc-{}", self)
+            }
+            Elem::Expr(range_expr) => {
+                // Unbox and check the lhs and rhs to see if they are arena indices
+                let lhs_str = range_expr.lhs.arena_graph_node_label();
+                let rhs_str = range_expr.rhs.arena_graph_node_label();
+                let op = range_expr.op.clone();
+                format!("expr-{}", &self)
+            },
+            Elem::Arena(arena_idx) => {
+                format!("Arena({})", arena_idx)
+            },
+            Elem::Null => {
+                todo!()
+            },
+        }
+    }
+}
+
 impl Hash for Elem<Concrete> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
@@ -729,7 +758,7 @@ impl std::fmt::Display for Elem<Concrete> {
                 _ => write!(f, "({} {} {})", lhs, op.to_string(), rhs),
             },
             Elem::Arena(idx) => write!(f, "arena_idx_{idx}"),
-            Elem::Null => write!(f, ""),
+            Elem::Null => write!(f, "null"),
         }
     }
 }
