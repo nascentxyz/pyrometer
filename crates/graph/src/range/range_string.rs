@@ -3,6 +3,8 @@ use crate::{
     range::elem::*,
     GraphBackend,
 };
+use shared::RangeArena;
+
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
@@ -37,13 +39,26 @@ impl RangeString {
 /// String related functions for ranges
 pub trait ToRangeString {
     /// Gets the definition string of the range element
-    fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString;
+    fn def_string(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString;
     /// Converts a range to a human string
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString;
+    fn to_range_string(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString;
 }
 
 impl ToRangeString for Elem<Concrete> {
-    fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {
+    fn def_string(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Reference(Reference { idx, .. }) => {
@@ -53,34 +68,42 @@ impl ToRangeString for Elem<Concrete> {
                     .unwrap();
                 RangeElemString::new(cvar.display_name.clone(), cvar.loc.unwrap_or(Loc::Implicit))
             }
-            Elem::ConcreteDyn(rd) => rd.def_string(analyzer),
-            Elem::Expr(expr) => expr.def_string(analyzer),
+            Elem::ConcreteDyn(rd) => rd.def_string(analyzer, arena),
+            Elem::Expr(expr) => expr.def_string(analyzer, arena),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
-            Elem::Arena(_) => self.dearenaize(analyzer).borrow().def_string(analyzer),
+            Elem::Arena(_) => self.dearenaize_clone(arena).def_string(analyzer, arena),
         }
     }
 
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
+    fn to_range_string(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
             Elem::Reference(Reference { idx, .. }) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.as_controllable_name(analyzer).unwrap();
+                let name = as_var.as_controllable_name(analyzer, arena).unwrap();
                 RangeElemString::new(name, as_var.loc(analyzer).unwrap())
             }
-            Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer),
-            Elem::Expr(expr) => expr.to_range_string(maximize, analyzer),
+            Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer, arena),
+            Elem::Expr(expr) => expr.to_range_string(maximize, analyzer, arena),
             Elem::Null => RangeElemString::new("null".to_string(), Loc::Implicit),
             Elem::Arena(_) => self
-                .dearenaize(analyzer)
-                .borrow()
-                .to_range_string(maximize, analyzer),
+                .dearenaize_clone(arena)
+                .to_range_string(maximize, analyzer, arena),
         }
     }
 }
 
 impl ToRangeString for RangeDyn<Concrete> {
-    fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {
+    fn def_string(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
         let displayed_vals = self.val.iter().take(20).collect::<BTreeMap<_, _>>();
 
         let val_str = displayed_vals
@@ -88,8 +111,8 @@ impl ToRangeString for RangeDyn<Concrete> {
             .map(|(key, (val, _))| {
                 format!(
                     "{}: {}",
-                    key.def_string(analyzer).s,
-                    val.def_string(analyzer).s
+                    key.def_string(analyzer, arena).s,
+                    val.def_string(analyzer, arena).s
                 )
             })
             .collect::<Vec<_>>()
@@ -98,14 +121,19 @@ impl ToRangeString for RangeDyn<Concrete> {
         RangeElemString::new(
             format!(
                 "{{len: {}, indices: [{}]}}",
-                self.len.to_range_string(false, analyzer).s,
+                self.len.to_range_string(false, analyzer, arena).s,
                 val_str
             ),
             self.loc,
         )
     }
 
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
+    fn to_range_string(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
         let val_str = if self.val.len() > 10 {
             let displayed_vals = self
                 .val
@@ -114,8 +142,8 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .filter(|(_key, (val, _op))| *val != Elem::Null)
                 .map(|(key, (val, _op))| {
                     (
-                        key.to_range_string(maximize, analyzer).s,
-                        val.to_range_string(maximize, analyzer).s,
+                        key.to_range_string(maximize, analyzer, arena).s,
+                        val.to_range_string(maximize, analyzer, arena).s,
                     )
                 })
                 .collect::<BTreeMap<_, _>>();
@@ -135,8 +163,8 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .map(|(key, (val, _op))| {
                     // (key.to_range_string(maximize, analyzer).s, val.to_range_string(maximize, analyzer).s)
                     (
-                        key.to_range_string(maximize, analyzer).s,
-                        val.to_range_string(maximize, analyzer).s,
+                        key.to_range_string(maximize, analyzer, arena).s,
+                        val.to_range_string(maximize, analyzer, arena).s,
                     )
                 })
                 .collect::<BTreeMap<_, _>>();
@@ -155,8 +183,8 @@ impl ToRangeString for RangeDyn<Concrete> {
                 .filter(|(_key, (val, _op))| *val != Elem::Null)
                 .map(|(key, (val, _op))| {
                     (
-                        key.to_range_string(maximize, analyzer).s,
-                        val.to_range_string(maximize, analyzer).s,
+                        key.to_range_string(maximize, analyzer, arena).s,
+                        val.to_range_string(maximize, analyzer, arena).s,
                     )
                 })
                 .collect::<BTreeMap<_, _>>();
@@ -171,7 +199,7 @@ impl ToRangeString for RangeDyn<Concrete> {
         RangeElemString::new(
             format!(
                 "{{len: {}, indices: {{{}}}}}",
-                self.len.to_range_string(maximize, analyzer).s,
+                self.len.to_range_string(maximize, analyzer, arena).s,
                 val_str
             ),
             self.loc,
@@ -180,17 +208,26 @@ impl ToRangeString for RangeDyn<Concrete> {
 }
 
 impl ToRangeString for RangeExpr<Concrete> {
-    fn def_string(&self, analyzer: &impl GraphBackend) -> RangeElemString {
-        self.lhs.def_string(analyzer)
+    fn def_string(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
+        self.lhs.def_string(analyzer, arena)
     }
 
-    fn to_range_string(&self, maximize: bool, analyzer: &impl GraphBackend) -> RangeElemString {
+    fn to_range_string(
+        &self,
+        maximize: bool,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> RangeElemString {
         if let MaybeCollapsed::Collapsed(collapsed) =
-            collapse(&self.lhs, self.op, &self.rhs, analyzer)
+            collapse(*self.lhs.clone(), self.op, *self.rhs.clone(), arena)
         {
-            return collapsed.to_range_string(maximize, analyzer);
+            return collapsed.to_range_string(maximize, analyzer, arena);
         }
-        let lhs_r_str = self.lhs.to_range_string(maximize, analyzer);
+        let lhs_r_str = self.lhs.to_range_string(maximize, analyzer, arena);
         let lhs_str = match *self.lhs {
             Elem::Expr(_) => {
                 let new_str = format!("({})", lhs_r_str.s);
@@ -199,7 +236,7 @@ impl ToRangeString for RangeExpr<Concrete> {
             _ => lhs_r_str,
         };
 
-        let rhs_r_str = self.rhs.to_range_string(maximize, analyzer);
+        let rhs_r_str = self.rhs.to_range_string(maximize, analyzer, arena);
 
         let rhs_str = match *self.rhs {
             Elem::Expr(_) => {
@@ -216,9 +253,9 @@ impl ToRangeString for RangeExpr<Concrete> {
             )
         } else if matches!(self.op, RangeOp::Cast) {
             let rhs = if maximize {
-                self.rhs.maximize(analyzer).unwrap()
+                self.rhs.maximize(analyzer, arena).unwrap()
             } else {
-                self.rhs.minimize(analyzer).unwrap()
+                self.rhs.minimize(analyzer, arena).unwrap()
             };
 
             match rhs {
@@ -237,9 +274,9 @@ impl ToRangeString for RangeExpr<Concrete> {
             }
         } else if matches!(self.op, RangeOp::BitNot) {
             let lhs = if maximize {
-                self.lhs.maximize(analyzer).unwrap()
+                self.lhs.maximize(analyzer, arena).unwrap()
             } else {
-                self.lhs.minimize(analyzer).unwrap()
+                self.lhs.minimize(analyzer, arena).unwrap()
             };
 
             match lhs {

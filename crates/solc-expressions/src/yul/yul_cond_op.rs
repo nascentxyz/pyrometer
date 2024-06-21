@@ -5,7 +5,7 @@ use graph::{
     nodes::{Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{
@@ -26,12 +26,13 @@ pub trait YulCondOp:
     /// Handle a yul conditional operation statement
     fn yul_cond_op_stmt(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         if_expr: &YulExpression,
         true_stmt: &YulBlock,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let tctx =
                 Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
                     .into_expr_err(loc)?;
@@ -61,8 +62,8 @@ pub trait YulCondOp:
                 Edge::Context(ContextEdge::Subcontext),
             );
 
-            analyzer.parse_ctx_yul_expr(if_expr, true_subctx)?;
-            analyzer.apply_to_edges(true_subctx, loc, &|analyzer, ctx, loc| {
+            analyzer.parse_ctx_yul_expr(arena, if_expr, true_subctx)?;
+            analyzer.apply_to_edges(true_subctx, loc, arena, &|analyzer, arena, ctx, loc| {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(
                         loc,
@@ -75,10 +76,14 @@ pub trait YulCondOp:
                     return Ok(());
                 }
 
-                analyzer.match_yul_true(ctx, if_expr.loc(), &ret)
+                analyzer.match_yul_true(arena, ctx, if_expr.loc(), &ret)
             })?;
 
-            analyzer.parse_ctx_yul_statement(&YulStatement::Block(true_stmt.clone()), true_subctx);
+            analyzer.parse_ctx_yul_statement(
+                arena,
+                &YulStatement::Block(true_stmt.clone()),
+                true_subctx,
+            );
             // let false_expr = YulExpression::FunctionCall(Box::new(YulFunctionCall {
             //     loc,
             //     id: Identifier {
@@ -87,8 +92,8 @@ pub trait YulCondOp:
             //     },
             //     arguments: vec![if_expr.clone()],
             // }));
-            analyzer.parse_ctx_yul_expr(if_expr, false_subctx)?;
-            analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
+            analyzer.parse_ctx_yul_expr(arena, if_expr, false_subctx)?;
+            analyzer.apply_to_edges(false_subctx, loc, arena, &|analyzer, arena, ctx, loc| {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(
                         loc,
@@ -101,7 +106,7 @@ pub trait YulCondOp:
                     return Ok(());
                 }
 
-                analyzer.match_yul_false(ctx, if_expr.loc(), &ret)
+                analyzer.match_yul_false(arena, ctx, if_expr.loc(), &ret)
             })
         })
     }
@@ -110,11 +115,12 @@ pub trait YulCondOp:
     /// Handle a yul if-else
     fn yul_if_else(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         if_else_chain: &IfElseChain,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let tctx =
                 Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
                     .into_expr_err(loc)?;
@@ -145,42 +151,52 @@ pub trait YulCondOp:
             );
 
             let if_expr_loc = if_else_chain.if_expr.loc();
-            analyzer.apply_to_edges(true_subctx, if_expr_loc, &|analyzer, ctx, loc| {
-                analyzer.parse_ctx_yul_expr(&if_else_chain.if_expr, true_subctx)?;
-                analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                    let Some(true_vars) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Yul switch statement was missing a case discriminator".to_string(),
-                        ));
-                    };
+            analyzer.apply_to_edges(
+                true_subctx,
+                if_expr_loc,
+                arena,
+                &|analyzer, arena, ctx, loc| {
+                    analyzer.parse_ctx_yul_expr(arena, &if_else_chain.if_expr, true_subctx)?;
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+                        let Some(true_vars) =
+                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                        else {
+                            return Err(ExprErr::NoRhs(
+                                loc,
+                                "Yul switch statement was missing a case discriminator".to_string(),
+                            ));
+                        };
 
-                    if matches!(true_vars, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(true_vars, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.match_yul_true(ctx, loc, &true_vars)?;
-                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                        analyzer.parse_ctx_yul_statement(&if_else_chain.true_stmt, ctx);
-                        Ok(())
+                        if matches!(true_vars, ExprRet::CtxKilled(_)) {
+                            ctx.push_expr(true_vars, analyzer).into_expr_err(loc)?;
+                            return Ok(());
+                        }
+                        analyzer.match_yul_true(arena, ctx, loc, &true_vars)?;
+                        analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+                            analyzer.parse_ctx_yul_statement(arena, &if_else_chain.true_stmt, ctx);
+                            Ok(())
+                        })
                     })
-                })
-            })?;
+                },
+            )?;
 
             if let Some(next) = &if_else_chain.next {
                 match next {
-                    ElseOrDefault::Default(default) => {
-                        analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, _loc| {
-                            analyzer.parse_ctx_yul_statement(default, ctx);
+                    ElseOrDefault::Default(default) => analyzer.apply_to_edges(
+                        false_subctx,
+                        loc,
+                        arena,
+                        &|analyzer, arena, ctx, _loc| {
+                            analyzer.parse_ctx_yul_statement(arena, default, ctx);
                             Ok(())
-                        })
-                    }
-                    ElseOrDefault::Else(iec) => {
-                        analyzer.apply_to_edges(false_subctx, loc, &|analyzer, ctx, loc| {
-                            analyzer.yul_if_else(loc, iec, ctx)
-                        })
-                    }
+                        },
+                    ),
+                    ElseOrDefault::Else(iec) => analyzer.apply_to_edges(
+                        false_subctx,
+                        loc,
+                        arena,
+                        &|analyzer, arena, ctx, loc| analyzer.yul_if_else(arena, loc, iec, ctx),
+                    ),
                 }
             } else {
                 Ok(())
@@ -191,6 +207,7 @@ pub trait YulCondOp:
     /// Helper for the `true` evaluation of a yul conditional
     fn match_yul_true(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         true_cvars: &ExprRet,
@@ -209,6 +226,7 @@ pub trait YulCondOp:
                     ExprRet::Single(ContextVarNode::from(self.add_node(tmp_true)).into());
 
                 self.handle_require_inner(
+                    arena,
                     ctx,
                     loc,
                     true_cvars,
@@ -224,7 +242,7 @@ pub trait YulCondOp:
                 true_paths
                     .iter()
                     .take(1)
-                    .try_for_each(|expr_ret| self.match_yul_true(ctx, loc, expr_ret))?;
+                    .try_for_each(|expr_ret| self.match_yul_true(arena, ctx, loc, expr_ret))?;
             }
             ExprRet::Null => {}
         }
@@ -234,6 +252,7 @@ pub trait YulCondOp:
     /// Helper for the `false` evaluation of a yul conditional
     fn match_yul_false(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         false_cvars: &ExprRet,
@@ -252,6 +271,7 @@ pub trait YulCondOp:
                     ExprRet::Single(ContextVarNode::from(self.add_node(tmp_true)).into());
 
                 self.handle_require_inner(
+                    arena,
                     ctx,
                     loc,
                     false_cvars,
@@ -267,7 +287,7 @@ pub trait YulCondOp:
                 false_paths
                     .iter()
                     .take(1)
-                    .try_for_each(|expr_ret| self.match_yul_false(ctx, loc, expr_ret))?;
+                    .try_for_each(|expr_ret| self.match_yul_false(arena, ctx, loc, expr_ret))?;
             }
             ExprRet::Null => {}
         }
@@ -279,6 +299,7 @@ pub trait YulCondOp:
     /// Handle a yul swithc statement by converting it into an if-else chain
     fn yul_switch_stmt(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         condition: YulExpression,
         cases: Vec<YulSwitchOptions>,
@@ -286,8 +307,8 @@ pub trait YulCondOp:
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         let iec = IfElseChain::from(loc, (condition, cases, default))?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-            analyzer.yul_if_else(loc, &iec, ctx)
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+            analyzer.yul_if_else(arena, loc, &iec, ctx)
         })
     }
 }

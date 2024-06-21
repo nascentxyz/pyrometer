@@ -1,22 +1,38 @@
 use crate::Analyzer;
 
 use graph::{
+    elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, Function, FunctionNode, FunctionParam,
-        FunctionParamNode, FunctionReturn, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextVar, Function, FunctionNode,
+        FunctionParam, FunctionParamNode, FunctionReturn, MsgNode,
     },
     AnalyzerBackend, Edge, Node, VarType,
 };
-use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx};
+use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, RangeArena};
 use solc_expressions::{ExprErr, IntoExprErr};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
-use solang_parser::{helpers::CodeLocation, pt::Expression};
+use solang_parser::{
+    helpers::CodeLocation,
+    pt::{Expression, Loc},
+};
 
 use std::collections::BTreeMap;
 
-impl AnalyzerBackend for Analyzer {}
+impl AnalyzerBackend for Analyzer {
+    fn add_concrete_var(
+        &mut self,
+        ctx: graph::nodes::ContextNode,
+        concrete: Concrete,
+        loc: Loc,
+    ) -> Result<graph::nodes::ContextVarNode, Self::ExprErr> {
+        let cnode = self.add_node(Node::Concrete(concrete));
+        let var = ContextVar::new_from_concrete(loc, ctx, cnode.into(), self);
+        let cnode = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
+        Ok(cnode.into())
+    }
+}
 
 impl AnalyzerLike for Analyzer {
     type Expr = Expression;
@@ -96,11 +112,16 @@ impl AnalyzerLike for Analyzer {
         &mut self.user_types
     }
 
-    fn parse_expr(&mut self, expr: &Expression, parent: Option<NodeIdx>) -> NodeIdx {
+    fn parse_expr(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        expr: &Expression,
+        parent: Option<NodeIdx>,
+    ) -> NodeIdx {
         use Expression::*;
         match expr {
             Type(_loc, ty) => {
-                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self) {
+                if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self, arena) {
                     if let Some(idx) = self.builtins.get(&builtin) {
                         *idx
                     } else {
@@ -108,7 +129,7 @@ impl AnalyzerLike for Analyzer {
                         self.builtins.insert(builtin, idx);
                         idx
                     }
-                } else if let Some(idx) = self.complicated_parse(expr, parent) {
+                } else if let Some(idx) = self.complicated_parse(arena, expr, parent) {
                     self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
                         .unwrap_or(0.into())
                 } else {
@@ -125,7 +146,7 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             ArraySubscript(_loc, ty_expr, None) => {
-                let inner_ty = self.parse_expr(ty_expr, parent);
+                let inner_ty = self.parse_expr(arena, ty_expr, parent);
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                     let dyn_b = Builtin::Array(var_type);
                     if let Some(idx) = self.builtins.get(&dyn_b) {
@@ -140,8 +161,8 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             ArraySubscript(loc, ty_expr, Some(idx_expr)) => {
-                let inner_ty = self.parse_expr(ty_expr, parent);
-                let idx = self.parse_expr(idx_expr, parent);
+                let inner_ty = self.parse_expr(arena, ty_expr, parent);
+                let idx = self.parse_expr(arena, idx_expr, parent);
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                     let res = ConcreteNode::from(idx)
                         .underlying(self)
@@ -179,7 +200,7 @@ impl AnalyzerLike for Analyzer {
                 self.add_node(Node::Concrete(Concrete::Uint(256, val)))
             }
             _ => {
-                if let Some(idx) = self.complicated_parse(expr, parent) {
+                if let Some(idx) = self.complicated_parse(arena, expr, parent) {
                     self.add_if_err(idx.expect_single().into_expr_err(expr.loc()))
                         .unwrap_or(0.into())
                 } else {
@@ -246,5 +267,13 @@ impl AnalyzerLike for Analyzer {
 
     fn join_stats_mut(&mut self) -> &mut JoinStats {
         &mut self.join_stats
+    }
+
+    fn handled_funcs(&self) -> &[FunctionNode] {
+        &self.handled_funcs
+    }
+
+    fn handled_funcs_mut(&mut self) -> &mut Vec<FunctionNode> {
+        &mut self.handled_funcs
     }
 }

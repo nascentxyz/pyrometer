@@ -7,10 +7,8 @@ use petgraph::{
 };
 
 use std::{
-    cell::RefCell,
     collections::BTreeSet,
     hash::Hash,
-    rc::Rc,
     sync::{Arc, Mutex},
 };
 
@@ -20,7 +18,7 @@ pub type RangeArenaIdx = usize;
 
 #[derive(Default, Clone, Debug)]
 pub struct RangeArena<T: Hash> {
-    pub ranges: Vec<Rc<RefCell<T>>>,
+    pub ranges: Vec<T>,
     pub map: AHashMap<T, usize>,
 }
 
@@ -28,7 +26,7 @@ pub struct RangeArena<T: Hash> {
 pub trait GraphLike {
     type Node;
     type Edge: Ord + PartialEq + Heirarchical + Copy;
-    type RangeElem: Hash + PartialEq + Eq + PartialOrd + Clone + std::fmt::Display;
+    type RangeElem: Hash + PartialEq + Eq + PartialOrd + Clone + std::fmt::Display + Default;
     /// Get a mutable reference to the graph
     fn graph_mut(&mut self) -> &mut Graph<Self::Node, Self::Edge, Directed, usize>;
     /// Get a reference to the graph
@@ -63,16 +61,26 @@ pub trait GraphLike {
 
     fn range_arena(&self) -> &RangeArena<Self::RangeElem>;
     fn range_arena_mut(&mut self) -> &mut RangeArena<Self::RangeElem>;
+    fn try_take_range_arena(&mut self) -> Option<RangeArena<Self::RangeElem>> {
+        let arena = self.range_arena_mut();
+        if !arena.ranges.is_empty() {
+            Some(std::mem::take(arena))
+        } else {
+            None
+        }
+    }
 
-    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize>;
-
-    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize;
+    fn take_range_arena(&mut self) -> RangeArena<Self::RangeElem> {
+        let arena = self.range_arena_mut();
+        std::mem::take(arena)
+    }
 }
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphDot: GraphLike {
+    type T: Hash;
     /// Open a dot using graphviz
-    fn open_dot(&self)
+    fn open_dot(&self, arena: &mut RangeArena<Self::T>)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,
@@ -88,7 +96,7 @@ pub trait GraphDot: GraphLike {
         let temp_svg_filename: String = format!("{}/dot.svg", &temp_dir.to_string_lossy());
 
         let mut file = fs::File::create(temp_path.clone()).unwrap();
-        file.write_all(self.dot_str().as_bytes()).unwrap();
+        file.write_all(self.dot_str(arena).as_bytes()).unwrap();
         Command::new("dot")
             .arg("-Tsvg")
             .arg(temp_path)
@@ -102,7 +110,7 @@ pub trait GraphDot: GraphLike {
             .expect("failed to execute process");
     }
 
-    fn open_mermaid(&self)
+    fn open_mermaid(&self, arena: &mut RangeArena<Self::T>)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,
@@ -127,7 +135,7 @@ pub trait GraphDot: GraphLike {
         let temp_svg_filename: String = format!("{}/mermaid.svg", &temp_dir.to_string_lossy());
 
         let mut file = fs::File::create(temp_path.clone()).unwrap();
-        file.write_all(self.mermaid_str().as_bytes()).unwrap();
+        file.write_all(self.mermaid_str(arena).as_bytes()).unwrap();
         Command::new("mmdc")
             .arg("-i")
             .arg(temp_path)
@@ -149,6 +157,7 @@ pub trait GraphDot: GraphLike {
     /// Creates a subgraph for visually identifying contexts and subcontexts
     fn cluster_str(
         &self,
+        arena: &mut RangeArena<Self::T>,
         node: NodeIdx,
         cluster_num: &mut usize,
         is_killed: bool,
@@ -161,18 +170,18 @@ pub trait GraphDot: GraphLike {
         Self: std::marker::Sized;
 
     /// Constructs a dot string
-    fn dot_str(&self) -> String
+    fn dot_str(&self, arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike;
 
     /// Construct a dot string while filtering temporary variables
-    fn dot_str_no_tmps(&self) -> String
+    fn dot_str_no_tmps(&self, arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + AnalyzerLike;
 
-    fn mermaid_str(&self) -> String
+    fn mermaid_str(&self, arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike;

@@ -5,6 +5,7 @@ use graph::{
     nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
+use shared::RangeArena;
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::{HexLiteral, Identifier, Loc};
@@ -38,7 +39,7 @@ pub trait Literal: AnalyzerBackend + Sized {
             val
         };
 
-        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
+        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8).max(8) as u16;
         let concrete_node = if negative {
             let val = if val == U256::from(2).pow(255.into()) {
                 // no need to set upper bit
@@ -76,6 +77,7 @@ pub trait Literal: AnalyzerBackend + Sized {
 
     fn rational_number_literal(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         integer: &str,
@@ -110,9 +112,9 @@ pub trait Literal: AnalyzerBackend + Sized {
             ContextVar::new_from_builtin(loc, self.builtin_or_add(Builtin::Uint(256)).into(), self)
                 .into_expr_err(loc)?;
         let node = ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
-        node.set_range_max(self, rational_range.clone())
+        node.set_range_max(self, arena, rational_range.clone())
             .into_expr_err(loc)?;
-        node.set_range_min(self, rational_range)
+        node.set_range_min(self, arena, rational_range)
             .into_expr_err(loc)?;
 
         ctx.add_var(node, self).into_expr_err(loc)?;

@@ -5,10 +5,11 @@ use crate::{
 use graph::nodes::FunctionNode;
 
 use graph::{
-    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    elem::Elem,
+    nodes::{Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -24,6 +25,7 @@ pub trait PrecompileCaller:
     /// Perform a precompile's function call, like `ecrecover`
     fn precompile_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_name: String,
         func_idx: NodeIdx,
         input_exprs: &NamedOrUnnamedArgs,
@@ -32,8 +34,8 @@ pub trait PrecompileCaller:
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "sha256" => {
-                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -57,8 +59,8 @@ pub trait PrecompileCaller:
                 })
             }
             "ripemd160" => {
-                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -82,8 +84,8 @@ pub trait PrecompileCaller:
                 })
             }
             "ecrecover" => {
-                input_exprs.parse(self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                input_exprs.parse(arena, self, ctx, loc)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let cctx = Context::new_subctx(
                         ctx,
                         None,

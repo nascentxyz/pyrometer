@@ -1,8 +1,9 @@
 use crate::{
-    nodes::{FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode, VarNode},
+    nodes::{Concrete, FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode, VarNode},
+    range::elem::Elem,
     AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node,
 };
-use shared::{NodeIdx, Search};
+use shared::{NodeIdx, RangeArena, Search};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};
@@ -14,7 +15,11 @@ use std::collections::BTreeMap;
 pub struct ContractNode(pub usize);
 
 impl AsDotStr for ContractNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "{} {}",
@@ -180,7 +185,7 @@ impl ContractNode {
 
     pub fn funcs_mapping(
         &self,
-        analyzer: &(impl Search + AnalyzerBackend),
+        analyzer: &mut (impl Search + AnalyzerBackend),
     ) -> BTreeMap<String, FunctionNode> {
         analyzer
             .search_children_depth(self.0.into(), &Edge::Func, 1, 0)

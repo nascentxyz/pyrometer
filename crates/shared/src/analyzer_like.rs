@@ -1,4 +1,4 @@
-use crate::{GraphLike, NodeIdx};
+use crate::{GraphLike, NodeIdx, RangeArena};
 
 use ahash::AHashMap;
 
@@ -129,7 +129,12 @@ pub trait AnalyzerLike: GraphLike {
     fn max_width(&self) -> usize;
     fn user_types(&self) -> &AHashMap<String, NodeIdx>;
     fn user_types_mut(&mut self) -> &mut AHashMap<String, NodeIdx>;
-    fn parse_expr(&mut self, expr: &Self::Expr, parent: Option<NodeIdx>) -> NodeIdx;
+    fn parse_expr(
+        &mut self,
+        arena: &mut RangeArena<Self::RangeElem>,
+        expr: &Self::Expr,
+        parent: Option<NodeIdx>,
+    ) -> NodeIdx;
     fn msg(&mut self) -> Self::MsgNode;
     fn block(&mut self) -> Self::BlockNode;
     fn entry(&self) -> NodeIdx;
@@ -176,4 +181,6 @@ pub trait AnalyzerLike: GraphLike {
     }
 
     fn join_stats_mut(&mut self) -> &mut JoinStats;
+    fn handled_funcs(&self) -> &[Self::FunctionNode];
+    fn handled_funcs_mut(&mut self) -> &mut Vec<Self::FunctionNode>;
 }

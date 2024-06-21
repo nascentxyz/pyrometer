@@ -1,10 +1,11 @@
 use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
-use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx};
+use shared::{AnalyzerLike, GraphLike, Heirarchical, NodeIdx, RangeArena};
 
 use lazy_static::lazy_static;
-use solang_parser::pt::Identifier;
+use petgraph::{Directed, Graph};
+use solang_parser::pt::{Identifier, Loc};
 
 use std::collections::HashMap;
 
@@ -20,10 +21,20 @@ pub trait AnalyzerBackend:
         Function = Function,
     > + GraphBackend
 {
+    fn add_concrete_var(
+        &mut self,
+        ctx: ContextNode,
+        concrete: Concrete,
+        loc: Loc,
+    ) -> Result<ContextVarNode, Self::ExprErr>;
 }
 
 pub trait AsDotStr {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String;
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String;
 }
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
@@ -102,24 +113,28 @@ pub enum Node {
     Block(Block),
 }
 
-pub fn as_dot_str(idx: NodeIdx, analyzer: &impl GraphBackend) -> String {
+pub fn as_dot_str(
+    idx: NodeIdx,
+    analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
+) -> String {
     use crate::Node::*;
     match analyzer.node(idx) {
-        Context(_) => ContextNode::from(idx).as_dot_str(analyzer),
-        ContextVar(_) => ContextVarNode::from(idx).as_dot_str(analyzer),
+        Context(_) => ContextNode::from(idx).as_dot_str(analyzer, arena),
+        ContextVar(_) => ContextVarNode::from(idx).as_dot_str(analyzer, arena),
         ContextFork => "Context Fork".to_string(),
         FunctionCall => "Function Call".to_string(),
         Builtin(bi) => bi.as_string(analyzer).unwrap(),
-        VarType(v_ty) => v_ty.as_dot_str(analyzer),
-        Contract(_c) => ContractNode::from(idx).as_dot_str(analyzer),
-        Function(_f) => FunctionNode::from(idx).as_dot_str(analyzer),
-        FunctionParam(_fp) => FunctionParamNode::from(idx).as_dot_str(analyzer),
-        FunctionReturn(_fr) => FunctionReturnNode::from(idx).as_dot_str(analyzer),
-        Struct(_s) => StructNode::from(idx).as_dot_str(analyzer),
-        Enum(_e) => EnumNode::from(idx).as_dot_str(analyzer),
-        Field(_f) => FieldNode::from(idx).as_dot_str(analyzer),
-        Var(_v) => VarNode::from(idx).as_dot_str(analyzer),
-        Ty(_t) => TyNode::from(idx).as_dot_str(analyzer),
+        VarType(v_ty) => v_ty.as_string(analyzer).unwrap(),
+        Contract(_c) => ContractNode::from(idx).as_dot_str(analyzer, arena),
+        Function(_f) => FunctionNode::from(idx).as_dot_str(analyzer, arena),
+        FunctionParam(_fp) => FunctionParamNode::from(idx).as_dot_str(analyzer, arena),
+        FunctionReturn(_fr) => FunctionReturnNode::from(idx).as_dot_str(analyzer, arena),
+        Struct(_s) => StructNode::from(idx).as_dot_str(analyzer, arena),
+        Enum(_e) => EnumNode::from(idx).as_dot_str(analyzer, arena),
+        Field(_f) => FieldNode::from(idx).as_dot_str(analyzer, arena),
+        Var(_v) => VarNode::from(idx).as_dot_str(analyzer, arena),
+        Ty(_t) => TyNode::from(idx).as_dot_str(analyzer, arena),
         // Concrete(c) => c.as_human_string(),
         e => format!("{e:?}"),
     }
@@ -380,3 +395,29 @@ pub enum ContextEdge {
     /// Unused
     Range,
 }
+
+#[derive(Default)]
+pub(crate) struct DummyGraph {
+    pub range_arena: RangeArena<Elem<Concrete>>,
+}
+
+impl GraphLike for DummyGraph {
+    type Node = Node;
+    type Edge = Edge;
+    type RangeElem = Elem<Concrete>;
+    fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
+        panic!("Dummy Graph")
+    }
+
+    fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
+        panic!("Dummy Graph")
+    }
+    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
+        &self.range_arena
+    }
+    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
+        &mut self.range_arena
+    }
+}
+
+impl GraphBackend for DummyGraph {}

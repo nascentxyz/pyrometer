@@ -5,10 +5,12 @@ use graph::nodes::FunctionNode;
 
 use graph::{
     elem::*,
-    nodes::{BuiltInNode, Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode},
-    AnalyzerBackend, Node, Range, VarType,
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode,
+    },
+    AnalyzerBackend, Node, VarType,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -19,6 +21,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     /// Perform a type-based intrinsic function call, like `wrap`
     fn types_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_name: String,
         func_idx: NodeIdx,
         input_exprs: &NamedOrUnnamedArgs,
@@ -26,14 +29,14 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         match &*func_name {
-            "type" => self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx),
+            "type" => self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx),
             "wrap" => {
                 if input_exprs.len() != 2 {
                     return Err(ExprErr::InvalidFunctionInput(loc, format!("Expected a member type and an input to the wrap function, but got: {:?}", input_exprs)));
                 }
 
-                input_exprs.parse(self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                input_exprs.parse(arena, self, ctx, loc)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -63,16 +66,17 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         RangeOp::Cast,
                         Elem::from(cvar),
                     ));
-                    next.set_range_min(analyzer, expr.clone())
+                    next.set_range_min(analyzer, arena, expr.clone())
                         .into_expr_err(loc)?;
-                    next.set_range_max(analyzer, expr).into_expr_err(loc)?;
+                    next.set_range_max(analyzer, arena, expr)
+                        .into_expr_err(loc)?;
                     ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
                         .into_expr_err(loc)
                 })
             }
             "unwrap" => {
-                input_exprs.parse(self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                input_exprs.parse(arena, self, ctx, loc)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -114,9 +118,9 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     );
 
                     let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
-                    cvar.set_range_min(analyzer, Elem::from(to_be_unwrapped))
+                    cvar.set_range_min(analyzer, arena, Elem::from(to_be_unwrapped))
                         .into_expr_err(loc)?;
-                    cvar.set_range_max(analyzer, Elem::from(to_be_unwrapped))
+                    cvar.set_range_max(analyzer, arena, Elem::from(to_be_unwrapped))
                         .into_expr_err(loc)?;
                     let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
                     let expr = Elem::Expr(RangeExpr::new(
@@ -124,9 +128,10 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         RangeOp::Cast,
                         Elem::from(cvar),
                     ));
-                    next.set_range_min(analyzer, expr.clone())
+                    next.set_range_min(analyzer, arena, expr.clone())
                         .into_expr_err(loc)?;
-                    next.set_range_max(analyzer, expr).into_expr_err(loc)?;
+                    next.set_range_max(analyzer, arena, expr)
+                        .into_expr_err(loc)?;
                     ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
                         .into_expr_err(loc)
                 })
@@ -144,6 +149,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     /// Perform a cast of a type
     fn cast(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ty: Builtin,
         func_idx: NodeIdx,
         input_exprs: &NamedOrUnnamedArgs,
@@ -155,6 +161,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
             ctx: ContextNode,
             loc: Loc,
             analyzer: &mut impl ListAccess,
+            arena: &mut RangeArena<Elem<Concrete>>,
             ty: &Builtin,
             ret: ExprRet,
             func_idx: NodeIdx,
@@ -169,24 +176,26 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         .into_expr_err(loc)?;
 
                     let v_ty = VarType::try_from_idx(analyzer, func_idx).expect("");
-                    let maybe_new_range = cvar.cast_exprs(&v_ty, analyzer).into_expr_err(loc)?;
+                    let maybe_new_range =
+                        cvar.cast_exprs(&v_ty, analyzer, arena).into_expr_err(loc)?;
                     new_var.underlying_mut(analyzer).into_expr_err(loc)?.ty = v_ty;
 
                     if let Some((new_min, new_max)) = maybe_new_range {
                         new_var
-                            .set_range_min(analyzer, new_min)
+                            .set_range_min(analyzer, arena, new_min)
                             .into_expr_err(loc)?;
                         new_var
-                            .set_range_max(analyzer, new_max)
+                            .set_range_max(analyzer, arena, new_max)
                             .into_expr_err(loc)?;
                     }
 
                     if cvar.is_indexable(analyzer).into_expr_err(loc)? {
                         // input is indexable. get the length attribute, create a new length for the casted type
                         let _ = analyzer.create_length(
+                            arena,
                             ctx,
                             loc,
-                            cvar,
+                            new_var,
                             new_var.latest_version(analyzer),
                             false,
                         )?;
@@ -198,12 +207,12 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 }
                 ExprRet::Multi(inner) => inner
                     .into_iter()
-                    .try_for_each(|i| cast_match(ctx, loc, analyzer, ty, i, func_idx)),
+                    .try_for_each(|i| cast_match(ctx, loc, analyzer, arena, ty, i, func_idx)),
             }
         }
 
-        self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Cast had no target type".to_string()));
             };
@@ -213,7 +222,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 return Ok(());
             }
 
-            cast_match(ctx, loc, analyzer, &ty, ret, func_idx)
+            cast_match(ctx, loc, analyzer, arena, &ty, ret, func_idx)
         })
     }
 }

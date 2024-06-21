@@ -8,6 +8,7 @@ use graph::{
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, Node,
 };
+use shared::RangeArena;
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
@@ -19,6 +20,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     /// Perform an `array.<..>` function call
     fn array_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_name: String,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
@@ -29,8 +31,8 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 if input_exprs.len() == 1 {
                     // array.push() is valid syntax. It pushes a new
                     // empty element onto the expr ret stack
-                    self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                    self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+                    self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                         let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoRhs(
@@ -50,12 +52,13 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                         // get length
                         let len = analyzer
-                            .get_length(ctx, loc, arr, true)?
+                            .get_length(arena, ctx, loc, arr, true)?
                             .unwrap()
                             .latest_version(analyzer);
 
                         // get the index access and add it to the stack
-                        let _ = analyzer.index_into_array_raw(ctx, loc, len, arr, false, false)?;
+                        let _ = analyzer
+                            .index_into_array_raw(arena, ctx, loc, len, arr, false, false)?;
 
                         // create a temporary 1 variable
                         let cnode =
@@ -73,12 +76,13 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                         // add 1 to the length
                         let tmp_len =
-                            analyzer.op(loc, len, one, ctx, RangeOp::Add(false), false)?;
+                            analyzer.op(arena, loc, len, one, ctx, RangeOp::Add(false), false)?;
 
                         let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
                         tmp_len.underlying_mut(analyzer).unwrap().is_tmp = false;
 
                         analyzer.set_var_as_length(
+                            arena,
                             ctx,
                             loc,
                             tmp_len,
@@ -89,8 +93,8 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     })
                 } else if input_exprs.len() == 2 {
                     // array.push(value)
-                    self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                    self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                    self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+                    self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                         let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoLhs(
@@ -102,8 +106,12 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             ctx.push_expr(array, analyzer).into_expr_err(loc)?;
                             return Ok(());
                         }
-                        analyzer.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[1], ctx)?;
-                        analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                        analyzer.parse_ctx_expr(
+                            arena,
+                            &input_exprs.unnamed_args().unwrap()[1],
+                            ctx,
+                        )?;
+                        analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                             let Some(new_elem) =
                                 ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                             else {
@@ -126,13 +134,13 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                             // get length
                             let len = analyzer
-                                .get_length(ctx, loc, arr, true)?
+                                .get_length(arena, ctx, loc, arr, true)?
                                 .unwrap()
                                 .latest_version(analyzer);
 
                             // get the index access for the *previous* length
                             let index_access = analyzer
-                                .index_into_array_raw(ctx, loc, len, arr, false, true)?
+                                .index_into_array_raw(arena, ctx, loc, len, arr, false, true)?
                                 .unwrap();
                             // create a temporary 1 variable
                             let cnode =
@@ -149,14 +157,22 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             let one = ContextVarNode::from(analyzer.add_node(tmp_one));
 
                             // add 1 to the length
-                            let tmp_len =
-                                analyzer.op(loc, len, one, ctx, RangeOp::Add(false), false)?;
+                            let tmp_len = analyzer.op(
+                                arena,
+                                loc,
+                                len,
+                                one,
+                                ctx,
+                                RangeOp::Add(false),
+                                false,
+                            )?;
 
                             let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
                             tmp_len.underlying_mut(analyzer).unwrap().is_tmp = false;
 
                             // set the new length
                             analyzer.set_var_as_length(
+                                arena,
                                 ctx,
                                 loc,
                                 tmp_len,
@@ -166,14 +182,15 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             // update the index access's range
                             let elem = Elem::from(pushed_value);
                             index_access
-                                .set_range_min(analyzer, elem.clone())
+                                .set_range_min(analyzer, arena, elem.clone())
                                 .into_expr_err(loc)?;
                             index_access
-                                .set_range_max(analyzer, elem.clone())
+                                .set_range_max(analyzer, arena, elem.clone())
                                 .into_expr_err(loc)?;
 
                             // update the array using the index access
                             analyzer.update_array_from_index_access(
+                                arena,
                                 ctx,
                                 loc,
                                 len,
@@ -202,8 +219,8 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         ),
                     ));
                 }
-                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -222,7 +239,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                     // get length
                     let len = analyzer
-                        .get_length(ctx, loc, arr, true)?
+                        .get_length(arena, ctx, loc, arr, true)?
                         .unwrap()
                         .latest_version(analyzer);
 
@@ -235,25 +252,33 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let one = ContextVarNode::from(analyzer.add_node(tmp_one));
 
                     // subtract 1 from the length
-                    let tmp_len = analyzer.op(loc, len, one, ctx, RangeOp::Sub(false), false)?;
+                    let tmp_len =
+                        analyzer.op(arena, loc, len, one, ctx, RangeOp::Sub(false), false)?;
 
                     let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
                     tmp_len.underlying_mut(analyzer).unwrap().is_tmp = false;
 
                     // get the index access
                     let index_access = analyzer
-                        .index_into_array_raw(ctx, loc, tmp_len, arr, false, true)?
+                        .index_into_array_raw(arena, ctx, loc, tmp_len, arr, false, true)?
                         .unwrap();
 
-                    analyzer.set_var_as_length(ctx, loc, tmp_len, arr.latest_version(analyzer))?;
+                    analyzer.set_var_as_length(
+                        arena,
+                        ctx,
+                        loc,
+                        tmp_len,
+                        arr.latest_version(analyzer),
+                    )?;
                     index_access
-                        .set_range_min(analyzer, Elem::Null)
+                        .set_range_min(analyzer, arena, Elem::Null)
                         .into_expr_err(loc)?;
                     index_access
-                        .set_range_max(analyzer, Elem::Null)
+                        .set_range_max(analyzer, arena, Elem::Null)
                         .into_expr_err(loc)?;
 
                     analyzer.update_array_from_index_access(
+                        arena,
                         ctx,
                         loc,
                         tmp_len,

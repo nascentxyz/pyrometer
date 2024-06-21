@@ -73,8 +73,6 @@ pub enum RangeOp {
     And,
     /// Logical OR
     Or,
-    /// Catch-all requirement statement
-    Where,
     /// Cast from one type to another
     Cast,
     /// Bitwise AND
@@ -102,6 +100,57 @@ pub enum RangeOp {
 }
 
 impl RangeOp {
+    pub fn commutative(&self) -> bool {
+        use RangeOp::*;
+        match self {
+            Add(_i) => true,
+            Mul(_i) => true,
+            Sub(_i) => false,
+            Div(_i) => false,
+            Mod => false,
+            Exp => false,
+            Min => true,
+            Max => true,
+
+            Eq => true,
+            Neq => true,
+            Lt => false,
+            Lte => false,
+            Gt => false,
+            Gte => false,
+            And => true,
+            Or => true,
+            Not => false,
+
+            BitNot => false,
+            BitAnd => false,
+            BitXor => false,
+            BitOr => false,
+            Shl => false,
+            Shr => false,
+
+            Cast => false,
+
+            SetLength => false,
+            Memcopy => false,
+            GetLength => false,
+            SetIndices => false,
+            GetIndex => false,
+            Concat => false,
+        }
+    }
+
+    pub fn non_commutative_logical_inverse(&self) -> Option<Self> {
+        use RangeOp::*;
+        match self {
+            Lt => Some(Gt),
+            Lte => Some(Gte),
+            Gt => Some(Lt),
+            Gte => Some(Lte),
+            _ => None,
+        }
+    }
+
     /// Attempts to return the inverse range operation (e.g.: `RangeOp::Add => RangeOp::Sub`)
     pub fn inverse(self) -> Option<Self> {
         use RangeOp::*;
@@ -176,7 +225,6 @@ impl ToString for RangeOp {
             Not => "!".to_string(),
             And => "&&".to_string(),
             Or => "||".to_string(),
-            Where => "where".to_string(),
             Cast => "cast".to_string(),
             BitAnd => "&".to_string(),
             BitOr => "|".to_string(),

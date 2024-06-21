@@ -3,7 +3,9 @@ use crate::{
     LocStrSpan, ReportDisplay, ReportKind, VarBoundAnalysis,
 };
 
-use graph::GraphBackend;
+use graph::{elem::Elem, nodes::Concrete, GraphBackend};
+
+use shared::RangeArena;
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, Span};
 
@@ -11,16 +13,20 @@ impl ReportDisplay for VarBoundAnalysis {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &impl GraphBackend) -> String {
+    fn msg(&self, analyzer: &impl GraphBackend, _arena: &mut RangeArena<Elem<Concrete>>) -> String {
         format!(
             "Bounds for {} in {}:",
             self.var_display_name,
             self.ctx.underlying(analyzer).unwrap().path
         )
     }
-    fn labels(&self, analyzer: &impl GraphBackend) -> Vec<Label<LocStrSpan>> {
+    fn labels(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<Label<LocStrSpan>> {
         let mut labels = if self.report_config.show_initial_bounds {
-            if let Some(init_item) = self.init_item(analyzer) {
+            if let Some(init_item) = self.init_item(analyzer, arena) {
                 vec![init_item.into()]
             } else {
                 vec![]
@@ -35,7 +41,7 @@ impl ReportDisplay for VarBoundAnalysis {
                 .enumerate()
                 .map(|(_i, bound_change)| {
                     let (parts, unsat) =
-                        range_parts(analyzer, &self.report_config, &bound_change.1);
+                        range_parts(analyzer, arena, &self.report_config, &bound_change.1);
                     AnalysisItem {
                         init: false,
                         name: self.var_display_name.clone(),
@@ -43,7 +49,7 @@ impl ReportDisplay for VarBoundAnalysis {
                         order: (bound_change.0.end() - bound_change.0.start()) as i32,
                         storage: self.storage,
                         ctx: self.ctx,
-                        ctx_conditionals: self.conditionals(analyzer),
+                        ctx_conditionals: self.conditionals(analyzer, arena),
                         parts,
                         unsat,
                     }
@@ -55,13 +61,17 @@ impl ReportDisplay for VarBoundAnalysis {
         labels
     }
 
-    fn reports(&self, analyzer: &impl GraphBackend) -> Vec<Report<LocStrSpan>> {
+    fn reports(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             self.var_def.0.source(),
             self.var_def.0.start(),
         )
-        .with_message(self.msg(analyzer))
+        .with_message(self.msg(analyzer, arena))
         .with_config(
             Config::default()
                 .with_cross_gap(false)
@@ -69,7 +79,7 @@ impl ReportDisplay for VarBoundAnalysis {
                 .with_tab_width(4),
         );
 
-        report.add_labels(self.labels(analyzer));
+        report.add_labels(self.labels(analyzer, arena));
 
         if let Some((killed_span, kind)) = &self.ctx_killed {
             report = report.with_label(
@@ -93,15 +103,25 @@ impl ReportDisplay for VarBoundAnalysis {
         reports
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphBackend) {
-        let reports = self.reports(analyzer);
+    fn print_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+        let reports = self.reports(analyzer, arena);
         reports.into_iter().for_each(|report| {
             report.print(&mut src).unwrap();
         });
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphBackend) {
-        let reports = self.reports(analyzer);
+    fn eprint_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+        let reports = self.reports(analyzer, arena);
         reports.into_iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
         });

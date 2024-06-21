@@ -7,13 +7,14 @@ use crate::{
 };
 
 use graph::{
+    elem::Elem,
     nodes::{
-        Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode, FunctionParamNode,
-        FunctionReturnNode, KilledKind,
+        Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
+        FunctionParamNode, FunctionReturnNode, KilledKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
@@ -33,6 +34,7 @@ pub trait StatementParser:
     /// Performs setup for parsing a solidity statement
     fn parse_ctx_statement(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         stmt: &Statement,
         unchecked: bool,
         parent_ctx: Option<impl Into<NodeIdx> + Copy>,
@@ -48,19 +50,24 @@ pub trait StatementParser:
                             self.add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc()))
                         {
                             if live_edges.is_empty() {
-                                self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx)
+                                self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx)
                             } else {
                                 live_edges.iter().for_each(|fork_ctx| {
-                                    self.parse_ctx_stmt_inner(stmt, unchecked, Some(*fork_ctx));
+                                    self.parse_ctx_stmt_inner(
+                                        arena,
+                                        stmt,
+                                        unchecked,
+                                        Some(*fork_ctx),
+                                    );
                                 });
                             }
                         }
                     }
                 }
-                _ => self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx),
+                _ => self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx),
             }
         } else {
-            self.parse_ctx_stmt_inner(stmt, unchecked, parent_ctx)
+            self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx)
         }
     }
 
@@ -68,6 +75,7 @@ pub trait StatementParser:
     /// Performs parsing of a solidity statement
     fn parse_ctx_stmt_inner(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         stmt: &Statement,
         unchecked: bool,
         parent_ctx: Option<impl Into<NodeIdx> + Copy>,
@@ -206,11 +214,12 @@ pub trait StatementParser:
                     if !mods_set {
                         let parent = FunctionNode::from(parent.into());
                         let _ = self
-                            .set_modifiers(parent, ctx_node.into())
+                            .set_modifiers(arena, parent, ctx_node.into())
                             .map_err(|e| self.add_expr_err(e));
                     }
 
                     let res = self.func_call_inner(
+                        arena,
                         true,
                         ctx_node.into(),
                         parent.into().into(),
@@ -223,20 +232,25 @@ pub trait StatementParser:
                     if self.widen_if_limit_hit(ctx_node.into(), res) {
                         return;
                     }
-                    let res = self.apply_to_edges(ctx_node.into(), *loc, &|analyzer, ctx, loc| {
-                        if ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
-                            tracing::trace!("killing due to bad funciton call");
-                            let res = ContextNode::from(ctx_node)
-                                .kill(
-                                    analyzer,
-                                    fn_loc,
-                                    ctx.underlying(analyzer).unwrap().killed.unwrap().1,
-                                )
-                                .into_expr_err(fn_loc);
-                            let _ = analyzer.add_if_err(res);
-                        }
-                        Ok(())
-                    });
+                    let res = self.apply_to_edges(
+                        ctx_node.into(),
+                        *loc,
+                        arena,
+                        &|analyzer, arena, ctx, loc| {
+                            if ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
+                                tracing::trace!("killing due to bad funciton call");
+                                let res = ContextNode::from(ctx_node)
+                                    .kill(
+                                        analyzer,
+                                        fn_loc,
+                                        ctx.underlying(analyzer).unwrap().killed.unwrap().1,
+                                    )
+                                    .into_expr_err(fn_loc);
+                                let _ = analyzer.add_if_err(res);
+                            }
+                            Ok(())
+                        },
+                    );
 
                     if self.widen_if_limit_hit(ctx_node.into(), res) {
                         return;
@@ -245,12 +259,17 @@ pub trait StatementParser:
                     return;
                 }
 
-                let res = self.apply_to_edges(ctx_node.into(), *loc, &|analyzer, ctx, _loc| {
-                    statements
-                        .iter()
-                        .for_each(|stmt| analyzer.parse_ctx_statement(stmt, *unchecked, Some(ctx)));
-                    Ok(())
-                });
+                let res = self.apply_to_edges(
+                    ctx_node.into(),
+                    *loc,
+                    arena,
+                    &|analyzer, arena, ctx, _loc| {
+                        statements.iter().for_each(|stmt| {
+                            analyzer.parse_ctx_statement(arena, stmt, *unchecked, Some(ctx))
+                        });
+                        Ok(())
+                    },
+                );
                 if self.widen_if_limit_hit(ctx_node.into(), res) {}
             }
             VariableDefinition(loc, var_decl, maybe_expr) => {
@@ -265,58 +284,71 @@ pub trait StatementParser:
                 );
 
                 if let Some(rhs) = maybe_expr {
-                    match self.parse_ctx_expr(rhs, ctx) {
+                    match self.parse_ctx_expr(arena, rhs, ctx) {
                         Ok(()) => {
-                            let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                if !ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
-                                    let Some(rhs_paths) =
-                                        ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                                    else {
-                                        return Err(ExprErr::NoRhs(
-                                            loc,
-                                            format!(
-                                                "Variable definition had no right hand side, {}",
-                                                ctx.path(analyzer)
-                                            ),
-                                        ));
-                                    };
-
-                                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                                        return Ok(());
-                                    }
-
-                                    analyzer.parse_ctx_expr(&var_decl.ty, ctx)?;
-                                    analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
-                                        let Some(lhs_paths) = ctx
+                            let res = self.apply_to_edges(
+                                ctx,
+                                *loc,
+                                arena,
+                                &|analyzer, arena, ctx, loc| {
+                                    if !ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
+                                        let Some(rhs_paths) = ctx
                                             .pop_expr_latest(loc, analyzer)
                                             .into_expr_err(loc)?
                                         else {
-                                            return Err(ExprErr::NoLhs(
+                                            return Err(ExprErr::NoRhs(
                                                 loc,
-                                                "Variable definition had no left hand side"
-                                                    .to_string(),
+                                                format!(
+                                                "Variable definition had no right hand side, {}",
+                                                ctx.path(analyzer)
+                                            ),
                                             ));
                                         };
 
-                                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                                            ctx.push_expr(lhs_paths, analyzer)
+                                        if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                                            ctx.push_expr(rhs_paths, analyzer)
                                                 .into_expr_err(loc)?;
                                             return Ok(());
                                         }
-                                        analyzer.match_var_def(
+
+                                        analyzer.parse_ctx_expr(arena, &var_decl.ty, ctx)?;
+                                        analyzer.apply_to_edges(
                                             ctx,
-                                            var_decl,
                                             loc,
-                                            &lhs_paths,
-                                            Some(&rhs_paths),
-                                        )?;
+                                            arena,
+                                            &|analyzer, arena, ctx, loc| {
+                                                let Some(lhs_paths) = ctx
+                                                    .pop_expr_latest(loc, analyzer)
+                                                    .into_expr_err(loc)?
+                                                else {
+                                                    return Err(ExprErr::NoLhs(
+                                                        loc,
+                                                        "Variable definition had no left hand side"
+                                                            .to_string(),
+                                                    ));
+                                                };
+
+                                                if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                                                    ctx.push_expr(lhs_paths, analyzer)
+                                                        .into_expr_err(loc)?;
+                                                    return Ok(());
+                                                }
+                                                analyzer.match_var_def(
+                                                    arena,
+                                                    ctx,
+                                                    var_decl,
+                                                    loc,
+                                                    &lhs_paths,
+                                                    Some(&rhs_paths),
+                                                )?;
+                                                Ok(())
+                                            },
+                                        )
+                                    } else {
                                         Ok(())
-                                    })
-                                } else {
-                                    Ok(())
-                                }
-                            });
+                                    }
+                                },
+                            );
                             let _ = self.widen_if_limit_hit(ctx, res);
                         }
                         ret => {
@@ -324,26 +356,27 @@ pub trait StatementParser:
                         }
                     }
                 } else {
-                    let res = self.parse_ctx_expr(&var_decl.ty, ctx);
+                    let res = self.parse_ctx_expr(arena, &var_decl.ty, ctx);
                     if self.widen_if_limit_hit(ctx, res) {
                         return;
                     }
-                    let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Variable definition had no left hand side".to_string(),
-                            ));
-                        };
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.match_var_def(ctx, var_decl, loc, &lhs_paths, None)?;
-                        Ok(())
-                    });
+                    let res =
+                        self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                            let Some(lhs_paths) =
+                                ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+                            else {
+                                return Err(ExprErr::NoLhs(
+                                    loc,
+                                    "Variable definition had no left hand side".to_string(),
+                                ));
+                            };
+                            if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                                ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                                return Ok(());
+                            }
+                            analyzer.match_var_def(arena, ctx, var_decl, loc, &lhs_paths, None)?;
+                            Ok(())
+                        });
                     let _ = self.widen_if_limit_hit(ctx, res);
                 }
             }
@@ -353,8 +386,8 @@ pub trait StatementParser:
             If(loc, if_expr, true_expr, maybe_false_expr) => {
                 tracing::trace!("parsing if, {if_expr:?}");
                 let ctx = ContextNode::from(parent_ctx.expect("Dangling if statement").into());
-                let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                    analyzer.cond_op_stmt(loc, if_expr, true_expr, maybe_false_expr, ctx)
+                let res = self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                    analyzer.cond_op_stmt(arena, loc, if_expr, true_expr, maybe_false_expr, ctx)
                 });
                 let _ = self.widen_if_limit_hit(ctx, res);
             }
@@ -364,7 +397,10 @@ pub trait StatementParser:
                     let res = self.apply_to_edges(
                         ContextNode::from(parent.into()),
                         *loc,
-                        &|analyzer, ctx, loc| analyzer.while_loop(loc, ctx, cond, body),
+                        arena,
+                        &|analyzer, arena, ctx, loc| {
+                            analyzer.while_loop(arena, loc, ctx, cond, body)
+                        },
                     );
                     let _ = self.widen_if_limit_hit(parent.into().into(), res);
                 }
@@ -373,21 +409,26 @@ pub trait StatementParser:
                 tracing::trace!("parsing expr, {expr:?}");
                 if let Some(parent) = parent_ctx {
                     let ctx = parent.into().into();
-                    match self.parse_ctx_expr(expr, ctx) {
+                    match self.parse_ctx_expr(arena, expr, ctx) {
                         Ok(()) => {
-                            let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
-                                if ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
-                                    tracing::trace!("killing due to bad expr");
-                                    ContextNode::from(parent.into())
-                                        .kill(
-                                            analyzer,
-                                            loc,
-                                            ctx.underlying(analyzer).unwrap().killed.unwrap().1,
-                                        )
-                                        .into_expr_err(loc)?;
-                                }
-                                Ok(())
-                            });
+                            let res = self.apply_to_edges(
+                                ctx,
+                                *loc,
+                                arena,
+                                &|analyzer, arena, ctx, loc| {
+                                    if ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
+                                        tracing::trace!("killing due to bad expr");
+                                        ContextNode::from(parent.into())
+                                            .kill(
+                                                analyzer,
+                                                loc,
+                                                ctx.underlying(analyzer).unwrap().killed.unwrap().1,
+                                            )
+                                            .into_expr_err(loc)?;
+                                    }
+                                    Ok(())
+                                },
+                            );
                             let _ = self.widen_if_limit_hit(ctx, res);
                         }
                         e => {
@@ -399,9 +440,13 @@ pub trait StatementParser:
             For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {
                 tracing::trace!("parsing for loop");
                 if let Some(parent) = parent_ctx {
-                    let res =
-                        self.apply_to_edges(parent.into().into(), *loc, &|analyzer, ctx, loc| {
+                    let res = self.apply_to_edges(
+                        parent.into().into(),
+                        *loc,
+                        arena,
+                        &|analyzer, arena, ctx, loc| {
                             analyzer.for_loop(
+                                arena,
                                 loc,
                                 ctx,
                                 maybe_for_start,
@@ -409,7 +454,8 @@ pub trait StatementParser:
                                 maybe_for_end,
                                 maybe_for_body,
                             )
-                        });
+                        },
+                    );
                     let _ = self.widen_if_limit_hit(parent.into().into(), res);
                 }
             }
@@ -419,7 +465,10 @@ pub trait StatementParser:
                     let res = self.apply_to_edges(
                         ContextNode::from(parent.into()),
                         *loc,
-                        &|analyzer, ctx, loc| analyzer.while_loop(loc, ctx, while_expr, while_stmt),
+                        arena,
+                        &|analyzer, arena, ctx, loc| {
+                            analyzer.while_loop(arena, loc, ctx, while_expr, while_stmt)
+                        },
                     );
                     let _ = self.widen_if_limit_hit(parent.into().into(), res);
                 }
@@ -444,8 +493,12 @@ pub trait StatementParser:
                         .expect("No context for variable definition?")
                         .into(),
                 );
-                let res = self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
-                    analyzer.parse_ctx_yul_statement(&YulStatement::Block(yul_block.clone()), ctx);
+                let res = self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, _loc| {
+                    analyzer.parse_ctx_yul_statement(
+                        arena,
+                        &YulStatement::Block(yul_block.clone()),
+                        ctx,
+                    );
                     Ok(())
                 });
                 let _ = self.widen_if_limit_hit(ctx, res);
@@ -454,14 +507,15 @@ pub trait StatementParser:
                 tracing::trace!("parsing return");
                 if let Some(ret_expr) = maybe_ret_expr {
                     if let Some(parent) = parent_ctx {
-                        let res = self.parse_ctx_expr(ret_expr, parent.into().into());
+                        let res = self.parse_ctx_expr(arena, ret_expr, parent.into().into());
                         if self.widen_if_limit_hit(parent.into().into(), res) {
                             return;
                         }
                         let res = self.apply_to_edges(
                             parent.into().into(),
                             *loc,
-                            &|analyzer, ctx, loc| {
+                            arena,
+                            &|analyzer, arena, ctx, loc| {
                                 let Ok(Some(ret)) = ctx.pop_expr_latest(loc, analyzer) else {
                                     return Err(ExprErr::NoLhs(
                                         loc,
@@ -483,7 +537,7 @@ pub trait StatementParser:
                                     let _ = analyzer.add_if_err(res);
                                     return Ok(());
                                 }
-                                analyzer.return_match(ctx, &loc, &paths);
+                                analyzer.return_match(arena, ctx, &loc, &paths, 0);
                                 Ok(())
                             },
                         );
@@ -495,13 +549,14 @@ pub trait StatementParser:
                 tracing::trace!("parsing revert");
                 if let Some(parent) = parent_ctx {
                     let parent = ContextNode::from(parent.into());
-                    let res = self.apply_to_edges(parent, *loc, &|analyzer, ctx, loc| {
-                        let res = ctx
-                            .kill(analyzer, loc, KilledKind::Revert)
-                            .into_expr_err(loc);
-                        let _ = analyzer.add_if_err(res);
-                        Ok(())
-                    });
+                    let res =
+                        self.apply_to_edges(parent, *loc, arena, &|analyzer, arena, ctx, loc| {
+                            let res = ctx
+                                .kill(analyzer, loc, KilledKind::Revert)
+                                .into_expr_err(loc);
+                            let _ = analyzer.add_if_err(res);
+                            Ok(())
+                        });
                     let _ = self.add_if_err(res);
                 }
             }

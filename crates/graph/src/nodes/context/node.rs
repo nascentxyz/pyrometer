@@ -1,9 +1,10 @@
 use crate::{
-    nodes::{Context, ContextVarNode, KilledKind},
+    nodes::{Concrete, Context, ContextVarNode, KilledKind},
+    range::elem::Elem,
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::Loc;
 
@@ -12,7 +13,11 @@ use solang_parser::pt::Loc;
 pub struct ContextNode(pub usize);
 
 impl AsDotStr for ContextNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         format!("Context {{ {} }}", self.path(analyzer))
     }
 }

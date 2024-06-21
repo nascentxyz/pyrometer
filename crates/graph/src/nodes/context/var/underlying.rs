@@ -228,7 +228,7 @@ impl ContextVar {
     pub fn new_from_builtin(
         loc: Loc,
         bn_node: BuiltInNode,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl GraphBackend,
     ) -> Result<Self, GraphError> {
         Ok(ContextVar {
             loc: Some(loc),

@@ -1,6 +1,8 @@
 use crate::{FunctionVarsBoundAnalysis, LocStrSpan, ReportDisplay, ReportKind};
 
-use graph::GraphBackend;
+use graph::{elem::Elem, nodes::Concrete, GraphBackend};
+
+use shared::RangeArena;
 
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, Span};
 
@@ -27,7 +29,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
     fn report_kind(&self) -> ReportKind {
         ReportKind::Custom("Bounds", Color::Cyan)
     }
-    fn msg(&self, analyzer: &impl GraphBackend) -> String {
+    fn msg(&self, analyzer: &impl GraphBackend, _arena: &mut RangeArena<Elem<Concrete>>) -> String {
         format!(
             "Bounds for function: {}",
             format!(
@@ -41,17 +43,25 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         )
     }
 
-    fn labels(&self, _analyzer: &impl GraphBackend) -> Vec<Label<LocStrSpan>> {
+    fn labels(
+        &self,
+        _analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<Label<LocStrSpan>> {
         vec![]
     }
 
-    fn reports(&self, analyzer: &impl GraphBackend) -> Vec<Report<LocStrSpan>> {
+    fn reports(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<Report<LocStrSpan>> {
         let mut report = Report::build(
             self.report_kind(),
             self.func_var_bound_analysis.ctx_loc.source(),
             self.func_var_bound_analysis.ctx_loc.start(),
         )
-        .with_message(self.msg(analyzer))
+        .with_message(self.msg(analyzer, arena))
         .with_config(
             Config::default()
                 .with_cross_gap(false)
@@ -59,7 +69,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
                 .with_tab_width(4),
         );
 
-        report.add_labels(self.labels(analyzer));
+        report.add_labels(self.labels(analyzer, arena));
         if let Some((killed_span, kind)) = &self.func_var_bound_analysis.ctx_killed {
             report = report.with_label(
                 Label::new(killed_span.clone())
@@ -70,23 +80,34 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
 
         let mut reports = vec![report.finish()];
 
-        reports.extend(
-            self.func_var_bound_analysis
-                .reports_for_forks(self.file_mapping, analyzer),
-        );
+        reports.extend(self.func_var_bound_analysis.reports_for_forks(
+            self.file_mapping,
+            analyzer,
+            arena,
+        ));
 
         reports
     }
 
-    fn print_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphBackend) {
-        let reports = &self.reports(analyzer);
+    fn print_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+        let reports = &self.reports(analyzer, arena);
         for report in reports.iter() {
             report.print(&mut src).unwrap();
         }
     }
 
-    fn eprint_reports(&self, mut src: &mut impl Cache<String>, analyzer: &impl GraphBackend) {
-        let reports = &self.reports(analyzer);
+    fn eprint_reports(
+        &self,
+        mut src: &mut impl Cache<String>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+        let reports = &self.reports(analyzer, arena);
         reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
         });

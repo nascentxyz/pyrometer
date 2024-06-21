@@ -2,9 +2,11 @@ use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{ContextBuilder, ExprErr, IntoExprErr};
 
 use graph::{
-    nodes::{Builtin, ContextNode, ContextVar, ExprRet},
+    elem::Elem,
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, Node,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -15,6 +17,7 @@ pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     /// Perform a `block` function call
     fn block_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_name: String,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
@@ -22,8 +25,8 @@ pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "blockhash" => {
-                input_exprs.parse_n(1, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                input_exprs.parse_n(arena, 1, self, ctx, loc)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,

@@ -226,9 +226,11 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
-    let mut analyzer = Analyzer::default();
-    analyzer.max_depth = args.max_stack_depth;
-    analyzer.root = Root::RemappingsDirectory(env::current_dir().unwrap());
+    let mut analyzer = Analyzer {
+        max_depth: args.max_stack_depth,
+        root: Root::RemappingsDirectory(env::current_dir().unwrap()),
+        ..Default::default()
+    };
     println!("debug panic: {}", args.debug_panic);
     analyzer.debug_panic = args.debug_panic;
 
@@ -253,15 +255,17 @@ fn main() {
         panic!("Unsupported file type")
     };
 
+    let mut arena_base = Default::default();
+    let arena = &mut arena_base;
     let t0 = std::time::Instant::now();
-    let maybe_entry = analyzer.parse(&sol, &current_path, true);
+    let maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
     let t_end = t0.elapsed();
     let parse_time = t_end.as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
     if args.stats {
-        println!("{}", analyzer.stats(t_end));
+        println!("{}", analyzer.stats(t_end, arena));
     }
     // println!("Arena: {:#?}", analyzer.range_arena);
 
@@ -290,19 +294,19 @@ fn main() {
     analyzer.print_errors(&file_mapping, &mut source_map);
 
     if args.open_dot {
-        analyzer.open_dot()
+        analyzer.open_dot(arena)
     }
 
     if args.dot {
-        println!("{}", analyzer.dot_str_no_tmps());
+        println!("{}", analyzer.dot_str_no_tmps(arena));
     }
 
     if args.mermaid {
-        println!("{}", analyzer.mermaid_str());
+        println!("{}", analyzer.mermaid_str(arena));
     }
 
     if args.open_mermaid {
-        analyzer.open_mermaid();
+        analyzer.open_mermaid(arena);
     }
 
     // println!("{}", analyzer.range_arena.ranges.iter().map(|i| {
@@ -375,7 +379,7 @@ fn main() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {
                     FunctionNode::from(func)
-                        .name(&analyzer)
+                        .name(&mut analyzer)
                         .unwrap()
                         .starts_with(analyze_for)
                 }) {
@@ -395,17 +399,17 @@ fn main() {
                                 if let Some(mut solver) = BruteBinSearchSolver::maybe_new(
                                     c.ctx_deps(&analyzer).unwrap(),
                                     &mut analyzer,
+                                    arena,
                                 )
                                 .unwrap()
                                 {
-                                    println!("created solver");
-                                    match solver.solve(&mut analyzer).unwrap() {
+                                    match solver.solve(&mut analyzer, arena).unwrap() {
                                         AtomicSolveStatus::Unsat => {
                                             println!("TRUE UNSAT: {}", c.path(&analyzer));
                                         }
                                         AtomicSolveStatus::Sat(ranges) => {
-                                            println!("-----------------------");
-                                            println!("sat for: {}", c.path(&analyzer));
+                                            // println!("-----------------------");
+                                            // println!("sat for: {}", c.path(&analyzer));
                                             ranges.iter().for_each(|(atomic, conc)| {
                                                 println!(
                                                     "{}: {}",
@@ -415,17 +419,17 @@ fn main() {
                                             });
                                         }
                                         AtomicSolveStatus::Indeterminate => {
-                                            println!("-----------------------");
-                                            println!("sat for: {}", c.path(&analyzer));
-                                            println!("MAYBE UNSAT");
+                                            // println!("-----------------------");
+                                            // println!("sat for: {}", c.path(&analyzer));
+                                            // println!("MAYBE UNSAT");
                                         }
                                     }
                                 }
-                                println!("-----------------------");
+                                // println!("-----------------------");
                                 let analysis = analyzer
-                                    .bounds_for_lineage(&file_mapping, *c, vec![*c], config)
+                                    .bounds_for_lineage(arena, &file_mapping, *c, vec![*c], config)
                                     .as_cli_compat(&file_mapping);
-                                analysis.print_reports(&mut source_map, &analyzer);
+                                analysis.print_reports(&mut source_map, &analyzer, arena);
                                 // return;
                             }
                         });
@@ -433,9 +437,9 @@ fn main() {
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
                 let analysis = analyzer
-                    .bounds_for_all(&file_mapping, ctx, config)
+                    .bounds_for_all(arena, &file_mapping, ctx, config)
                     .as_cli_compat(&file_mapping);
-                analysis.print_reports(&mut source_map, &analyzer);
+                analysis.print_reports(&mut source_map, &analyzer, arena);
             }
         }
     } else {
@@ -451,19 +455,19 @@ fn main() {
                 let funcs = contract.funcs(&analyzer);
                 for func in funcs.into_iter() {
                     if !args.funcs.is_empty() {
-                        if args.funcs.contains(&func.name(&analyzer).unwrap()) {
+                        if args.funcs.contains(&func.name(&mut analyzer).unwrap()) {
                             let ctx = func.body_ctx(&mut analyzer);
                             let analysis = analyzer
-                                .bounds_for_all(&file_mapping, ctx, config)
+                                .bounds_for_all(arena, &file_mapping, ctx, config)
                                 .as_cli_compat(&file_mapping);
-                            analysis.print_reports(&mut source_map, &analyzer);
+                            analysis.print_reports(&mut source_map, &analyzer, arena);
                         }
                     } else {
                         let ctx = func.body_ctx(&mut analyzer);
                         let analysis = analyzer
-                            .bounds_for_all(&file_mapping, ctx, config)
+                            .bounds_for_all(arena, &file_mapping, ctx, config)
                             .as_cli_compat(&file_mapping);
-                        analysis.print_reports(&mut source_map, &analyzer);
+                        analysis.print_reports(&mut source_map, &analyzer, arena);
                     }
                 }
             });

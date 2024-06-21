@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use pyrometer::{Analyzer, SourcePath};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::env::{self};
 use std::fs;
@@ -23,17 +23,18 @@ criterion_main!(benches);
 ///
 /// A vector of tuples representing the targets.
 fn get_targets(bench_contracts_root: PathBuf) -> Vec<(String, PathBuf, usize)> {
-    let mut targets = vec![];
-    targets.push((
-        "ctoken".to_string(),
-        bench_contracts_root.join("flat_ctoken.sol"),
-        50, // range of tens ms
-    ));
-    targets.push((
-        "comptroller".to_string(),
-        bench_contracts_root.join("flat_comptroller.sol"),
-        10, // range of singles seconds. 10 samples is lowest
-    ));
+    let targets = vec![
+        (
+            "ctoken".to_string(),
+            bench_contracts_root.join("flat_ctoken.sol"),
+            50, // range of tens ms
+        ),
+        (
+            "comptroller".to_string(),
+            bench_contracts_root.join("flat_comptroller.sol"),
+            10, // range of singles seconds. 10 samples is lowest
+        ),
+    ];
 
     targets
 }
@@ -59,8 +60,8 @@ fn bench(c: &mut Criterion) {
         parsing_group.sample_size(sample_size);
         let sol = fs::read_to_string(path.clone()).expect("Could not find file");
         let bench_id = BenchmarkId::new("parse", sample_size);
-        parsing_group.bench_with_input(bench_id, &(path, &sol), |b, (path, &ref sol)| {
-            b.iter(|| parse(path, sol.clone()));
+        parsing_group.bench_with_input(bench_id, &(path, &sol), |b, (path, sol)| {
+            b.iter(|| parse(path, sol.to_string()));
         });
         parsing_group.finish();
     }
@@ -72,8 +73,10 @@ fn bench(c: &mut Criterion) {
 ///
 /// * `path` - A `PathBuf` representing the path to the source code file.
 /// * `sol` - A string containing the Solidity source code.
-fn parse(path: &PathBuf, sol: String) {
+fn parse(path: &Path, sol: String) {
     let mut analyzer = Analyzer::default();
-    let current_path = SourcePath::SolidityFile(path.clone());
-    let _maybe_entry = analyzer.parse(&sol, &current_path, true);
+    let mut arena_base = Default::default();
+    let arena = &mut arena_base;
+    let current_path = SourcePath::SolidityFile(path.to_path_buf());
+    let _maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
 }

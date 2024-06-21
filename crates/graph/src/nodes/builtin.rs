@@ -1,7 +1,7 @@
 use crate::{nodes::Concrete, AnalyzerBackend, GraphBackend, GraphError, Node, SolcRange, VarType};
 
 use crate::range::elem::*;
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::{Expression, Loc, Type};
@@ -251,6 +251,7 @@ impl Builtin {
     pub fn try_from_ty(
         ty: Type,
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<Builtin> {
         use Type::*;
         match ty {
@@ -265,8 +266,8 @@ impl Builtin {
             Rational => Some(Builtin::Rational),
             DynamicBytes => Some(Builtin::DynamicBytes),
             Mapping { key, value, .. } => {
-                let key_idx = analyzer.parse_expr(&key, None);
-                let val_idx = analyzer.parse_expr(&value, None);
+                let key_idx = analyzer.parse_expr(arena, &key, None);
+                let val_idx = analyzer.parse_expr(arena, &value, None);
                 let key_var_ty = VarType::try_from_idx(analyzer, key_idx)?;
                 let val_var_ty = VarType::try_from_idx(analyzer, val_idx)?;
                 Some(Builtin::Mapping(key_var_ty, val_var_ty))
@@ -279,7 +280,7 @@ impl Builtin {
                 let inputs = params
                     .iter()
                     .filter_map(|(_, param)| param.as_ref())
-                    .map(|param| analyzer.parse_expr(&param.ty, None))
+                    .map(|param| analyzer.parse_expr(arena, &param.ty, None))
                     .collect::<Vec<_>>();
                 let inputs = inputs
                     .iter()
@@ -290,7 +291,7 @@ impl Builtin {
                     let tmp_outputs = params
                         .iter()
                         .filter_map(|(_, param)| param.as_ref())
-                        .map(|param| analyzer.parse_expr(&param.ty, None))
+                        .map(|param| analyzer.parse_expr(arena, &param.ty, None))
                         .collect::<Vec<_>>();
                     outputs = tmp_outputs
                         .iter()

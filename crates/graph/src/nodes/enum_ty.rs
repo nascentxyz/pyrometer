@@ -1,6 +1,8 @@
-use crate::{nodes::Concrete, AsDotStr, GraphBackend, GraphError, Node, SolcRange};
+use crate::{
+    nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, GraphError, Node, SolcRange,
+};
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
@@ -10,7 +12,11 @@ use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 pub struct EnumNode(pub usize);
 
 impl AsDotStr for EnumNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "enum {} {{ {} }}",

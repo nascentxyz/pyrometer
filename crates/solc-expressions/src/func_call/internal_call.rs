@@ -7,9 +7,11 @@ use crate::{
 };
 
 use graph::{
+    elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, VarType,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
@@ -25,6 +27,7 @@ pub trait InternalFuncCaller:
     /// Perform a named function call
     fn call_internal_named_func(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: &Loc,
         ident: &Identifier,
@@ -127,8 +130,8 @@ pub trait InternalFuncCaller:
                         .iter()
                         .find(|arg| arg.name.name == field.name(self).unwrap())
                         .expect("No field in struct in struct construction");
-                    self.parse_ctx_expr(&input.expr, ctx)?;
-                    self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                    self.parse_ctx_expr(arena, &input.expr, ctx)?;
+                    self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                         let Some(assignment) =
                             ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
@@ -140,12 +143,12 @@ pub trait InternalFuncCaller:
                             return Ok(());
                         }
 
-                        analyzer.match_assign_sides(ctx, loc, &field_as_ret, &assignment)?;
+                        analyzer.match_assign_sides(arena, ctx, loc, &field_as_ret, &assignment)?;
                         let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                         Ok(())
                     })
                 })?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, _loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, _loc| {
                     ctx.push_expr(ExprRet::Single(cvar), analyzer)
                         .into_expr_err(*loc)?;
                     Ok(())
@@ -172,13 +175,13 @@ pub trait InternalFuncCaller:
                     input.expr.clone()
                 })
                 .collect();
-            self.parse_inputs(ctx, *loc, &inputs[..])?;
-            self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+            self.parse_inputs(arena, ctx, *loc, &inputs[..])?;
+            self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                 let inputs = ctx
                     .pop_expr_latest(loc, analyzer)
                     .into_expr_err(loc)?
                     .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                analyzer.setup_fn_call(&ident.loc, &inputs, func.into(), ctx, None)
+                analyzer.setup_fn_call(arena, &ident.loc, &inputs, func.into(), ctx, None)
             })
         } else {
             todo!("Disambiguate named function call");
@@ -188,6 +191,7 @@ pub trait InternalFuncCaller:
     #[tracing::instrument(level = "trace", skip_all)]
     fn call_internal_func(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: &Loc,
         ident: &Identifier,
@@ -232,8 +236,8 @@ pub trait InternalFuncCaller:
         match possible_funcs.len() {
             0 => {
                 // this is a builtin, cast, or unknown function
-                self.parse_ctx_expr(func_expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, func_expr, ctx)?;
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     let ret = ctx
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
@@ -243,13 +247,13 @@ pub trait InternalFuncCaller:
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.match_intrinsic_fallback(ctx, &loc, &input_exprs, ret)
+                    analyzer.match_intrinsic_fallback(arena, ctx, &loc, &input_exprs, ret)
                 })
             }
             1 => {
                 // there is only a single possible function
-                input_exprs.parse(self, ctx, *loc)?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                input_exprs.parse(arena, self, ctx, *loc)?;
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     let mut inputs = ctx
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
@@ -267,6 +271,7 @@ pub trait InternalFuncCaller:
                         return Ok(());
                     }
                     analyzer.setup_fn_call(
+                        arena,
                         &ident.loc,
                         &inputs,
                         (possible_funcs[0]).into(),
@@ -277,8 +282,8 @@ pub trait InternalFuncCaller:
             }
             _ => {
                 // this is the annoying case due to function overloading & type inference on number literals
-                input_exprs.parse(self, ctx, *loc)?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                input_exprs.parse(arena, self, ctx, *loc)?;
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     let inputs = ctx
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
@@ -303,18 +308,19 @@ pub trait InternalFuncCaller:
                         })
                         .collect();
                     if let Some(func) = analyzer.disambiguate_fn_call(
+                        arena,
                         &ident.name,
                         resizeables,
                         &inputs,
                         &possible_funcs,
                     ) {
-                        analyzer.setup_fn_call(&loc, &inputs, func.into(), ctx, None)
+                        analyzer.setup_fn_call(arena, &loc, &inputs, func.into(), ctx, None)
                     } else {
                         Err(ExprErr::FunctionNotFound(
                             loc,
                             format!(
                                 "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
-                                inputs.try_as_func_input_str(analyzer),
+                                inputs.try_as_func_input_str(analyzer, arena),
                                 possible_funcs
                                     .iter()
                                     .map(|i| i.name(analyzer).unwrap())

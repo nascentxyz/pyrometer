@@ -1,9 +1,10 @@
 use crate::{
-    nodes::{ContractNode, FunctionNode, StructNode, VarNode},
+    nodes::{Concrete, ContractNode, FunctionNode, StructNode, VarNode},
+    range::elem::Elem,
     AsDotStr, GraphBackend, GraphError, Node,
 };
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 #[derive(Default, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
 pub struct SourceUnitPart {
@@ -41,7 +42,11 @@ impl From<NodeIdx> for SourceUnitPartNode {
 }
 
 impl AsDotStr for SourceUnitPartNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!("SourceUnitPart({}, {})", underlying.file, underlying.part)
     }

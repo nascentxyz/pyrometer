@@ -8,20 +8,24 @@ use crate::{
     AnalyzerBackend, GraphBackend, GraphError, Range, RangeEval, SolcRange,
 };
 
+use shared::RangeArena;
+
 use ethers_core::types::U256;
 use std::collections::BTreeMap;
 
 pub trait SolcSolver {
-    fn simplify(&mut self, analyzer: &impl AnalyzerBackend);
+    fn simplify(&mut self, analyzer: &impl AnalyzerBackend, arena: &mut RangeArena<Elem<Concrete>>);
     fn solve(
         &mut self,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<AtomicSolveStatus, GraphError>;
     fn recurse_check(
         &mut self,
         idx: usize,
         solved_atomics: &mut Vec<usize>,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, GraphError>;
     fn check(
         &mut self,
@@ -29,6 +33,7 @@ pub trait SolcSolver {
         lmr: (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>),
         solved_atomics: &mut Vec<usize>,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(bool, Option<HintOrRanges>), GraphError>;
 }
 
@@ -84,6 +89,7 @@ impl BruteBinSearchSolver {
     pub fn maybe_new(
         deps: Vec<ContextVarNode>,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<Self>, GraphError> {
         let mut atomic_idxs = vec![];
 
@@ -91,14 +97,14 @@ impl BruteBinSearchSolver {
         let mut atomic_ranges = BTreeMap::default();
         deps.iter().try_for_each(|dep| {
             let mut range = dep.range(analyzer)?.unwrap();
-            if range.unsat(analyzer) {
+            if range.unsat(analyzer, arena) {
                 panic!(
                     "initial range for {} not sat",
                     dep.display_name(analyzer).unwrap()
                 );
             }
-            let r: SolcRange = range.flattened_range(analyzer)?.into_owned().into();
-            atomic_idxs.extend(r.dependent_on(analyzer));
+            let r: SolcRange = range.flattened_range(analyzer, arena)?.into_owned().into();
+            atomic_idxs.extend(r.dependent_on(analyzer, arena));
             ranges.insert(*dep, r);
             Ok(())
         })?;
@@ -150,7 +156,10 @@ impl BruteBinSearchSolver {
             atomic_ranges.insert(atomic.clone(), range);
             Ok(())
         })?;
-        if let Some((dep, unsat_range)) = ranges.iter().find(|(_, range)| range.unsat(analyzer)) {
+        if let Some((dep, unsat_range)) = ranges
+            .iter()
+            .find(|(_, range)| range.unsat(analyzer, arena))
+        {
             panic!(
                 "Initial ranges not sat for dep {}: {} {}",
                 dep.display_name(analyzer).unwrap(),
@@ -177,7 +186,7 @@ impl BruteBinSearchSolver {
             successful_passes: 0,
         };
 
-        s.reset_lmrs(analyzer);
+        s.reset_lmrs(analyzer, arena);
         Ok(Some(s))
     }
 
@@ -185,47 +194,63 @@ impl BruteBinSearchSolver {
         &self,
         atomic: &Atomic,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>) {
         let range = &self.atomic_ranges[atomic];
-        let mut min = range.evaled_range_min(analyzer).unwrap();
-        min.cache_minimize(analyzer).unwrap();
-        // println!("min: {}", min.minimize(analyzer).unwrap().to_range_string(false, analyzer).s);
-        let mut max = range.evaled_range_max(analyzer).unwrap();
-        max.cache_maximize(analyzer).unwrap();
+        let mut min = range.evaled_range_min(analyzer, arena).unwrap();
+        min.cache_minimize(analyzer, arena).unwrap();
+        // println!("min: {}", min.minimize(analyzer).unwrap().to_range_string(false, analyzer, arena).s);
+        let mut max = range.evaled_range_max(analyzer, arena).unwrap();
+        max.cache_maximize(analyzer, arena).unwrap();
         let mut mid = (min.clone() + max.clone()) / Elem::from(Concrete::from(U256::from(2)));
-        mid.cache_maximize(analyzer).unwrap();
+        mid.cache_maximize(analyzer, arena).unwrap();
         (min, mid, max)
     }
 
-    pub fn reset_lmrs(&mut self, analyzer: &mut impl GraphBackend) {
+    pub fn reset_lmrs(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
         self.lmrs = vec![];
         (0..self.atomic_ranges.len()).for_each(|i| {
-            self.lmrs.push(self.lmr(&self.atomics[i], analyzer).into());
+            self.lmrs
+                .push(self.lmr(&self.atomics[i], analyzer, arena).into());
         });
     }
 
-    pub fn reset_lmr(&mut self, i: usize, analyzer: &mut impl GraphBackend) {
-        self.lmrs[i] = self.lmr(&self.atomics[i], analyzer).into();
+    pub fn reset_lmr(
+        &mut self,
+        i: usize,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+        self.lmrs[i] = self.lmr(&self.atomics[i], analyzer, arena).into();
     }
 
-    pub fn raise_lmr(&mut self, i: usize, analyzer: &impl GraphBackend) -> bool {
+    pub fn raise_lmr(
+        &mut self,
+        i: usize,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         // move the low to low + mid / 2
         // reset the mid
         let mut curr_lmr = self.lmrs[i].clone();
         curr_lmr.low = (curr_lmr.low + curr_lmr.mid)
             / Elem::from(Concrete::from(U256::from(2)))
-                .minimize(analyzer)
+                .minimize(analyzer, arena)
                 .unwrap();
         curr_lmr.mid = (curr_lmr.low.clone() + curr_lmr.high.clone())
             / Elem::from(Concrete::from(U256::from(2)))
-                .minimize(analyzer)
+                .minimize(analyzer, arena)
                 .unwrap();
 
-        let new_mid_conc = curr_lmr.mid.maximize(analyzer).unwrap();
-        let old_mid_conc = self.lmrs[i].mid.maximize(analyzer).unwrap();
+        let new_mid_conc = curr_lmr.mid.maximize(analyzer, arena).unwrap();
+        let old_mid_conc = self.lmrs[i].mid.maximize(analyzer, arena).unwrap();
 
         if matches!(
-            new_mid_conc.range_ord(&old_mid_conc, analyzer),
+            new_mid_conc.range_ord(&old_mid_conc, arena),
             Some(std::cmp::Ordering::Equal)
         ) {
             return false;
@@ -234,27 +259,32 @@ impl BruteBinSearchSolver {
         true
     }
 
-    pub fn lower_lmr(&mut self, i: usize, analyzer: &impl GraphBackend) -> bool {
+    pub fn lower_lmr(
+        &mut self,
+        i: usize,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> bool {
         // println!("lowering mid");
         // move the high to high + mid / 2
         // reset the mid
         let mut curr_lmr = self.lmrs[i].clone();
-        curr_lmr.high = (curr_lmr.mid.minimize(analyzer).unwrap()
-            + curr_lmr.high.minimize(analyzer).unwrap())
+        curr_lmr.high = (curr_lmr.mid.minimize(analyzer, arena).unwrap()
+            + curr_lmr.high.minimize(analyzer, arena).unwrap())
             / Elem::from(Concrete::from(U256::from(2)))
-                .minimize(analyzer)
+                .minimize(analyzer, arena)
                 .unwrap();
-        curr_lmr.mid = (curr_lmr.low.minimize(analyzer).unwrap()
-            + curr_lmr.high.minimize(analyzer).unwrap())
+        curr_lmr.mid = (curr_lmr.low.minimize(analyzer, arena).unwrap()
+            + curr_lmr.high.minimize(analyzer, arena).unwrap())
             / Elem::from(Concrete::from(U256::from(2)))
-                .minimize(analyzer)
+                .minimize(analyzer, arena)
                 .unwrap();
 
-        let new_high_conc = curr_lmr.high.minimize(analyzer).unwrap();
-        let old_high_conc = self.lmrs[i].high.minimize(analyzer).unwrap();
+        let new_high_conc = curr_lmr.high.minimize(analyzer, arena).unwrap();
+        let old_high_conc = self.lmrs[i].high.minimize(analyzer, arena).unwrap();
 
         if matches!(
-            new_high_conc.range_ord(&old_high_conc, analyzer),
+            new_high_conc.range_ord(&old_high_conc, arena),
             Some(std::cmp::Ordering::Equal)
         ) {
             return false;
@@ -270,19 +300,23 @@ impl BruteBinSearchSolver {
 }
 
 impl SolcSolver for BruteBinSearchSolver {
-    fn simplify(&mut self, _analyzer: &impl AnalyzerBackend) {}
+    fn simplify(
+        &mut self,
+        _analyzer: &impl AnalyzerBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) {
+    }
 
     fn solve(
         &mut self,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<AtomicSolveStatus, GraphError> {
         // pick a value for a variable. check if it satisfies all dependendies
         // if is sat, try to reduce using bin search? Not sure how that will
         // affect other dependencies If it doesnt,
         // raise or lower
 
-        println!("-------------------------");
-        println!("DL SOLVER CHECK");
         let atoms = self
             .ranges
             .iter()
@@ -290,20 +324,19 @@ impl SolcSolver for BruteBinSearchSolver {
                 // println!("dep: {}", dep.display_name(analyzer).unwrap());
 
                 // println!("atom: {atom:#?}");
-                if let Some(atom) = range.min.atomize(analyzer) {
+                if let Some(atom) = range.min.atomize(analyzer, arena) {
                     Some(atom)
                 } else {
-                    range.max.atomize(analyzer)
+                    range.max.atomize(analyzer, arena)
                 }
             })
             .collect::<Vec<SolverAtom>>();
 
-        let mut dl_solver = DLSolver::new(atoms, analyzer);
+        let mut dl_solver = DLSolver::new(atoms, analyzer, arena);
         let mut atomic_solves: BTreeMap<_, _>;
 
-        match dl_solver.solve_partial(analyzer)? {
+        match dl_solver.solve_partial(analyzer, arena)? {
             SolveStatus::Unsat => {
-                println!("TRUE UNSAT");
                 return Ok(AtomicSolveStatus::Unsat);
             }
             SolveStatus::Sat {
@@ -318,7 +351,11 @@ impl SolcSolver for BruteBinSearchSolver {
                                 .iter()
                                 .find(|atomic| atomic.idxs.contains(&dep))?
                                 .clone(),
-                            solve.maximize(analyzer).unwrap().maybe_concrete()?.val,
+                            solve
+                                .maximize(analyzer, arena)
+                                .unwrap()
+                                .maybe_concrete()?
+                                .val,
                         ))
                     })
                     .collect();
@@ -331,7 +368,11 @@ impl SolcSolver for BruteBinSearchSolver {
                                     .iter()
                                     .find(|atomic| atomic.idxs.contains(&dep))?
                                     .clone(),
-                                solve.maximize(analyzer).unwrap().maybe_concrete()?.val,
+                                solve
+                                    .maximize(analyzer, arena)
+                                    .unwrap()
+                                    .maybe_concrete()?
+                                    .val,
                             ))
                         })
                         .collect::<Vec<_>>(),
@@ -346,24 +387,25 @@ impl SolcSolver for BruteBinSearchSolver {
                                 .iter()
                                 .find(|atomic| atomic.idxs.contains(&dep))?
                                 .clone(),
-                            solve.maximize(analyzer).unwrap().maybe_concrete()?.val,
+                            solve
+                                .maximize(analyzer, arena)
+                                .unwrap()
+                                .maybe_concrete()?
+                                .val,
                         ))
                     })
                     .collect()
             }
         }
         // println!("solved for: {:#?}", atomic_solves);
-        println!("-------------------------");
 
         if atomic_solves.len() == self.atomics.len() {
-            println!("DONE HERE");
-
             return Ok(AtomicSolveStatus::Sat(atomic_solves));
         } else {
             atomic_solves.iter().for_each(|(atomic, val)| {
                 self.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
                     atomic.idxs.iter().for_each(|idx| {
-                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer)
+                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
                     });
                 });
             });
@@ -380,22 +422,25 @@ impl SolcSolver for BruteBinSearchSolver {
             .keys()
             .filter_map(|k| self.atomics.iter().position(|r| r == k))
             .collect();
-        while self.recurse_check(self.start_idx, &mut solved_for, analyzer)? {}
+        while self.recurse_check(self.start_idx, &mut solved_for, analyzer, arena)? {}
         if self.successful_passes == self.atomics.len() {
             let mapping = self
                 .intermediate_atomic_ranges
                 .iter()
-                .filter(|(_, range)| range.is_const(analyzer).unwrap())
-                .map(|(name, range)| {
-                    (
-                        name.clone(),
-                        range
-                            .evaled_range_min(analyzer)
-                            .unwrap()
-                            .maybe_concrete()
-                            .unwrap()
-                            .val,
-                    )
+                .filter_map(|(name, range)| {
+                    if !range.is_const(analyzer, arena).ok()? {
+                        None
+                    } else {
+                        Some((
+                            name.clone(),
+                            range
+                                .evaled_range_min(analyzer, arena)
+                                .unwrap()
+                                .maybe_concrete()
+                                .unwrap()
+                                .val,
+                        ))
+                    }
                 })
                 .collect::<BTreeMap<Atomic, Concrete>>();
             if mapping.len() == self.intermediate_atomic_ranges.len() {
@@ -405,12 +450,17 @@ impl SolcSolver for BruteBinSearchSolver {
                         .iter()
                         .for_each(|(atomic, range)| {
                             atomic.idxs.iter().for_each(|idx| {
-                                new_range.replace_dep(idx.0.into(), range.min.clone(), analyzer);
+                                new_range.replace_dep(
+                                    idx.0.into(),
+                                    range.min.clone(),
+                                    analyzer,
+                                    arena,
+                                );
                             });
                         });
-                    new_range.cache_eval(analyzer).unwrap();
+                    new_range.cache_eval(analyzer, arena).unwrap();
                     // println!("{}, original range: [{}, {}], new range: [{}, {}]", dep.display_name(analyzer).unwrap(), range.min, range.max, new_range.min_cached.clone().unwrap(), new_range.max_cached.clone().unwrap());
-                    new_range.sat(analyzer)
+                    new_range.sat(analyzer, arena)
                 });
                 if all_good {
                     Ok(AtomicSolveStatus::Sat(mapping))
@@ -431,6 +481,7 @@ impl SolcSolver for BruteBinSearchSolver {
         i: usize,
         solved_atomics: &mut Vec<usize>,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         // println!("recurse check for: {}", self.atomics[i].idxs[0].display_name(analyzer).unwrap());
         if i >= self.lmrs.len() {
@@ -448,7 +499,13 @@ impl SolcSolver for BruteBinSearchSolver {
         let lmr = self.lmrs[i].clone();
         // println!("solving: {i}, {}, successful passes: {}", atomic.idxs[0].display_name(analyzer).unwrap(), self.successful_passes);
         // println!("initial range: [{min_s},{max_s}], is_const: {}", atomic.idxs[0].is_const(analyzer)?);
-        match self.check(i, (lmr.low, lmr.mid, lmr.high), solved_atomics, analyzer)? {
+        match self.check(
+            i,
+            (lmr.low, lmr.mid, lmr.high),
+            solved_atomics,
+            analyzer,
+            arena,
+        )? {
             (true, Some(HintOrRanges::Ranges(new_ranges))) => {
                 // sat, try solving next var with new intermediate ranges
                 solved_atomics.push(i);
@@ -461,13 +518,13 @@ impl SolcSolver for BruteBinSearchSolver {
                 self.successful_passes = 0;
                 *solved_atomics = vec![];
                 // unsat, try raising
-                if self.raise_lmr(i, analyzer) {
-                    self.recurse_check(i, solved_atomics, analyzer)
+                if self.raise_lmr(i, analyzer, arena) {
+                    self.recurse_check(i, solved_atomics, analyzer, arena)
                 } else {
                     // we couldn't solve, try increasing global start
                     if self.increase_start() {
                         self.intermediate_ranges = self.ranges.clone();
-                        self.recurse_check(self.start_idx, solved_atomics, analyzer)
+                        self.recurse_check(self.start_idx, solved_atomics, analyzer, arena)
                     } else {
                         Ok(false)
                     }
@@ -477,13 +534,13 @@ impl SolcSolver for BruteBinSearchSolver {
                 // unsat, try lowering
                 self.successful_passes = 0;
                 *solved_atomics = vec![];
-                if self.lower_lmr(i, analyzer) {
-                    self.recurse_check(i, solved_atomics, analyzer)
+                if self.lower_lmr(i, analyzer, arena) {
+                    self.recurse_check(i, solved_atomics, analyzer, arena)
                 } else {
                     // we couldn't solve, try increasing global start
                     if self.increase_start() {
                         self.intermediate_ranges = self.ranges.clone();
-                        self.recurse_check(self.start_idx, solved_atomics, analyzer)
+                        self.recurse_check(self.start_idx, solved_atomics, analyzer, arena)
                     } else {
                         Ok(false)
                     }
@@ -493,13 +550,13 @@ impl SolcSolver for BruteBinSearchSolver {
                 // unsat, try lowering
                 self.successful_passes = 0;
                 *solved_atomics = vec![];
-                if self.lower_lmr(i, analyzer) {
-                    self.recurse_check(i, solved_atomics, analyzer)
+                if self.lower_lmr(i, analyzer, arena) {
+                    self.recurse_check(i, solved_atomics, analyzer, arena)
                 } else {
                     // we couldn't solve, try increasing global start
                     if self.increase_start() {
                         self.intermediate_ranges = self.ranges.clone();
-                        self.recurse_check(self.start_idx, solved_atomics, analyzer)
+                        self.recurse_check(self.start_idx, solved_atomics, analyzer, arena)
                     } else {
                         Ok(false)
                     }
@@ -515,6 +572,7 @@ impl SolcSolver for BruteBinSearchSolver {
         (low, mid, high): (Elem<Concrete>, Elem<Concrete>, Elem<Concrete>),
         solved_atomics: &mut Vec<usize>,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
         let solved_dep = &self.atomics[solved_for_idx].clone();
 
@@ -528,6 +586,7 @@ impl SolcSolver for BruteBinSearchSolver {
             mut high_done: bool,
             solved_atomics: &mut Vec<usize>,
             analyzer: &mut impl GraphBackend,
+            arena: &mut RangeArena<Elem<Concrete>>,
         ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
             let res = if !low_done {
                 check_for_lmr(
@@ -537,6 +596,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     low.clone(),
                     solved_atomics,
                     analyzer,
+                    arena,
                 )
             } else if !mid_done {
                 check_for_lmr(
@@ -546,6 +606,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     mid.clone(),
                     solved_atomics,
                     analyzer,
+                    arena,
                 )
             } else {
                 check_for_lmr(
@@ -555,6 +616,7 @@ impl SolcSolver for BruteBinSearchSolver {
                     high.clone(),
                     solved_atomics,
                     analyzer,
+                    arena,
                 )
             };
 
@@ -576,6 +638,7 @@ impl SolcSolver for BruteBinSearchSolver {
                             high_done,
                             solved_atomics,
                             analyzer,
+                            arena,
                         )
                     }
                 }
@@ -590,8 +653,9 @@ impl SolcSolver for BruteBinSearchSolver {
             conc: Elem<Concrete>,
             solved_atomics: &mut Vec<usize>,
             analyzer: &mut impl GraphBackend,
+            arena: &mut RangeArena<Elem<Concrete>>,
         ) -> Result<(bool, Option<HintOrRanges>), GraphError> {
-            // println!("checking: {}, conc: {}, {}", this.atomics[solved_for_idx].idxs[0].display_name(analyzer).unwrap(), conc.maximize(analyzer)?.to_range_string(true, analyzer).s, conc.minimize(analyzer)?.to_range_string(false, analyzer).s);
+            // println!("checking: {}, conc: {}, {}", this.atomics[solved_for_idx].idxs[0].display_name(analyzer).unwrap(), conc.maximize(analyzer, arena)?.to_range_string(true, analyzer, arena).s, conc.minimize(analyzer)?.to_range_string(false, analyzer, arena).s);
             solved_atomics.push(solved_for_idx);
             let mut new_ranges = BTreeMap::default();
             this.intermediate_atomic_ranges.insert(
@@ -604,25 +668,25 @@ impl SolcSolver for BruteBinSearchSolver {
                 .filter_map(|(_, range)| {
                     if let Some(atom) = range
                         .min
-                        .simplify_minimize(analyzer)
+                        .simplify_minimize(analyzer, arena)
                         .unwrap()
-                        .atomize(analyzer)
+                        .atomize(analyzer, arena)
                     {
                         Some(atom)
                     } else {
                         range
                             .max
-                            .simplify_maximize(analyzer)
+                            .simplify_maximize(analyzer, arena)
                             .unwrap()
-                            .atomize(analyzer)
+                            .atomize(analyzer, arena)
                     }
                 })
                 .collect::<Vec<SolverAtom>>();
 
-            let mut dl_solver = DLSolver::new(atoms, analyzer);
+            let mut dl_solver = DLSolver::new(atoms, analyzer, arena);
             let mut atomic_solves: BTreeMap<_, _>;
 
-            match dl_solver.solve_partial(analyzer)? {
+            match dl_solver.solve_partial(analyzer, arena)? {
                 SolveStatus::Unsat => {
                     println!("TRUE UNSAT");
                     return Ok((false, None));
@@ -639,7 +703,11 @@ impl SolcSolver for BruteBinSearchSolver {
                                     .iter()
                                     .find(|atomic| atomic.idxs.contains(&dep))?
                                     .clone(),
-                                solve.maximize(analyzer).unwrap().maybe_concrete()?.val,
+                                solve
+                                    .maximize(analyzer, arena)
+                                    .unwrap()
+                                    .maybe_concrete()?
+                                    .val,
                             ))
                         })
                         .collect();
@@ -652,7 +720,11 @@ impl SolcSolver for BruteBinSearchSolver {
                                         .iter()
                                         .find(|atomic| atomic.idxs.contains(&dep))?
                                         .clone(),
-                                    solve.maximize(analyzer).unwrap().maybe_concrete()?.val,
+                                    solve
+                                        .maximize(analyzer, arena)
+                                        .unwrap()
+                                        .maybe_concrete()?
+                                        .val,
                                 ))
                             })
                             .collect::<Vec<_>>(),
@@ -667,7 +739,11 @@ impl SolcSolver for BruteBinSearchSolver {
                                     .iter()
                                     .find(|atomic| atomic.idxs.contains(&dep))?
                                     .clone(),
-                                solve.maximize(analyzer).unwrap().maybe_concrete()?.val,
+                                solve
+                                    .maximize(analyzer, arena)
+                                    .unwrap()
+                                    .maybe_concrete()?
+                                    .val,
                             ))
                         })
                         .collect()
@@ -677,7 +753,7 @@ impl SolcSolver for BruteBinSearchSolver {
             atomic_solves.iter().for_each(|(atomic, val)| {
                 this.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
                     atomic.idxs.iter().for_each(|idx| {
-                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer)
+                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
                     });
                 });
             });
@@ -734,7 +810,7 @@ impl SolcSolver for BruteBinSearchSolver {
 
                 // check if the new range is dependent on the solved variable
                 let is_dependent_on_solved = new_range
-                    .dependent_on(analyzer)
+                    .dependent_on(analyzer, arena)
                     .iter()
                     .any(|dep| solved_dep.idxs.contains(dep));
 
@@ -747,15 +823,15 @@ impl SolcSolver for BruteBinSearchSolver {
                 // println!("new range for {} dependent_on: {:?}, replacing {:?}, is dependent on solved: {is_dependent_on_solved}", dep.display_name(analyzer).unwrap(), new_range.dependent_on(), solved_dep.idxs);
                 // println!("dep {}:\n\tinitial range: [{}, {}],\n\tcurr range: [{}, {}]",
                 // 	dep.display_name(analyzer).unwrap(),
-                // 	dep.evaled_range_min(analyzer)?.unwrap().to_range_string(false, analyzer).s,
-                // 	dep.evaled_range_max(analyzer)?.unwrap().to_range_string(true, analyzer).s,
-                // 	new_range.evaled_range_min(analyzer)?.to_range_string(false, analyzer).s,
-                // 	new_range.evaled_range_max(analyzer)?.to_range_string(true, analyzer).s,
+                // 	dep.evaled_range_min(analyzer, arena)?.unwrap().to_range_string(false, analyzer, arena).s,
+                // 	dep.evaled_range_max(analyzer, arena)?.unwrap().to_range_string(true, analyzer, arena).s,
+                // 	new_range.evaled_range_min(analyzer, arena)?.to_range_string(false, analyzer, arena).s,
+                // 	new_range.evaled_range_max(analyzer, arena)?.to_range_string(true, analyzer, arena).s,
                 // 	// new_range.range_min()
                 // );
 
                 // println!("dep {} range: {:#?} {:#?}", dep.display_name(analyzer).unwrap(), new_range.min, new_range.max);
-                if new_range.unsat(analyzer) {
+                if new_range.unsat(analyzer, arena) {
                     return Ok((false, None));
                     // panic!("initial range unsat???")
                 }
@@ -764,21 +840,21 @@ impl SolcSolver for BruteBinSearchSolver {
                     .idxs
                     .iter()
                     .for_each(|atomic_alias| {
-                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer);
+                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer, arena);
                     });
-                new_range.cache_eval(analyzer)?;
+                new_range.cache_eval(analyzer, arena)?;
 
                 // println!("new range: [{}, {}], [{}, {}]",
-                // 	new_range.evaled_range_min(analyzer)?.to_range_string(false, analyzer).s,
-                // 	new_range.evaled_range_max(analyzer)?.to_range_string(true, analyzer).s,
-                // 	new_range.min.to_range_string(false, analyzer).s,
-                // 	new_range.max.to_range_string(true, analyzer).s,
+                // 	new_range.evaled_range_min(analyzer, arena)?.to_range_string(false, analyzer, arena).s,
+                // 	new_range.evaled_range_max(analyzer, arena)?.to_range_string(true, analyzer, arena).s,
+                // 	new_range.min.to_range_string(false, analyzer, arena).s,
+                // 	new_range.max.to_range_string(true, analyzer, arena).s,
                 // );
-                if new_range.unsat(analyzer) {
+                if new_range.unsat(analyzer, arena) {
                     // figure out *where* we need to increase or decrease
                     // work on the unreplace range for now
-                    let min_is_dependent = !range.min.dependent_on(analyzer).is_empty();
-                    let max_is_dependent = !range.max.dependent_on(analyzer).is_empty();
+                    let min_is_dependent = !range.min.dependent_on(analyzer, arena).is_empty();
+                    let max_is_dependent = !range.max.dependent_on(analyzer, arena).is_empty();
 
                     match (min_is_dependent, max_is_dependent) {
                         (true, true) => {
@@ -799,18 +875,18 @@ impl SolcSolver for BruteBinSearchSolver {
                     }
 
                     // println!("new unsat range: [{}, {}]",
-                    // 	new_range.evaled_range_min(analyzer)?.to_range_string(false, analyzer).s,
-                    // 	new_range.evaled_range_max(analyzer)?.to_range_string(true, analyzer).s,
+                    // 	new_range.evaled_range_min(analyzer, arena)?.to_range_string(false, analyzer, arena).s,
+                    // 	new_range.evaled_range_max(analyzer, arena)?.to_range_string(true, analyzer, arena).s,
                     // );
                     // compare new range to prev range to see if they moved down or up
 
                     // panic!("here");
                     let min_change = new_range
-                        .evaled_range_min(analyzer)?
-                        .range_ord(&range.evaled_range_min(analyzer)?, analyzer);
+                        .evaled_range_min(analyzer, arena)?
+                        .range_ord(&range.evaled_range_min(analyzer, arena)?, arena);
                     let max_change = new_range
-                        .evaled_range_max(analyzer)?
-                        .range_ord(&range.evaled_range_max(analyzer)?, analyzer);
+                        .evaled_range_max(analyzer, arena)?
+                        .range_ord(&range.evaled_range_max(analyzer, arena)?, arena);
                     match (min_change, max_change) {
                         (Some(std::cmp::Ordering::Less), Some(std::cmp::Ordering::Greater)) => {
                             // panic!("initial range must have been unsat to start");
@@ -859,6 +935,7 @@ impl SolcSolver for BruteBinSearchSolver {
             false,
             solved_atomics,
             analyzer,
+            arena,
         )
     }
 }

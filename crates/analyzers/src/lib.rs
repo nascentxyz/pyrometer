@@ -1,8 +1,8 @@
 pub mod bounds;
 
 use ariadne::{Cache, Label, Report, ReportKind, Span};
-use graph::{AnalyzerBackend, GraphBackend};
-use shared::Search;
+use graph::{elem::Elem, nodes::Concrete, AnalyzerBackend, GraphBackend};
+use shared::{RangeArena, Search};
 use solang_parser::pt::Loc;
 use std::collections::BTreeMap;
 
@@ -166,9 +166,27 @@ impl Default for ReportConfig {
 
 pub trait ReportDisplay {
     fn report_kind(&self) -> ReportKind;
-    fn msg(&self, analyzer: &impl GraphBackend) -> String;
-    fn labels(&self, analyzer: &impl GraphBackend) -> Vec<Label<LocStrSpan>>;
-    fn reports(&self, analyzer: &impl GraphBackend) -> Vec<Report<LocStrSpan>>;
-    fn print_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphBackend);
-    fn eprint_reports(&self, src: &mut impl Cache<String>, analyzer: &impl GraphBackend);
+    fn msg(&self, analyzer: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> String;
+    fn labels(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<Label<LocStrSpan>>;
+    fn reports(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<Report<LocStrSpan>>;
+    fn print_reports(
+        &self,
+        src: &mut impl Cache<String>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    );
+    fn eprint_reports(
+        &self,
+        src: &mut impl Cache<String>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    );
 }

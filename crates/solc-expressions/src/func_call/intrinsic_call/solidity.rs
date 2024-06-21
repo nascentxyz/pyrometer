@@ -5,9 +5,11 @@ use crate::{
 };
 
 use graph::{
+    elem::Elem,
     nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, Node,
 };
+use shared::RangeArena;
 
 use ethers_core::types::H256;
 use solang_parser::pt::{Expression, Loc};
@@ -24,6 +26,7 @@ pub trait SolidityCaller:
     /// Perform a solidity intrinsic function call, like `keccak256`
     fn solidity_call(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_name: String,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
@@ -31,8 +34,8 @@ pub trait SolidityCaller:
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "keccak256" => {
-                self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
                     };
@@ -43,12 +46,12 @@ pub trait SolidityCaller:
                         return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
                     };
 
-                    if cvar.is_const(analyzer).into_expr_err(loc)? {
+                    if cvar.is_const(analyzer, arena).into_expr_err(loc)? {
                         let bytes = cvar
-                            .evaled_range_min(analyzer)
+                            .evaled_range_min(analyzer, arena)
                             .unwrap()
                             .unwrap()
-                            .as_bytes(analyzer, true)
+                            .as_bytes(analyzer, true, arena)
                             .unwrap();
                         let mut out = [0; 32];
                         keccak_hash::keccak_256(&bytes, &mut out);
@@ -77,9 +80,9 @@ pub trait SolidityCaller:
             }
             "addmod" => {
                 // TODO: actually calcuate this if possible
-                input_exprs.parse(self, ctx, loc)?;
+                input_exprs.parse(arena, self, ctx, loc)?;
 
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                     let var = ContextVar::new_from_builtin(
                         loc,
@@ -95,8 +98,8 @@ pub trait SolidityCaller:
             }
             "mulmod" => {
                 // TODO: actually calcuate this if possible
-                input_exprs.parse(self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+                input_exprs.parse(arena, self, ctx, loc)?;
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                     let var = ContextVar::new_from_builtin(
                         loc,
@@ -110,9 +113,11 @@ pub trait SolidityCaller:
                     Ok(())
                 })
             }
-            "require" | "assert" => self.apply_to_edges(ctx, loc, &|analyzer, ctx, _loc| {
-                analyzer.handle_require(input_exprs.unnamed_args().unwrap(), ctx)
-            }),
+            "require" | "assert" => {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+                    analyzer.handle_require(arena, input_exprs.unnamed_args().unwrap(), ctx)
+                })
+            }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,
                 format!(

@@ -1,9 +1,10 @@
 use crate::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar},
+    range::elem::Elem,
     AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
 };
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, U256};
 use solang_parser::pt::Loc;
@@ -27,7 +28,11 @@ impl MsgNode {
 }
 
 impl AsDotStr for MsgNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         format!("msg {{ {:?} }}", self.underlying(analyzer).unwrap())
     }
 }

@@ -106,12 +106,6 @@ impl Default for Concrete {
     }
 }
 
-// impl From<usize> for Concrete {
-//     fn from(u: usize) -> Self {
-//         Concrete::Uint(256, U256::from(u))
-//     }
-// }
-
 impl From<U256> for Concrete {
     fn from(u: U256) -> Self {
         Concrete::Uint(256, u)
@@ -127,6 +121,14 @@ impl From<I256> for Concrete {
 impl From<Vec<u8>> for Concrete {
     fn from(u: Vec<u8>) -> Self {
         Concrete::DynBytes(u)
+    }
+}
+
+impl From<u8> for Concrete {
+    fn from(u: u8) -> Self {
+        let mut h = H256::default();
+        h.0[0] = u;
+        Concrete::Bytes(1, h)
     }
 }
 
@@ -163,13 +165,26 @@ impl From<String> for Concrete {
     }
 }
 
-impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
-    fn from(u: Vec<T>) -> Self {
-        Concrete::Array(u.into_iter().map(|t| t.into()).collect())
+impl From<&str> for Concrete {
+    fn from(u: &str) -> Self {
+        Concrete::String(u.to_string())
     }
 }
 
+// impl<T: Into<Concrete>> From<Vec<T>> for Concrete {
+//     fn from(u: Vec<T>) -> Self {
+//         Concrete::Array(u.into_iter().map(|t| t.into()).collect())
+//     }
+// }
+
 impl Concrete {
+    pub fn raw_bits_u256(&self) -> Option<U256> {
+        match self {
+            Concrete::Int(_, val) => Some(val.into_raw()),
+            _ => self.into_u256(),
+        }
+    }
+
     pub fn set_indices(&mut self, other: &Self) {
         match (self, other) {
             (Concrete::DynBytes(s), Concrete::DynBytes(o)) => {
@@ -308,8 +323,23 @@ impl Concrete {
         }
     }
 
+    pub fn is_zero(&self) -> bool {
+        self.into_u256() == Some(U256::zero())
+    }
+
+    pub fn is_one(&self) -> bool {
+        self.into_u256() == Some(U256::from(1))
+    }
+
     /// Cast from one concrete variant given another concrete variant
     pub fn cast_from(self, other: &Self) -> Option<Self> {
+        if let (Concrete::DynBytes(s), Concrete::DynBytes(o)) = (&self, other) {
+            if s.len() < o.len() {
+                let mut t = s.clone();
+                t.resize(o.len(), 0);
+                return Some(Concrete::DynBytes(t));
+            }
+        }
         self.cast(other.as_builtin())
     }
 
@@ -344,6 +374,13 @@ impl Concrete {
     /// Returns whether this concrete is an unsigned integer
     pub fn is_int(&self) -> bool {
         matches!(self, Concrete::Int(_, _))
+    }
+
+    pub fn size_wrap(self) -> Self {
+        match self {
+            Concrete::Int(size, val) => Concrete::Int(256, val).cast(Builtin::Int(size)).unwrap(),
+            _ => self,
+        }
     }
 
     /// Performs a literal cast to another type
@@ -462,33 +499,39 @@ impl Concrete {
                     bit_repr.cast(builtin)
                 }
                 Builtin::Int(size) => {
-                    // no op
-                    if r_size == size {
-                        Some(self)
-                    } else {
-                        let mask = if size == 256 {
-                            U256::MAX / 2
-                        } else {
-                            U256::from(2).pow((size - 1).into()) - 1
-                        };
-
-                        let (_sign, abs) = val.into_sign_and_abs();
-
-                        if abs < mask {
+                    match r_size.cmp(&size) {
+                        std::cmp::Ordering::Less => {
+                            // upcast
                             Some(Concrete::Int(size, val))
-                        } else {
-                            // check if the top bit for the new value is set on the existing value
-                            // if it is, then the cast will result in a negative number
-                            let top_mask =
-                                if abs & (U256::from(1) << U256::from(size)) != U256::zero() {
-                                    // sign extension
-                                    ((U256::from(1) << U256::from(257 - size)) - U256::from(1))
-                                        << U256::from(size - 1)
-                                } else {
-                                    U256::from(0)
-                                };
+                        }
+                        std::cmp::Ordering::Equal => {
+                            // noop
+                            Some(self)
+                        }
+                        std::cmp::Ordering::Greater => {
+                            // downcast
+                            let mask = if size == 256 {
+                                U256::MAX / 2
+                            } else {
+                                U256::from(2).pow((size).into()) - 1
+                            };
 
-                            Some(Concrete::Int(size, I256::from_raw((abs & mask) | top_mask)))
+                            let raw = val.into_raw();
+
+                            if raw < mask / U256::from(2) {
+                                Some(Concrete::Int(size, val))
+                            } else {
+                                let base_value = raw & mask;
+                                let res =
+                                    if base_value >> (size - 1) & U256::from(1) == U256::from(1) {
+                                        let top = U256::MAX << size;
+                                        base_value | top
+                                    } else {
+                                        base_value
+                                    };
+
+                                Some(Concrete::Int(size, I256::from_raw(res)))
+                            }
                         }
                     }
                 }
@@ -687,7 +730,7 @@ impl Concrete {
     }
 
     /// Gets the default max for a given concrete variant.
-    pub fn max(&self) -> Option<Self> {
+    pub fn max_of_type(&self) -> Option<Self> {
         match self {
             Concrete::Uint(size, _) => {
                 let max = if *size == 256 {
@@ -798,7 +841,7 @@ impl Concrete {
     }
 
     /// Gets the default min for a given concrete variant.
-    pub fn min(&self) -> Option<Self> {
+    pub fn min_of_type(&self) -> Option<Self> {
         match self {
             Concrete::Uint(size, _) => Some(Concrete::Uint(*size, 0.into())),
             Concrete::Int(size, _) => {
@@ -849,6 +892,10 @@ impl Concrete {
             Concrete::Int(_, val) => Some(*val),
             _ => None,
         }
+    }
+
+    pub fn is_negative(&self) -> bool {
+        matches!(self, Concrete::Int(_, val) if *val < I256::from(0))
     }
 
     pub fn as_hex_string(&self) -> String {

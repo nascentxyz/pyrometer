@@ -1,5 +1,5 @@
-use crate::{AsDotStr, GraphBackend, GraphError, Node};
-use shared::NodeIdx;
+use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, GraphError, Node};
+use shared::{NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, H256, U256};
 
@@ -24,7 +24,11 @@ impl BlockNode {
 }
 
 impl AsDotStr for BlockNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         format!("block {{ {:?} }}", self.underlying(analyzer).unwrap())
     }
 }

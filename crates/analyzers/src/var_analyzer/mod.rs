@@ -4,10 +4,11 @@ use crate::{
 };
 
 use graph::{
-    nodes::{ContextNode, ContextVarNode, KilledKind},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, ContextVarNode, KilledKind},
     AnalyzerBackend, GraphBackend, Range, SolcRange,
 };
-use shared::{Search, StorageLocation};
+use shared::{RangeArena, Search, StorageLocation};
 
 use std::collections::BTreeSet;
 
@@ -66,7 +67,11 @@ impl Default for VarBoundAnalysis {
 }
 
 impl VarBoundAnalysis {
-    pub fn conditionals(&self, analyzer: &impl GraphBackend) -> Vec<(String, Vec<RangePart>)> {
+    pub fn conditionals(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Vec<(String, Vec<RangePart>)> {
         let deps = self.ctx.ctx_deps(analyzer).unwrap();
         let deps = deps
             .iter()
@@ -77,18 +82,22 @@ impl VarBoundAnalysis {
             .enumerate()
             .filter_map(|(_i, (_name, cvar))| {
                 let range = cvar.ref_range(analyzer).unwrap()?;
-                let parts = range_parts(analyzer, &self.report_config, &range).0;
+                let parts = range_parts(analyzer, arena, &self.report_config, &range).0;
                 Some((cvar.display_name(analyzer).unwrap(), parts))
             })
             .collect()
     }
 
     /// Creates an [AnalysisItem] if there is a initial bound for a variable
-    pub fn init_item(&self, analyzer: &impl GraphBackend) -> Option<AnalysisItem> {
+    pub fn init_item(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Option<AnalysisItem> {
         let mut parts = vec![];
         let mut unsat = false;
         if let Some(init_range) = &self.var_def.1 {
-            (parts, unsat) = range_parts(analyzer, &self.report_config, init_range)
+            (parts, unsat) = range_parts(analyzer, arena, &self.report_config, init_range)
         }
         if parts.is_empty() {
             None
@@ -100,7 +109,7 @@ impl VarBoundAnalysis {
                 loc: self.var_def.0.clone(),
                 storage: self.storage,
                 ctx: self.ctx,
-                ctx_conditionals: self.conditionals(analyzer),
+                ctx_conditionals: self.conditionals(analyzer, arena),
                 parts,
                 unsat,
             })
@@ -114,6 +123,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
     /// generate a bound analysis for a variable throughout the lineage
     fn bounds_for_var_in_family_tree(
         &self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         file_mapping: &'_ BTreeMap<usize, String>,
         ordered_ctxs: Vec<ContextNode>,
         var_name: String,
@@ -125,6 +135,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
             .filter_map(|ctx| Some((ctx, ctx.var_by_name(self, &var_name)?)))
             .for_each(|(_ctx, cvar)| {
                 let analysis = self.bounds_for_var_node(
+                    arena,
                     &inherited,
                     file_mapping,
                     &var_name,
@@ -140,6 +151,7 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
     /// Analyzes the bounds for a variable up to the provided node
     fn bounds_for_var_node(
         &self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         inherited: &Option<VarBoundAnalysis>,
         file_mapping: &'_ BTreeMap<usize, String>,
         var_name: &str,
@@ -232,14 +244,14 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
             };
 
         if let Some(curr_range) = comparator.ref_range(self).unwrap() {
-            let mut cr_min = curr_range.evaled_range_min(self).unwrap();
-            let mut cr_max = curr_range.evaled_range_max(self).unwrap();
+            let mut cr_min = curr_range.evaled_range_min(self, arena).unwrap();
+            let mut cr_max = curr_range.evaled_range_max(self, arena).unwrap();
             let mut cr_excl = curr_range.range_exclusions();
 
             if needs_curr {
                 if let Some(next_range) = curr.ref_range(self).unwrap() {
-                    let nr_min = next_range.evaled_range_min(self).unwrap();
-                    let nr_max = next_range.evaled_range_max(self).unwrap();
+                    let nr_min = next_range.evaled_range_min(self, arena).unwrap();
+                    let nr_max = next_range.evaled_range_max(self, arena).unwrap();
                     let nr_excl = &next_range.range_exclusions();
 
                     // check if there was a bound change
@@ -264,8 +276,8 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
 
             while let Some(next) = curr.next_version(self) {
                 if let Some(next_range) = next.ref_range(self).unwrap() {
-                    let nr_min = next_range.evaled_range_min(self).unwrap();
-                    let nr_max = next_range.evaled_range_max(self).unwrap();
+                    let nr_min = next_range.evaled_range_min(self, arena).unwrap();
+                    let nr_max = next_range.evaled_range_max(self, arena).unwrap();
                     let nr_excl = &next_range.range_exclusions();
 
                     // check if there was a bound change

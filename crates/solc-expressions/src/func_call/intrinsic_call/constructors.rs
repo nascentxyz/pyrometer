@@ -6,10 +6,10 @@ use crate::{
 
 use graph::{
     elem::*,
-    nodes::{ContextNode, ContextVar, ContextVarNode, ExprRet, StructNode},
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, StructNode},
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -25,14 +25,15 @@ pub trait ConstructorCaller:
     /// Construct an array
     fn construct_array(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_idx: NodeIdx,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         // create a new list
-        self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(len_var) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
             };
@@ -90,18 +91,18 @@ pub trait ConstructorCaller:
 
             // update the length
             if let Some(r) = arr.ref_range(analyzer).into_expr_err(loc)? {
-                let min = r.evaled_range_min(analyzer).into_expr_err(loc)?;
-                let max = r.evaled_range_max(analyzer).into_expr_err(loc)?;
+                let min = r.evaled_range_min(analyzer, arena).into_expr_err(loc)?;
+                let max = r.evaled_range_max(analyzer, arena).into_expr_err(loc)?;
 
                 if let Some(mut rd) = min.maybe_range_dyn() {
                     rd.len = Box::new(Elem::from(len_cvar));
-                    arr.set_range_min(analyzer, Elem::ConcreteDyn(rd))
+                    arr.set_range_min(analyzer, arena, Elem::ConcreteDyn(rd))
                         .into_expr_err(loc)?;
                 }
 
                 if let Some(mut rd) = max.maybe_range_dyn() {
                     rd.len = Box::new(Elem::from(len_cvar));
-                    arr.set_range_min(analyzer, Elem::ConcreteDyn(rd))
+                    arr.set_range_min(analyzer, arena, Elem::ConcreteDyn(rd))
                         .into_expr_err(loc)?;
                 }
             }
@@ -115,6 +116,7 @@ pub trait ConstructorCaller:
     /// Construct a contract
     fn construct_contract(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_idx: NodeIdx,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
@@ -122,9 +124,9 @@ pub trait ConstructorCaller:
     ) -> Result<(), ExprErr> {
         // construct a new contract
         if !input_exprs.is_empty() {
-            self.parse_ctx_expr(&input_exprs.unnamed_args().unwrap()[0], ctx)?;
+            self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
         }
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             if !input_exprs.is_empty() {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoRhs(loc, "Contract creation failed".to_string()));
@@ -163,6 +165,7 @@ pub trait ConstructorCaller:
     /// Construct a struct
     fn construct_struct(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         func_idx: NodeIdx,
         input_exprs: &NamedOrUnnamedArgs,
         loc: Loc,
@@ -175,8 +178,8 @@ pub trait ConstructorCaller:
         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
-        input_exprs.parse(self, ctx, loc)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        input_exprs.parse(arena, self, ctx, loc)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(
                     loc,
@@ -210,7 +213,7 @@ pub trait ConstructorCaller:
                     analyzer.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                     ctx.add_var(fc_node.into(), analyzer).into_expr_err(loc)?;
                     let field_as_ret = ExprRet::Single(fc_node);
-                    analyzer.match_assign_sides(ctx, loc, &field_as_ret, &input)?;
+                    analyzer.match_assign_sides(arena, ctx, loc, &field_as_ret, &input)?;
                     let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                     Ok(())
                 })?;

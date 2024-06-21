@@ -4,10 +4,11 @@ use crate::{
 };
 
 use graph::{
-    nodes::{ContextNode, KilledKind},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
-use shared::Search;
+use shared::{RangeArena, Search};
 
 use ariadne::{Color, Config, Fmt, Label, Report, Span};
 use solang_parser::pt::CodeLocation;
@@ -46,6 +47,7 @@ impl<'a> FunctionVarsBoundAnalysis {
         &self,
         file_mapping: &'a BTreeMap<usize, String>,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Vec<Report<LocStrSpan>> {
         let mut handled_ctx_switches = BTreeSet::default();
         let reports = self
@@ -56,7 +58,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                 let deps = ctx.ctx_deps(analyzer).unwrap();
                 let deps = deps
                     .iter()
-                    .map(|var| (var.as_controllable_name(analyzer).unwrap(), var))
+                    .map(|var| (var.as_controllable_name(analyzer, arena).unwrap(), var))
                     .collect::<BTreeMap<_, _>>();
                 // create the bound strings
                 // let atoms = ctx.dep_atoms(analyzer).unwrap();
@@ -64,7 +66,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                 // let mut handled_atom = vec![];
                 // let mut bounds_string: Vec<String> = vec![];
                 // atoms.iter().enumerate().for_each(|(i, atom)| {
-                //     let atom_str = atom.to_range_string(true, analyzer).s;
+                //     let atom_str = atom.to_range_string(true, analyzer, arena).s;
                 //     if !handled_atom.contains(&atom_str) {
                 //         handled_atom.push(atom_str.clone());
                 //         bounds_string.push(format!("{}. {}", i + 1, atom_str))
@@ -78,7 +80,8 @@ impl<'a> FunctionVarsBoundAnalysis {
                     .filter_map(|(i, (name, cvar))| {
                         let range = cvar.ref_range(analyzer).unwrap()?;
 
-                        let (parts, _unsat) = range_parts(analyzer, &self.report_config, &range);
+                        let (parts, _unsat) =
+                            range_parts(analyzer, arena, &self.report_config, &range);
                         let ret = parts.into_iter().fold(
                             format!("{}. {name}", i + 1),
                             |mut acc, _part| {
@@ -119,7 +122,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                 let mut labels: Vec<_> = analyses
                     .iter()
                     .flat_map(|analysis| {
-                        let mut labels = analysis.labels(analyzer);
+                        let mut labels = analysis.labels(analyzer, arena);
                         labels.extend(
                             analysis
                                 .spanned_ctx_info
@@ -197,6 +200,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                                                 let range = var.ref_range(analyzer).unwrap()?;
                                                 let (parts, _unsat) = range_parts(
                                                     analyzer,
+                                                    arena,
                                                     &self.report_config,
                                                     &range,
                                                 );
@@ -255,7 +259,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                         .filter_map(|(loc, var)| {
                             let range = var.ref_range(analyzer).unwrap()?;
                             let (parts, _unsat) =
-                                range_parts(analyzer, &self.report_config, &range);
+                                range_parts(analyzer, arena, &self.report_config, &range);
                             Some(
                                 Label::new(LocStrSpan::new(file_mapping, loc))
                                     .with_message(
@@ -306,6 +310,7 @@ impl<T> FunctionVarsBoundAnalyzer for T where T: VarBoundAnalyzer + Search + Ana
 pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerBackend + Sized {
     fn bounds_for_lineage<'a>(
         &'a self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         file_mapping: &'a BTreeMap<usize, String>,
         ctx: ContextNode,
         edges: Vec<ContextNode>,
@@ -353,10 +358,11 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerBackend
                             let is_ret = var.is_return_node_in_any(&parents, self);
                             if is_ret
                                 | report_config.show_tmps
-                                | (report_config.show_consts && var.is_const(self).unwrap())
+                                | (report_config.show_consts && var.is_const(self, arena).unwrap())
                                 | (report_config.show_symbolics && var.is_symbolic(self).unwrap())
                             {
                                 Some(self.bounds_for_var_in_family_tree(
+                                    arena,
                                     file_mapping,
                                     parents.clone(),
                                     var.name(self).unwrap(),
@@ -385,6 +391,7 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerBackend
 
     fn bounds_for_all<'a>(
         &'a self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         file_mapping: &'a BTreeMap<usize, String>,
         ctx: ContextNode,
         report_config: ReportConfig,
@@ -393,6 +400,6 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerBackend
         if edges.is_empty() {
             edges.push(ctx);
         }
-        self.bounds_for_lineage(file_mapping, ctx, edges, report_config)
+        self.bounds_for_lineage(arena, file_mapping, ctx, edges, report_config)
     }
 }

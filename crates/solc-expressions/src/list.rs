@@ -1,9 +1,11 @@
 use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
 
 use graph::{
-    nodes::{ContextNode, ContextVar, ExprRet},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
+use shared::RangeArena;
 
 use solang_parser::pt::{Expression, Loc, Parameter, ParameterList};
 
@@ -11,11 +13,17 @@ impl<T> List for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
 /// Dealing with list parsing and operations
 pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
-    fn list(&mut self, ctx: ContextNode, loc: Loc, params: &ParameterList) -> Result<(), ExprErr> {
+    fn list(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        loc: Loc,
+        params: &ParameterList,
+    ) -> Result<(), ExprErr> {
         params.iter().try_for_each(|(loc, input)| {
             if let Some(input) = input {
-                self.parse_ctx_expr(&input.ty, ctx)?;
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                self.parse_ctx_expr(arena, &input.ty, ctx)?;
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(
                             loc,
@@ -31,13 +39,13 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 })
             } else {
                 // create a dummy var
-                self.apply_to_edges(ctx, *loc, &|analyzer, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
                     ctx.append_tmp_expr(ExprRet::Null, analyzer)
                         .into_expr_err(loc)
                 })
             }
         })?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,

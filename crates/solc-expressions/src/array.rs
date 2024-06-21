@@ -2,13 +2,13 @@ use crate::{
     require::Require, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
     ListAccess,
 };
-use graph::elem::RangeElem;
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
-    nodes::{Builtin, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
+use shared::RangeArena;
 
 use solang_parser::{
     helpers::CodeLocation,
@@ -20,9 +20,14 @@ impl<T> Array for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
 pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
     #[tracing::instrument(level = "trace", skip_all)]
-    fn array_ty(&mut self, ty_expr: &Expression, ctx: ContextNode) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(ty_expr, ctx)?;
-        self.apply_to_edges(ctx, ty_expr.loc(), &|analyzer, ctx, loc| {
+    fn array_ty(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ty_expr: &Expression,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        self.parse_ctx_expr(arena, ty_expr, ctx)?;
+        self.apply_to_edges(ctx, ty_expr.loc(), arena, &|analyzer, arena, ctx, loc| {
             if let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
                 if matches!(ret, ExprRet::CtxKilled(_)) {
                     ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
@@ -82,14 +87,15 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn index_into_array(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
         ty_expr: &Expression,
         index_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         tracing::trace!("Indexing into array");
-        self.parse_ctx_expr(index_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+        self.parse_ctx_expr(arena, index_expr, ctx)?;
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(index_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(
                     loc,
@@ -100,8 +106,8 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx.push_expr(index_tys, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            analyzer.parse_ctx_expr(ty_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, &|analyzer, ctx, loc| {
+            analyzer.parse_ctx_expr(arena, ty_expr, ctx)?;
+            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                 let Some(inner_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(loc, "Could not find the array".to_string()));
                 };
@@ -110,6 +116,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     return Ok(());
                 }
                 analyzer.index_into_array_inner(
+                    arena,
                     ctx,
                     loc,
                     inner_tys.flatten(),
@@ -122,6 +129,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     #[tracing::instrument(level = "trace", skip_all)]
     fn index_into_array_inner(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         inner_paths: ExprRet,
@@ -138,7 +146,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             (ExprRet::Single(parent), ExprRet::Single(index)) | (ExprRet::Single(parent), ExprRet::SingleLiteral(index)) => {
                 let index = ContextVarNode::from(index).latest_version(self);
                 let parent = ContextVarNode::from(parent).latest_version(self);
-                let _ = self.index_into_array_raw(ctx, loc, index, parent, true, false)?;
+                let _ = self.index_into_array_raw(arena, ctx, loc, index, parent, true, false)?;
                 Ok(())
             }
             e => Err(ExprErr::ArrayIndex(loc, format!("Expected single expr evaluation of index expression, but was: {e:?}. This is a bug. Please report it at github.com/nascentxyz/pyrometer."))),
@@ -147,6 +155,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn index_into_array_raw(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         index: ContextVarNode,
@@ -160,10 +169,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             && parent.is_indexable(self).into_expr_err(loc)?
         {
             let len_var = self
-                .get_length(ctx, loc, parent, true)?
+                .get_length(arena, ctx, loc, parent, true)?
                 .unwrap()
                 .latest_version(self);
             self.require(
+                arena,
                 len_var.latest_version(self),
                 idx.latest_version(self),
                 ctx,
@@ -240,11 +250,12 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
                 let idx_access_cvar =
                     self.advance_var_in_ctx(ContextVarNode::from(idx_access_node), loc, ctx)?;
+
                 idx_access_cvar
-                    .set_range_min(self, min)
+                    .set_range_min(self, arena, min)
                     .into_expr_err(loc)?;
                 idx_access_cvar
-                    .set_range_max(self, max)
+                    .set_range_max(self, arena, max)
                     .into_expr_err(loc)?;
 
                 if idx_access_cvar
@@ -256,7 +267,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 {
                     // if the index access is also an array, produce a length variable
                     // we specify to return the variable because we dont want it on the stack
-                    let _ = self.get_length(ctx, loc, idx_access_node.into(), true)?;
+                    let _ = self.get_length(arena, ctx, loc, idx_access_node.into(), true)?;
                 }
                 idx_access_cvar
             } else {
@@ -278,6 +289,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn update_array_if_index_access(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         maybe_index_access: ContextVarNode,
@@ -304,8 +316,13 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         vec![(index.into(), new_value.into())],
                         loc,
                     ));
-                    next_arr.set_range_min(self, min).into_expr_err(loc)?;
-                    next_arr.set_range_max(self, max).into_expr_err(loc)?;
+
+                    next_arr
+                        .set_range_min(self, arena, min)
+                        .into_expr_err(loc)?;
+                    next_arr
+                        .set_range_max(self, arena, max)
+                        .into_expr_err(loc)?;
                 }
 
                 // handle nested arrays, i.e. if:
@@ -313,6 +330,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // z[x][y] = 5;
                 // first pass sets z[x][y] = 5, second pass needs to set z[x] = x
                 self.update_array_if_index_access(
+                    arena,
                     ctx,
                     loc,
                     next_arr.latest_version(self),
@@ -325,6 +343,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn update_array_if_length_var(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         maybe_length: ContextVarNode,
@@ -333,15 +352,18 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
             let new_len = Elem::from(backing_arr).set_length(maybe_length.into());
             next_arr
-                .set_range_min(self, new_len.clone())
+                .set_range_min(self, arena, new_len.clone())
                 .into_expr_err(loc)?;
-            next_arr.set_range_max(self, new_len).into_expr_err(loc)?;
+            next_arr
+                .set_range_max(self, arena, new_len)
+                .into_expr_err(loc)?;
         }
         Ok(())
     }
 
     fn set_var_as_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         new_length: ContextVarNode,
@@ -350,10 +372,17 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
         let new_len = Elem::from(backing_arr).get_length().max(new_length.into());
         let min = Elem::from(backing_arr).set_length(new_len);
-        next_arr.set_range_min(self, min).into_expr_err(loc)?;
+
         let new_len = Elem::from(backing_arr).get_length().min(new_length.into());
         let max = Elem::from(backing_arr).set_length(new_len);
-        next_arr.set_range_max(self, max).into_expr_err(loc)?;
+
+        next_arr
+            .set_range_min(self, arena, min)
+            .into_expr_err(loc)?;
+        next_arr
+            .set_range_max(self, arena, max)
+            .into_expr_err(loc)?;
+
         self.add_edge(
             new_length,
             next_arr,
@@ -364,6 +393,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn update_array_from_index_access(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         index: ContextVarNode,
@@ -387,8 +417,12 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 vec![(index.into(), access.into())],
                 loc,
             ));
-            next_arr.set_range_min(self, min).into_expr_err(loc)?;
-            next_arr.set_range_max(self, max).into_expr_err(loc)?;
+            next_arr
+                .set_range_min(self, arena, min)
+                .into_expr_err(loc)?;
+            next_arr
+                .set_range_max(self, arena, max)
+                .into_expr_err(loc)?;
         }
 
         // handle nested arrays
@@ -397,6 +431,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             next_arr.index_access_to_index(self),
         ) {
             self.update_array_from_index_access(
+                arena,
                 ctx,
                 loc,
                 parent_nested_index,
@@ -410,6 +445,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn update_array_min_if_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         maybe_length: ContextVarNode,
@@ -420,13 +456,16 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .get_length()
                 .max(maybe_length.into());
             let min = Elem::from(backing_arr).set_length(new_len);
-            next_arr.set_range_min(self, min).into_expr_err(loc)?;
+            next_arr
+                .set_range_min(self, arena, min)
+                .into_expr_err(loc)?;
         }
         Ok(())
     }
 
     fn update_array_max_if_length(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         loc: Loc,
         maybe_length: ContextVarNode,
@@ -437,7 +476,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .get_length()
                 .min(maybe_length.into());
             let max = Elem::from(backing_arr).set_length(new_len);
-            next_arr.set_range_max(self, max).into_expr_err(loc)?;
+            next_arr
+                .set_range_max(self, arena, max)
+                .into_expr_err(loc)?;
         }
         Ok(())
     }

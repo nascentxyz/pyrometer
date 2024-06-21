@@ -1,7 +1,10 @@
 use crate::{range::elem::Elem, GraphBackend};
+use shared::RangeArena;
+
+use std::hash::Hash;
 
 /// For execution of operations to be performed on range expressions
-pub trait ExecOp<T> {
+pub trait ExecOp<T: Hash> {
     type GraphError;
     /// Attempts to execute ops by evaluating expressions and applying the op for the left-hand-side
     /// and right-hand-side
@@ -9,6 +12,7 @@ pub trait ExecOp<T> {
         &self,
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<Elem<T>, Self::GraphError>;
 
     fn exec(
@@ -16,22 +20,26 @@ pub trait ExecOp<T> {
         parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<Elem<T>, Self::GraphError>;
     /// Cache execution
     fn cache_exec_op(
         &mut self,
         maximize: bool,
         analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<(), Self::GraphError>;
 
     fn spread(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), Self::GraphError>;
 
     fn simplify_spread(
         &self,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<(Elem<T>, Elem<T>, Elem<T>, Elem<T>), Self::GraphError>;
 
     fn uncache_exec(&mut self);
@@ -40,6 +48,7 @@ pub trait ExecOp<T> {
         &self,
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<Elem<T>, Self::GraphError>;
 
     /// Attempts to simplify an expression (i.e. just apply constant folding)
@@ -48,8 +57,9 @@ pub trait ExecOp<T> {
         parts: (Elem<T>, Elem<T>, Elem<T>, Elem<T>),
         maximize: bool,
         analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<T>>,
     ) -> Result<Elem<T>, Self::GraphError> {
-        self.exec(parts, maximize, analyzer)
+        self.exec(parts, maximize, analyzer, arena)
     }
 }
 
@@ -158,9 +168,16 @@ pub trait RangeConcat<T, Rhs = Self> {
 pub trait RangeMemSet<T, Rhs = Self> {
     /// Applies a transformation of indices
     fn range_set_indices(&self, other: &Rhs) -> Option<Elem<T>>;
-    /// Gets an index
-    fn range_get_index(&self, other: &Rhs) -> Option<Elem<T>>;
     /// Applies a transformation of length
     fn range_set_length(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+pub trait RangeMemGet<T, Rhs = Self>: RangeMemLen<T> {
+    /// Gets an index
+    fn range_get_index(&self, other: &Rhs) -> Option<Elem<T>>;
+}
+
+pub trait RangeMemLen<T> {
+    /// Gets the length
     fn range_get_length(&self) -> Option<Elem<T>>;
 }

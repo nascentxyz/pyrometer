@@ -1,6 +1,8 @@
-use crate::{AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node};
+use crate::{
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+};
 
-use shared::NodeIdx;
+use shared::{NodeIdx, RangeArena};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -20,7 +22,11 @@ impl ErrorNode {
     }
 }
 impl AsDotStr for ErrorNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
         format!(
             "error {}",
@@ -97,11 +103,12 @@ impl From<ErrorParam> for Node {
 impl ErrorParam {
     pub fn new(
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
         param: ErrorParameter,
     ) -> Self {
         ErrorParam {
             loc: param.loc,
-            ty: analyzer.parse_expr(&param.ty, None),
+            ty: analyzer.parse_expr(arena, &param.ty, None),
             name: param.name,
         }
     }

@@ -1,10 +1,10 @@
 use crate::{
-    nodes::{ContextNode, ContextVar, TmpConstruction, VarNode},
-    range::{elem::RangeElem, range_string::ToRangeString, Range},
+    nodes::{Concrete, ContextNode, ContextVar, TmpConstruction, VarNode},
+    range::{elem::*, range_string::ToRangeString, Range},
     AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node,
 };
 
-use shared::{NodeIdx, Search, StorageLocation};
+use shared::{NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;
@@ -15,19 +15,23 @@ use std::collections::BTreeMap;
 pub struct ContextVarNode(pub usize);
 
 impl AsDotStr for ContextVarNode {
-    fn as_dot_str(&self, analyzer: &impl GraphBackend) -> String {
+    fn as_dot_str(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
         let underlying = self.underlying(analyzer).unwrap();
 
         let range_str = if let Some(r) = underlying.ty.ref_range(analyzer).unwrap() {
             format!(
                 "[{}, {}]",
-                r.evaled_range_min(analyzer)
+                r.evaled_range_min(analyzer, arena)
                     .unwrap()
-                    .to_range_string(false, analyzer)
+                    .to_range_string(false, analyzer, arena)
                     .s,
-                r.evaled_range_max(analyzer)
+                r.evaled_range_max(analyzer, arena)
                     .unwrap()
-                    .to_range_string(true, analyzer)
+                    .to_range_string(true, analyzer, arena)
                     .s
             )
         } else {
@@ -142,19 +146,22 @@ impl ContextVarNode {
         Ok(self.underlying(analyzer)?.name.clone())
     }
 
-    pub fn as_controllable_name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
-        if let Some(ref_range) = self.ref_range(analyzer)? {
-            let min_name = ref_range
-                .range_min()
-                .simplify_minimize(analyzer)?
-                .to_range_string(false, analyzer)
-                .s;
-
+    pub fn as_controllable_name(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<String, GraphError> {
+        if self.is_fundamental(analyzer)? {
+            self.display_name(analyzer)
+        } else if let Some(ref_range) = self.ref_range(analyzer)? {
+            let min_name = ref_range.range_min().simplify_minimize(analyzer, arena)?;
+            let min_name = min_name.to_range_string(false, analyzer, arena).s;
             let max_name = ref_range
                 .range_max()
-                .simplify_maximize(analyzer)?
-                .to_range_string(true, analyzer)
+                .simplify_maximize(analyzer, arena)?
+                .to_range_string(true, analyzer, arena)
                 .s;
+
             if max_name == min_name {
                 Ok(max_name)
             } else {
