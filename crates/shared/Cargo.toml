@@ -1,0 +1,20 @@
+[package]
+name = "shared"
+description = "Shared utilities and structures"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+petgraph.workspace = true
+solang-parser.workspace = true
+ethers-core.workspace = true
+hex.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ahash.workspace = true

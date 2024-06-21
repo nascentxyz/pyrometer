@@ -1,50 +1,74 @@
-[package]
-name = "pyrometer"
-version = "0.1.0"
-edition = "2021"
-autobenches = false # turns off autodiscovery of benchmarks in ./benches
-exclude = ["benches"] # exclude the benches directory from the build
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-petgraph = "0.6.2"
-solang-parser = { version = "0.2.4", features = ["pt-serde"] }
-ethers-core = "*"
-ariadne = "0.2.0"
-shared = { path = "./shared" }
-hex = "0.4.3"
-tracing = { version = "0.1", features = ["attributes"] }
-tracing-subscriber = "0.3"
-
-[dev-dependencies]
-criterion = { version = "0.4"} # benching
-
 [workspace]
-members = ["cli", "shared"]
+members = [
+    "crates/analyzers",
+    "crates/cli",
+    "crates/graph",
+    "crates/pyrometer",
+    "crates/queries",
+    "crates/shared",
+    "crates/solc-expressions",
+]
+resolver = "2"
 
-# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
-[patch.crates-io]
-ariadne = {git = "https://github.com/brockelmore/ariadne"}
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+authors = ["Brock Elmore"]
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/nascentxyz/pyrometer"
+repository = "https://github.com/nascentxyz/pyrometer"
+exclude = [
+    "benches/",
+    "tests/",
+    "examples/",
+] # exclude the benches directory from the build
+rust-version = "1.74"
 
 [profile.release]
 debug = true
 
 [profile.dev]
-opt-level = 1  # Enable some optimizations like tail call
+# opt-level = 1  # Enable some optimizations like tail call
 inline = true
 
 [profile.bench]
 debug = true
 
+[workspace.dependencies]
+analyzers = { path = "crates/analyzers" }
+graph = { path = "crates/graph" }
+pyrometer = { path = "crates/pyrometer" }
+queries = { path = "crates/queries" }
+shared = { path = "crates/shared" }
+solc-expressions = { path = "crates/solc-expressions" }
 
-######################################
-# Benchmarks
-######################################
-[[example]]
-name = "parse"
-path = "examples/parse.rs"
+solang-parser = { version = "0.2.4", features = ["pt-serde"] }
+tracing = { version = "0.1", features = ["attributes"] }
+tracing-subscriber = { version = "0.3", features = [
+    "registry",
+    "env-filter",
+    "fmt",
+] }
+tracing-tree = "0.3.0"
+ethers-core = "*"
+hex = "0.4.3"
+ariadne = "0.2.0"
+petgraph = "0.6.2"
+ahash = "0.8.10"
 
-[[bench]]
-name = "parse"
-harness = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# [workspace]
+# members = ["cli", "shared"]
+
+# we patch ariadne to allow for counting by bytes because solang uses byte locations not char locations
+[patch.crates-io]
+ariadne = { git = "https://github.com/brockelmore/ariadne" }
+
+# ######################################
+# # Benchmarks
+# ######################################
+
+# [[bench]]
+# name = "parse"
+# harness = false
