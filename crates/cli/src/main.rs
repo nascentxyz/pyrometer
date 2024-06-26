@@ -5,12 +5,14 @@ use graph::{
     Edge,
 };
 use pyrometer::{Analyzer, Root, SourcePath};
-use shared::GraphDot;
-use shared::Search;
+use reqwest::Client;
+use shared::{post_to_site, Search};
+use shared::{GraphDot, USE_DEBUG_SITE};
 
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 
+use tracing::{debug, error, info, trace, warn};
 use tracing_subscriber::{prelude::*, Registry};
 
 use std::{
@@ -19,6 +21,7 @@ use std::{
     fs,
     path::PathBuf,
 };
+use tokio::runtime::Runtime;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -100,6 +103,10 @@ struct Args {
     /// Print stats about the IR
     #[clap(long)]
     pub stats: bool,
+
+    /// Post pyrometer debugging information to debugging site
+    #[clap(long)]
+    pub debug_site: bool,
 }
 
 pub fn subscriber() {
@@ -114,11 +121,12 @@ pub fn tree_subscriber() {
         .with(
             tracing_tree::HierarchicalLayer::default()
                 .with_indent_lines(true)
-                .with_indent_amount(2)
-                .with_thread_names(true), // .with_thread_ids(true)
-                                          // .with_verbose_exit(true)
-                                          // .with_verbose_entry(true)
-                                          // .with_targets(true)
+                .with_indent_amount(1)
+                // .with_targets(true)
+                .with_thread_names(false), // .with_thread_ids(true)
+                                           // .with_verbose_exit(true)
+                                           // .with_verbose_entry(true)
+                                           //   .with_targets(true)
         )
         .with(tracing_subscriber::filter::EnvFilter::from_default_env());
     tracing::subscriber::set_global_default(subscriber).unwrap();
@@ -226,6 +234,7 @@ fn main() {
             show_nonreverts: args.show_nonreverts.unwrap_or(true),
         },
     };
+
     let mut analyzer = Analyzer {
         max_depth: args.max_stack_depth,
         root: Root::RemappingsDirectory(env::current_dir().unwrap()),
@@ -257,12 +266,57 @@ fn main() {
 
     let mut arena_base = Default::default();
     let arena = &mut arena_base;
+
+    if args.debug_site {
+        unsafe {
+            USE_DEBUG_SITE = true;
+        }
+
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let client = Client::new();
+            let res = client
+                .post("http://127.0.0.1:8545/clear")
+                .send()
+                .await
+                .expect("Failed to send request");
+
+            if res.status().is_success() {
+                trace!("Successfully cleared history of site");
+            } else {
+                error!("Failed to clear history of site: {:?}", res.status());
+            }
+        });
+        post_to_site(&analyzer, arena);
+    }
+
     let t0 = std::time::Instant::now();
     let maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
     let t_end = t0.elapsed();
     let parse_time = t_end.as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
+
+    // println!("Arena: {:#?}", analyzer.range_arena);
+    if unsafe { USE_DEBUG_SITE } {
+        use pyrometer::graph_backend::mermaid_str;
+        use pyrometer::graph_backend::post_to_site_arena;
+        use pyrometer::graph_backend::Elems;
+        let elems = Elems::try_from(&*arena);
+        match elems {
+            Ok(elems) => {
+                let elems_graph = elems.to_graph(&analyzer, arena);
+                let elems_graph_mermaid_str = mermaid_str(&elems_graph);
+                post_to_site_arena(elems_graph_mermaid_str);
+            }
+            Err(e) => {
+                eprintln!("Can't post arena, error creating Elems: {:?}", e);
+            }
+        };
+
+        // post the graph to the site
+        post_to_site(&analyzer, arena);
+    }
 
     if args.stats {
         println!("{}", analyzer.stats(t_end, arena));

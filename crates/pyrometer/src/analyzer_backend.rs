@@ -1,5 +1,4 @@
 use crate::Analyzer;
-
 use graph::{
     elem::Elem,
     nodes::{
@@ -275,5 +274,18 @@ impl AnalyzerLike for Analyzer {
 
     fn handled_funcs_mut(&mut self) -> &mut Vec<FunctionNode> {
         &mut self.handled_funcs
+    }
+
+    fn file_mapping(&self) -> BTreeMap<usize, String> {
+        let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
+        for (source_path, _, o_file_no, _) in self.sources.iter() {
+            if let Some(file_no) = o_file_no {
+                file_mapping.insert(
+                    *file_no,
+                    source_path.path_to_solidity_source().display().to_string(),
+                );
+            }
+        }
+        file_mapping
     }
 }

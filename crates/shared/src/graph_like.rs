@@ -12,6 +12,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::runtime::Runtime;
+use tracing::{error, trace};
+
+pub static mut USE_DEBUG_SITE: bool = false;
+
 pub type NodeIdx = NodeIndex<usize>;
 pub type EdgeIdx = EdgeIndex<usize>;
 pub type RangeArenaIdx = usize;
@@ -57,22 +65,6 @@ pub trait GraphLike {
     ) {
         self.graph_mut()
             .add_edge(from_node.into(), to_node.into(), edge.into());
-    }
-
-    fn range_arena(&self) -> &RangeArena<Self::RangeElem>;
-    fn range_arena_mut(&mut self) -> &mut RangeArena<Self::RangeElem>;
-    fn try_take_range_arena(&mut self) -> Option<RangeArena<Self::RangeElem>> {
-        let arena = self.range_arena_mut();
-        if !arena.ranges.is_empty() {
-            Some(std::mem::take(arena))
-        } else {
-            None
-        }
-    }
-
-    fn take_range_arena(&mut self) -> RangeArena<Self::RangeElem> {
-        let arena = self.range_arena_mut();
-        std::mem::take(arena)
     }
 }
 
@@ -185,4 +177,47 @@ pub trait GraphDot: GraphLike {
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike;
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct GraphMessage {
+    graph: String,
+    timestamp: u64,
+}
+
+pub fn post_to_site<G>(graph: &G, arena: &mut RangeArena<G::T>)
+where
+    G: GraphDot + AnalyzerLike,
+{
+    let rt = Runtime::new().unwrap();
+    rt.block_on(async {
+        post_to_site_async(graph, arena).await;
+    });
+}
+
+async fn post_to_site_async<G>(graph: &G, arena: &mut RangeArena<G::T>)
+where
+    G: GraphDot + AnalyzerLike,
+{
+    let client = Client::new();
+    let graph_msg = GraphMessage {
+        graph: graph.mermaid_str(arena),
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs(),
+    };
+
+    let res = client
+        .post("http://127.0.0.1:8545/addgraph")
+        .json(&graph_msg)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    if res.status().is_success() {
+        trace!("Successfully posted dot to site");
+    } else {
+        error!("Failed to post graph to site: {:?}", res.status());
+    }
 }
