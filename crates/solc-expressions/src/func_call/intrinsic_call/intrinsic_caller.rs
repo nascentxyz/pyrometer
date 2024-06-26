@@ -102,7 +102,7 @@ pub trait IntrinsicFuncCaller:
                                 None,
                                 None,
                             )?;
-                            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                                 let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
                                     Some(v) => v,
                                     None => {
@@ -141,7 +141,7 @@ pub trait IntrinsicFuncCaller:
                                     None,
                                     None,
                                 )?;
-                                analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                                analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                                     let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
                                         Some(v) => v,
                                         None => {

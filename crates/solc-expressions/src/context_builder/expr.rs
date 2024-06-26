@@ -385,7 +385,7 @@ pub trait ExpressionParser:
                 }
 
                 self.parse_ctx_expr(arena, expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     tracing::trace!("Delete variable pop");
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(

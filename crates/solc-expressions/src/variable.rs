@@ -40,7 +40,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 target_ctx,
                 ident.loc,
                 arena,
-                &|analyzer, arena, edge_ctx, _loc| {
+                &|analyzer, _arena, edge_ctx, _loc| {
                     let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
                     edge_ctx
                         .push_expr(ExprRet::Single(var.into()), analyzer)
@@ -60,7 +60,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 target_ctx,
                 ident.loc,
                 arena,
-                &|analyzer, arena, edge_ctx, _loc| {
+                &|analyzer, _arena, edge_ctx, _loc| {
                     let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
                     edge_ctx
                         .push_expr(ExprRet::Single(var.into()), analyzer)

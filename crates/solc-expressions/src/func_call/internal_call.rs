@@ -148,7 +148,7 @@ pub trait InternalFuncCaller:
                         Ok(())
                     })
                 })?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, _loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, _loc| {
                     ctx.push_expr(ExprRet::Single(cvar), analyzer)
                         .into_expr_err(*loc)?;
                     Ok(())

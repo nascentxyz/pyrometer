@@ -81,7 +81,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
                     Ok(())
                 })?;
                 if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                         let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(
                                 loc,
@@ -113,7 +113,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
                     Ok(())
                 })?;
                 if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                         let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(
                                 loc,
@@ -132,7 +132,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
                     Ok(())
                 })?;
                 if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                         let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                             return Err(ExprErr::NoLhs(
                                 loc,

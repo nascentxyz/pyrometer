@@ -126,7 +126,7 @@ pub trait ConstructorCaller:
         if !input_exprs.is_empty() {
             self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
         }
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
             if !input_exprs.is_empty() {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoRhs(loc, "Contract creation failed".to_string()));

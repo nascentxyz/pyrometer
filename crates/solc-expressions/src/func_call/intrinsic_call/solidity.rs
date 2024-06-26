@@ -82,7 +82,7 @@ pub trait SolidityCaller:
                 // TODO: actually calcuate this if possible
                 input_exprs.parse(arena, self, ctx, loc)?;
 
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                     let var = ContextVar::new_from_builtin(
                         loc,
@@ -99,7 +99,7 @@ pub trait SolidityCaller:
             "mulmod" => {
                 // TODO: actually calcuate this if possible
                 input_exprs.parse(arena, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
                     let var = ContextVar::new_from_builtin(
                         loc,

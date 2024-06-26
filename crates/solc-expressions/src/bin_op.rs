@@ -378,7 +378,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn checked_require_mod_div(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        lhs: ContextVarNode,
+        _lhs: ContextVarNode,
         rhs: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,

@@ -142,7 +142,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             .try_for_each(|input| self.parse_input(arena, ctx, loc, input, &append))?;
 
         if !inputs.is_empty() {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                 let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(
                         loc,
@@ -165,7 +165,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         append: &Rc<RefCell<bool>>,
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(arena, input, ctx)?;
-        self.apply_to_edges(ctx, input.loc(), arena, &|analyzer, arena, ctx, loc| {
+        self.apply_to_edges(ctx, input.loc(), arena, &|analyzer, _arena, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,

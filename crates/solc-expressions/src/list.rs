@@ -23,7 +23,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         params.iter().try_for_each(|(loc, input)| {
             if let Some(input) = input {
                 self.parse_ctx_expr(arena, &input.ty, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoLhs(
                             loc,
@@ -39,13 +39,13 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 })
             } else {
                 // create a dummy var
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     ctx.append_tmp_expr(ExprRet::Null, analyzer)
                         .into_expr_err(loc)
                 })
             }
         })?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+        self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
             let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoLhs(
                     loc,

@@ -51,7 +51,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
             .iter()
             .try_for_each(|expr| {
                 self.parse_ctx_expr(arena, expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let input = ctx
                         .pop_expr_latest(loc, analyzer)
                         .into_expr_err(loc)?
