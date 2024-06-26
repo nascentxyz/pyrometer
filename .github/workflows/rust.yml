@@ -15,7 +15,19 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+
+    # Install Rust toolchain
+    - name: Install Rust toolchain
+      run: rustup toolchain install nightly
+      
+    # Install rustfmt component for nightly toolchain
+    - name: Install rustfmt for nightly
+      run: rustup component add --toolchain nightly rustfmt
+
+    # Lint with fmt using nightly toolchain
     - name: Lint with fmt
       run: cargo +nightly fmt --all --check
+
+    # Run tests
     - name: Run tests
       run: cargo test --all
