@@ -45,7 +45,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
                         }
                         _ => format!("{elem}"),
                     }
-                };
+                }
 
                 format!("{i}: {}", fmt(elem, analyzer))
             })

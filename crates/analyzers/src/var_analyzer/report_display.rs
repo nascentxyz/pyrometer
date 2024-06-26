@@ -38,8 +38,7 @@ impl ReportDisplay for VarBoundAnalysis {
         labels.extend(
             self.bound_changes
                 .iter()
-                .enumerate()
-                .map(|(_i, bound_change)| {
+                .map(|bound_change| {
                     let (parts, unsat) =
                         range_parts(analyzer, arena, &self.report_config, &bound_change.1);
                     AnalysisItem {

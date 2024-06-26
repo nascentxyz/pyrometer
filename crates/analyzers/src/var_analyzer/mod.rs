@@ -79,8 +79,7 @@ impl VarBoundAnalysis {
             .collect::<BTreeMap<_, _>>();
         // create the bound strings
         deps.iter()
-            .enumerate()
-            .filter_map(|(_i, (_name, cvar))| {
+            .filter_map(|(_name, cvar)| {
                 let range = cvar.ref_range(analyzer).unwrap()?;
                 let parts = range_parts(analyzer, arena, &self.report_config, &range).0;
                 Some((cvar.display_name(analyzer).unwrap(), parts))

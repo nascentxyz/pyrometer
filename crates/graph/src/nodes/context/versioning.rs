@@ -300,7 +300,7 @@ impl ContextNode {
                 Some(CallFork::Call(call)) => format!("call {{ {} }}", call.path(analyzer)),
                 None => unreachable!(),
             };
-            Err(GraphError::ChildRedefinition(panic!(
+            Err(GraphError::ChildRedefinition(format!(
                 "This is a bug. Tried to redefine a child context, parent:\n{}, current child:\n{},\nnew child: Fork({}, {})",
                 self.path(analyzer),
                 child_str,
@@ -388,7 +388,7 @@ impl ContextNode {
                 None => unreachable!(),
             };
             tracing::trace!("Error setting child as a call");
-            Err(GraphError::ChildRedefinition(panic!(
+            Err(GraphError::ChildRedefinition(format!(
                 "This is a bug. Tried to redefine a child context, parent: {}, current child: {}, new child: {}",
                 self.path(analyzer),
                 child_str,
