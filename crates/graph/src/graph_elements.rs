@@ -402,9 +402,7 @@ pub enum ContextEdge {
 }
 
 #[derive(Default)]
-pub(crate) struct DummyGraph {
-    pub range_arena: RangeArena<Elem<Concrete>>,
-}
+pub(crate) struct DummyGraph {}
 
 impl GraphLike for DummyGraph {
     type Node = Node;
@@ -417,12 +415,44 @@ impl GraphLike for DummyGraph {
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         panic!("Dummy Graph")
     }
-    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
-        &self.range_arena
-    }
-    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
-        &mut self.range_arena
-    }
 }
 
 impl GraphBackend for DummyGraph {}
+impl GraphDot for DummyGraph {
+    type T = Elem<Concrete>;
+
+    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphDot>::T>) -> String {
+        // Provide a basic implementation or a placeholder
+        "digraph DummyGraph {}".to_string()
+    }
+    
+    fn cluster_str(
+        &self,
+        _arena: &mut RangeArena<Self::T>,
+        _node: NodeIdx,
+        _cluster_num: &mut usize,
+        _is_killed: bool,
+        _handled_nodes: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<NodeIdx>>>,
+        _handled_edges: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<petgraph::prelude::EdgeIndex<usize>>>>,
+        _depth: usize,
+        _as_mermaid: bool,
+    ) -> Option<String>
+    where
+        Self: std::marker::Sized {
+        todo!()
+    }
+    
+    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
+    where
+        Self: std::marker::Sized,
+    {
+        todo!()
+    }
+    
+    fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    where
+        Self: std::marker::Sized,
+    {
+        todo!()
+    }
+}

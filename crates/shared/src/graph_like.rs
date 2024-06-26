@@ -66,22 +66,6 @@ pub trait GraphLike {
         self.graph_mut()
             .add_edge(from_node.into(), to_node.into(), edge.into());
     }
-
-    fn range_arena(&self) -> &RangeArena<Self::RangeElem>;
-    fn range_arena_mut(&mut self) -> &mut RangeArena<Self::RangeElem>;
-    fn try_take_range_arena(&mut self) -> Option<RangeArena<Self::RangeElem>> {
-        let arena = self.range_arena_mut();
-        if !arena.ranges.is_empty() {
-            Some(std::mem::take(arena))
-        } else {
-            None
-        }
-    }
-
-    fn take_range_arena(&mut self) -> RangeArena<Self::RangeElem> {
-        let arena = self.range_arena_mut();
-        std::mem::take(arena)
-    }
 }
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
@@ -203,17 +187,23 @@ struct GraphMessage {
 }
 
 
-pub fn post_to_site(graph: &(impl GraphDot + AnalyzerLike)) {
+pub fn post_to_site<G>(graph: &G, arena: &mut RangeArena<G::T>)
+where
+    G: GraphDot + AnalyzerLike,
+{
     let rt = Runtime::new().unwrap();
     rt.block_on(async {
-        post_to_site_async(graph).await;
+        post_to_site_async(graph, arena).await;
     });
 }
 
-async fn post_to_site_async(graph: &(impl GraphDot + AnalyzerLike)) {
+async fn post_to_site_async<G>(graph: &G, arena: &mut RangeArena<G::T>)
+where
+    G: GraphDot + AnalyzerLike,
+{
     let client = Client::new();
     let graph_msg = GraphMessage {
-        graph: graph.mermaid_str(),
+        graph: graph.mermaid_str(arena),
         timestamp: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("Time went backwards")

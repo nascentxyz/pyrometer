@@ -5,13 +5,11 @@ use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::{post_to_site, RangeArena, USE_DEBUG_SITE};
+use shared::RangeArena;
 use tokio::runtime::Runtime;
-use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::rc::Rc;
 use tracing::{trace, error, warn};
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
@@ -38,85 +36,12 @@ impl GraphLike for Analyzer {
         &self.graph
     }
 
-    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
-        &self.range_arena
-    }
-
-    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
-        &mut self.range_arena
-    }
-
-    fn range_arena_idx(&self, elem: &Self::RangeElem) -> Option<usize> {
-        if let Elem::Arena(idx) = elem {
-            Some(*idx)
-        } else {
-            self.range_arena().map.get(elem).copied()
-        }
-    }
-
-    fn range_arena_idx_or_upsert(&mut self, elem: Self::RangeElem) -> usize {
-        // tracing::trace!("arenaizing: {}", elem);
-        if let Elem::Arena(idx) = elem {
-            return idx;
-        }
-
-        let res_idx = if let Some(idx) = self.range_arena_idx(&elem) {
-            let existing = &self.range_arena().ranges[idx];
-            let Ok(existing) = existing.try_borrow_mut() else {
-                return idx;
-            };
-            let (min_cached, max_cached) = existing.is_min_max_cached(self);
-            let mut existing_count = 0;
-            if min_cached {
-                existing_count += 1;
-            }
-            if max_cached {
-                existing_count += 1;
-            }
-            if existing.is_flatten_cached(self) {
-                existing_count += 1;
-            }
-
-            let (min_cached, max_cached) = elem.is_min_max_cached(self);
-            let mut new_count = 0;
-            if min_cached {
-                new_count += 1;
-            }
-            if max_cached {
-                new_count += 1;
-            }
-            if elem.is_flatten_cached(self) {
-                new_count += 1;
-            }
-
-            drop(existing);
-
-            if new_count >= existing_count {
-                self.range_arena_mut().ranges[idx] = Rc::new(RefCell::new(elem));
-            }
-
-            idx
-        } else {
-            let idx = self.range_arena().ranges.len();
-            self.range_arena_mut()
-                .ranges
-                .push(Rc::new(RefCell::new(elem.clone())));
-            self.range_arena_mut().map.insert(elem, idx);
-            idx
-        };
-
-        res_idx
-    }
-
     fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx
     where
         Self: std::marker::Sized,
         Self: GraphLike,
     {
         let res = self.graph_mut().add_node(node.into());
-        if unsafe { USE_DEBUG_SITE } {
-            post_to_site(self);
-        }
         res
     }
 
@@ -131,10 +56,6 @@ impl GraphLike for Analyzer {
     {
         self.graph_mut()
             .add_edge(from_node.into(), to_node.into(), edge.into());
-
-        if unsafe { USE_DEBUG_SITE } {
-            post_to_site(self);
-        }
     }
 }
 
@@ -260,25 +181,14 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
         // Collect the elements and their indices first from ranges
         // Collect the elements and their indices first from ranges
         let mut inner = Vec::new();
-        for rc in &arena.ranges {
-            // Attempt to borrow the RefCell
-            match rc.try_borrow() {
-                Ok(borrowed) => {
-                    let elem = borrowed.clone();
-                    // Get the map value
-                    if let Some(map_value) = arena.map.get(&elem).copied() {
-                        // println!("Adding idx {} to elems {}", map_value, elem);
-                        inner.push((map_value, elem));
-                    } else {
-                        // println!("NONE REF elem: {:?}", elem);
-                        return Err(ElemsError::MissingMap(format!("elem {:?}", elem)));
-                    }
-                },
-                Err(e) => {
-                    // Print an error message if borrowing fails
-                    // eprintln!("Failed to borrow RefCell: {:?}", e);
-                    return Err(ElemsError::BorrowError(format!("error {:?}", e)));
-                }
+        for elem in &arena.ranges {
+            // Get the map value
+            if let Some(map_value) = arena.map.get(&elem).copied() {
+                // println!("Adding idx {} to elems {}", map_value, elem);
+                inner.push((map_value, elem.clone()));
+            } else {
+                // println!("NONE REF elem: {:?}", elem);
+                return Err(ElemsError::MissingMap(format!("elem {:?}", elem)));
             }
         }
 
@@ -304,9 +214,7 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
         // Add any missing entries to inner
         for (_elem, &idx) in missing_entries {
             if let Some(range_elem) = arena.ranges.get(idx) {
-                if let Ok(borrowed_elem) = range_elem.try_borrow() {
-                    inner.push((idx, borrowed_elem.clone()));
-                }
+                inner.push((idx, range_elem.clone()));
             }
         }
 
@@ -339,7 +247,7 @@ impl Elems {
     /// Third pass:
     /// - for each ContextVar node, create edges to the arena indices that it depends on
     /// 
-    pub fn to_graph(&self, graph_backend: &impl GraphBackend) -> Graph<ArenaNode, ArenaEdge, Directed, usize> {
+    pub fn to_graph(&self, graph_backend: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> Graph<ArenaNode, ArenaEdge, Directed, usize> {
         let mut graph = Graph::default();
         let mut arena_idx_to_node_idx = HashMap::new();
         let mut dependency_map: HashMap<ContextVarNode, petgraph::graph::NodeIndex<usize>> = HashMap::new();
@@ -363,14 +271,14 @@ impl Elems {
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
 
                     // attempt to add in the ContextVar node that the elem is referencing
-                    let context_var_nodes = elem.dependent_on(graph_backend).into_iter().collect::<Vec<_>>();
+                    let context_var_nodes = elem.dependent_on(graph_backend, arena).into_iter().collect::<Vec<_>>();
                     context_var_nodes.into_iter().for_each(|dep_elem| {
                         let dep_node_idx = if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
                             // don't make a new ContextVar node, just use the existing one
                             existing_node_idx
                         } else {
                             // make a new ContextVar Node for the Arena graph
-                            let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend))));
+                            let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend, arena))));
                             dependency_map.insert(dep_elem.clone(), new_node_idx);
                             new_node_idx
                         };
@@ -400,14 +308,14 @@ impl Elems {
                         Elem::Reference(_lhs) => {
                             // println!("LHS is a reference: {}", range_expr.lhs);
                             // attempt to add in the ContextVar node that the elem is referencing
-                            let context_var_nodes = elem.dependent_on(graph_backend).into_iter().collect::<Vec<_>>();
+                            let context_var_nodes = elem.dependent_on(graph_backend, arena).into_iter().collect::<Vec<_>>();
                             context_var_nodes.iter().for_each(|dep_elem| {
                                 let dep_node_idx = if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
                                     // don't make a new ContextVar node, just use the existing one
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend))));
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend, arena))));
                                     dependency_map.insert(dep_elem.clone(), new_node_idx);
                                     new_node_idx
                                 };
@@ -426,14 +334,14 @@ impl Elems {
                         Elem::Reference(_rhs) => {
                             // println!("RHS is a reference: {}", range_expr.rhs);
                             // attempt to add in the ContextVar node that the elem is referencing
-                            let context_var_nodes = elem.dependent_on(graph_backend).into_iter().collect::<Vec<_>>();
+                            let context_var_nodes = elem.dependent_on(graph_backend, arena).into_iter().collect::<Vec<_>>();
                             context_var_nodes.iter().for_each(|dep_elem| {
                                 let dep_node_idx = if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
                                     // don't make a new ContextVar node, just use the existing one
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend))));
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend, arena))));
                                     dependency_map.insert(dep_elem.clone(), new_node_idx);
                                     new_node_idx
                                 };
@@ -883,7 +791,6 @@ impl GraphDot for Analyzer {
                 } else {
                     {
                         if handled_nodes.lock().unwrap().contains(child) {
-                        if handled_nodes.lock().unwrap().contains(child) {
                             return None;
                         } else {
                             handled_nodes.lock().unwrap().insert(*child);
@@ -913,7 +820,6 @@ impl GraphDot for Analyzer {
                 if as_mermaid {
                     format!("{indent}{from:} -->|\"{edge_str}\"| {to:}\n{indent}class {to} linkSource{edge_idx}\n{indent}class {from} linkTarget{edge_idx}")
                 } else {
-                    format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)
                     format!("{indent}{from:} -> {to:} [label = \"{edge_str}\"]",)
                 }
             })
@@ -1262,45 +1168,42 @@ impl GraphLike for G<'_> {
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         self.graph
     }
-    fn range_arena(&self) -> &RangeArena<Elem<Concrete>> {
-        panic!("Should not call this")
-    }
-    fn range_arena_mut(&mut self) -> &mut RangeArena<Elem<Concrete>> {
-        panic!("Should not call this")
-    }
 }
 
 impl GraphDot for G<'_> {
+    type T = Elem<Concrete>;
+
     fn cluster_str(
         &self,
-        node: NodeIdx,
-        cluster_num: &mut usize,
-        is_killed: bool,
-        handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
-        handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
-        depth: usize,
-        as_mermaid: bool,
+        _arena: &mut RangeArena<Self::T>,
+        _node: NodeIdx,
+        _cluster_num: &mut usize,
+        _is_killed: bool,
+        _handled_nodes: Arc<Mutex<BTreeSet<NodeIdx>>>,
+        _handled_edges: Arc<Mutex<BTreeSet<EdgeIndex<usize>>>>,
+        _depth: usize,
+        _as_mermaid: bool,
     ) -> Option<String>
     where
         Self: std::marker::Sized {
         todo!()
     }
 
-    fn dot_str(&self) -> String
+    fn dot_str(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
         Self: shared::AnalyzerLike {
         todo!()
     }
 
-    fn dot_str_no_tmps(&self) -> String
+    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + shared::AnalyzerLike {
         todo!()
     }
 
-    fn mermaid_str(&self) -> String
+    fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
         Self: shared::AnalyzerLike {
@@ -1316,7 +1219,6 @@ pub fn mermaid_node(
     indent: &str,
     node: NodeIdx,
     style: bool,
-    loc: bool,
     loc: bool,
     class: Option<&str>,
 ) -> String {

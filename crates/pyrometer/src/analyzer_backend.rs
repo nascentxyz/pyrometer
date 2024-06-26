@@ -1,5 +1,4 @@
 use crate::Analyzer;
-use shared::GraphDot;
 use graph::{
     elem::Elem,
     nodes::{
@@ -18,7 +17,7 @@ use solang_parser::{
     pt::{Expression, Loc},
 };
 
-use std::{collections::BTreeMap, path::PathBuf};
+use std::collections::BTreeMap;
 
 impl AnalyzerBackend for Analyzer {
     fn add_concrete_var(

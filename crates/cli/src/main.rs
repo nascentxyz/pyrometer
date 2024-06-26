@@ -6,7 +6,7 @@ use graph::{
 };
 use pyrometer::{Analyzer, Root, SourcePath};
 use reqwest::Client;
-use shared::Search;
+use shared::{post_to_site, Search};
 use shared::{GraphDot, USE_DEBUG_SITE};
 
 use ariadne::sources;
@@ -235,27 +235,7 @@ fn main() {
         },
     };
 
-    if args.debug_site {
-        unsafe {
-            USE_DEBUG_SITE = true;
-        }
-        
-        let rt = Runtime::new().unwrap();
-        rt.block_on(async {
-            let client = Client::new();
-            let res = client
-                .post("http://127.0.0.1:8545/clear")
-                .send()
-                .await
-                .expect("Failed to send request");
 
-            if res.status().is_success() {
-                trace!("Successfully cleared history of site");
-            } else {
-                error!("Failed to clear history of site: {:?}", res.status());
-            }
-        });
-    }
 
     let mut analyzer = Analyzer {
         max_depth: args.max_stack_depth,
@@ -288,6 +268,30 @@ fn main() {
 
     let mut arena_base = Default::default();
     let arena = &mut arena_base;
+
+    if args.debug_site {
+        unsafe {
+            USE_DEBUG_SITE = true;
+        }
+        
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let client = Client::new();
+            let res = client
+                .post("http://127.0.0.1:8545/clear")
+                .send()
+                .await
+                .expect("Failed to send request");
+
+            if res.status().is_success() {
+                trace!("Successfully cleared history of site");
+            } else {
+                error!("Failed to clear history of site: {:?}", res.status());
+            }
+        });
+        post_to_site(&analyzer, arena);
+    }
+
     let t0 = std::time::Instant::now();
     let maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
     let t_end = t0.elapsed();
@@ -297,13 +301,13 @@ fn main() {
 
     // println!("Arena: {:#?}", analyzer.range_arena);
     if unsafe { USE_DEBUG_SITE } {
-        use shared::GraphLike;
         use pyrometer::graph_backend::mermaid_str;
         use pyrometer::graph_backend::post_to_site_arena;
         use pyrometer::graph_backend::Elems;
-        match Elems::try_from(analyzer.range_arena()) {
+        let elems = Elems::try_from(&*arena);
+        match elems {
             Ok(elems) => {
-                let elems_graph = elems.to_graph(&analyzer);
+                let elems_graph = elems.to_graph(&analyzer, arena);
                 let elems_graph_mermaid_str = mermaid_str(&elems_graph);
                 post_to_site_arena(elems_graph_mermaid_str);
             }
@@ -311,6 +315,9 @@ fn main() {
                 eprintln!("Can't post arena, error creating Elems: {:?}", e);
             }
         };
+
+        // post the graph to the site
+        post_to_site(&analyzer, arena);
     }
 
     if args.stats {
