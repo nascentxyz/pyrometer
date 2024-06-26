@@ -146,7 +146,6 @@ pub trait GraphDot: GraphLike {
             .expect("failed to execute process");
     }
 
-
     /// Creates a subgraph for visually identifying contexts and subcontexts
     fn cluster_str(
         &self,
@@ -185,7 +184,6 @@ struct GraphMessage {
     graph: String,
     timestamp: u64,
 }
-
 
 pub fn post_to_site<G>(graph: &G, arena: &mut RangeArena<G::T>)
 where

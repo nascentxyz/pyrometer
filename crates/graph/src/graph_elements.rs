@@ -9,11 +9,10 @@ use solang_parser::pt::{Identifier, Loc};
 
 use std::collections::HashMap;
 
-
 pub trait GraphBackend:
-    GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>>
-        + GraphDot
-{}
+    GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> + GraphDot
+{
+}
 pub trait AnalyzerBackend:
     AnalyzerLike<
         Builtin = Builtin,
@@ -425,7 +424,7 @@ impl GraphDot for DummyGraph {
         // Provide a basic implementation or a placeholder
         "digraph DummyGraph {}".to_string()
     }
-    
+
     fn cluster_str(
         &self,
         _arena: &mut RangeArena<Self::T>,
@@ -433,22 +432,25 @@ impl GraphDot for DummyGraph {
         _cluster_num: &mut usize,
         _is_killed: bool,
         _handled_nodes: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<NodeIdx>>>,
-        _handled_edges: std::sync::Arc<std::sync::Mutex<std::collections::BTreeSet<petgraph::prelude::EdgeIndex<usize>>>>,
+        _handled_edges: std::sync::Arc<
+            std::sync::Mutex<std::collections::BTreeSet<petgraph::prelude::EdgeIndex<usize>>>,
+        >,
         _depth: usize,
         _as_mermaid: bool,
     ) -> Option<String>
     where
-        Self: std::marker::Sized {
+        Self: std::marker::Sized,
+    {
         todo!()
     }
-    
+
     fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
     {
         todo!()
     }
-    
+
     fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,

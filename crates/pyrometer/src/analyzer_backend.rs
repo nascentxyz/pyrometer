@@ -275,7 +275,7 @@ impl AnalyzerLike for Analyzer {
     fn handled_funcs_mut(&mut self) -> &mut Vec<FunctionNode> {
         &mut self.handled_funcs
     }
-    
+
     fn file_mapping(&self) -> BTreeMap<usize, String> {
         let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
         for (source_path, _, o_file_no, _) in self.sources.iter() {

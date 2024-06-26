@@ -235,8 +235,6 @@ fn main() {
         },
     };
 
-
-
     let mut analyzer = Analyzer {
         max_depth: args.max_stack_depth,
         root: Root::RemappingsDirectory(env::current_dir().unwrap()),
@@ -273,7 +271,7 @@ fn main() {
         unsafe {
             USE_DEBUG_SITE = true;
         }
-        
+
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let client = Client::new();

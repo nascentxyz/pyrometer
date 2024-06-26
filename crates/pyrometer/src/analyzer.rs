@@ -1,12 +1,12 @@
 use crate::builtin_fns;
+use analyzers::LocStrSpan;
 use graph::elem::Elem;
+use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::{RangeArena, USE_DEBUG_SITE};
 use shared::GraphDot;
-use analyzers::LocStrSpan;
-use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, Search};
+use shared::{RangeArena, USE_DEBUG_SITE};
 use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, trace, warn};
@@ -1403,7 +1403,7 @@ impl Analyzer {
         ty_node
     }
 
-    fn post_source_to_site(file_no: usize, path: &PathBuf, source: &str) 
+    fn post_source_to_site(file_no: usize, path: &PathBuf, source: &str)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,
@@ -1414,7 +1414,8 @@ impl Analyzer {
         });
     }
 
-    async fn post_source_to_site_async(file_no: usize, path: &PathBuf, source: &str) where
+    async fn post_source_to_site_async(file_no: usize, path: &PathBuf, source: &str)
+    where
         Self: std::marker::Sized,
         Self: AnalyzerLike,
     {
@@ -1436,7 +1437,6 @@ impl Analyzer {
         } else {
             error!("Failed to post source to site: {:?}", res.status());
         }
-
     }
 }
 

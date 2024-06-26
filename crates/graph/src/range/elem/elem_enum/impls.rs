@@ -75,13 +75,13 @@ impl Elem<Concrete> {
                 let rhs_str = range_expr.rhs.arena_graph_node_label();
                 let op = range_expr.op.clone();
                 format!("expr-{}", &self)
-            },
+            }
             Elem::Arena(arena_idx) => {
                 format!("Arena({})", arena_idx)
-            },
+            }
             Elem::Null => {
                 todo!()
-            },
+            }
         }
     }
 }

@@ -1,21 +1,21 @@
 use crate::Analyzer;
-use std::{collections::HashMap, fmt::Display};
-use graph::{elem::Elem, nodes::ContextVarNode, TOKYO_NIGHT_COLORS};
 use graph::elem::RangeElem;
 use graph::nodes::Concrete;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use shared::RangeArena;
-use tokio::runtime::Runtime;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
-use tracing::{trace, error, warn};
 use graph::{
     as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
     Node,
 };
+use graph::{elem::Elem, nodes::ContextVarNode, TOKYO_NIGHT_COLORS};
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use shared::RangeArena;
 use shared::{GraphDot, GraphLike, NodeIdx, Search};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::{collections::HashMap, fmt::Display};
+use tokio::runtime::Runtime;
+use tracing::{error, trace, warn};
 
 use petgraph::{dot::Dot, graph::EdgeIndex, visit::EdgeRef, Directed, Direction, Graph};
 use std::convert::TryFrom;
@@ -124,7 +124,6 @@ impl ArenaNode {
     }
 }
 
-
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub enum ArenaEdge {
     LHS,
@@ -138,7 +137,6 @@ pub enum ArenaEdge {
 }
 
 impl Display for ArenaEdge {
-
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // warning: changing these will impact the pyro-debug site when rendering edge styling
         let variant_name = match self {
@@ -172,7 +170,7 @@ impl std::fmt::Display for ElemsError {
 impl std::error::Error for ElemsError {}
 pub struct Elems {
     /// arena_idx, elem
-    pub inner: Vec<(usize, Elem<Concrete>)>
+    pub inner: Vec<(usize, Elem<Concrete>)>,
 }
 
 impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
@@ -194,13 +192,16 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
 
         // Search .map for any entries that werent in .ranges
         let inner_indices: BTreeSet<_> = inner.iter().map(|(idx, _)| *idx).collect();
-        let missing_entries: Vec<_> = arena.map.iter()
+        let missing_entries: Vec<_> = arena
+            .map
+            .iter()
             .filter(|(_, &v)| !inner_indices.contains(&v))
             .collect();
 
         {
             // Log out missing entries
-            let missing_entries_str = missing_entries.iter()
+            let missing_entries_str = missing_entries
+                .iter()
                 .map(|(idx, elem)| format!("\telem {}: {}", idx, elem))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -233,24 +234,28 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
 }
 
 impl Elems {
-
     /// Convert Elems into a Graph
-    /// 
-    /// First pass: 
+    ///
+    /// First pass:
     /// - create nodes for each arena index
     ///   - this is needed separately, since when making edges some earlier nodes point to later nodes (that havent been made yet)
-    /// 
+    ///
     /// Second pass:
     /// - create an edge between each arena index and the elem that it represents, make an edge between them
     /// - if elem is a reference, create nodes for the ContextVar that it depends on, make an edge from the elem to the ContextVar
-    /// 
+    ///
     /// Third pass:
     /// - for each ContextVar node, create edges to the arena indices that it depends on
-    /// 
-    pub fn to_graph(&self, graph_backend: &impl GraphBackend, arena: &mut RangeArena<Elem<Concrete>>) -> Graph<ArenaNode, ArenaEdge, Directed, usize> {
+    ///
+    pub fn to_graph(
+        &self,
+        graph_backend: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Graph<ArenaNode, ArenaEdge, Directed, usize> {
         let mut graph = Graph::default();
         let mut arena_idx_to_node_idx = HashMap::new();
-        let mut dependency_map: HashMap<ContextVarNode, petgraph::graph::NodeIndex<usize>> = HashMap::new();
+        let mut dependency_map: HashMap<ContextVarNode, petgraph::graph::NodeIndex<usize>> =
+            HashMap::new();
 
         // FIRST PASS: create nodes for each arena index
         self.inner.iter().for_each(|(arena_idx, _elem)| {
@@ -271,33 +276,40 @@ impl Elems {
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
 
                     // attempt to add in the ContextVar node that the elem is referencing
-                    let context_var_nodes = elem.dependent_on(graph_backend, arena).into_iter().collect::<Vec<_>>();
+                    let context_var_nodes = elem
+                        .dependent_on(graph_backend, arena)
+                        .into_iter()
+                        .collect::<Vec<_>>();
                     context_var_nodes.into_iter().for_each(|dep_elem| {
-                        let dep_node_idx = if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
-                            // don't make a new ContextVar node, just use the existing one
-                            existing_node_idx
-                        } else {
-                            // make a new ContextVar Node for the Arena graph
-                            let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend, arena))));
-                            dependency_map.insert(dep_elem.clone(), new_node_idx);
-                            new_node_idx
-                        };
+                        let dep_node_idx =
+                            if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
+                                // don't make a new ContextVar node, just use the existing one
+                                existing_node_idx
+                            } else {
+                                // make a new ContextVar Node for the Arena graph
+                                let new_node_idx = graph.add_node(ArenaNode::CVAR(format!(
+                                    "{}",
+                                    dep_elem.as_dot_str(graph_backend, arena)
+                                )));
+                                dependency_map.insert(dep_elem.clone(), new_node_idx);
+                                new_node_idx
+                            };
                         // add an edge from the node to its dependency node
                         graph.add_edge(node_idx, dep_node_idx, ArenaEdge::VAR);
                     });
 
                     node_idx
-                },
+                }
                 Elem::ConcreteDyn(_range_dyn) => {
                     let node_str = elem.arena_graph_node_label();
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
                     node_idx
-                },
+                }
                 Elem::Concrete(_range_concrete) => {
                     let node_str = elem.arena_graph_node_label();
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
                     node_idx
-                },
+                }
                 Elem::Expr(range_expr) => {
                     let node_str = elem.arena_graph_node_label();
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
@@ -308,14 +320,22 @@ impl Elems {
                         Elem::Reference(_lhs) => {
                             // println!("LHS is a reference: {}", range_expr.lhs);
                             // attempt to add in the ContextVar node that the elem is referencing
-                            let context_var_nodes = elem.dependent_on(graph_backend, arena).into_iter().collect::<Vec<_>>();
+                            let context_var_nodes = elem
+                                .dependent_on(graph_backend, arena)
+                                .into_iter()
+                                .collect::<Vec<_>>();
                             context_var_nodes.iter().for_each(|dep_elem| {
-                                let dep_node_idx = if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
+                                let dep_node_idx = if let Some(&existing_node_idx) =
+                                    dependency_map.get(&dep_elem)
+                                {
                                     // don't make a new ContextVar node, just use the existing one
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend, arena))));
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!(
+                                        "{}",
+                                        dep_elem.as_dot_str(graph_backend, arena)
+                                    )));
                                     dependency_map.insert(dep_elem.clone(), new_node_idx);
                                     new_node_idx
                                 };
@@ -323,25 +343,33 @@ impl Elems {
                                 graph.update_edge(node_idx, dep_node_idx, ArenaEdge::VAR);
                             });
                             None
-                        },
+                        }
                         _ => None,
                     };
                     let rhs_arena = match *range_expr.rhs.clone() {
                         Elem::Arena(rhs) => {
                             // println!("RHS is an arena index: {}", range_expr.rhs);
                             Some(rhs)
-                        },
+                        }
                         Elem::Reference(_rhs) => {
                             // println!("RHS is a reference: {}", range_expr.rhs);
                             // attempt to add in the ContextVar node that the elem is referencing
-                            let context_var_nodes = elem.dependent_on(graph_backend, arena).into_iter().collect::<Vec<_>>();
+                            let context_var_nodes = elem
+                                .dependent_on(graph_backend, arena)
+                                .into_iter()
+                                .collect::<Vec<_>>();
                             context_var_nodes.iter().for_each(|dep_elem| {
-                                let dep_node_idx = if let Some(&existing_node_idx) = dependency_map.get(&dep_elem) {
+                                let dep_node_idx = if let Some(&existing_node_idx) =
+                                    dependency_map.get(&dep_elem)
+                                {
                                     // don't make a new ContextVar node, just use the existing one
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!("{}", dep_elem.as_dot_str(graph_backend, arena))));
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!(
+                                        "{}",
+                                        dep_elem.as_dot_str(graph_backend, arena)
+                                    )));
                                     dependency_map.insert(dep_elem.clone(), new_node_idx);
                                     new_node_idx
                                 };
@@ -349,10 +377,8 @@ impl Elems {
                                 graph.update_edge(node_idx, dep_node_idx, ArenaEdge::VAR);
                             });
                             None
-                        },
-                        _ => {
-                            None
-                        },
+                        }
+                        _ => None,
                     };
 
                     // Add edges to the arena indices if they exist
@@ -368,15 +394,18 @@ impl Elems {
                         }
                     }
                     node_idx
-                },
+                }
                 Elem::Arena(range_arena_idx) => {
-                    panic!("Arena index in elems: {:?}. This should not happen!", range_arena_idx);
-                },
+                    panic!(
+                        "Arena index in elems: {:?}. This should not happen!",
+                        range_arena_idx
+                    );
+                }
                 Elem::Null => {
                     let node_str = format!("null");
                     let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
                     node_idx
-                },
+                }
             };
 
             // draw edge from the arena_node to the underlying node
@@ -398,10 +427,12 @@ impl Elems {
                         if let Some(&min_node_idx) = arena_idx_to_node_idx.get(&arena_idx) {
                             graph.add_edge(node_idx, min_node_idx, ArenaEdge::MIN);
                         }
-                    },
+                    }
                     _ => {
                         // attempt to find the elem in our `inner` and get the associated arena_graph index
-                        let min_arena_idx = self.inner.iter()
+                        let min_arena_idx = self
+                            .inner
+                            .iter()
                             .find(|(_, elem)| elem == &range_min)
                             .map(|(idx, _)| *idx);
                         // Add edges to the min arena indices
@@ -412,7 +443,7 @@ impl Elems {
                                 graph.add_edge(node_idx, min_node_idx, ArenaEdge::MIN);
                             }
                         }
-                    },
+                    }
                 }
             }
 
@@ -425,10 +456,12 @@ impl Elems {
                         if let Some(&max_node_idx) = arena_idx_to_node_idx.get(&arena_idx) {
                             graph.add_edge(node_idx, max_node_idx, ArenaEdge::MAX);
                         }
-                    },
+                    }
                     _ => {
                         // attempt to find the elem in our `inner` and get the associated arena_graph index
-                        let max_arena_idx = self.inner.iter()
+                        let max_arena_idx = self
+                            .inner
+                            .iter()
                             .find(|(_, elem)| elem == &range_max)
                             .map(|(idx, _)| *idx);
                         // Add edges to the min arena indices
@@ -439,13 +472,16 @@ impl Elems {
                                 graph.add_edge(node_idx, max_node_idx, ArenaEdge::MAX);
                             }
                         }
-                    },
+                    }
                 }
             }
         }
 
         // Ensure the graph does not have a cycle
-        debug_assert!(!petgraph::algo::is_cyclic_directed(&graph), "The graph contains a cycle!");
+        debug_assert!(
+            !petgraph::algo::is_cyclic_directed(&graph),
+            "The graph contains a cycle!"
+        );
 
         graph
     }
@@ -476,27 +512,24 @@ flowchart TB
 "#;
     mermaid_str.push(raw_start_str.to_string());
 
-    let nodes_str = graph.node_indices()
+    let nodes_str = graph
+        .node_indices()
         .map(|idx| {
             let node_str = arena_mermaid_node(graph, "\t", idx, true, true, None);
             node_str
-            
         })
         .collect::<Vec<_>>()
         .join("\n");
 
-    let edges_str = graph.edge_indices()
+    let edges_str = graph
+        .edge_indices()
         .enumerate()
         .map(|(_i, edge)| {
             let (from, to) = graph.edge_endpoints(edge).unwrap();
             let edge_label = format!("{}", graph[edge]);
             if edge_label == "" {
                 // don't do a label
-                format!(
-                    "    {} --> {}",
-                    from.index(),
-                    to.index(),
-                )
+                format!("    {} --> {}", from.index(), to.index(),)
             } else {
                 // do an edge label
                 format!(
@@ -514,21 +547,21 @@ flowchart TB
     mermaid_str.push(edges_str);
 
     // Make an invisible node that holds all our edge information for coloring later on frontend
-    let data_str = graph.edge_indices()
+    let data_str = graph
+        .edge_indices()
         .enumerate()
         .map(|(_i, edge)| {
             let (from, to) = graph.edge_endpoints(edge).unwrap();
-            format!(
-                "LS-{}_LE-{}_{}",
-                from.index(),
-                to.index(),
-                &graph[edge]
-            )
+            format!("LS-{}_LE-{}_{}", from.index(), to.index(), &graph[edge])
         })
         .collect::<Vec<_>>()
         .join(";");
-                    
-    let invis_data = format!("    {}(\"{}\"):::INVIS\n    classDef INVIS display:none", graph.node_count(), data_str);
+
+    let invis_data = format!(
+        "    {}(\"{}\"):::INVIS\n    classDef INVIS display:none",
+        graph.node_count(),
+        data_str
+    );
     mermaid_str.push(invis_data);
     mermaid_str.join("\n")
 }
@@ -541,16 +574,14 @@ pub fn arena_mermaid_node(
     _loc: bool,
     class: Option<&str>,
 ) -> String {
-
-
     let node = &graph[idx];
     let mut node_str = match node {
         ArenaNode::ARENA(arena_idx) => {
             format!("{indent}{}{{{{\"{}\"}}}}", idx.index(), arena_idx)
-        },
+        }
         ArenaNode::ELEM(label) => {
             format!("{indent}{}(\"{}\")", idx.index(), label.replace("\"", "'"))
-        },
+        }
         ArenaNode::CVAR(label) => {
             format!("{indent}{}(\"{}\")", idx.index(), label.replace("\"", "'"))
         }
@@ -565,10 +596,7 @@ pub fn arena_mermaid_node(
     }
 
     if let Some(class) = class {
-        node_str.push_str(&format!(
-            "\n{indent}class {} {class}",
-            idx.index(),
-        ));
+        node_str.push_str(&format!("\n{indent}class {} {class}", idx.index(),));
     }
 
     node_str
@@ -1185,28 +1213,32 @@ impl GraphDot for G<'_> {
         _as_mermaid: bool,
     ) -> Option<String>
     where
-        Self: std::marker::Sized {
+        Self: std::marker::Sized,
+    {
         todo!()
     }
 
     fn dot_str(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
-        Self: shared::AnalyzerLike {
+        Self: shared::AnalyzerLike,
+    {
         todo!()
     }
 
     fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
-        Self: GraphLike + shared::AnalyzerLike {
+        Self: GraphLike + shared::AnalyzerLike,
+    {
         todo!()
     }
 
     fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
     where
         Self: std::marker::Sized,
-        Self: shared::AnalyzerLike {
+        Self: shared::AnalyzerLike,
+    {
         todo!()
     }
 }
@@ -1249,11 +1281,11 @@ pub fn mermaid_node(
                         ));
                     }
                 }
-    
+
                 // color the forks
                 let ctx_node = graph::nodes::ContextVarNode::from(current_node).ctx(g);
                 gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
-            },
+            }
             Node::Context(ctx) => {
                 // highlight self
                 if let solang_parser::pt::Loc::File(f, s, e) = ctx.loc {
@@ -1266,8 +1298,8 @@ pub fn mermaid_node(
                 // color the forks
                 let ctx_node = graph::nodes::ContextNode::from(current_node);
                 gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -1288,16 +1320,18 @@ fn gather_context_info(
     original_cvar_node: NodeIdx,
     node_str: &mut String,
 ) {
-
     loop {
         let mut found_continue = false;
         let current_loc = ctx_node.underlying(g).unwrap().loc;
-        for edge in g.graph().edges_directed(ctx_node.into(), Direction::Outgoing) {
+        for edge in g
+            .graph()
+            .edges_directed(ctx_node.into(), Direction::Outgoing)
+        {
             if let Edge::Context(ContextEdge::Continue(true_or_false)) = edge.weight() {
                 let target_node = edge.target();
                 if let Node::Context(_ctx) = g.node(target_node) {
                     // error!("found continue pointing to node");
-                    ctx_node = target_node.into(); 
+                    ctx_node = target_node.into();
                     found_continue = true;
                     // Gather the edge weight and the loc of the Context node it points to
                     if let solang_parser::pt::Loc::File(f, s, e) = current_loc {
