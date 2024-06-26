@@ -19,6 +19,10 @@ jobs:
     # Install Rust toolchain
     - name: Install Rust toolchain
       run: rustup toolchain install nightly
+      
+    # Install rustfmt component for nightly toolchain
+    - name: Install rustfmt for nightly
+      run: rustup component add --toolchain nightly rustfmt
 
     # Lint with fmt using nightly toolchain
     - name: Lint with fmt
