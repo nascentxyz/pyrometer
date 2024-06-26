@@ -86,28 +86,25 @@ impl OrderedAnalysis {
             set.insert(init.into());
             analyses.insert(source, set);
         }
-        ba.bound_changes
-            .iter()
-            .for_each(|bound_change| {
-                let (parts, unsat) =
-                    range_parts(analyzer, arena, &ba.report_config, &bound_change.1);
-                let item = StrippedAnalysisItem {
-                    init: false,
-                    name: ba.var_display_name.clone(),
-                    loc: LocSpan(bound_change.0 .1),
-                    order: (bound_change.0.end() - bound_change.0.start()) as i32, //i as i32,
-                    // storage: ba.storage.clone(),
-                    ctx: ba.ctx,
-                    ctx_conditionals: ba.conditionals(analyzer, arena),
-                    parts,
-                    unsat,
-                };
+        ba.bound_changes.iter().for_each(|bound_change| {
+            let (parts, unsat) = range_parts(analyzer, arena, &ba.report_config, &bound_change.1);
+            let item = StrippedAnalysisItem {
+                init: false,
+                name: ba.var_display_name.clone(),
+                loc: LocSpan(bound_change.0 .1),
+                order: (bound_change.0.end() - bound_change.0.start()) as i32, //i as i32,
+                // storage: ba.storage.clone(),
+                ctx: ba.ctx,
+                ctx_conditionals: ba.conditionals(analyzer, arena),
+                parts,
+                unsat,
+            };
 
-                let entry = analyses
-                    .entry(*LocSpan(bound_change.0 .1).source())
-                    .or_default();
-                entry.insert(item);
-            });
+            let entry = analyses
+                .entry(*LocSpan(bound_change.0 .1).source())
+                .or_default();
+            entry.insert(item);
+        });
         Self { analyses }
     }
 

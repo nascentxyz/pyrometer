@@ -287,7 +287,9 @@ impl Elems {
                                 existing_node_idx
                             } else {
                                 // make a new ContextVar Node for the Arena graph
-                                let new_node_idx = graph.add_node(ArenaNode::CVAR(dep_elem.as_dot_str(graph_backend, arena).to_string()));
+                                let new_node_idx = graph.add_node(ArenaNode::CVAR(
+                                    dep_elem.as_dot_str(graph_backend, arena).to_string(),
+                                ));
                                 dependency_map.insert(dep_elem, new_node_idx);
                                 new_node_idx
                             };
@@ -299,12 +301,12 @@ impl Elems {
                 }
                 Elem::ConcreteDyn(_range_dyn) => {
                     let node_str = elem.arena_graph_node_label();
-                    
+
                     graph.add_node(ArenaNode::ELEM(node_str))
                 }
                 Elem::Concrete(_range_concrete) => {
                     let node_str = elem.arena_graph_node_label();
-                    
+
                     graph.add_node(ArenaNode::ELEM(node_str))
                 }
                 Elem::Expr(range_expr) => {
@@ -329,7 +331,9 @@ impl Elems {
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(dep_elem.as_dot_str(graph_backend, arena).to_string()));
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(
+                                        dep_elem.as_dot_str(graph_backend, arena).to_string(),
+                                    ));
                                     dependency_map.insert(*dep_elem, new_node_idx);
                                     new_node_idx
                                 };
@@ -360,7 +364,9 @@ impl Elems {
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(dep_elem.as_dot_str(graph_backend, arena).to_string()));
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(
+                                        dep_elem.as_dot_str(graph_backend, arena).to_string(),
+                                    ));
                                     dependency_map.insert(*dep_elem, new_node_idx);
                                     new_node_idx
                                 };
@@ -394,7 +400,7 @@ impl Elems {
                 }
                 Elem::Null => {
                     let node_str = "null".to_string();
-                    
+
                     graph.add_node(ArenaNode::ELEM(node_str))
                 }
             };
@@ -505,10 +511,7 @@ flowchart TB
 
     let nodes_str = graph
         .node_indices()
-        .map(|idx| {
-            
-            arena_mermaid_node(graph, "\t", idx, true, true, None)
-        })
+        .map(|idx| arena_mermaid_node(graph, "\t", idx, true, true, None))
         .collect::<Vec<_>>()
         .join("\n");
 
