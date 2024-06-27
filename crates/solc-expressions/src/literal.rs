@@ -24,9 +24,11 @@ pub trait Literal: AnalyzerBackend + Sized {
         negative: bool,
         unit: &Option<Identifier>,
     ) -> Result<(), ExprErr> {
-        let int = U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+        let int =
+            U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
         let val = if !exponent.is_empty() {
-            let exp = U256::from_dec_str(exponent).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+            let exp = U256::from_dec_str(exponent)
+                .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
             int * U256::from(10).pow(exp)
         } else {
             int
@@ -85,7 +87,8 @@ pub trait Literal: AnalyzerBackend + Sized {
         exponent: &str,
         unit: &Option<Identifier>,
     ) -> Result<(), ExprErr> {
-        let int = U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+        let int =
+            U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
         let exp = if !exponent.is_empty() {
             U256::from_dec_str(exponent).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?
         } else {
@@ -93,7 +96,8 @@ pub trait Literal: AnalyzerBackend + Sized {
         };
         let fraction_len = fraction.len();
         let fraction_denom = U256::from(10).pow(fraction_len.into());
-        let fraction = U256::from_dec_str(fraction).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+        let fraction =
+            U256::from_dec_str(fraction).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
 
         let int_elem = Elem::min(
             Elem::from(Concrete::from(int)),
@@ -133,7 +137,8 @@ pub trait Literal: AnalyzerBackend + Sized {
         negative: bool,
     ) -> Result<(), ExprErr> {
         let integer: String = integer.chars().filter(|c| *c != '_').collect();
-        let val = U256::from_str_radix(&integer, 16).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+        let val = U256::from_str_radix(&integer, 16)
+            .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
         let concrete_node = if negative {
             let val = I256::from(-1i32) * I256::from_raw(val);
@@ -247,28 +252,23 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use solang_parser::pt::Loc;
-    use pyrometer::Analyzer;
     use eyre::Result;
     use graph::nodes::Context;
     use graph::nodes::Function;
+    use pyrometer::Analyzer;
+    use solang_parser::pt::Loc;
 
     fn make_context_node_for_analyzer(analyzer: &mut Analyzer) -> ContextNode {
         // need to make a function, then provide the function to the new Context
         let func = Function::default();
         let func_node = analyzer.graph.add_node(Node::Function(func)).into();
-        
+
         let loc = Loc::File(0, 0, 0);
-        let ctx = Context::new(
-            func_node,
-            format!("{}", "test_fn"),
-            loc,
-        );
+        let ctx = Context::new(func_node, format!("{}", "test_fn"), loc);
         let ctx_node = ContextNode::from(analyzer.graph.add_node(Node::Context(ctx)));
         ctx_node
     }
@@ -281,7 +281,10 @@ mod tests {
         expected: Concrete,
     ) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -292,15 +295,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -313,7 +336,8 @@ mod tests {
 
     #[test]
     fn test_number_literal_positive_overflow() -> Result<()> {
-        let num_literal = "115792089237316195423570985008687907853269984665640564039457584007913129639936";
+        let num_literal =
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936";
         let expected = Concrete::Uint(8, U256::default()); // we aren't using `expected`
         let result = test_number_literal(num_literal, "", false, None, expected);
         assert!(result.is_err(), "expected an error, got {:?}", result);
@@ -341,7 +365,10 @@ mod tests {
     fn test_number_literal_positive_with_zero_exponent_and_unit() -> Result<()> {
         let num_literal = "123";
         let exponent = "0";
-        let unit = Some(Identifier { name: "ether".into(), loc: Loc::File(0, 0, 0) });
+        let unit = Some(Identifier {
+            name: "ether".into(),
+            loc: Loc::File(0, 0, 0),
+        });
         let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
@@ -350,7 +377,10 @@ mod tests {
     fn test_number_literal_positive_with_unit() -> Result<()> {
         let num_literal = "123";
         let exponent = "";
-        let unit = Some(Identifier { name: "ether".into(), loc: Loc::File(0, 0, 0) });
+        let unit = Some(Identifier {
+            name: "ether".into(),
+            loc: Loc::File(0, 0, 0),
+        });
         let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
@@ -371,14 +401,22 @@ mod tests {
 
     #[test]
     fn test_number_literal_max() -> Result<()> {
-        let num_literal = "57896044618658097711785492504343953926634992332820282019728792003956564819968";
-        let expected = Concrete::Int(256, I256::from_dec_str("-57896044618658097711785492504343953926634992332820282019728792003956564819968").unwrap());
+        let num_literal =
+            "57896044618658097711785492504343953926634992332820282019728792003956564819968";
+        let expected = Concrete::Int(
+            256,
+            I256::from_dec_str(
+                "-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            )
+            .unwrap(),
+        );
         test_number_literal(num_literal, "", true, None, expected)
     }
 
     #[test]
     fn test_number_literal_negative_too_large() -> Result<()> {
-        let num_literal = "57896044618658097711785492504343953926634992332820282019728792003956564819969";
+        let num_literal =
+            "57896044618658097711785492504343953926634992332820282019728792003956564819969";
         let expected = Concrete::Int(8, I256::default()); // this doesn't matter since we arent using `expected`
         let result = test_number_literal(num_literal, "", true, None, expected);
         assert!(result.is_err(), "expected an error, got {:?}", result);
@@ -394,7 +432,10 @@ mod tests {
         expected: Concrete,
     ) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -405,15 +446,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -449,18 +510,20 @@ mod tests {
         let integer = "1";
         let fraction = "5";
         let exponent = "0";
-        let unit = Some(Identifier { name: "ether".into(), loc: Loc::File(0, 0, 0) });
+        let unit = Some(Identifier {
+            name: "ether".into(),
+            loc: Loc::File(0, 0, 0),
+        });
         let expected = Concrete::Uint(64, U256::from_dec_str("1500000000000000000").unwrap());
         test_rational_number_literal(integer, fraction, exponent, false, unit, expected)
     }
 
-    fn test_hex_num_literal(
-        hex_literal: &str,
-        negative: bool,
-        expected: Concrete,
-    ) -> Result<()> {
+    fn test_hex_num_literal(hex_literal: &str, negative: bool, expected: Concrete) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -471,15 +534,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -500,7 +583,13 @@ mod tests {
     #[test]
     fn test_hex_num_literal_large_positive() -> Result<()> {
         let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"; // max U256
-        let expected = Concrete::Uint(256, U256::from_dec_str("115792089237316195423570985008687907853269984665640564039457584007913129639935").unwrap());
+        let expected = Concrete::Uint(
+            256,
+            U256::from_dec_str(
+                "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+            )
+            .unwrap(),
+        );
         test_hex_num_literal(hex_literal, false, expected)
     }
 
@@ -535,7 +624,13 @@ mod tests {
     #[test]
     fn test_hex_num_literal_just_below_max_positive() -> Result<()> {
         let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE"; // just below max U256
-        let expected = Concrete::Uint(256, U256::from_dec_str("115792089237316195423570985008687907853269984665640564039457584007913129639934").unwrap());
+        let expected = Concrete::Uint(
+            256,
+            U256::from_dec_str(
+                "115792089237316195423570985008687907853269984665640564039457584007913129639934",
+            )
+            .unwrap(),
+        );
         test_hex_num_literal(hex_literal, false, expected)
     }
 
@@ -546,12 +641,12 @@ mod tests {
         test_hex_num_literal(hex_literal, true, expected)
     }
 
-    fn test_hex_literals(
-        hex_literals: &[HexLiteral],
-        expected: Concrete,
-    ) -> Result<()> {
+    fn test_hex_literals(hex_literals: &[HexLiteral], expected: Concrete) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -561,15 +656,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -621,12 +736,12 @@ mod tests {
         test_hex_literals(&[hex_literal], expected)
     }
 
-    fn test_address_literal(
-        address: &str,
-        expected: Concrete,
-    ) -> Result<()> {
+    fn test_address_literal(address: &str, expected: Concrete) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -637,15 +752,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -678,12 +813,12 @@ mod tests {
         Ok(())
     }
 
-    fn test_string_literal(
-        string_value: &str,
-        expected: Concrete,
-    ) -> Result<()> {
+    fn test_string_literal(string_value: &str, expected: Concrete) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -694,15 +829,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -744,26 +899,26 @@ mod tests {
 
         /* pyrometer analysis cuts off the contents
          21 │ │           string memory s = unicode"🔥🔫";
-            │ │           ─────────────────┬───────────────────  
+            │ │           ─────────────────┬───────────────────
             │ │                            ╰───────────────────── Memory var "s" == {len: 8, indices: {0: 0xf0, 1: 0xf0}}
-            │ │                            │                     
+            │ │                            │
             │ │                            ╰───────────────────── Memory var "s" ∈ [ {len: 0, indices: {0: 0xf0, 1: 0xf0}}, {len: 2**256 - 1, indices: {0: 0xf0, 1: 0xf0}} ]
-            │ │                            │                     
+            │ │                            │
             │ │                            ╰───────────────────── Memory var "s" == {len: 8, indices: {0: 0xf0, 1: 0xf0}}
         22 │ │           return s;
-            │ │           ────┬───  
+            │ │           ────┬───
             │ │               ╰───── returns: "s" == {len: 8, indices: {0: 0xf0, 1: 0xf0}}
          */
         let expected = Concrete::String(string_value.to_string());
         test_string_literal(string_value, expected)
     }
 
-    fn test_bool_literal(
-        bool_value: bool,
-        expected: Concrete,
-    ) -> Result<()> {
+    fn test_bool_literal(bool_value: bool, expected: Concrete) -> Result<()> {
         // setup
-        let mut analyzer = Analyzer { debug_panic: true, ..Default::default()};
+        let mut analyzer = Analyzer {
+            debug_panic: true,
+            ..Default::default()
+        };
         let mut arena_base = RangeArena::default();
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
@@ -774,15 +929,35 @@ mod tests {
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
-        assert!(stack.len() == 1, "ret stack length should be 1, got {}", stack.len());
-        assert!(stack[0].is_single(), "ret stack[0] should be a single literal, got {:?}", stack[0]);
-        assert!(stack[0].has_literal(), "ret stack[0] should have a literal, got {:?}", stack[0]);
-        assert!(stack[0].literals_list()?.len() == 1, "ret stack[0] should have a single literal in the literal list");
+        assert!(
+            stack.len() == 1,
+            "ret stack length should be 1, got {}",
+            stack.len()
+        );
+        assert!(
+            stack[0].is_single(),
+            "ret stack[0] should be a single literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].has_literal(),
+            "ret stack[0] should have a literal, got {:?}",
+            stack[0]
+        );
+        assert!(
+            stack[0].literals_list()?.len() == 1,
+            "ret stack[0] should have a single literal in the literal list"
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
         let conc_value = min.maybe_concrete().unwrap().val;
-        assert!(conc_value == expected, "Values do not match: {:?} != {:?}", conc_value, expected);
+        assert!(
+            conc_value == expected,
+            "Values do not match: {:?} != {:?}",
+            conc_value,
+            expected
+        );
         Ok(())
     }
 
@@ -799,5 +974,4 @@ mod tests {
         let expected = Concrete::Bool(false);
         test_bool_literal(bool_value, expected)
     }
-
 }
