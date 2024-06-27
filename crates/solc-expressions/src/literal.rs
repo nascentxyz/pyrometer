@@ -595,9 +595,23 @@ mod tests {
 
     #[test]
     fn test_hex_num_literal_large_negative() -> Result<()> {
-        let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"; // max U256
-        let expected = Concrete::Int(256, I256::from_dec_str("-1").unwrap());
+        let hex_literal = "7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"; // -1
+        let expected = Concrete::Int(
+            256,
+            I256::from_dec_str(
+                "-57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            )
+            .unwrap(),
+        );
         test_hex_num_literal(hex_literal, true, expected)
+    }
+
+    #[test]
+    fn test_hex_num_literal_too_large_negative() -> Result<()> {
+        let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"; // max U256
+        let expected = Concrete::Int(256, I256::default()); // doesn't matter since it's out of range
+        assert!(test_hex_num_literal(hex_literal, true, expected).is_err());
+        Ok(())
     }
 
     #[test]
@@ -635,9 +649,15 @@ mod tests {
     }
 
     #[test]
-    fn test_hex_num_literal_just_above_min_negative() -> Result<()> {
-        let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE"; // just above min I256
-        let expected = Concrete::Int(256, I256::from_dec_str("-2").unwrap());
+    fn test_hex_num_literal_negative_just_above_min_negative() -> Result<()> {
+        let hex_literal = "7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE"; // just above min I256
+        let expected = Concrete::Int(
+            256,
+            I256::from_dec_str(
+                "-57896044618658097711785492504343953926634992332820282019728792003956564819966",
+            )
+            .unwrap(),
+        );
         test_hex_num_literal(hex_literal, true, expected)
     }
 
