@@ -1,9 +1,10 @@
-use crate::{ExprErr, IntoExprErr, LibraryAccess};
+use crate::LibraryAccess;
 
 use graph::{
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
+use shared::{ExprErr, IntoExprErr};
 
 use ethers_core::types::{I256, U256};
 use solang_parser::pt::{Expression, Identifier, Loc};

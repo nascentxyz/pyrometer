@@ -1,10 +1,10 @@
 use crate::{
     nodes::{Builtin, Concrete, ContextVarNode},
     range::{elem::*, range_string::*, Range, RangeEval},
-    AsDotStr, GraphBackend, GraphError,
+    AsDotStr, GraphBackend,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::Loc;

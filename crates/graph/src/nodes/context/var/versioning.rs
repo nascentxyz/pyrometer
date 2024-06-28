@@ -1,9 +1,9 @@
 use crate::{
     nodes::{ContextNode, ContextVarNode},
-    ContextEdge, Edge, GraphBackend, GraphError,
+    ContextEdge, Edge, GraphBackend,
 };
 
-use shared::NodeIdx;
+use shared::{GraphError, NodeIdx};
 
 use petgraph::{visit::EdgeRef, Direction};
 

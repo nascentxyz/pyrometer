@@ -2,10 +2,10 @@ use crate::range::elem::*;
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{range_string::ToRangeString, Range, RangeEval},
-    AnalyzerBackend, GraphBackend, GraphError, SolcRange, VarType,
+    AnalyzerBackend, GraphBackend, SolcRange, VarType,
 };
 
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 use solang_parser::pt::Loc;
 

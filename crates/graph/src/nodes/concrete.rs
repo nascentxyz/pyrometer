@@ -1,5 +1,5 @@
-use crate::{nodes::Builtin, AnalyzerBackend, GraphBackend, GraphError, Node, VarType};
-use shared::NodeIdx;
+use crate::{nodes::Builtin, AnalyzerBackend, GraphBackend, Node, VarType};
+use shared::{GraphError, NodeIdx};
 
 use ethers_core::types::{Address, H256, I256, U256};
 

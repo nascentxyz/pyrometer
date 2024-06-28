@@ -1,6 +1,6 @@
 use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
-    variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, ListAccess,
+    variable::Variable, ContextBuilder, ExpressionParser, ListAccess,
 };
 
 use graph::{
@@ -8,7 +8,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 

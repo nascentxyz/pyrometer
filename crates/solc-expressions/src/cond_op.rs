@@ -1,5 +1,5 @@
 use crate::{
-    require::Require, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, StatementParser,
+    require::Require, ContextBuilder, ExpressionParser, StatementParser,
 };
 
 use graph::{
@@ -7,7 +7,7 @@ use graph::{
     nodes::{Concrete, Context, ContextNode},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::CodeLocation;
 use solang_parser::pt::{Expression, Loc, Statement};

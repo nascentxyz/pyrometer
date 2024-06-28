@@ -1,15 +1,15 @@
 use crate::{
-    array::Array, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    array::Array, variable::Variable, ContextBuilder, ExpressionParser,
     ListAccess,
 };
 
 use graph::{
     elem::{Elem, RangeElem},
     nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphError, Node,
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, GraphError, RangeArena};
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Assign for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}

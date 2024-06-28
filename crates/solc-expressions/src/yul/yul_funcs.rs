@@ -1,6 +1,5 @@
 use crate::{
-    assign::Assign, variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env, ExprErr,
-    IntoExprErr,
+    assign::Assign, variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env,
 };
 
 use graph::{
@@ -11,7 +10,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
-use shared::{RangeArena, StorageLocation};
+use shared::{ExprErr, IntoExprErr, RangeArena, StorageLocation};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc, YulExpression, YulFunctionCall};

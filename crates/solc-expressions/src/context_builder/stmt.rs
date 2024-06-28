@@ -3,7 +3,7 @@ use crate::{
     func_call::{func_caller::FuncCaller, modifier::ModifierCaller},
     loops::Looper,
     yul::YulBuilder,
-    ExprErr, ExpressionParser, IntoExprErr,
+    ExpressionParser,
 };
 
 use graph::{
@@ -14,7 +14,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{

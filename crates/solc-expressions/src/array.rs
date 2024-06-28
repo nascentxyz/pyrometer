@@ -1,5 +1,5 @@
 use crate::{
-    require::Require, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    require::Require, variable::Variable, ContextBuilder, ExpressionParser,
     ListAccess,
 };
 
@@ -8,7 +8,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::{
     helpers::CodeLocation,
@@ -483,3 +483,4 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         Ok(())
     }
 }
+

@@ -1,10 +1,10 @@
 use crate::{
     nodes::{Concrete, Context, ContextVarNode, KilledKind},
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+    AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use solang_parser::pt::Loc;
 

@@ -5,10 +5,10 @@ use crate::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,
     },
-    AnalyzerBackend, GraphBackend, GraphError, Range, RangeEval, SolcRange,
+    AnalyzerBackend, GraphBackend, Range, RangeEval, SolcRange,
 };
 
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 use ethers_core::types::U256;
 use std::collections::BTreeMap;

@@ -1,9 +1,9 @@
 use crate::{
     nodes::Concrete,
     range::{elem::*, exec::*, exec_traits::*},
-    GraphBackend, GraphError,
+    GraphBackend,
 };
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;

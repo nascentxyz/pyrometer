@@ -1,9 +1,9 @@
 use crate::{
-    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, Node,
     VarType,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc, TypeDefinition};
 

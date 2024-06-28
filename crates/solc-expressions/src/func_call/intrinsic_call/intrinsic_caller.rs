@@ -7,7 +7,7 @@ use crate::{
         AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
         MsgCaller, PrecompileCaller, SolidityCaller, TypesCaller,
     },
-    ContextBuilder, ExprErr, IntoExprErr,
+    ContextBuilder,
 };
 use graph::nodes::ContextVar;
 use graph::nodes::ContextVarNode;
@@ -18,7 +18,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ExprRet},
     AnalyzerBackend, Node,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 

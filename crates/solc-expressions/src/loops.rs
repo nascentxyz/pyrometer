@@ -1,4 +1,4 @@
-use crate::{variable::Variable, ContextBuilder, ExprErr, IntoExprErr, StatementParser};
+use crate::{variable::Variable, ContextBuilder, StatementParser};
 use graph::ContextEdge;
 use graph::Edge;
 
@@ -7,7 +7,7 @@ use graph::{
     nodes::{Concrete, Context, ContextNode},
     AnalyzerBackend, GraphBackend, Node,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc, Statement};
 

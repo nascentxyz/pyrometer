@@ -7,11 +7,11 @@ use crate::{
         dl::{DLSolver, SolveStatus},
         Atomize, SolverAtom,
     },
-    AnalyzerBackend, GraphBackend, GraphError,
+    AnalyzerBackend, GraphBackend,
 };
 use std::borrow::Cow;
 
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 use std::collections::BTreeMap;
 

@@ -4,12 +4,12 @@ use crate::{
         elem::{Elem, MinMaxed, RangeArenaLike, RangeConcrete, RangeElem},
         Range,
     },
-    GraphBackend, GraphError, TypeNode, VarType,
+    GraphBackend, TypeNode, VarType,
 };
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use solang_parser::pt::Loc;
 

@@ -1,11 +1,11 @@
-use crate::{assign::Assign, env::Env, ContextBuilder, ExprErr, IntoExprErr};
+use crate::{assign::Assign, env::Env, ContextBuilder};
 
 use graph::{
     elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
-    AnalyzerBackend, ContextEdge, Edge, GraphError, Node, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, GraphError, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc, VariableDeclaration};
 

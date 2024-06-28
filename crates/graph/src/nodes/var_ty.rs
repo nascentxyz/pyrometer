@@ -3,10 +3,10 @@ use crate::{
         Concrete, ContextVar, ContextVarNode, ContractNode, SourceUnitNode, SourceUnitPartNode,
     },
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, VarType,
 };
 
-use shared::{NodeIdx, RangeArena, Search};
+use shared::{GraphError, NodeIdx, RangeArena, Search};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{

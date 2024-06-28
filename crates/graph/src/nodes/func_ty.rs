@@ -2,11 +2,11 @@ use crate::{
     nodes::Concrete,
     nodes::{ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node, SolcRange,
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange,
     VarType,
 };
 
-use shared::{NodeIdx, RangeArena, Search, StorageLocation};
+use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{

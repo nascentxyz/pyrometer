@@ -3,8 +3,9 @@ use crate::ContextEdge;
 use crate::Edge;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
-    AnalyzerBackend, GraphBackend, GraphError, Node,
+    AnalyzerBackend, GraphBackend, Node,
 };
+use shared::GraphError;
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
 

@@ -1,11 +1,11 @@
-use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, Variable};
+use crate::{ContextBuilder, ExpressionParser, Variable};
 
 use graph::{
     elem::*,
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, Range, SolcRange, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};

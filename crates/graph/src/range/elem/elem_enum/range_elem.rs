@@ -2,10 +2,10 @@ use crate::elem::{MinMaxed, RangeArenaLike};
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{collapse, Elem, MaybeCollapsed, RangeElem},
-    GraphBackend, GraphError,
+    GraphBackend,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 impl RangeElem<Concrete> for Elem<Concrete> {
     type GraphError = GraphError;

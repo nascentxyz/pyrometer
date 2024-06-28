@@ -2,9 +2,9 @@ use crate::elem::{MinMaxed, RangeArenaLike};
 use crate::{
     nodes::Concrete,
     range::elem::{Elem, RangeConcrete, RangeDyn, RangeElem, RangeExpr, RangeOp, Reference},
-    GraphBackend, GraphError,
+    GraphBackend,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::I256;
 

@@ -3,7 +3,7 @@ use crate::{
     nodes::Concrete,
     range::elem::{Elem, RangeElem},
 };
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 pub trait RangeArenaLike<T> {
     fn debug_str(&self, analyzer: &impl GraphBackend) -> String;
@@ -15,7 +15,7 @@ pub trait RangeArenaLike<T> {
     fn to_graph(
         &mut self,
         analyzer: &impl GraphBackend,
-    ) -> Result<petgraph::Graph<Elem<Concrete>, usize, petgraph::Directed, usize>, crate::GraphError>;
+    ) -> Result<petgraph::Graph<Elem<Concrete>, usize, petgraph::Directed, usize>, GraphError>;
 }
 
 impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
@@ -56,7 +56,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
     fn to_graph(
         &mut self,
         analyzer: &impl GraphBackend,
-    ) -> Result<petgraph::Graph<Elem<Concrete>, usize, petgraph::Directed, usize>, crate::GraphError>
+    ) -> Result<petgraph::Graph<Elem<Concrete>, usize, petgraph::Directed, usize>, GraphError>
     {
         let mut graph = petgraph::Graph::default();
         let mut added = vec![];
@@ -65,7 +65,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
         fn get_children(
             elem: &Elem<Concrete>,
             analyzer: &impl GraphBackend,
-        ) -> Result<Vec<Elem<Concrete>>, crate::GraphError> {
+        ) -> Result<Vec<Elem<Concrete>>, GraphError> {
             match elem {
                 Elem::Reference(r) => {
                     let cvar = crate::nodes::ContextVarNode::from(r.idx);
@@ -93,7 +93,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
             ids: &mut Vec<usize>,
             elem: &Elem<Concrete>,
             analyzer: &impl GraphBackend,
-        ) -> Result<(), crate::GraphError> {
+        ) -> Result<(), GraphError> {
             assert!(added.len() == ids.len());
 
             if !added.contains(elem) {

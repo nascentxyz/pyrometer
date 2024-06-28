@@ -5,10 +5,10 @@ use crate::{
         elem::{RangeElem, RangeExpr, RangeOp},
         RangeEval,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, VarType,
 };
 
-use shared::{RangeArena, Search, StorageLocation};
+use shared::{GraphError, RangeArena, Search, StorageLocation};
 
 use ethers_core::types::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};

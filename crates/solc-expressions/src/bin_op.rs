@@ -1,5 +1,5 @@
 use crate::{
-    require::Require, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    require::Require, variable::Variable, ContextBuilder, ExpressionParser,
 };
 
 use graph::{
@@ -9,7 +9,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};

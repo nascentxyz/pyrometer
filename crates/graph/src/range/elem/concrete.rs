@@ -1,10 +1,10 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::elem::{Elem, RangeArenaLike, RangeElem},
-    GraphBackend, GraphError,
+    GraphBackend,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use std::hash::{Hash, Hasher};
 

@@ -3,7 +3,7 @@
 use crate::{
     func_call::join::FuncJoiner, func_call::modifier::ModifierCaller, helper::CallerHelper,
     internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
-    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExpressionParser,
     StatementParser,
 };
 use std::cell::RefCell;
@@ -17,7 +17,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc, NamedArgument};
 

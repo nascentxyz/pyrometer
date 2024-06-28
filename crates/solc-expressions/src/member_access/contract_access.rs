@@ -1,10 +1,8 @@
-use crate::{ExprErr, IntoExprErr};
-
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContractNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::NodeIdx;
+use shared::{ExprErr, IntoExprErr, NodeIdx};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 

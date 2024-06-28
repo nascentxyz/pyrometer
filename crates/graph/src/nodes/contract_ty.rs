@@ -1,9 +1,9 @@
 use crate::{
     nodes::{Concrete, FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode, VarNode},
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError, Node,
+    AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
 };
-use shared::{NodeIdx, RangeArena, Search};
+use shared::{GraphError, NodeIdx, RangeArena, Search};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{ContractDefinition, ContractTy, Identifier, Loc};

@@ -1,4 +1,4 @@
-use crate::{BinOp, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr, Variable};
+use crate::{BinOp, ContextBuilder, ExpressionParser, Variable};
 
 use graph::{
     elem::*,
@@ -9,7 +9,7 @@ use graph::{
     range_string::ToRangeString,
     AnalyzerBackend, ContextEdge, Edge, Node, Range, RangeEval, SolcRange, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::I256;
 use solang_parser::{

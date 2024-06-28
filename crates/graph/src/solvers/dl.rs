@@ -3,10 +3,10 @@ use crate::{
     range::elem::*,
     range::range_string::ToRangeString,
     solvers::{AtomOrPart, Atomize, OpType, SolverAtom},
-    GraphBackend, GraphError,
+    GraphBackend,
 };
 
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 use ethers_core::types::{I256, U256};
 use itertools::Itertools;

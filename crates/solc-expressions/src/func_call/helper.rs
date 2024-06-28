@@ -1,7 +1,6 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
 use crate::{
-    member_access::ListAccess, variable::Variable, ContextBuilder, ExprErr, ExpressionParser,
-    IntoExprErr,
+    member_access::ListAccess, variable::Variable, ContextBuilder, ExpressionParser,
 };
 
 use graph::{
@@ -12,7 +11,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
-use shared::{NodeIdx, RangeArena, StorageLocation};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
 use solang_parser::pt::{CodeLocation, Expression, Loc};
 

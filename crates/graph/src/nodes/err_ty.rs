@@ -1,8 +1,8 @@
 use crate::{
-    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

@@ -1,6 +1,5 @@
 use crate::{
-    BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExprErr, ExpressionParser,
-    IntoExprErr, ListAccess, StructAccess,
+    BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExpressionParser, ListAccess, StructAccess,
 };
 
 use graph::{
@@ -11,7 +10,7 @@ use graph::{
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 

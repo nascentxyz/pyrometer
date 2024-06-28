@@ -2,10 +2,10 @@ use crate::{
     nodes::{
         ContextNode, ContractNode, FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend,
 };
 
-use shared::Search;
+use shared::{GraphError, Search};
 use std::collections::{BTreeMap, BTreeSet};
 
 impl ContextNode {

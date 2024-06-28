@@ -4,10 +4,10 @@ use crate::{
         elem::{Elem, MinMaxed, RangeConcrete, RangeElem},
         exec_traits::{RangeCast, RangeMemLen},
     },
-    GraphBackend, GraphError,
+    GraphBackend,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::{H256, U256};
 use solang_parser::pt::Loc;

@@ -1,10 +1,8 @@
-use crate::ExprErr;
-
 use graph::{
     nodes::{ContextNode, ExprRet, FunctionNode},
     AnalyzerBackend, Edge,
 };
-use shared::NodeIdx;
+use shared::{ExprErr, NodeIdx};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier};

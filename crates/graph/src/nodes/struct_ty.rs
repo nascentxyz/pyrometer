@@ -1,9 +1,9 @@
 use crate::{
-    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, Edge, GraphBackend, GraphError,
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, Edge, GraphBackend,
     Node, VarType,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{Expression, Identifier, Loc, StructDefinition, VariableDeclaration};
