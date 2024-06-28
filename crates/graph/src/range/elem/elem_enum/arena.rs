@@ -45,7 +45,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
                         }
                         _ => format!("{elem}"),
                     }
-                };
+                }
 
                 format!("{i}: {}", fmt(elem, analyzer))
             })
@@ -124,13 +124,6 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
             self.ranges.push(Elem::Null);
             self.map.insert(Elem::Null, 0);
         }
-
-        let nulls = self.ranges.iter().fold(0, |mut acc, e| {
-            if matches!(e, Elem::Null) {
-                acc += 1;
-            }
-            acc
-        });
 
         // println!(
         //     "{}\nhad cycle:\n{:?}",

@@ -181,7 +181,7 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
         let mut inner = Vec::new();
         for elem in &arena.ranges {
             // Get the map value
-            if let Some(map_value) = arena.map.get(&elem).copied() {
+            if let Some(map_value) = arena.map.get(elem).copied() {
                 // println!("Adding idx {} to elems {}", map_value, elem);
                 inner.push((map_value, elem.clone()));
             } else {
@@ -287,11 +287,10 @@ impl Elems {
                                 existing_node_idx
                             } else {
                                 // make a new ContextVar Node for the Arena graph
-                                let new_node_idx = graph.add_node(ArenaNode::CVAR(format!(
-                                    "{}",
-                                    dep_elem.as_dot_str(graph_backend, arena)
-                                )));
-                                dependency_map.insert(dep_elem.clone(), new_node_idx);
+                                let new_node_idx = graph.add_node(ArenaNode::CVAR(
+                                    dep_elem.as_dot_str(graph_backend, arena).to_string(),
+                                ));
+                                dependency_map.insert(dep_elem, new_node_idx);
                                 new_node_idx
                             };
                         // add an edge from the node to its dependency node
@@ -302,13 +301,13 @@ impl Elems {
                 }
                 Elem::ConcreteDyn(_range_dyn) => {
                     let node_str = elem.arena_graph_node_label();
-                    let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
-                    node_idx
+
+                    graph.add_node(ArenaNode::ELEM(node_str))
                 }
                 Elem::Concrete(_range_concrete) => {
                     let node_str = elem.arena_graph_node_label();
-                    let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
-                    node_idx
+
+                    graph.add_node(ArenaNode::ELEM(node_str))
                 }
                 Elem::Expr(range_expr) => {
                     let node_str = elem.arena_graph_node_label();
@@ -326,17 +325,16 @@ impl Elems {
                                 .collect::<Vec<_>>();
                             context_var_nodes.iter().for_each(|dep_elem| {
                                 let dep_node_idx = if let Some(&existing_node_idx) =
-                                    dependency_map.get(&dep_elem)
+                                    dependency_map.get(dep_elem)
                                 {
                                     // don't make a new ContextVar node, just use the existing one
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!(
-                                        "{}",
-                                        dep_elem.as_dot_str(graph_backend, arena)
-                                    )));
-                                    dependency_map.insert(dep_elem.clone(), new_node_idx);
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(
+                                        dep_elem.as_dot_str(graph_backend, arena).to_string(),
+                                    ));
+                                    dependency_map.insert(*dep_elem, new_node_idx);
                                     new_node_idx
                                 };
                                 // use `update_edge` to avoid adding duplicate edges
@@ -360,17 +358,16 @@ impl Elems {
                                 .collect::<Vec<_>>();
                             context_var_nodes.iter().for_each(|dep_elem| {
                                 let dep_node_idx = if let Some(&existing_node_idx) =
-                                    dependency_map.get(&dep_elem)
+                                    dependency_map.get(dep_elem)
                                 {
                                     // don't make a new ContextVar node, just use the existing one
                                     existing_node_idx
                                 } else {
                                     // make a new ContextVar Node for the Arena graph
-                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(format!(
-                                        "{}",
-                                        dep_elem.as_dot_str(graph_backend, arena)
-                                    )));
-                                    dependency_map.insert(dep_elem.clone(), new_node_idx);
+                                    let new_node_idx = graph.add_node(ArenaNode::CVAR(
+                                        dep_elem.as_dot_str(graph_backend, arena).to_string(),
+                                    ));
+                                    dependency_map.insert(*dep_elem, new_node_idx);
                                     new_node_idx
                                 };
                                 // use `update_edge` to avoid adding duplicate edges
@@ -402,9 +399,9 @@ impl Elems {
                     );
                 }
                 Elem::Null => {
-                    let node_str = format!("null");
-                    let node_idx = graph.add_node(ArenaNode::ELEM(node_str));
-                    node_idx
+                    let node_str = "null".to_string();
+
+                    graph.add_node(ArenaNode::ELEM(node_str))
                 }
             };
 
@@ -514,20 +511,16 @@ flowchart TB
 
     let nodes_str = graph
         .node_indices()
-        .map(|idx| {
-            let node_str = arena_mermaid_node(graph, "\t", idx, true, true, None);
-            node_str
-        })
+        .map(|idx| arena_mermaid_node(graph, "\t", idx, true, true, None))
         .collect::<Vec<_>>()
         .join("\n");
 
     let edges_str = graph
         .edge_indices()
-        .enumerate()
-        .map(|(_i, edge)| {
+        .map(|edge| {
             let (from, to) = graph.edge_endpoints(edge).unwrap();
             let edge_label = format!("{}", graph[edge]);
-            if edge_label == "" {
+            if edge_label.is_empty() {
                 // don't do a label
                 format!("    {} --> {}", from.index(), to.index(),)
             } else {
@@ -549,8 +542,7 @@ flowchart TB
     // Make an invisible node that holds all our edge information for coloring later on frontend
     let data_str = graph
         .edge_indices()
-        .enumerate()
-        .map(|(_i, edge)| {
+        .map(|edge| {
             let (from, to) = graph.edge_endpoints(edge).unwrap();
             format!("LS-{}_LE-{}_{}", from.index(), to.index(), &graph[edge])
         })

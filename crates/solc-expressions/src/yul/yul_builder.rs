@@ -155,7 +155,7 @@ pub trait YulBuilder:
 
                     if let Some(yul_expr) = maybe_yul_expr {
                         analyzer.parse_ctx_yul_expr(arena, yul_expr, ctx)?;
-                        analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                        analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                             let Some(ret) =
                                 ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                             else {
@@ -312,7 +312,7 @@ pub trait YulBuilder:
             StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
             Variable(ident) => {
                 self.variable(arena, ident, ctx, None)?;
-                self.apply_to_edges(ctx, ident.loc, arena, &|analyzer, arena, edge_ctx, loc| {
+                self.apply_to_edges(ctx, ident.loc, arena, &|analyzer, _arena, edge_ctx, loc| {
                     if let Some(ret) = edge_ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
                         if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
                             .is_memory(analyzer)
@@ -345,7 +345,7 @@ pub trait YulBuilder:
             SuffixAccess(loc, yul_member_expr, ident) => {
                 self.parse_inputs(arena, ctx, *loc, &[*yul_member_expr.clone()])?;
 
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Ok(Some(lhs)) = ctx.pop_expr_latest(loc, analyzer) else {
                         return Err(ExprErr::NoLhs(
                             loc,

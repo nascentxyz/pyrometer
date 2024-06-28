@@ -257,10 +257,7 @@ impl DLSolver {
             })
             .collect::<Option<BTreeMap<SolverAtom, Vec<Vec<SolverAtom>>>>>();
         // println!("normalized map: {res:#?}");
-        match res {
-            Some(t) => t,
-            None => Default::default(),
-        }
+        res.unwrap_or_default()
     }
 
     pub fn dl_solvable_constraints(&self) -> Vec<Vec<Vec<SolverAtom>>> {

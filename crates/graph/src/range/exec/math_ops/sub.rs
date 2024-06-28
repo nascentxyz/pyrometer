@@ -190,7 +190,7 @@ pub fn exec_sub(
     rhs_max: &Elem<Concrete>,
     maximize: bool,
     wrapping: bool,
-    analyzer: &impl GraphBackend,
+    _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     // quick check if rhs is const and zero, if so return min or max

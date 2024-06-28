@@ -27,7 +27,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         self.parse_ctx_expr(arena, ty_expr, ctx)?;
-        self.apply_to_edges(ctx, ty_expr.loc(), arena, &|analyzer, arena, ctx, loc| {
+        self.apply_to_edges(ctx, ty_expr.loc(), arena, &|analyzer, _arena, ctx, loc| {
             if let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
                 if matches!(ret, ExprRet::CtxKilled(_)) {
                     ctx.push_expr(ret, analyzer).into_expr_err(loc)?;

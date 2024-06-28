@@ -236,7 +236,7 @@ pub trait StatementParser:
                         ctx_node.into(),
                         *loc,
                         arena,
-                        &|analyzer, arena, ctx, loc| {
+                        &|analyzer, _arena, ctx, loc| {
                             if ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
                                 tracing::trace!("killing due to bad funciton call");
                                 let res = ContextNode::from(ctx_node)
@@ -415,7 +415,7 @@ pub trait StatementParser:
                                 ctx,
                                 *loc,
                                 arena,
-                                &|analyzer, arena, ctx, loc| {
+                                &|analyzer, _arena, ctx, loc| {
                                     if ctx.killed_or_ret(analyzer).into_expr_err(loc)? {
                                         tracing::trace!("killing due to bad expr");
                                         ContextNode::from(parent.into())
@@ -550,7 +550,7 @@ pub trait StatementParser:
                 if let Some(parent) = parent_ctx {
                     let parent = ContextNode::from(parent.into());
                     let res =
-                        self.apply_to_edges(parent, *loc, arena, &|analyzer, arena, ctx, loc| {
+                        self.apply_to_edges(parent, *loc, arena, &|analyzer, _arena, ctx, loc| {
                             let res = ctx
                                 .kill(analyzer, loc, KilledKind::Revert)
                                 .into_expr_err(loc);

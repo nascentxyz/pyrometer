@@ -26,7 +26,7 @@ pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         match &*func_name {
             "blockhash" => {
                 input_exprs.parse_n(arena, 1, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,

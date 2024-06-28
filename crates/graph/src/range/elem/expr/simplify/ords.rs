@@ -15,6 +15,7 @@ pub struct Ords {
     pub x_ord_one: Option<std::cmp::Ordering>,
 }
 
+#[allow(dead_code)]
 impl Ords {
     pub fn new(
         x: &Elem<Concrete>,

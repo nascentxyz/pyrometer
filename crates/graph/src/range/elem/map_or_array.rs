@@ -286,8 +286,8 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
             .map(|(k, (v, op))| {
                 let mut new_k = k.clone();
                 let mut new_v = v.clone();
-                new_k.arenaize(analyzer, arena);
-                new_v.arenaize(analyzer, arena);
+                let _ = new_k.arenaize(analyzer, arena);
+                let _ = new_v.arenaize(analyzer, arena);
                 (new_k, (new_v, *op))
             })
             .collect();

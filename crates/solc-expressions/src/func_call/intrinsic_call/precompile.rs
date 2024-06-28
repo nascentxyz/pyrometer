@@ -35,7 +35,7 @@ pub trait PrecompileCaller:
         match &*func_name {
             "sha256" => {
                 self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -60,7 +60,7 @@ pub trait PrecompileCaller:
             }
             "ripemd160" => {
                 self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,
@@ -85,7 +85,7 @@ pub trait PrecompileCaller:
             }
             "ecrecover" => {
                 input_exprs.parse(arena, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     let cctx = Context::new_subctx(
                         ctx,
                         None,

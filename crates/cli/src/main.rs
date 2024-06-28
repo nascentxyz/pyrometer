@@ -12,7 +12,7 @@ use shared::{GraphDot, USE_DEBUG_SITE};
 use ariadne::sources;
 use clap::{ArgAction, Parser, ValueHint};
 
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, trace};
 use tracing_subscriber::{prelude::*, Registry};
 
 use std::{

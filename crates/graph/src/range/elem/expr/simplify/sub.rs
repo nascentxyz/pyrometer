@@ -122,7 +122,7 @@ pub fn sub_ord_rules(
             let rhs = x_lte_z && y_gt_zero;
             let false_cond = lhs || rhs;
 
-            if x_lte_z && y_gte_zero {
+            if x_gte_z && y_lte_zero {
                 Some(Elem::from(true))
             } else if false_cond {
                 Some(Elem::from(false))

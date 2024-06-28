@@ -80,7 +80,7 @@ pub trait YulFuncCaller:
                         return Ok(());
                     }
                     analyzer.parse_ctx_yul_expr(arena, &arguments[1], ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                         let Some(size) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                         else {
                             return Err(ExprErr::NoLhs(loc, "Yul Return had no size".to_string()));
@@ -361,7 +361,7 @@ pub trait YulFuncCaller:
                 }
 
                 self.parse_ctx_yul_expr(arena, &arguments[0], ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::NoRhs(
@@ -544,7 +544,7 @@ pub trait YulFuncCaller:
             }
             "balance" => {
                 self.parse_ctx_yul_expr(arena, &arguments[0], ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::NoRhs(
@@ -592,7 +592,7 @@ pub trait YulFuncCaller:
             }
             "extcodesize" => {
                 self.parse_ctx_yul_expr(arena, &arguments[0], ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::NoRhs(
@@ -641,7 +641,7 @@ pub trait YulFuncCaller:
                 }
 
                 self.parse_inputs(arena, ctx, *loc, arguments)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(_lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::NoRhs(
@@ -666,7 +666,7 @@ pub trait YulFuncCaller:
                 }
 
                 self.parse_inputs(arena, ctx, *loc, arguments)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(_lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::NoRhs(
@@ -680,7 +680,7 @@ pub trait YulFuncCaller:
             }
             "extcodehash" => {
                 self.parse_ctx_yul_expr(arena, &arguments[0], ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
                     else {
                         return Err(ExprErr::NoRhs(
@@ -775,7 +775,7 @@ pub trait YulFuncCaller:
 
         inputs.iter().try_for_each(|input| {
             self.parse_ctx_yul_expr(arena, input, ctx)?;
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                 let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(
                         loc,
@@ -795,7 +795,7 @@ pub trait YulFuncCaller:
             })
         })?;
         if !inputs.is_empty() {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                 let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
                     return Err(ExprErr::NoLhs(
                         loc,

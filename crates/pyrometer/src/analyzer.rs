@@ -4,12 +4,11 @@ use graph::elem::Elem;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::GraphDot;
 use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, Search};
 use shared::{RangeArena, USE_DEBUG_SITE};
 use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
 use tokio::runtime::Runtime;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{error, trace, warn};
 
 use ahash::AHashMap;
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};

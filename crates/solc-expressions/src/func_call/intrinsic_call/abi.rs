@@ -94,7 +94,7 @@ pub trait AbiCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
                 }
                 let input_exprs = input_exprs.unnamed_args().unwrap();
                 self.parse_ctx_expr(arena, &input_exprs[1], ctx)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                     let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                         return Err(ExprErr::NoRhs(
                             loc,

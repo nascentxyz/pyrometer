@@ -63,17 +63,14 @@ impl Elem<Concrete> {
             Elem::Reference(reference) => {
                 format!("Ref-CVar{}", reference.idx.index())
             }
-            Elem::ConcreteDyn(range_dyn) => {
+            Elem::ConcreteDyn(_range_dyn) => {
                 format!("concdyn-{}", self)
             }
-            Elem::Concrete(range_concrete) => {
+            Elem::Concrete(_range_concrete) => {
                 format!("conc-{}", self)
             }
-            Elem::Expr(range_expr) => {
+            Elem::Expr(_range_expr) => {
                 // Unbox and check the lhs and rhs to see if they are arena indices
-                let lhs_str = range_expr.lhs.arena_graph_node_label();
-                let rhs_str = range_expr.rhs.arena_graph_node_label();
-                let op = range_expr.op.clone();
                 format!("expr-{}", &self)
             }
             Elem::Arena(arena_idx) => {

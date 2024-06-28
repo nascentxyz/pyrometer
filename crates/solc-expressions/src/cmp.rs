@@ -64,7 +64,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     RangeOp::Not,
                     Elem::Null,
                 ));
-                elem.arenaize(self, arena);
+                let _ = elem.arenaize(self, arena);
                 let mut range = SolcRange::new(elem.clone(), elem, vec![]);
 
                 range.cache_eval(self, arena).into_expr_err(loc)?;
