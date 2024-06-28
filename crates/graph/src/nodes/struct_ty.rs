@@ -1,6 +1,6 @@
 use crate::{
-    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, Edge, GraphBackend,
-    Node, VarType,
+    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
+    VarType,
 };
 
 use shared::{GraphError, NodeIdx, RangeArena};

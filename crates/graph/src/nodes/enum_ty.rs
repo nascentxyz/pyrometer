@@ -1,6 +1,4 @@
-use crate::{
-    nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node, SolcRange,
-};
+use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node, SolcRange};
 
 use shared::{GraphError, NodeIdx, RangeArena};
 

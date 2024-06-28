@@ -1,7 +1,5 @@
 use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{
-    func_call::helper::CallerHelper, ContextBuilder, ExpressionParser,
-};
+use crate::{func_call::helper::CallerHelper, ContextBuilder, ExpressionParser};
 use graph::nodes::FunctionNode;
 
 use graph::{

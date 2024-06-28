@@ -5,7 +5,7 @@ use graph::{
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
-use shared::{ExprErr, IntoExprErr, GraphError, RangeArena};
+use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc, VariableDeclaration};
 

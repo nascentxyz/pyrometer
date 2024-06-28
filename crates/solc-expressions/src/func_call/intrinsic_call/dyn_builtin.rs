@@ -1,7 +1,5 @@
 use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{
-    variable::Variable, ContextBuilder, ExpressionParser, ListAccess,
-};
+use crate::{variable::Variable, ContextBuilder, ExpressionParser, ListAccess};
 
 use graph::{
     elem::{Elem, RangeElem},

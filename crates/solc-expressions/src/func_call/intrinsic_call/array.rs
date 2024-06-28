@@ -1,7 +1,5 @@
 use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{
-    array::Array, bin_op::BinOp, ContextBuilder, ExpressionParser, ListAccess,
-};
+use crate::{array::Array, bin_op::BinOp, ContextBuilder, ExpressionParser, ListAccess};
 
 use graph::{
     elem::*,

@@ -1265,13 +1265,13 @@ pub fn mermaid_node(
         match g.node(current_node) {
             Node::ContextVar(..) => {
                 // highlight self
-                if let Ok(loc) = graph::nodes::ContextVarNode::from(current_node).loc(g) {
-                    if let solang_parser::pt::Loc::File(f, s, e) = loc {
-                        node_str.push_str(&format!(
-                            "\n{indent}class {} loc_{f}_{s}_{e}",
-                            petgraph::graph::GraphIndex::index(&current_node)
-                        ));
-                    }
+                if let Ok(solang_parser::pt::Loc::File(f, s, e)) =
+                    graph::nodes::ContextVarNode::from(current_node).loc(g)
+                {
+                    node_str.push_str(&format!(
+                        "\n{indent}class {} loc_{f}_{s}_{e}",
+                        petgraph::graph::GraphIndex::index(&current_node)
+                    ));
                 }
 
                 // color the forks

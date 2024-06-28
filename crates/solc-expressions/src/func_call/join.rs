@@ -1,7 +1,7 @@
 use crate::context_builder::StatementParser;
+use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
-use crate::helper::CallerHelper;
 
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},

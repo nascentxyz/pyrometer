@@ -1,8 +1,6 @@
 //! Trait and blanket implementation for parsing yul-based statements and expressions
 
-use crate::{
-    yul::YulCondOp, yul::YulFuncCaller, ContextBuilder, ExpressionParser,
-};
+use crate::{yul::YulCondOp, yul::YulFuncCaller, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::Elem,

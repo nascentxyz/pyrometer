@@ -1,7 +1,4 @@
-use crate::{
-    require::Require, variable::Variable, ContextBuilder, ExpressionParser,
-    ListAccess,
-};
+use crate::{require::Require, variable::Variable, ContextBuilder, ExpressionParser, ListAccess};
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
@@ -483,4 +480,3 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         Ok(())
     }
 }
-

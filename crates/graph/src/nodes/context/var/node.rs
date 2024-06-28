@@ -4,7 +4,7 @@ use crate::{
     AsDotStr, ContextEdge, Edge, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena, Search, StorageLocation, GraphError};
+use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;

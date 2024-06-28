@@ -8,7 +8,7 @@ use graph::{
     },
     AnalyzerBackend, Node, Range, SolcRange, VarType,
 };
-use shared::{ExprErr, IntoExprErr, GraphError, RangeArena};
+use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;

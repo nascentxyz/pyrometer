@@ -5,9 +5,9 @@ use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend, Node,
 };
-use shared::GraphError;
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use shared::GraphError;
 
 use solang_parser::pt::Loc;
 

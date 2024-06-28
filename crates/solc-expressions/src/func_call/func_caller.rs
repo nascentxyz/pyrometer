@@ -3,8 +3,7 @@
 use crate::{
     func_call::join::FuncJoiner, func_call::modifier::ModifierCaller, helper::CallerHelper,
     internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
-    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExpressionParser,
-    StatementParser,
+    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExpressionParser, StatementParser,
 };
 use std::cell::RefCell;
 use std::rc::Rc;

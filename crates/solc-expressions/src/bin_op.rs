@@ -1,6 +1,4 @@
-use crate::{
-    require::Require, variable::Variable, ContextBuilder, ExpressionParser,
-};
+use crate::{require::Require, variable::Variable, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::*,

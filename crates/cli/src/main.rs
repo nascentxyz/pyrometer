@@ -433,7 +433,7 @@ fn main() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {
                     FunctionNode::from(func)
-                        .name(&mut analyzer)
+                        .name(&analyzer)
                         .unwrap()
                         .starts_with(analyze_for)
                 }) {
@@ -509,7 +509,7 @@ fn main() {
                 let funcs = contract.funcs(&analyzer);
                 for func in funcs.into_iter() {
                     if !args.funcs.is_empty() {
-                        if args.funcs.contains(&func.name(&mut analyzer).unwrap()) {
+                        if args.funcs.contains(&func.name(&analyzer).unwrap()) {
                             let ctx = func.body_ctx(&mut analyzer);
                             let analysis = analyzer
                                 .bounds_for_all(arena, &file_mapping, ctx, config)

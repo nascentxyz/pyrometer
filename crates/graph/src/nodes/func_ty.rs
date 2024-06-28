@@ -2,8 +2,7 @@ use crate::{
     nodes::Concrete,
     nodes::{ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange,
-    VarType,
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
 
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};

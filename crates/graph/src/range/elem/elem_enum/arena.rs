@@ -56,8 +56,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
     fn to_graph(
         &mut self,
         analyzer: &impl GraphBackend,
-    ) -> Result<petgraph::Graph<Elem<Concrete>, usize, petgraph::Directed, usize>, GraphError>
-    {
+    ) -> Result<petgraph::Graph<Elem<Concrete>, usize, petgraph::Directed, usize>, GraphError> {
         let mut graph = petgraph::Graph::default();
         let mut added = vec![];
         let mut ids = vec![];

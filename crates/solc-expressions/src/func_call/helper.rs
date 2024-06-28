@@ -1,7 +1,5 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{
-    member_access::ListAccess, variable::Variable, ContextBuilder, ExpressionParser,
-};
+use crate::{member_access::ListAccess, variable::Variable, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::Elem,

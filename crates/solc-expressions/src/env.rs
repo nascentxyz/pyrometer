@@ -1,6 +1,4 @@
-use crate::{
-    func_call::helper::CallerHelper, func_call::modifier::ModifierCaller,
-};
+use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller};
 
 use graph::{
     elem::Elem,

@@ -4,7 +4,7 @@ use graph::{
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{ExprErr, IntoExprErr, GraphError, RangeArena};
+use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 

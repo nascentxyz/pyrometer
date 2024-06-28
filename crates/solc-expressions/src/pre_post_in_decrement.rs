@@ -1,6 +1,4 @@
-use crate::{
-    context_builder::ContextBuilder, variable::Variable, ExpressionParser,
-};
+use crate::{context_builder::ContextBuilder, variable::Variable, ExpressionParser};
 
 use graph::{
     elem::*,

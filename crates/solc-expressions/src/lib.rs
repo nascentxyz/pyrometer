@@ -1,5 +1,3 @@
-use solang_parser::pt::Loc;
-
 mod array;
 mod assign;
 mod bin_op;

@@ -1,6 +1,4 @@
-use crate::{
-    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, Node,
-};
+use crate::{nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, Node};
 
 use shared::{GraphError, NodeIdx, RangeArena};
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};

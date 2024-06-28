@@ -1413,7 +1413,7 @@ impl Analyzer {
         });
     }
 
-    async fn post_source_to_site_async(file_no: usize, path: &PathBuf, source: &str)
+    async fn post_source_to_site_async(file_no: usize, path: &Path, source: &str)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,

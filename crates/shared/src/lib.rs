@@ -1,13 +1,13 @@
 mod analyzer_like;
+mod error;
 pub mod gas;
 mod graph_like;
 mod search;
-mod error;
 
 pub use analyzer_like::*;
+pub use error::*;
 pub use graph_like::*;
 pub use search::*;
-pub use error::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum StorageLocation {

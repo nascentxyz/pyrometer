@@ -1,6 +1,4 @@
-use crate::{
-    require::Require, ContextBuilder, ExpressionParser, StatementParser,
-};
+use crate::{require::Require, ContextBuilder, ExpressionParser, StatementParser};
 
 use graph::{
     elem::Elem,
