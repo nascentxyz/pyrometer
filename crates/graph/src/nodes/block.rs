@@ -1,5 +1,5 @@
-use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, GraphError, Node};
-use shared::{NodeIdx, RangeArena};
+use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, H256, U256};
 

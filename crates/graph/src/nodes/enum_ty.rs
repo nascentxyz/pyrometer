@@ -1,8 +1,6 @@
-use crate::{
-    nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, GraphError, Node, SolcRange,
-};
+use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node, SolcRange};
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};

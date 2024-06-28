@@ -3,10 +3,11 @@ use crate::ContextEdge;
 use crate::Edge;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
-    AnalyzerBackend, GraphBackend, GraphError, Node,
+    AnalyzerBackend, GraphBackend, Node,
 };
 use petgraph::visit::EdgeRef;
 use petgraph::Direction;
+use shared::GraphError;
 
 use solang_parser::pt::Loc;
 

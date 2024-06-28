@@ -1,10 +1,10 @@
 use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{ExprErr, IntoExprErr};
 
 use graph::{
     nodes::{Builtin, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
+use shared::{ExprErr, IntoExprErr};
 
 use solang_parser::pt::{Expression, Loc};
 

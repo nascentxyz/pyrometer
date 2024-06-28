@@ -4,8 +4,10 @@ use crate::{
         ModifierState,
     },
     solvers::dl::DLSolver,
-    AnalyzerBackend, GraphError,
+    AnalyzerBackend,
 };
+
+use shared::GraphError;
 
 use solang_parser::pt::Loc;
 use std::collections::BTreeSet;

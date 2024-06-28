@@ -5,8 +5,8 @@ use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, Search};
-use shared::{RangeArena, USE_DEBUG_SITE};
-use solc_expressions::{ExprErr, FnCallBuilder, IntoExprErr, StatementParser};
+use shared::{ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
+use solc_expressions::{FnCallBuilder, StatementParser};
 use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
@@ -1413,7 +1413,7 @@ impl Analyzer {
         });
     }
 
-    async fn post_source_to_site_async(file_no: usize, path: &PathBuf, source: &str)
+    async fn post_source_to_site_async(file_no: usize, path: &Path, source: &str)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,

@@ -1,10 +1,10 @@
-use crate::{ExprErr, IntoExprErr, LibraryAccess};
+use crate::LibraryAccess;
 
 use graph::{
     nodes::{ContextNode, ContextVar, EnumNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::NodeIdx;
+use shared::{ExprErr, IntoExprErr, NodeIdx};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 

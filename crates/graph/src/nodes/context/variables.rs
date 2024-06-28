@@ -1,7 +1,8 @@
 use crate::{
     nodes::{ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
+use shared::GraphError;
 
 use solang_parser::pt::Loc;
 

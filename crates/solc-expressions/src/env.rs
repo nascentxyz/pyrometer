@@ -1,13 +1,11 @@
-use crate::{
-    func_call::helper::CallerHelper, func_call::modifier::ModifierCaller, ExprErr, IntoExprErr,
-};
+use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller};
 
 use graph::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{RangeArena, StorageLocation};
+use shared::{ExprErr, IntoExprErr, RangeArena, StorageLocation};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 

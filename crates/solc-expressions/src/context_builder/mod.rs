@@ -1,12 +1,10 @@
 //! Trait and blanket implementation for the core parsing loop
-use crate::{ExprErr, IntoExprErr};
-
 use graph::{
     elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
-    AnalyzerBackend, ContextEdge, Edge, GraphError, Node,
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::RangeArena;
+use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 

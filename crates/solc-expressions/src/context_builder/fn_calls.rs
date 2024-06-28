@@ -1,10 +1,12 @@
-use crate::{ExprErr, ExpressionParser, StatementParser};
+use crate::{ExpressionParser, StatementParser};
 use solang_parser::helpers::CodeLocation;
 
 use graph::{
     nodes::{Context, ContextNode, FunctionNode},
     AnalyzerBackend, Node,
 };
+
+use shared::ExprErr;
 
 use solang_parser::pt::{Expression, Statement};
 

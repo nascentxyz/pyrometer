@@ -1,8 +1,6 @@
 //! Trait and blanket implementation for parsing yul-based statements and expressions
 
-use crate::{
-    yul::YulCondOp, yul::YulFuncCaller, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
-};
+use crate::{yul::YulCondOp, yul::YulFuncCaller, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::Elem,
@@ -11,7 +9,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::{
     helpers::CodeLocation,

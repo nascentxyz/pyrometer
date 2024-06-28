@@ -1,9 +1,9 @@
 use crate::{
     nodes::{context::ContextVarNode, Concrete},
     range::elem::Elem,
-    AsDotStr, GraphBackend, GraphError, Node, VarType,
+    AsDotStr, GraphBackend, Node, VarType,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 /// The reason a context was killed
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Hash)]

@@ -1,7 +1,7 @@
 use crate::func_call::intrinsic_call::IntrinsicFuncCaller;
 use crate::{
     context_builder::ContextBuilder, func_call::func_caller::FuncCaller, variable::Variable,
-    ExprErr, ExprTyParser, IntoExprErr,
+    ExprTyParser,
 };
 
 use graph::{
@@ -9,7 +9,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::I256;
 use solang_parser::{

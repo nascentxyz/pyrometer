@@ -6,7 +6,7 @@ use crate::{
     func_call::helper::CallerHelper,
     intrinsic_call::IntrinsicFuncCaller,
     member_access::MemberAccess,
-    ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
+    ContextBuilder, ExpressionParser,
 };
 use graph::nodes::{Concrete, ContextVar};
 use graph::ContextEdge;
@@ -19,7 +19,7 @@ use graph::{
     AnalyzerBackend, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc};
 

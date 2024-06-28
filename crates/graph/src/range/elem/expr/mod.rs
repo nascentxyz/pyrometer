@@ -9,13 +9,13 @@ use crate::{
         elem::{Elem, MinMaxed, RangeArenaLike, RangeConcrete, RangeElem, RangeOp},
         exec_traits::*,
     },
-    GraphBackend, GraphError,
+    GraphBackend,
 };
 use std::hash::Hash;
 use std::hash::Hasher;
 
 use ethers_core::types::U256;
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 /// A range expression composed of other range [`Elem`]
 #[derive(Clone, Debug, Ord, PartialOrd)]

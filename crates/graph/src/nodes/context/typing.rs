@@ -1,7 +1,8 @@
 use crate::{
     nodes::{ContextNode, FunctionNode},
-    AnalyzerBackend, GraphBackend, GraphError,
+    AnalyzerBackend, GraphBackend,
 };
+use shared::GraphError;
 
 impl ContextNode {
     /// Checks if its an anonymous function call (i.e. loop)

@@ -1,10 +1,10 @@
 use crate::{
     nodes::{Concrete, ContractNode, FunctionNode, StructNode, VarNode},
     range::elem::Elem,
-    AsDotStr, GraphBackend, GraphError, Node,
+    AsDotStr, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 #[derive(Default, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
 pub struct SourceUnitPart {

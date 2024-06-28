@@ -4,11 +4,11 @@ use crate::{
         EnumNode, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode, TyNode,
     },
     range::Range,
-    AnalyzerBackend, GraphBackend, GraphError, Node, SolcRange, TypeNode, VarType,
+    AnalyzerBackend, GraphBackend, Node, SolcRange, TypeNode, VarType,
 };
 
 use crate::range::elem::*;
-use shared::{NodeIdx, StorageLocation};
+use shared::{GraphError, NodeIdx, StorageLocation};
 
 use solang_parser::pt::Loc;
 

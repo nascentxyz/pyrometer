@@ -1,6 +1,6 @@
-use crate::{nodes::ContextVarNode, range::elem::Elem, GraphBackend, GraphError};
+use crate::{nodes::ContextVarNode, range::elem::Elem, GraphBackend};
 
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 use std::hash::Hash;
 
 pub trait RangeElem<T: Ord + Hash>: Hash {

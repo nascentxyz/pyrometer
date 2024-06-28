@@ -1,4 +1,4 @@
-use crate::{ContextBuilder, ExprErr, ExpressionParser, IntoExprErr};
+use crate::{ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::*,
@@ -6,9 +6,9 @@ use graph::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
         TmpConstruction,
     },
-    AnalyzerBackend, GraphError, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, Node, Range, SolcRange, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 use std::cmp::Ordering;

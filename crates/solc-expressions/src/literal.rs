@@ -1,11 +1,9 @@
-use crate::{ExprErr, IntoExprErr};
-
 use graph::{
     elem::*,
     nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::{HexLiteral, Identifier, Loc};

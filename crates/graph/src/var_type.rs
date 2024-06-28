@@ -7,9 +7,9 @@ use crate::{
         elem::{Elem, RangeElem},
         Range, SolcRange,
     },
-    AnalyzerBackend, AsDotStr, GraphBackend, GraphError, Node,
+    AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 use shared::NodeIdx;
 

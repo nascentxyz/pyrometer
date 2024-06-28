@@ -1,7 +1,7 @@
-use crate::{nodes::Concrete, AnalyzerBackend, GraphBackend, GraphError, Node, SolcRange, VarType};
+use crate::{nodes::Concrete, AnalyzerBackend, GraphBackend, Node, SolcRange, VarType};
 
 use crate::range::elem::*;
-use shared::{NodeIdx, RangeArena};
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
 use solang_parser::pt::{Expression, Loc, Type};

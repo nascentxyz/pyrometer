@@ -40,30 +40,6 @@ pub trait AsDotStr {
     ) -> String;
 }
 
-#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
-pub enum GraphError {
-    /// The analyzer thought the node was suppose to be one type, but it was a different one
-    NodeConfusion(String),
-    /// Call depth limit reached
-    MaxStackDepthReached(String),
-    /// Fork width limit reached
-    MaxStackWidthReached(String),
-    /// Tried to set the subcontext of a context that already had a subcontext
-    ChildRedefinition(String),
-    /// Tried to update a variable that is in an old context
-    VariableUpdateInOldContext(String),
-    /// Variable is detached from all contexts
-    DetachedVariable(String),
-    /// Expected a single element, found multiple
-    ExpectedSingle(String),
-    /// Expected a vector with a certain number of elements, but it was a different number of elements
-    StackLengthMismatch(String),
-    /// A variable had a cyclic reference to another variable and we were unable to break the cycle
-    UnbreakableRecursion(String),
-    /// The analyzer thought the node was suppose to be one type, but it was a different one
-    UnknownVariable(String),
-}
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Node {
     /// An analyzed function body/context

@@ -1,10 +1,10 @@
 use crate::{
     nodes::{Concrete, ContextNode, ContextVar, TmpConstruction, VarNode},
     range::{elem::*, range_string::ToRangeString, Range},
-    AsDotStr, ContextEdge, Edge, GraphBackend, GraphError, Node,
+    AsDotStr, ContextEdge, Edge, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena, Search, StorageLocation};
+use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;

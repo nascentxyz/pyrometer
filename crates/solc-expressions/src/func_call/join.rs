@@ -1,7 +1,7 @@
 use crate::context_builder::StatementParser;
+use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
-use crate::{helper::CallerHelper, ExprErr, IntoExprErr};
 
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},
@@ -11,7 +11,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, SolcRange, VarType,
 };
-use shared::{AnalyzerLike, NodeIdx, RangeArena, StorageLocation};
+use shared::{AnalyzerLike, ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
 use solang_parser::pt::{Expression, Loc};
 

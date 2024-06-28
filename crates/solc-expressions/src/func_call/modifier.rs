@@ -1,16 +1,13 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
-use crate::{
-    func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExprErr, ExpressionParser,
-    IntoExprErr,
-};
+use crate::{func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::Elem,
     nodes::{Concrete, Context, ContextNode, ExprRet, FunctionNode, ModifierState},
     AnalyzerBackend, Edge, GraphBackend, Node,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{CodeLocation, Expression, Loc};
 

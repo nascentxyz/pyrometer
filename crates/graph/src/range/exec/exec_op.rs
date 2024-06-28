@@ -1,9 +1,9 @@
 use crate::{
     nodes::Concrete,
     range::{elem::*, exec::*, exec_traits::*},
-    GraphBackend, GraphError,
+    GraphBackend,
 };
-use shared::RangeArena;
+use shared::{GraphError, RangeArena};
 
 impl ExecOp<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
@@ -17,16 +17,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
     ) -> Result<Elem<Concrete>, Self::GraphError> {
         let idx = self.arena_idx(arena);
         if let Some(idx) = idx {
-            if let Some(t) = arena.ranges.get(idx) {
-                if let Elem::Expr(expr) = t {
-                    tracing::trace!("hitting cache");
-                    if maximize {
-                        if let Some(MinMaxed::Maximized(max)) = &expr.maximized {
-                            return Ok(*max.clone());
-                        }
-                    } else if let Some(MinMaxed::Minimized(min)) = &expr.minimized {
-                        return Ok(*min.clone());
+            if let Some(Elem::Expr(expr)) = arena.ranges.get(idx) {
+                tracing::trace!("hitting cache");
+                if maximize {
+                    if let Some(MinMaxed::Maximized(max)) = &expr.maximized {
+                        return Ok(*max.clone());
                     }
+                } else if let Some(MinMaxed::Minimized(min)) = &expr.minimized {
+                    return Ok(*min.clone());
                 }
             }
         }

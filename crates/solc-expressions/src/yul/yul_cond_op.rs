@@ -1,11 +1,11 @@
-use crate::{require::Require, yul::YulBuilder, ContextBuilder, ExprErr, IntoExprErr};
+use crate::{require::Require, yul::YulBuilder, ContextBuilder};
 
 use graph::{
     elem::*,
     nodes::{Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use ethers_core::types::U256;
 use solang_parser::pt::{

@@ -1,14 +1,11 @@
-use crate::{
-    require::Require, variable::Variable, ContextBuilder, ExprErr, ExpressionParser, IntoExprErr,
-    ListAccess,
-};
+use crate::{require::Require, variable::Variable, ContextBuilder, ExpressionParser, ListAccess};
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
-use shared::RangeArena;
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::{
     helpers::CodeLocation,

@@ -7,8 +7,7 @@ use graph::{
     },
     AnalyzerBackend, Edge, Node, VarType,
 };
-use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, RangeArena};
-use solc_expressions::{ExprErr, IntoExprErr};
+use shared::{AnalyzerLike, ExprErr, GraphLike, IntoExprErr, JoinStats, NodeIdx, RangeArena};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
