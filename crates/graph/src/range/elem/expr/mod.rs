@@ -384,7 +384,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        let _ = self.arenaize(analyzer, arena);
         self.lhs
             .filter_recursion(node_idx, new_idx, analyzer, arena);
         self.rhs
