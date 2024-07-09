@@ -1,13 +1,24 @@
 use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
-use shared::{AnalyzerLike, GraphDot, GraphLike, Heirarchical, NodeIdx, RangeArena};
+use shared::{
+    AnalyzerLike, GraphDot, GraphError, GraphLike, Heirarchical, NodeIdx, RangeArena,
+    RepresentationErr,
+};
 
 use lazy_static::lazy_static;
 use petgraph::{Directed, Graph};
 use solang_parser::pt::{Identifier, Loc};
 
 use std::collections::HashMap;
+
+pub trait RepresentationInvariant {
+    fn is_representation_ok(
+        &self,
+        g: &impl GraphBackend,
+        arena: &RangeArena<Elem<Concrete>>,
+    ) -> Result<Option<RepresentationErr>, GraphError>;
+}
 
 pub trait GraphBackend:
     GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> + GraphDot

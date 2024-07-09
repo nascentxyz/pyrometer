@@ -1,4 +1,4 @@
-use crate::{GraphLike, NodeIdx, RangeArena};
+use crate::{GraphError, GraphLike, NodeIdx, RangeArena, RepresentationErr};
 
 use ahash::AHashMap;
 
@@ -184,4 +184,9 @@ pub trait AnalyzerLike: GraphLike {
     fn handled_funcs(&self) -> &[Self::FunctionNode];
     fn handled_funcs_mut(&mut self) -> &mut Vec<Self::FunctionNode>;
     fn file_mapping(&self) -> BTreeMap<usize, String>;
+
+    fn is_representation_ok(
+        &self,
+        arena: &RangeArena<<Self as GraphLike>::RangeElem>,
+    ) -> Result<Vec<RepresentationErr>, GraphError>;
 }

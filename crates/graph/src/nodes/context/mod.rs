@@ -1,5 +1,6 @@
 mod context_tys;
 mod expr_ret;
+mod invariants;
 mod node;
 mod underlying;
 mod var;

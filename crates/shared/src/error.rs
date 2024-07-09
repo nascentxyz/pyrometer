@@ -1,4 +1,35 @@
+use crate::NodeIdx;
 use solang_parser::pt::Loc;
+
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
+pub enum RepresentationErr {
+    Context(NodeIdx, ContextReprErr),
+    Variable(VarReprErr),
+    Graph(GraphError),
+}
+
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
+pub enum ContextReprErr {
+    VarCacheErr(Vec<NodeIdx>),
+    VarInvariantErr(Vec<RepresentationErr>),
+}
+
+#[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
+pub enum VarReprErr {
+    Unresolved(NodeIdx),
+    StructErr(NodeIdx, &'static str),
+    ContractErr(NodeIdx, &'static str),
+    EnumErr(NodeIdx, &'static str),
+    TyErr(NodeIdx, &'static str),
+    FuncErr(NodeIdx, &'static str),
+    ArrayErr(NodeIdx, &'static str),
+}
+
+impl From<VarReprErr> for RepresentationErr {
+    fn from(vre: VarReprErr) -> Self {
+        RepresentationErr::Variable(vre)
+    }
+}
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum GraphError {

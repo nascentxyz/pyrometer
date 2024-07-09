@@ -1,3 +1,4 @@
+mod invariants;
 mod node;
 mod ranging;
 mod typing;

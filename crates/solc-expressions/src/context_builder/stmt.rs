@@ -41,7 +41,7 @@ pub trait StatementParser:
     ) where
         Self: Sized,
     {
-        if let Some(parent) = parent_ctx {
+        let res = if let Some(parent) = parent_ctx {
             match self.node(parent) {
                 Node::Context(_) => {
                     let ctx = ContextNode::from(parent.into());
@@ -68,7 +68,17 @@ pub trait StatementParser:
             }
         } else {
             self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx)
+        };
+
+        if let Some(errs) =
+            self.add_if_err(self.is_representation_ok(arena).into_expr_err(stmt.loc()))
+        {
+            if !errs.is_empty() {
+                panic!("bad nodes: {errs:#?}");
+            }
         }
+
+        res
     }
 
     #[tracing::instrument(level = "trace", skip_all)]

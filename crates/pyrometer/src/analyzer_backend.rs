@@ -2,12 +2,15 @@ use crate::Analyzer;
 use graph::{
     elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, ContextVar, Function, FunctionNode,
-        FunctionParam, FunctionParamNode, FunctionReturn, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, Function,
+        FunctionNode, FunctionParam, FunctionParamNode, FunctionReturn, MsgNode,
     },
-    AnalyzerBackend, Edge, Node, VarType,
+    AnalyzerBackend, Edge, Node, RepresentationInvariant, VarType,
 };
-use shared::{AnalyzerLike, ExprErr, GraphLike, IntoExprErr, JoinStats, NodeIdx, RangeArena};
+use shared::{
+    AnalyzerLike, ExprErr, GraphError, GraphLike, IntoExprErr, JoinStats, NodeIdx, RangeArena,
+    RepresentationErr,
+};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
@@ -286,5 +289,24 @@ impl AnalyzerLike for Analyzer {
             }
         }
         file_mapping
+    }
+
+    fn is_representation_ok(
+        &self,
+        arena: &RangeArena<<Self as GraphLike>::RangeElem>,
+    ) -> Result<Vec<RepresentationErr>, GraphError> {
+        let t: Vec<_> = self
+            .graph()
+            .node_indices()
+            .map(|idx| match self.node(idx) {
+                Node::Context(..) => ContextNode::from(idx).is_representation_ok(self, arena),
+                _ => Ok(None),
+            })
+            .collect::<Result<Vec<Option<_>>, GraphError>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        Ok(t)
     }
 }
