@@ -29,7 +29,7 @@ debug = true
 
 [profile.dev]
 # opt-level = 1  # Enable some optimizations like tail call
-inline = true
+# inline = true
 
 [profile.bench]
 debug = true

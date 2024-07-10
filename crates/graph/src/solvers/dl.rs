@@ -570,10 +570,10 @@ impl DLSolver {
                 added_atoms.push((*dyn_elem).clone());
                 self.graph_map.insert((*dyn_elem).clone(), idx);
                 if let Some(dep) = dep {
-                    if !self.var_to_atom_idx.contains_key(&dep) {
+                    self.var_to_atom_idx.entry(dep).or_insert_with(|| {
                         added_deps.push(dep);
-                        self.var_to_atom_idx.insert(dep, idx);
-                    }
+                        idx
+                    });
                 }
                 idx
             };
