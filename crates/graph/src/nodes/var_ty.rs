@@ -154,7 +154,6 @@ impl VarNode {
             .any(|attr| matches!(attr, VariableAttribute::Constant(_)))
         {
             if let Some(init) = self.underlying(analyzer)?.initializer {
-                println!("init: {:?}", analyzer.node(init));
                 if let Some(ty) = VarType::try_from_idx(analyzer, init) {
                     return Ok(Some(ContextVar {
                         loc: Some(loc),

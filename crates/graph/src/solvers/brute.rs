@@ -497,8 +497,6 @@ impl SolcSolver for BruteBinSearchSolver {
         let _atomic = &self.atomics[i];
 
         let lmr = self.lmrs[i].clone();
-        // println!("solving: {i}, {}, successful passes: {}", atomic.idxs[0].display_name(analyzer).unwrap(), self.successful_passes);
-        // println!("initial range: [{min_s},{max_s}], is_const: {}", atomic.idxs[0].is_const(analyzer)?);
         match self.check(
             i,
             (lmr.low, lmr.mid, lmr.high),

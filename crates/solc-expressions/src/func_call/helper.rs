@@ -78,19 +78,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
                         let fields = input.struct_to_fields(self).ok()?;
                         if !fields.is_empty() {
-                            println!(
-                                "fields: {:?}",
-                                fields
-                                    .iter()
-                                    .map(|i| i.name(self).unwrap())
-                                    .collect::<Vec<_>>()
-                            );
                             // bring along struct fields
                             fields
                                 .iter()
                                 .try_for_each(|field| -> Result<(), ExprErr> {
                                     let full_name = field.name(self).into_expr_err(loc)?;
-                                    println!("field: {full_name}");
                                     let field_names = full_name.split('.').collect::<Vec<_>>();
                                     let field_name =
                                         field_names.get(1).ok_or(ExprErr::MemberAccessNotFound(
