@@ -1,12 +1,12 @@
 use crate::Analyzer;
-use graph::elem::RangeElem;
-use graph::nodes::Concrete;
 use graph::{
     as_dot_str,
+    elem::Elem,
+    elem::RangeElem,
+    nodes::Concrete,
     nodes::{ContextNode, ContextVarNode},
-    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node,
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, TOKYO_NIGHT_COLORS,
 };
-use graph::{elem::Elem, nodes::ContextVarNode, TOKYO_NIGHT_COLORS};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::RangeArena;

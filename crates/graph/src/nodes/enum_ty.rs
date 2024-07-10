@@ -1,7 +1,7 @@
 use crate::{
     nodes::{Concrete, ContractNode},
     range::elem::Elem,
-    AsDotStr, Edge, GraphBackend, GraphError, Node, SolcRange,
+    AsDotStr, Edge, GraphBackend, Node, SolcRange,
 };
 
 use shared::{GraphError, NodeIdx, RangeArena};

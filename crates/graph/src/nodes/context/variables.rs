@@ -2,7 +2,7 @@ use crate::{
     nodes::{
         ContextNode, ContextVarNode, EnumNode, ErrorNode, ExprRet, StructNode, TyNode, VarNode,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, TypeNode,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode,
 };
 use shared::GraphError;
 

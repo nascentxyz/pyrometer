@@ -194,7 +194,7 @@ impl VarNode {
     ) -> Result<&'a str, GraphError> {
         let loc = self.underlying(analyzer)?.loc;
         let file_no = loc.try_file_no().unwrap();
-        Ok(&analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()])
+        Ok(&analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()])
     }
 }
 

@@ -1,9 +1,10 @@
 use crate::{
     nodes::{ContractNode, EnumNode, ErrorNode, FunctionNode, StructNode, TyNode, VarNode},
-    AnalyzerBackend, AsDotStr, Edge, GraphError, TypeNode,
+    AnalyzerBackend, Edge, TypeNode,
 };
 
 use petgraph::{visit::EdgeRef, Direction};
+use shared::GraphError;
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
@@ -74,7 +75,7 @@ impl ContractNode {
         let file_no = loc.try_file_no().unwrap();
         let name_loc = self.underlying(analyzer)?.name.clone().unwrap().loc;
         loc.use_end_from(&name_loc);
-        Ok(&analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()])
+        Ok(&analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()])
     }
 
     pub fn reconstruct_inherits(
@@ -142,7 +143,7 @@ impl ContractNode {
                     let file_no = loc.try_file_no().unwrap();
                     format!(
                         "{};",
-                        &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+                        &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
                     )
                 })
                 .collect::<Vec<_>>()
@@ -470,15 +471,15 @@ impl FunctionNode {
         // let overriding = self.get_overriding(analyzer)?;
         if let Some(body_loc) = self.body_loc(analyzer)? {
             let body =
-                &analyzer.source_map().get(&file_no).unwrap()[body_loc.start()..body_loc.end()];
+                &analyzer.file_mapping().get(&file_no).unwrap()[body_loc.start()..body_loc.end()];
             Ok(format!(
                 "{} {body}",
-                &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+                &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
             ))
         } else {
             Ok(format!(
                 "{};",
-                &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+                &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
             ))
         }
     }
@@ -513,7 +514,7 @@ impl TyNode {
         let file_no = loc.try_file_no().unwrap();
         Ok(format!(
             "{};\n",
-            &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+            &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
         ))
     }
 }
@@ -524,7 +525,7 @@ impl EnumNode {
         let file_no = loc.try_file_no().unwrap();
         Ok(format!(
             "{}\n",
-            &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+            &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
         ))
     }
 }
@@ -535,7 +536,7 @@ impl StructNode {
         let file_no = loc.try_file_no().unwrap();
         Ok(format!(
             "{}\n",
-            &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+            &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
         ))
     }
 }
@@ -546,7 +547,7 @@ impl ErrorNode {
         let file_no = loc.try_file_no().unwrap();
         Ok(format!(
             "{};\n",
-            &analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()]
+            &analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()]
         ))
     }
 }

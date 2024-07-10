@@ -8,7 +8,7 @@ use graph::{
     },
     AnalyzerBackend, Edge, GraphBackend, Node, TypeNode, VarType,
 };
-use shared::{AnalyzerLike, ExprErr, IntoExprErr, ApplyStats, GraphLike, NodeIdx, RangeArena};
+use shared::{AnalyzerLike, ApplyStats, ExprErr, GraphLike, IntoExprErr, NodeIdx, RangeArena};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
@@ -16,7 +16,6 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc},
 };
-use solc_expressions::{ExprErr, IntoExprErr};
 
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -507,14 +506,11 @@ impl AnalyzerLike for Analyzer {
         &mut self.handled_funcs
     }
 
-    fn file_mapping(&self) -> BTreeMap<usize, String> {
-        let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
-        for (source_path, _, o_file_no, _) in self.sources.iter() {
+    fn file_mapping(&self) -> BTreeMap<usize, &str> {
+        let mut file_mapping: BTreeMap<usize, &str> = BTreeMap::new();
+        for (_, sol, o_file_no, _) in self.sources.iter() {
             if let Some(file_no) = o_file_no {
-                file_mapping.insert(
-                    *file_no,
-                    source_path.path_to_solidity_source().display().to_string(),
-                );
+                file_mapping.insert(*file_no, sol);
             }
         }
         file_mapping

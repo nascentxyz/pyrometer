@@ -185,7 +185,7 @@ pub trait AnalyzerLike: GraphLike {
     fn apply_stats_mut(&mut self) -> &mut ApplyStats;
     fn handled_funcs(&self) -> &[Self::FunctionNode];
     fn handled_funcs_mut(&mut self) -> &mut Vec<Self::FunctionNode>;
-    fn file_mapping(&self) -> BTreeMap<usize, String>;
+    fn file_mapping(&self) -> BTreeMap<usize, &str>;
     fn minimize_debug(&self) -> &Option<String>;
     fn minimize_err(&mut self, ctx: Self::ContextNode) -> String;
 }

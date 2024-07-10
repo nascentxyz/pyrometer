@@ -7,7 +7,7 @@ use crate::{
         elem::{RangeElem, RangeExpr, RangeOp},
         RangeEval,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, TypeNode, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode, VarType,
 };
 
 use shared::{GraphError, RangeArena, Search, StorageLocation};
