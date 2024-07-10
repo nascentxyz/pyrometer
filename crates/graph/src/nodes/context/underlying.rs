@@ -60,6 +60,8 @@ pub struct Context {
     pub cache: ContextCache,
     /// A difference logic solver used for determining reachability
     pub dl_solver: DLSolver,
+    /// Functions applied (but not reparsed) in this context
+    pub applies: Vec<FunctionNode>,
 }
 
 impl Context {
@@ -89,6 +91,7 @@ impl Context {
             number_of_live_edges: 0,
             cache: Default::default(),
             dl_solver: Default::default(),
+            applies: Default::default(),
         }
     }
 
@@ -238,6 +241,7 @@ impl Context {
                 associated_contract: None,
             },
             dl_solver: parent_ctx.underlying(analyzer)?.dl_solver.clone(),
+            applies: Default::default(),
         })
     }
 
@@ -300,6 +304,7 @@ impl Context {
                 associated_contract: None,
             },
             dl_solver: parent_ctx.underlying(analyzer)?.dl_solver.clone(),
+            applies: Default::default(),
         })
     }
 

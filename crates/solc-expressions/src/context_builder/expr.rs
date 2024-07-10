@@ -413,7 +413,7 @@ pub trait ExpressionParser:
             PostDecrement(loc, expr) => self.post_decrement(arena, expr, *loc, ctx),
 
             // Misc.
-            Variable(ident) => self.variable(arena, ident, ctx, None),
+            Variable(ident) => self.variable(arena, ident, ctx, None, None),
             Type(loc, ty) => {
                 if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self, arena) {
                     if let Some(idx) = self.builtins().get(&builtin) {

@@ -1,7 +1,7 @@
 use crate::{
     nodes::{
-        BuiltInNode, Builtin, Concrete, ConcreteNode, ContractNode, EnumNode, FunctionNode,
-        StructNode, TyNode,
+        BuiltInNode, Builtin, Concrete, ConcreteNode, ContractNode, EnumNode, ErrorNode,
+        FunctionNode, StructNode, TyNode,
     },
     range::{
         elem::{Elem, RangeElem},
@@ -308,6 +308,34 @@ impl VarType {
                 if let Some(casted) = c.cast_from(to_c) {
                     let node = analyzer.add_node(Node::Concrete(casted));
                     Ok(Some(Self::Concrete(node.into())))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub fn builtin_to_concrete_idx(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Option<NodeIdx>, GraphError> {
+        match self {
+            Self::BuiltIn(bn, Some(range)) => {
+                let Some(min) = range.evaled_range_min(analyzer, arena)?.maybe_concrete() else {
+                    return Ok(None);
+                };
+                let Some(max) = range.evaled_range_max(analyzer, arena)?.maybe_concrete() else {
+                    return Ok(None);
+                };
+                if min.val == max.val {
+                    let builtin = bn.underlying(analyzer)?;
+                    let Some(conc) = min.val.cast(builtin.clone()) else {
+                        return Ok(None);
+                    };
+                    let conc_idx = analyzer.add_node(Node::Concrete(conc));
+                    Ok(Some(conc_idx))
                 } else {
                     Ok(None)
                 }
@@ -770,9 +798,46 @@ pub enum TypeNode {
     Contract(ContractNode),
     Struct(StructNode),
     Enum(EnumNode),
+    Error(ErrorNode),
     Ty(TyNode),
     Func(FunctionNode),
     Unresolved(NodeIdx),
+}
+
+impl From<ContractNode> for TypeNode {
+    fn from(c: ContractNode) -> Self {
+        TypeNode::Contract(c)
+    }
+}
+
+impl From<StructNode> for TypeNode {
+    fn from(c: StructNode) -> Self {
+        TypeNode::Struct(c)
+    }
+}
+
+impl From<EnumNode> for TypeNode {
+    fn from(c: EnumNode) -> Self {
+        TypeNode::Enum(c)
+    }
+}
+
+impl From<TyNode> for TypeNode {
+    fn from(c: TyNode) -> Self {
+        TypeNode::Ty(c)
+    }
+}
+
+impl From<ErrorNode> for TypeNode {
+    fn from(c: ErrorNode) -> Self {
+        TypeNode::Error(c)
+    }
+}
+
+impl From<FunctionNode> for TypeNode {
+    fn from(c: FunctionNode) -> Self {
+        TypeNode::Func(c)
+    }
 }
 
 impl TypeNode {
@@ -781,6 +846,7 @@ impl TypeNode {
             TypeNode::Contract(n) => n.name(analyzer),
             TypeNode::Struct(n) => n.name(analyzer),
             TypeNode::Enum(n) => n.name(analyzer),
+            TypeNode::Error(n) => n.name(analyzer),
             TypeNode::Ty(n) => n.name(analyzer),
             TypeNode::Func(n) => Ok(format!("function {}", n.name(analyzer)?)),
             TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
@@ -797,6 +863,7 @@ impl TypeNode {
                 Node::Contract(..) => Ok(TypeNode::Contract((*n).into())),
                 Node::Struct(..) => Ok(TypeNode::Struct((*n).into())),
                 Node::Enum(..) => Ok(TypeNode::Enum((*n).into())),
+                Node::Error(..) => Ok(TypeNode::Error((*n).into())),
                 Node::Ty(..) => Ok(TypeNode::Ty((*n).into())),
                 Node::Function(..) => Ok(TypeNode::Func((*n).into())),
                 _ => Err(GraphError::NodeConfusion(
@@ -814,6 +881,7 @@ impl From<TypeNode> for NodeIdx {
             TypeNode::Contract(n) => n.into(),
             TypeNode::Struct(n) => n.into(),
             TypeNode::Enum(n) => n.into(),
+            TypeNode::Error(n) => n.into(),
             TypeNode::Ty(n) => n.into(),
             TypeNode::Func(n) => n.into(),
             TypeNode::Unresolved(n) => n,

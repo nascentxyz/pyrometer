@@ -53,15 +53,26 @@ impl VarNode {
         parent: NodeIdx,
     ) -> Result<(), GraphError> {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
-            tracing::trace!("Parsing variable initializer");
+            tracing::trace!(
+                "Parsing variable initializer for {}",
+                self.underlying(analyzer)?.name.as_ref().unwrap().name
+            );
             let init = analyzer.parse_expr(arena, &expr, Some(parent));
+
+            println!(
+                "init here: {:?}, is constant: {}",
+                analyzer.node(init),
+                ContextVarNode::from(init).is_const(analyzer, arena)?
+            );
             let underlying = self.underlying(analyzer)?.clone();
             let mut set = false;
             if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
                 if let Some(initer) = VarType::try_from_idx(analyzer, init) {
                     if let Some(initer) = initer.try_cast(&ty, analyzer)? {
-                        set = true;
-                        self.underlying_mut(analyzer)?.initializer = Some(initer.ty_idx());
+                        if let Some(conc_idx) = initer.builtin_to_concrete_idx(analyzer, arena)? {
+                            set = true;
+                            self.underlying_mut(analyzer)?.initializer = Some(conc_idx);
+                        }
                     }
                 }
             }
@@ -143,6 +154,7 @@ impl VarNode {
             .any(|attr| matches!(attr, VariableAttribute::Constant(_)))
         {
             if let Some(init) = self.underlying(analyzer)?.initializer {
+                println!("init: {:?}", analyzer.node(init));
                 if let Some(ty) = VarType::try_from_idx(analyzer, init) {
                     return Ok(Some(ContextVar {
                         loc: Some(loc),
@@ -174,6 +186,15 @@ impl VarNode {
             })
             .map(|edge| ContextVarNode::from(edge.source()))
             .collect()
+    }
+
+    pub fn reconstruct_src<'a>(
+        &self,
+        analyzer: &'a impl AnalyzerBackend,
+    ) -> Result<&'a str, GraphError> {
+        let loc = self.underlying(analyzer)?.loc;
+        let file_no = loc.try_file_no().unwrap();
+        Ok(&analyzer.source_map().get(&file_no).unwrap()[loc.start()..loc.end()])
     }
 }
 

@@ -282,6 +282,31 @@ impl ContextNode {
         }
     }
 
+    /// Gets all descendents as context nodes recursively
+    pub fn family_tree(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ContextNode>, GraphError> {
+        if let Some(child) = self.underlying(analyzer)?.child {
+            let mut tree = vec![];
+            match child {
+                CallFork::Call(c) => {
+                    tree.push(c);
+                    tree.extend(c.family_tree(analyzer)?)
+                }
+                CallFork::Fork(w1, w2) => {
+                    tree.push(w1);
+                    tree.push(w2);
+                    tree.extend(w1.family_tree(analyzer)?);
+                    tree.extend(w2.family_tree(analyzer)?);
+                }
+            }
+            Ok(tree)
+        } else {
+            Ok(vec![])
+        }
+    }
+
     /// Adds a fork to the context
     pub fn set_child_fork(
         &self,
@@ -313,7 +338,7 @@ impl ContextNode {
         }
     }
 
-    pub fn set_join_forks(
+    pub fn set_apply_forks(
         &self,
         loc: Loc,
         end_worlds: Vec<ContextNode>,
@@ -502,6 +527,16 @@ impl ContextNode {
             parents.extend(parent_ctx.parent_list(analyzer)?);
         }
         Ok(parents)
+    }
+
+    /// Gets the first context in the lineage
+    pub fn genesis(&self, analyzer: &impl GraphBackend) -> Result<ContextNode, GraphError> {
+        let context = self.underlying(analyzer)?;
+        if let Some(parent_ctx) = context.parent_ctx {
+            parent_ctx.genesis(analyzer)
+        } else {
+            Ok(*self)
+        }
     }
 
     /// Gets all calls recursively

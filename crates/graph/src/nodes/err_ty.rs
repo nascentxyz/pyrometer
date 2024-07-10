@@ -1,6 +1,11 @@
-use crate::{nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, GraphBackend, Node};
+use crate::{
+    nodes::{Concrete, ContractNode},
+    range::elem::Elem,
+    AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
+};
 
-use shared::{GraphError, NodeIdx, RangeArena};
+use shared::{NodeIdx, RangeArena, GraphError};
+use petgraph::visit::EdgeRef;
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -17,6 +22,32 @@ impl ErrorNode {
                 "Node type confusion: expected node to be Var but it was: {e:?}"
             ))),
         }
+    }
+
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
+        Ok(self
+            .underlying(analyzer)?
+            .name
+            .clone()
+            .expect("Unnamed error")
+            .name)
+    }
+
+    pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), petgraph::Direction::Outgoing)
+            .filter(|edge| matches!(*edge.weight(), Edge::Error))
+            .filter_map(|edge| {
+                let node = edge.target();
+                match analyzer.node(node) {
+                    Node::Contract(_) => Some(ContractNode::from(node)),
+                    _ => None,
+                }
+            })
+            .take(1)
+            .next()
+            .map(ContractNode::from)
     }
 }
 impl AsDotStr for ErrorNode {

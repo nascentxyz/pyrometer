@@ -7,7 +7,7 @@ use graph::{
 };
 use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
-use solang_parser::pt::{Expression, Identifier, Loc, VariableDeclaration};
+use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation, VariableDeclaration};
 
 impl<T> Variable for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Deals with variable retrieval, parsing, and versioning
@@ -19,6 +19,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         arena: &mut RangeArena<Elem<Concrete>>,
         ident: &Identifier,
         ctx: ContextNode,
+        location: Option<StorageLocation>,
         recursion_target: Option<ContextNode>,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
@@ -35,7 +36,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
         // solang doesnt have `super` as a keyword
         if let Some(cvar) = ctx.var_by_name(self, &ident.name) {
-            let cvar = cvar.latest_version(self);
+            let cvar = cvar.latest_version_or_inherited_in_ctx(ctx, self);
             self.apply_to_edges(
                 target_ctx,
                 ident.loc,
@@ -55,7 +56,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             .into_expr_err(ident.loc)?
         {
             // check if we can inherit it
-            let cvar = cvar.latest_version(self);
+            let cvar = cvar.latest_version_or_inherited_in_ctx(ctx, self);
             self.apply_to_edges(
                 target_ctx,
                 ident.loc,
@@ -74,14 +75,46 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             // }
         } else if (self.env_variable(arena, ident, target_ctx)?).is_some() {
             Ok(())
-        } else if let Some(idx) = self.user_types().get(&ident.name).cloned() {
+        } else if let Some(idxs) = self.user_types().get(&ident.name).cloned() {
+            let idx = if idxs.len() == 1 {
+                idxs[0]
+            } else {
+                // disambiguate by scope
+                let in_scope = if let Some(contract) = ctx
+                    .maybe_associated_contract(self)
+                    .into_expr_err(ident.loc)?
+                {
+                    let mut all_storage_vars_tys = contract
+                        .all_storage_vars(self)
+                        .iter()
+                        .map(|i| i.0.into())
+                        .collect::<Vec<_>>();
+                    all_storage_vars_tys.sort();
+                    all_storage_vars_tys.dedup();
+                    all_storage_vars_tys
+                } else {
+                    vec![]
+                };
+                if let Some(idx) = self.disambiguate(ctx, ident.loc, idxs, in_scope, location) {
+                    idx
+                } else {
+                    return Err(ExprErr::ParseError(
+                        ident.loc,
+                        "Unable to disambiguate variable".to_string(),
+                    ));
+                }
+            };
+
+            let mut is_contract_var = false;
             let const_var = if let Node::Var(_v) = self.node(idx) {
+                is_contract_var = true;
                 VarNode::from(idx)
                     .const_value(ident.loc, self)
                     .into_expr_err(ident.loc)?
             } else {
                 None
             };
+            println!("{:?} const var: {const_var:?}", self.node(idx));
 
             let var = if let Some(con) = const_var {
                 con
@@ -118,6 +151,15 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 target_ctx,
                 Edge::Context(ContextEdge::Variable),
             );
+
+            if is_contract_var {
+                self.add_edge(
+                    new_cvarnode,
+                    idx,
+                    Edge::Context(ContextEdge::ContractVariable),
+                );
+            }
+
             target_ctx
                 .push_expr(ExprRet::Single(new_cvarnode), self)
                 .into_expr_err(ident.loc)?;
@@ -139,7 +181,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             ))
         } else {
             let node = self.add_node(Node::Unresolved(ident.clone()));
-            self.user_types_mut().insert(ident.name.clone(), node);
+            let entry = self.user_types_mut().entry(ident.name.clone()).or_default();
+            entry.push(node);
             target_ctx
                 .push_expr(ExprRet::Single(node), self)
                 .into_expr_err(ident.loc)?;
@@ -147,9 +190,80 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         }
     }
 
+    fn disambiguate(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        mut idxs: Vec<NodeIdx>,
+        inscope_storage: Vec<NodeIdx>,
+        location: Option<StorageLocation>,
+    ) -> Option<NodeIdx> {
+        // disambiguate based on left hand side if it exists
+        if let Some(maybe_lhs) = ctx.pop_expr_latest(loc, self).ok()? {
+            if let ExprRet::Single(lhs_idx) = maybe_lhs {
+                if let Some(var_ty) = VarType::try_from_idx(self, lhs_idx) {
+                    if idxs.contains(&var_ty.ty_idx()) {
+                        ctx.push_expr(maybe_lhs, self).ok()?;
+                        return Some(var_ty.ty_idx());
+                    }
+                }
+            }
+            ctx.push_expr(maybe_lhs, self).ok()?;
+        }
+
+        // disambiguate based on storage location
+        match location {
+            Some(StorageLocation::Storage(..)) => {
+                let mut idxs = idxs.clone();
+                idxs.retain(|i| inscope_storage.contains(i));
+                return match idxs.len() {
+                    1 => Some(idxs[0]),
+                    2 => {
+                        // solidity is weird where if the current contract shadows a struct definition in a storage variable,
+                        // the struct is presumed the correct type.
+                        // ```
+                        // contract B {
+                        //     struct A {}
+                        // }
+                        // contract A is B {
+                        //     A a;
+                        //     function foo() external {
+                        //         // a is of type B.A, *not* Contract::A
+                        //         a = A(address(this));
+                        //     }
+                        // }
+                        // ```
+                        match (self.node(idxs[0]), self.node(idxs[1])) {
+                            (Node::Contract(..), Node::Struct(..)) => Some(idxs[1]),
+                            (Node::Struct(..), Node::Contract(..)) => Some(idxs[0]),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+            }
+            Some(StorageLocation::Memory(..)) | Some(StorageLocation::Calldata(..)) => idxs
+                .iter()
+                .find(|idx| match self.node(**idx) {
+                    Node::Struct(..) => true,
+                    _ => false,
+                })
+                .copied(),
+            None => {
+                let t = &mut idxs;
+                ctx.keep_inscope_tys(t, self).ok()?;
+                if t.len() == 1 {
+                    Some(t[0])
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     fn get_tmp_variable(&mut self, name: &str, ctx: ContextNode) -> Option<ContextVarNode> {
         let cvar = ctx.tmp_var_by_name(self, name)?;
-        Some(cvar.latest_version(self))
+        Some(cvar.latest_version_or_inherited_in_ctx(ctx, self))
     }
 
     fn get_unchanged_tmp_variable(
@@ -163,8 +277,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         };
 
         if let Some(tmp) = var.tmp_of(self)? {
-            if tmp.lhs.latest_version(self) != tmp.lhs {
-                let latest = tmp.lhs.latest_version(self);
+            if tmp.lhs.latest_version_or_inherited_in_ctx(ctx, self) != tmp.lhs {
+                let latest = tmp.lhs.latest_version_or_inherited_in_ctx(ctx, self);
                 let newest_min = latest.evaled_range_min(self, arena)?;
                 let curr_min = tmp.lhs.evaled_range_min(self, arena)?;
                 if newest_min != curr_min {
@@ -178,8 +292,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             }
 
             if let Some(rhs) = tmp.rhs {
-                if rhs.latest_version(self) != rhs {
-                    let latest = rhs.latest_version(self);
+                if rhs.latest_version_or_inherited_in_ctx(ctx, self) != rhs {
+                    let latest = rhs.latest_version_or_inherited_in_ctx(ctx, self);
                     let newest_min = latest.evaled_range_min(self, arena)?;
                     let curr_min = rhs.evaled_range_min(self, arena)?;
                     if newest_min != curr_min {
@@ -216,7 +330,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             }
             (ExprRet::Single(ty), Some(ExprRet::SingleLiteral(rhs))) => {
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let res = rhs_cvar.literal_cast_from_ty(ty, self).into_expr_err(loc);
                 let _ = self.add_if_err(res);
                 self.match_var_def(
@@ -370,6 +485,19 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 cvar.display_name(self).unwrap()
             );
         }
+
+        let maybe_old_ctx = cvar_node.maybe_ctx(self);
+        if maybe_old_ctx.is_some() && maybe_old_ctx != Some(ctx) {
+            if let Some(cvar) = cvar_node.next_version_or_inherited_in_ctx(ctx, self) {
+                panic!(
+                    "Not latest version of (inherited): {}, old context: {}, new context: {}",
+                    cvar.display_name(self).unwrap(),
+                    maybe_old_ctx.unwrap().path(self),
+                    ctx.path(self),
+                );
+            }
+        }
+
         if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
             return Err(ExprErr::GraphError(
                 loc,
@@ -382,7 +510,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             ));
         }
         let mut new_cvar = cvar_node
-            .latest_version(self)
+            .latest_version_or_inherited_in_ctx(ctx, self)
             .underlying(self)
             .into_expr_err(loc)?
             .clone();
@@ -393,7 +521,10 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
                 if !force {
                     // get the previous version to remove and prevent spurious nodes
-                    if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
+                    if let Some(prev) = cvar_node
+                        .latest_version_or_inherited_in_ctx(ctx, self)
+                        .previous_version(self)
+                    {
                         let prev_version = prev.underlying(self).into_expr_err(loc)?;
                         // check if there was no change between the previous version and the latest version
                         if prev_version.eq_ignore_loc(&new_cvar) && old_ctx == ctx {
@@ -407,6 +538,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 new_cvar.loc = Some(loc);
                 new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
                 if old_ctx != ctx {
+                    tracing::trace!(
+                        "moving var {} into new context: from {} to {}",
+                        ContextVarNode::from(new_cvarnode)
+                            .display_name(self)
+                            .unwrap(),
+                        old_ctx.path(self),
+                        ctx.path(self),
+                    );
                     ctx.add_var(new_cvarnode.into(), self).into_expr_err(loc)?;
                     self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
                     self.add_edge(
@@ -429,12 +568,21 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
     fn advance_var_in_forced_ctx(
         &mut self,
-        cvar_node: ContextVarNode,
+        mut cvar_node: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<ContextVarNode, ExprErr> {
+        if cvar_node.maybe_ctx(self) != Some(ctx) {
+            if let Some(inherited) = cvar_node
+                .latest_version_or_inherited_in_ctx(ctx, self)
+                .next_version_or_inherited_in_ctx(ctx, self)
+            {
+                cvar_node = inherited.latest_version_or_inherited_in_ctx(ctx, self)
+            }
+        }
+
         let mut new_cvar = cvar_node
-            .latest_version(self)
+            .latest_version_or_inherited_in_ctx(ctx, self)
             .underlying(self)
             .into_expr_err(loc)?
             .clone();
@@ -444,7 +592,10 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
                 // get the previous version to remove and prevent spurious nodes
-                if let Some(prev) = cvar_node.latest_version(self).previous_version(self) {
+                if let Some(prev) = cvar_node
+                    .latest_version_or_inherited_in_ctx(ctx, self)
+                    .previous_version(self)
+                {
                     let prev_version = prev.underlying(self).into_expr_err(loc)?;
                     // check if there was no change between the previous version and the latest version
                     if prev_version.eq_ignore_loc(&new_cvar) && old_ctx == ctx {
@@ -458,6 +609,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 // new_cvar.display_name = format!("{}_{}", new_cvar.name, cvar_node.prev_versions(self));
                 new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
                 if old_ctx != ctx {
+                    tracing::trace!(
+                        "moving var {} into new context: from {} to {}",
+                        ContextVarNode::from(new_cvarnode)
+                            .display_name(self)
+                            .unwrap(),
+                        old_ctx.path(self),
+                        ctx.path(self),
+                    );
                     ctx.add_var(new_cvarnode.into(), self).into_expr_err(loc)?;
                     self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
                     self.add_edge(

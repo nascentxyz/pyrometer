@@ -1,10 +1,10 @@
 use crate::{
-    nodes::Concrete,
-    nodes::{ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
+    nodes::{Concrete, ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode, VarNode},
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
 
+use ethers_core::k256::elliptic_curve::rand_core::impls;
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
@@ -16,6 +16,12 @@ use solang_parser::{
     },
 };
 use std::collections::BTreeMap;
+
+pub enum FuncVis {
+    Pure,
+    View,
+    Mut,
+}
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FunctionNode(pub usize);
@@ -127,15 +133,31 @@ impl FunctionNode {
     pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         match self.underlying(analyzer)?.ty {
             FunctionTy::Constructor => Ok(format!(
-                "constructor({})",
+                "{}.constructor({})",
+                self.maybe_slow_associated_contract(analyzer)
+                    .unwrap()
+                    .name(analyzer)
+                    .unwrap(),
                 self.params(analyzer)
                     .iter()
                     .map(|param| { param.ty_str(analyzer).unwrap() })
                     .collect::<Vec<_>>()
                     .join(", ")
             )),
-            FunctionTy::Receive => Ok("receive()".to_string()),
-            FunctionTy::Fallback => Ok("fallback()".to_string()),
+            FunctionTy::Receive => Ok(format!(
+                "{}.receive()",
+                self.maybe_slow_associated_contract(analyzer)
+                    .unwrap()
+                    .name(analyzer)
+                    .unwrap()
+            )),
+            FunctionTy::Fallback => Ok(format!(
+                "{}.fallback()",
+                self.maybe_slow_associated_contract(analyzer)
+                    .unwrap()
+                    .name(analyzer)
+                    .unwrap()
+            )),
             _ => Ok(self
                 .underlying(analyzer)?
                 .name
@@ -211,6 +233,44 @@ impl FunctionNode {
             }
 
             body_ctx
+        }
+    }
+
+    pub fn maybe_slow_associated_contract(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Option<ContractNode> {
+        if let Some(maybe_contract) = self
+            .underlying(analyzer)
+            .unwrap()
+            .cache
+            .maybe_associated_contract
+        {
+            maybe_contract
+        } else {
+            let contract = analyzer
+                .graph()
+                .edges_directed(self.0.into(), Direction::Outgoing)
+                .filter(|edge| {
+                    matches!(
+                        *edge.weight(),
+                        Edge::Func
+                            | Edge::Modifier
+                            | Edge::Constructor
+                            | Edge::ReceiveFunc
+                            | Edge::FallbackFunc
+                    )
+                })
+                .filter_map(|edge| {
+                    let node = edge.target();
+                    match analyzer.node(node) {
+                        Node::Contract(_) => Some(ContractNode::from(node)),
+                        _ => None,
+                    }
+                })
+                .take(1)
+                .next();
+            contract
         }
     }
 
@@ -495,6 +555,16 @@ impl FunctionNode {
             .attributes
             .iter()
             .any(|attr| matches!(attr, FunctionAttribute::Mutability(Mutability::View(_)))))
+    }
+
+    pub fn visibility(&self, analyzer: &impl GraphBackend) -> Result<FuncVis, GraphError> {
+        if self.is_pure(analyzer)? {
+            Ok(FuncVis::Pure)
+        } else if self.is_view(analyzer)? {
+            Ok(FuncVis::View)
+        } else {
+            Ok(FuncVis::Mut)
+        }
     }
 
     pub fn get_overriding(

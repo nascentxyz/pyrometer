@@ -1,7 +1,7 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
 use crate::{
-    func_call::join::FuncJoiner, func_call::modifier::ModifierCaller, helper::CallerHelper,
+    func_call::apply::FuncApplier, func_call::modifier::ModifierCaller, helper::CallerHelper,
     internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
     namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExpressionParser, StatementParser,
 };
@@ -339,7 +339,9 @@ pub trait FuncCaller:
             ExprRet::Single(input_var) | ExprRet::SingleLiteral(input_var) => {
                 // if we get a single var, we expect the func to only take a single
                 // variable
-                let inputs = vec![ContextVarNode::from(input_var).latest_version(self)];
+                let inputs =
+                    vec![ContextVarNode::from(input_var)
+                        .latest_version_or_inherited_in_ctx(ctx, self)];
                 self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                     analyzer.func_call_inner(
                         arena,
@@ -371,7 +373,8 @@ pub trait FuncCaller:
                         .iter()
                         .map(|expr_ret| {
                             let var = expr_ret.expect_single().into_expr_err(loc)?;
-                            Ok(ContextVarNode::from(var).latest_version(self))
+                            Ok(ContextVarNode::from(var)
+                                .latest_version_or_inherited_in_ctx(ctx, self))
                         })
                         .collect::<Result<Vec<_>, ExprErr>>()?;
                     self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
@@ -398,6 +401,19 @@ pub trait FuncCaller:
                     ))
                 }
             }
+            ExprRet::Null => self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                analyzer.func_call_inner(
+                    arena,
+                    false,
+                    ctx,
+                    func,
+                    loc,
+                    &[],
+                    &params,
+                    func_call_str,
+                    &modifier_state,
+                )
+            }),
             e => todo!("here: {:?}", e),
         }
     }
@@ -417,7 +433,7 @@ pub trait FuncCaller:
         modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
         if !entry_call {
-            if let Ok(true) = self.join(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
                 return Ok(());
             }
         }

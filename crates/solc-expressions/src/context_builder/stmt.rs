@@ -116,7 +116,7 @@ pub trait StatementParser:
                     Node::Function(fn_node) => {
                         mods_set = fn_node.modifiers_set;
                         entry_loc = Some(fn_node.loc);
-                        let ctx = Context::new(
+                        let mut ctx = Context::new(
                             FunctionNode::from(parent.into()),
                             self.add_if_err(
                                 FunctionNode::from(parent.into())
@@ -311,7 +311,27 @@ pub trait StatementParser:
                                             return Ok(());
                                         }
 
-                                        analyzer.parse_ctx_expr(arena, &var_decl.ty, ctx)?;
+                                        if let solang_parser::pt::Expression::Variable(ident) =
+                                            &var_decl.ty
+                                        {
+                                            analyzer.apply_to_edges(
+                                                ctx,
+                                                ident.loc,
+                                                arena,
+                                                &|analyzer, arena, ctx, _| {
+                                                    analyzer.variable(
+                                                        arena,
+                                                        ident,
+                                                        ctx,
+                                                        var_decl.storage.clone(),
+                                                        None,
+                                                    )
+                                                },
+                                            )?;
+                                        } else {
+                                            analyzer.parse_ctx_expr(arena, &var_decl.ty, ctx)?;
+                                        }
+
                                         analyzer.apply_to_edges(
                                             ctx,
                                             loc,
@@ -356,7 +376,14 @@ pub trait StatementParser:
                         }
                     }
                 } else {
-                    let res = self.parse_ctx_expr(arena, &var_decl.ty, ctx);
+                    let res = if let solang_parser::pt::Expression::Variable(ident) = &var_decl.ty {
+                        self.apply_to_edges(ctx, ident.loc, arena, &|analyzer, arena, ctx, _| {
+                            analyzer.variable(arena, ident, ctx, var_decl.storage.clone(), None)
+                        })
+                    } else {
+                        self.parse_ctx_expr(arena, &var_decl.ty, ctx)
+                    };
+
                     if self.widen_if_limit_hit(ctx, res) {
                         return;
                     }

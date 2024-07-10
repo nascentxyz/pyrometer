@@ -590,14 +590,9 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    let cnode =
-                        ConcreteNode::from(analyzer.add_node(Node::Concrete(Concrete::Bool(true))));
-                    let tmp_true = Node::ContextVar(
-                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
-                            .into_expr_err(other.loc())?,
-                    );
-                    let rhs_paths =
-                        ExprRet::Single(ContextVarNode::from(analyzer.add_node(tmp_true)).into());
+
+                    let tmp_true = analyzer.add_concrete_var(ctx, Concrete::Bool(true), loc)?;
+                    let rhs_paths = ExprRet::Single(tmp_true.0.into());
                     analyzer.handle_require_inner(
                         arena,
                         ctx,
@@ -659,9 +654,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 )
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
 
                 self.require(arena, new_lhs, new_rhs, ctx, loc, op, rhs_op, recursion_ops)?;
@@ -759,7 +756,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         let mut tmp_cvar = None;
 
         if let Some(lhs_range) = new_lhs
-            .latest_version(self)
+            .latest_version_or_inherited_in_ctx(ctx, self)
             .range(self)
             .into_expr_err(loc)?
         {
@@ -818,8 +815,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ));
             }
             tracing::trace!("done range updating");
-            new_rhs = new_rhs.latest_version(self);
-            new_lhs = new_lhs.latest_version(self);
+            new_rhs = new_rhs.latest_version_or_inherited_in_ctx(ctx, self);
+            new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
 
             let rhs_display_name = new_rhs.display_name(self).into_expr_err(loc)?;
             let display_name = if rhs_display_name == "true" {
@@ -948,18 +945,18 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             new_lhs.display_name(self).unwrap(),
             new_lhs.is_tmp(self).unwrap()
         );
-        if let Some(tmp) = new_lhs.tmp_of(self).into_expr_err(loc)? {
-            if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
-                // self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)?;
-            } else {
-                match tmp.op {
-                    RangeOp::Not => {}
-                    _ => {
-                        self.uninvertable_range_recursion(arena, tmp, new_lhs, new_rhs, loc, ctx);
-                    }
-                }
-            }
-        }
+        // if let Some(tmp) = new_lhs.tmp_of(self).into_expr_err(loc)? {
+        //     if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
+        //         // self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)?;
+        //     } else {
+        //         match tmp.op {
+        //             RangeOp::Not => {}
+        //             _ => {
+        //                 self.uninvertable_range_recursion(arena, tmp, new_lhs, new_rhs, loc, ctx);
+        //             }
+        //         }
+        //     }
+        // }
 
         Ok(tmp_cvar)
     }
@@ -1027,7 +1024,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     fn update_nonconst_from_const(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        _ctx: ContextNode,
+        ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         const_var: ContextVarNode,
@@ -1038,12 +1035,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
-                let elem = Elem::from(const_var.latest_version(self));
+                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
                 let evaled_min = nonconst_range
                     .evaled_range_min(self, arena)
                     .into_expr_err(loc)?;
                 if evaled_min.maybe_concrete().is_none() {
-                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from const: Eq). Min: {}", evaled_min.to_range_string(false, self, arena).s)));
+                    return Err(ExprErr::BadRange(loc, format!("Expected to have a concrete range by now. This is likely a bug (update nonconst from const: Eq). {}.min: {}", nonconst_var.display_name(self).unwrap(), evaled_min.to_range_string(false, self, arena).s)));
                 }
 
                 if !nonconst_range.contains_elem(&elem, self, arena) {
@@ -1060,7 +1057,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             RangeOp::Neq => {
                 // check if contains
-                let elem = Elem::from(const_var.latest_version(self));
+                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range
@@ -1110,7 +1107,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Gt => {
-                let elem = Elem::from(const_var.latest_version(self));
+                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if nonconst max is <= const, we can't make this true
                 let max = nonconst_range
@@ -1151,7 +1148,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Gte => {
-                let elem = Elem::from(const_var.latest_version(self));
+                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if nonconst max is < const, we can't make this true
                 if matches!(
@@ -1174,7 +1171,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Lt => {
-                let elem = Elem::from(const_var.latest_version(self));
+                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if nonconst min is >= const, we can't make this true
                 let min = nonconst_range
@@ -1204,7 +1201,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Lte => {
-                let elem = Elem::from(const_var.latest_version(self));
+                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if nonconst min is > const, we can't make this true
                 let min = nonconst_range
@@ -1234,7 +1231,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     fn update_nonconst_from_nonconst(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        _ctx: ContextNode,
+        ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
         new_lhs: ContextVarNode,
@@ -1307,7 +1304,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     return Ok(true);
                 }
 
-                let rhs_elem = Elem::from(new_rhs.latest_version(self));
+                let rhs_elem = Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
                 // just add as an exclusion
                 let idx = arena.idx_or_upsert(rhs_elem, self);
                 lhs_range.add_range_exclusion(idx);
@@ -1315,7 +1312,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     .set_range_exclusions(self, lhs_range.exclusions)
                     .into_expr_err(loc)?;
 
-                let lhs_elem = Elem::from(new_lhs.latest_version(self));
+                let lhs_elem = Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self));
                 // just add as an exclusion
                 let idx = arena.idx_or_upsert(lhs_elem, self);
                 rhs_range.add_range_exclusion(idx);
@@ -1325,8 +1322,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Gt => {
-                let rhs_elem = Elem::from(new_rhs.latest_version(self));
-                let lhs_elem = Elem::from(new_lhs.latest_version(self));
+                let rhs_elem = Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
+                let lhs_elem = Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if lhs.max is <= rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self, arena).into_expr_err(loc)?;
@@ -1345,7 +1342,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 // we add/sub one to the element because its strict >
                 new_lhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_min(
                         self,
                         arena,
@@ -1353,7 +1350,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     )
                     .into_expr_err(loc)?;
                 new_rhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_max(
                         self,
                         arena,
@@ -1367,8 +1364,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // lhs >= rhs
                 // lhs min is the max of current lhs_min and rhs_min
 
-                let rhs_elem = Elem::from(new_rhs.latest_version(self));
-                let lhs_elem = Elem::from(new_lhs.latest_version(self));
+                let rhs_elem = Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
+                let lhs_elem = Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if lhs.max is < rhs.min, we can't make this true
                 let max = lhs_range.evaled_range_max(self, arena).into_expr_err(loc)?;
@@ -1378,12 +1375,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
 
                 let new_min = Elem::Expr(RangeExpr::new(
-                    new_lhs.latest_version(self).into(),
+                    new_lhs.latest_version_or_inherited_in_ctx(ctx, self).into(),
                     RangeOp::Max,
                     rhs_elem,
                 ));
                 let new_max = Elem::Expr(RangeExpr::new(
-                    new_rhs.latest_version(self).into(),
+                    new_rhs.latest_version_or_inherited_in_ctx(ctx, self).into(),
                     RangeOp::Min,
                     lhs_elem,
                 ));
@@ -1403,8 +1400,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Lt => {
-                let rhs_elem = Elem::from(new_rhs.latest_version(self));
-                let lhs_elem = Elem::from(new_lhs.latest_version(self));
+                let rhs_elem = Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
+                let lhs_elem = Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // if lhs min is >= rhs.max, we can't make this true
                 let min = lhs_range.evaled_range_min(self, arena).into_expr_err(loc)?;
@@ -1426,7 +1423,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;
 
                 new_new_lhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_max(
                         self,
                         arena,
@@ -1434,7 +1431,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     )
                     .into_expr_err(loc)?;
                 new_new_rhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_min(
                         self,
                         arena,
@@ -1444,8 +1441,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(false)
             }
             RangeOp::Lte => {
-                let rhs_elem = Elem::from(new_rhs.latest_version(self));
-                let lhs_elem = Elem::from(new_lhs.latest_version(self))
+                let rhs_elem = Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
+                let lhs_elem = Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self))
                     .max(rhs_range.range_min().into_owned());
 
                 // if nonconst min is > const, we can't make this true
@@ -1458,7 +1455,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
 
                 new_lhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_max(
                         self,
                         arena,
@@ -1466,57 +1463,16 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     )
                     .into_expr_err(loc)?;
                 new_rhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_min(self, arena, lhs_elem.clone())
                     .into_expr_err(loc)?;
                 new_rhs
-                    .latest_version(self)
+                    .latest_version_or_inherited_in_ctx(ctx, self)
                     .set_range_max(self, arena, lhs_elem)
                     .into_expr_err(loc)?;
                 Ok(false)
             }
             e => todo!("Non-comparator in require, {e:?}"),
-        }
-    }
-
-    fn uninvertable_range_recursion(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        tmp_construction: TmpConstruction,
-        _new_lhs_core: ContextVarNode,
-        _rhs_cvar: ContextVarNode,
-        loc: Loc,
-        ctx: ContextNode,
-    ) {
-        if !tmp_construction.lhs.is_const(self, arena).unwrap() {
-            // widen to maximum range :(
-            let new_underlying_lhs = self
-                .advance_var_in_ctx(tmp_construction.lhs.latest_version(self), loc, ctx)
-                .unwrap();
-            if let Some(lhs_range) = tmp_construction.lhs.ref_range(self).unwrap() {
-                if let Elem::Concrete(c) = lhs_range.evaled_range_min(self, arena).unwrap() {
-                    new_underlying_lhs
-                        .set_range_min(
-                            self,
-                            arena,
-                            Elem::Concrete(RangeConcrete {
-                                val: Concrete::min_of_type(&c.val).unwrap_or_else(|| c.val.clone()),
-                                loc,
-                            }),
-                        )
-                        .unwrap();
-                    new_underlying_lhs
-                        .set_range_max(
-                            self,
-                            arena,
-                            Elem::Concrete(RangeConcrete {
-                                val: Concrete::max_of_type(&c.val).unwrap_or(c.val),
-                                loc,
-                            }),
-                        )
-                        .unwrap();
-                }
-            }
         }
     }
 
@@ -1559,8 +1515,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
                 tmp.expect_single().into_expr_err(loc)?
             });
-            let new_underlying_lhs =
-                self.advance_var_in_curr_ctx(tmp_construction.lhs.latest_version(self), loc)?;
+            let new_underlying_lhs = self.advance_var_in_curr_ctx(
+                tmp_construction
+                    .lhs
+                    .latest_version_or_inherited_in_ctx(ctx, self),
+                loc,
+            )?;
             if let Some(lhs_range) = new_underlying_lhs
                 .underlying(self)
                 .into_expr_err(loc)?
@@ -1784,8 +1744,10 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     e => panic!("here {e:?}"),
                 };
 
-                let new_underlying_rhs =
-                    self.advance_var_in_curr_ctx(rhs.latest_version(self), loc)?;
+                let new_underlying_rhs = self.advance_var_in_curr_ctx(
+                    rhs.latest_version_or_inherited_in_ctx(ctx, self),
+                    loc,
+                )?;
                 if let Some(lhs_range) = new_underlying_rhs
                     .underlying(self)
                     .into_expr_err(loc)?

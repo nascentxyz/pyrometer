@@ -1,8 +1,13 @@
-use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node, SolcRange};
+use crate::{
+    nodes::{Concrete, ContractNode},
+    range::elem::Elem,
+    AsDotStr, Edge, GraphBackend, GraphError, Node, SolcRange,
+};
 
 use shared::{GraphError, NodeIdx, RangeArena};
 
 use ethers_core::types::U256;
+use petgraph::visit::EdgeRef;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 
 /// An index in the graph that references a [`Enum`] node
@@ -49,7 +54,7 @@ impl EnumNode {
             .underlying(analyzer)?
             .name
             .clone()
-            .expect("Unnamed contract")
+            .expect("Unnamed enum")
             .name)
     }
 
@@ -82,6 +87,23 @@ impl EnumNode {
         let min = Concrete::from(val).into();
         let max = Concrete::from(val).into();
         Ok(SolcRange::new(min, max, vec![]))
+    }
+
+    pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), petgraph::Direction::Outgoing)
+            .filter(|edge| matches!(*edge.weight(), Edge::Enum))
+            .filter_map(|edge| {
+                let node = edge.target();
+                match analyzer.node(node) {
+                    Node::Contract(_) => Some(ContractNode::from(node)),
+                    _ => None,
+                }
+            })
+            .take(1)
+            .next()
+            .map(ContractNode::from)
     }
 }
 

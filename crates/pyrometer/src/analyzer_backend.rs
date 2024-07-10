@@ -2,12 +2,13 @@ use crate::Analyzer;
 use graph::{
     elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, ContextVar, Function, FunctionNode,
-        FunctionParam, FunctionParamNode, FunctionReturn, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContractNode,
+        FuncReconstructionReqs, Function, FunctionNode, FunctionParam, FunctionParamNode,
+        FunctionReturn, KilledKind, MsgNode,
     },
-    AnalyzerBackend, Edge, Node, VarType,
+    AnalyzerBackend, Edge, GraphBackend, Node, TypeNode, VarType,
 };
-use shared::{AnalyzerLike, ExprErr, GraphLike, IntoExprErr, JoinStats, NodeIdx, RangeArena};
+use shared::{AnalyzerLike, ExprErr, IntoExprErr, ApplyStats, GraphLike, NodeIdx, RangeArena};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
@@ -15,8 +16,10 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc},
 };
+use solc_expressions::{ExprErr, IntoExprErr};
 
 use std::collections::BTreeMap;
+use std::io::Write;
 
 impl AnalyzerBackend for Analyzer {
     fn add_concrete_var(
@@ -42,6 +45,7 @@ impl AnalyzerLike for Analyzer {
     type FunctionNode = FunctionNode;
     type FunctionParam = FunctionParam;
     type FunctionReturn = FunctionReturn;
+    type ContextNode = ContextNode;
     type Builtin = Builtin;
 
     fn builtin_fn_nodes(&self) -> &AHashMap<String, NodeIdx> {
@@ -60,8 +64,221 @@ impl AnalyzerLike for Analyzer {
         self.max_width
     }
 
+    fn minimize_err(&mut self, ctx: ContextNode) -> String {
+        let genesis = ctx.genesis(self).unwrap();
+        let family_tree = genesis.family_tree(self).unwrap();
+        let mut needed_functions = family_tree
+            .iter()
+            .map(|c| c.associated_fn(self).unwrap())
+            .collect::<Vec<_>>();
+        let applies = family_tree
+            .into_iter()
+            .flat_map(|c| c.underlying(self).unwrap().applies.clone())
+            .collect::<Vec<_>>();
+        needed_functions.extend(applies);
+        needed_functions.sort_by(|a, b| a.0.cmp(&b.0));
+        needed_functions.dedup();
+
+        fn recurse_find(
+            contract: ContractNode,
+            target_contract: ContractNode,
+            analyzer: &impl GraphBackend,
+        ) -> Option<Vec<ContractNode>> {
+            let mut inherited = contract.direct_inherited_contracts(analyzer);
+            if inherited.contains(&target_contract) {
+                Some(vec![contract])
+            } else if inherited.is_empty() {
+                None
+            } else {
+                while !inherited.is_empty() {
+                    if let Some(mut c) =
+                        recurse_find(inherited.pop().unwrap(), target_contract, analyzer)
+                    {
+                        c.push(contract);
+                        return Some(c);
+                    }
+                }
+                None
+            }
+        };
+
+        let mut contract_to_funcs: BTreeMap<
+            Option<ContractNode>,
+            Vec<(FunctionNode, FuncReconstructionReqs)>,
+        > = Default::default();
+
+        let mut tys = vec![];
+        let mut enums = vec![];
+        let mut structs = vec![];
+        let mut errs = vec![];
+        needed_functions.into_iter().for_each(|func| {
+            let maybe_func_contract = func.maybe_associated_contract(self);
+            let reqs = func.reconstruction_requirements(self);
+            reqs.usertypes.iter().for_each(|var| {
+                let maybe_associated_contract = match var {
+                    TypeNode::Contract(c) => Some(*c),
+                    TypeNode::Enum(c) => c.maybe_associated_contract(self),
+                    TypeNode::Error(c) => c.maybe_associated_contract(self),
+                    TypeNode::Struct(c) => c.maybe_associated_contract(self),
+                    TypeNode::Ty(c) => c.maybe_associated_contract(self),
+                    TypeNode::Func(_) => None,
+                    TypeNode::Unresolved(_) => None,
+                };
+                reqs.storage.iter().for_each(|var| {
+                    if let Some(c) = var.maybe_associated_contract(self) {
+                        if !contract_to_funcs.contains_key(&Some(c)) {
+                            contract_to_funcs.insert(Some(c), vec![]);
+                        }
+
+                        if let Some(func_c) = maybe_func_contract {
+                            if let Some(needed) = recurse_find(func_c, c, self) {
+                                needed.into_iter().for_each(|c| {
+                                    if !contract_to_funcs.contains_key(&Some(c)) {
+                                        contract_to_funcs.insert(Some(c), vec![]);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+
+                if let Some(c) = maybe_associated_contract {
+                    if !contract_to_funcs.contains_key(&Some(c)) {
+                        contract_to_funcs.insert(Some(c), vec![]);
+                    }
+
+                    if let Some(func_c) = maybe_func_contract {
+                        if let Some(needed) = recurse_find(func_c, c, self) {
+                            needed.into_iter().for_each(|c| {
+                                if !contract_to_funcs.contains_key(&Some(c)) {
+                                    contract_to_funcs.insert(Some(c), vec![]);
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    match var {
+                        TypeNode::Enum(c) => enums.push(*c),
+                        TypeNode::Error(c) => errs.push(*c),
+                        TypeNode::Struct(c) => structs.push(*c),
+                        TypeNode::Ty(c) => tys.push(*c),
+                        _ => {}
+                    }
+                }
+            });
+            let entry = contract_to_funcs.entry(maybe_func_contract).or_default();
+            entry.push((func, reqs));
+        });
+
+        // println!("{:#?}", contract_to_funcs);
+
+        let contracts = contract_to_funcs.keys().collect::<Vec<_>>();
+        let contract_str = contracts
+            .iter()
+            .filter_map(|maybe_contract| {
+                if let Some(contract) = maybe_contract {
+                    Some(contract.reconstruct(self, &contract_to_funcs).ok()?)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let func_str = if let Some(free_floating_funcs) = contract_to_funcs.get(&None) {
+            free_floating_funcs
+                .iter()
+                .map(|(func, _)| func.reconstruct_src(self).unwrap())
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            "".to_string()
+        };
+        let enum_str = enums
+            .iter()
+            .map(|enu| enu.reconstruct_src(self).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let enum_str = if enum_str.is_empty() {
+            "".to_string()
+        } else {
+            format!("{enum_str}\n")
+        };
+        let struct_str = structs
+            .iter()
+            .map(|strukt| strukt.reconstruct_src(self).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let struct_str = if struct_str.is_empty() {
+            "".to_string()
+        } else {
+            format!("{struct_str}\n")
+        };
+        let ty_str = tys
+            .iter()
+            .map(|ty| ty.reconstruct_src(self).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let ty_str = if ty_str.is_empty() {
+            "".to_string()
+        } else {
+            format!("{ty_str}\n")
+        };
+        let err_str = errs
+            .iter()
+            .map(|err| err.reconstruct_src(self).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let err_str = if err_str.is_empty() {
+            "".to_string()
+        } else {
+            format!("{err_str}\n")
+        };
+
+        format!("{err_str}{ty_str}{enum_str}{struct_str}{func_str}\n{contract_str}")
+    }
+
     fn add_expr_err(&mut self, err: ExprErr) {
         if self.debug_panic() {
+            if let Some(path) = self.minimize_debug().clone() {
+                let reconstruction_edge: ContextNode = self
+                    .graph
+                    .node_indices()
+                    .find_map(|node| match self.node(node) {
+                        Node::Context(context) if context.killed.is_some() => {
+                            match context.killed.unwrap() {
+                                (_, KilledKind::ParseError) => {
+                                    // println!("found context: {}", context.path);
+                                    let edges = graph::nodes::ContextNode::from(node)
+                                        .all_edges(self)
+                                        .unwrap();
+                                    let reconstruction_edge = *edges
+                                        .iter()
+                                        .filter(|c| c.underlying(self).unwrap().killed.is_some())
+                                        .take(1)
+                                        .next()
+                                        .unwrap_or(&ContextNode::from(node));
+
+                                    Some(reconstruction_edge)
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    })
+                    .unwrap();
+
+                let min_str = self.minimize_err(reconstruction_edge);
+                // println!("reconstructed source:\n{} placed in {}", min_str, path);
+
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true) // Create the file if it doesn't exist
+                    .truncate(true) // truncate if it does
+                    .open(path)
+                    .unwrap();
+
+                file.write_all(min_str.as_bytes()).unwrap();
+            }
             panic!("Encountered an error: {err:?}");
         }
         if !self.expr_errs.contains(&err) {
@@ -103,10 +320,10 @@ impl AnalyzerLike for Analyzer {
     fn builtins_mut(&mut self) -> &mut AHashMap<Builtin, NodeIdx> {
         &mut self.builtins
     }
-    fn user_types(&self) -> &AHashMap<String, NodeIdx> {
+    fn user_types(&self) -> &AHashMap<String, Vec<NodeIdx>> {
         &self.user_types
     }
-    fn user_types_mut(&mut self) -> &mut AHashMap<String, NodeIdx> {
+    fn user_types_mut(&mut self) -> &mut AHashMap<String, Vec<NodeIdx>> {
         &mut self.user_types
     }
 
@@ -135,11 +352,26 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             Variable(ident) => {
-                if let Some(idx) = self.user_types.get(&ident.name) {
-                    *idx
+                // println!("variable ident: {}", ident.name);
+                if let Some(idxs) = self.user_types.get(&ident.name) {
+                    if idxs.len() == 1 {
+                        idxs[0]
+                    } else {
+                        let contract = idxs.iter().find(|maybe_contract| {
+                            matches!(self.node(**maybe_contract), Node::Contract(..))
+                        });
+                        let strukt = idxs.iter().find(|maybe_struct| {
+                            matches!(self.node(**maybe_struct), Node::Struct(..))
+                        });
+                        match (contract, strukt) {
+                            (Some(_), Some(strukt)) => *strukt,
+                            _ => panic!("This should be invalid solidity"),
+                        }
+                    }
                 } else {
                     let node = self.add_node(Node::Unresolved(ident.clone()));
-                    self.user_types.insert(ident.name.clone(), node);
+                    let entry = self.user_types.entry(ident.name.clone()).or_default();
+                    entry.push(node);
                     node
                 }
             }
@@ -263,8 +495,8 @@ impl AnalyzerLike for Analyzer {
         &mut self.fn_calls_fns
     }
 
-    fn join_stats_mut(&mut self) -> &mut JoinStats {
-        &mut self.join_stats
+    fn apply_stats_mut(&mut self) -> &mut ApplyStats {
+        &mut self.apply_stats
     }
 
     fn handled_funcs(&self) -> &[FunctionNode] {
@@ -286,5 +518,8 @@ impl AnalyzerLike for Analyzer {
             }
         }
         file_mapping
+    }
+    fn minimize_debug(&self) -> &Option<String> {
+        &self.minimize_debug
     }
 }

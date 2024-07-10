@@ -465,7 +465,7 @@ impl SolcSolver for BruteBinSearchSolver {
                 if all_good {
                     Ok(AtomicSolveStatus::Sat(mapping))
                 } else {
-                    println!("thought we solved but we didnt");
+                    // println!("thought we solved but we didnt");
                     Ok(AtomicSolveStatus::Indeterminate)
                 }
             } else {
@@ -688,7 +688,7 @@ impl SolcSolver for BruteBinSearchSolver {
 
             match dl_solver.solve_partial(analyzer, arena)? {
                 SolveStatus::Unsat => {
-                    println!("TRUE UNSAT");
+                    // println!("TRUE UNSAT");
                     return Ok((false, None));
                 }
                 SolveStatus::Sat {

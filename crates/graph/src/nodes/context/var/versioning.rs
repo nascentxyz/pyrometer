@@ -16,6 +16,34 @@ impl ContextVarNode {
         latest
     }
 
+    pub fn latest_version_or_inherited_in_ctx(
+        &self,
+        ctx: ContextNode,
+        analyzer: &impl GraphBackend,
+    ) -> Self {
+        let mut latest = *self;
+
+        if let Some(struct_parent) = self.struct_parent(analyzer) {
+            if let Ok(name) = self.name(analyzer) {
+                let name = name
+                    .split('.')
+                    .skip(1)
+                    .take(1)
+                    .next()
+                    .expect("weird struct name");
+                let parent_latest = struct_parent.latest_version_or_inherited_in_ctx(ctx, analyzer);
+                if let Ok(Some(t)) = parent_latest.field_of_struct(name, analyzer) {
+                    latest = t;
+                }
+            }
+        }
+
+        while let Some(next) = latest.next_version_or_inherited_in_ctx(ctx, analyzer) {
+            latest = next;
+        }
+        latest
+    }
+
     pub fn latest_version_less_than(&self, idx: NodeIdx, analyzer: &impl GraphBackend) -> Self {
         let mut latest = *self;
         while let Some(next) = latest.next_version(analyzer) {
@@ -170,6 +198,30 @@ impl ContextVarNode {
             .map(|edge| ContextVarNode::from(edge.source()))
             .take(1)
             .next()
+    }
+
+    pub fn next_version_or_inherited_in_ctx(
+        &self,
+        ctx: ContextNode,
+        analyzer: &impl GraphBackend,
+    ) -> Option<Self> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .find_map(|edge| {
+                if Edge::Context(ContextEdge::Prev) == *edge.weight() {
+                    Some(ContextVarNode::from(edge.source()))
+                } else if Edge::Context(ContextEdge::InheritedVariable) == *edge.weight() {
+                    let t = ContextVarNode::from(edge.source());
+                    if t.ctx(analyzer) == ctx {
+                        Some(t)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn next_version_or_inheriteds(&self, analyzer: &impl GraphBackend) -> Vec<Self> {

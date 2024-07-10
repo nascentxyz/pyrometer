@@ -38,14 +38,14 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         self.add_if_err(param.maybe_name(self).into_expr_err(loc))?
                     {
                         let res = input
-                            .latest_version(self)
+                            .latest_version_or_inherited_in_ctx(callee_ctx, self)
                             .underlying(self)
                             .into_expr_err(loc)
                             .cloned();
                         let mut new_cvar = self.add_if_err(res)?;
                         new_cvar.loc = Some(param.loc(self).unwrap());
                         new_cvar.name.clone_from(&name);
-                        new_cvar.display_name = name;
+                        new_cvar.display_name = name.clone();
                         new_cvar.is_tmp = false;
                         new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
                             param.underlying(self).unwrap().storage
@@ -59,7 +59,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
                         self.add_edge(
                             node,
-                            input.latest_version(self),
+                            input.latest_version_or_inherited_in_ctx(callee_ctx, self),
                             Edge::Context(ContextEdge::InputVariable),
                         );
 
@@ -70,18 +70,67 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             }
                         }
 
-                        self.add_edge(
-                            node,
-                            input.latest_version(self),
-                            Edge::Context(ContextEdge::InputVariable),
-                        );
-
                         if let Some(_len_var) = input.array_to_len_var(self) {
                             // bring the length variable along as well
                             self.get_length(arena, callee_ctx, loc, node, false)
                                 .unwrap();
                         }
-                        let node = node.latest_version(self);
+
+                        println!("input: {}", input.name(self).unwrap());
+                        let fields = input.struct_to_fields(self).ok()?;
+                        if !fields.is_empty() {
+                            println!(
+                                "fields: {:?}",
+                                fields
+                                    .iter()
+                                    .map(|i| i.name(self).unwrap())
+                                    .collect::<Vec<_>>()
+                            );
+                            // bring along struct fields
+                            fields
+                                .iter()
+                                .try_for_each(|field| -> Result<(), ExprErr> {
+                                    let full_name = field.name(self).into_expr_err(loc)?;
+                                    println!("field: {full_name}");
+                                    let field_names = full_name.split('.').collect::<Vec<_>>();
+                                    let field_name =
+                                        field_names.get(1).ok_or(ExprErr::MemberAccessNotFound(
+                                            loc,
+                                            "Badly named struct field".to_string(),
+                                        ))?;
+                                    let mut new_field = field
+                                        .latest_version_or_inherited_in_ctx(callee_ctx, self)
+                                        .underlying(self)
+                                        .into_expr_err(loc)?
+                                        .clone();
+                                    new_field.loc = Some(param.loc(self).unwrap());
+                                    new_field.name = format!("{name}.{field_name}");
+                                    new_field.display_name.clone_from(&new_field.name);
+                                    new_field.is_tmp = false;
+                                    new_field.storage = if let Some(StorageLocation::Storage(_)) =
+                                        field.underlying(self).unwrap().storage
+                                    {
+                                        new_field.storage
+                                    } else {
+                                        None
+                                    };
+
+                                    let field_node = ContextVarNode::from(
+                                        self.add_node(Node::ContextVar(new_field)),
+                                    );
+
+                                    self.add_edge(
+                                        field_node,
+                                        node,
+                                        Edge::Context(ContextEdge::AttrAccess("field")),
+                                    );
+
+                                    Ok(())
+                                })
+                                .ok()?;
+                        }
+
+                        let node = node.latest_version_or_inherited_in_ctx(callee_ctx, self);
 
                         if let (Some(r), Some(r2)) =
                             (node.range(self).unwrap(), param.range(self).unwrap())
@@ -91,17 +140,17 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             let new_max =
                                 r.range_max().into_owned().cast(r2.range_max().into_owned());
                             let res = node
-                                .latest_version(self)
+                                .latest_version_or_inherited_in_ctx(callee_ctx, self)
                                 .try_set_range_min(self, arena, new_min)
                                 .into_expr_err(loc);
                             self.add_if_err(res);
                             let res = node
-                                .latest_version(self)
+                                .latest_version_or_inherited_in_ctx(callee_ctx, self)
                                 .try_set_range_max(self, arena, new_max)
                                 .into_expr_err(loc);
                             self.add_if_err(res);
                             let res = node
-                                .latest_version(self)
+                                .latest_version_or_inherited_in_ctx(callee_ctx, self)
                                 .try_set_range_exclusions(self, r.exclusions.clone())
                                 .into_expr_err(loc);
                             self.add_if_err(res);
@@ -149,7 +198,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 ctx.push_expr(ret, analyzer).into_expr_err(loc)
             })
         } else {
-            Ok(())
+            ctx.push_expr(ExprRet::Null, self).into_expr_err(loc)
         }
     }
 
@@ -481,8 +530,15 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         tmp_ret
                             .underlying_mut(self)
                             .into_expr_err(loc)?
-                            .display_name =
-                            format!("{}.{}", callee_ctx.associated_fn_name(self).unwrap(), i);
+                            .display_name = format!(
+                            "{}.{}",
+                            callee_ctx
+                                .associated_fn(self)
+                                .unwrap()
+                                .loc_specified_name(self)
+                                .unwrap(),
+                            i
+                        );
                         ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
                         self.add_edge(tmp_ret, ret_subctx, Edge::Context(ContextEdge::Variable));
                         Ok(ExprRet::Single(tmp_ret.into()))

@@ -75,8 +75,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 "No right hand side provided for binary operation".to_string(),
             )),
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 lhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
                 rhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
                 ctx.push_expr(
@@ -90,8 +92,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 ctx.push_expr(
                     self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
                     self,
@@ -103,8 +107,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 ctx.push_expr(
                     self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
                     self,
@@ -113,8 +119,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 ctx.push_expr(
                     self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
                     self,
@@ -209,14 +217,22 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
         };
 
-        let new_rhs = rhs_cvar.latest_version(self);
+        let new_rhs = rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self);
 
         let expr = Elem::Expr(RangeExpr::<Concrete>::new(
-            Elem::from(Reference::new(lhs_cvar.latest_version(self).into())),
+            Elem::from(Reference::new(
+                lhs_cvar
+                    .latest_version_or_inherited_in_ctx(ctx, self)
+                    .into(),
+            )),
             op,
-            Elem::from(Reference::new(rhs_cvar.latest_version(self).into())),
+            Elem::from(Reference::new(
+                rhs_cvar
+                    .latest_version_or_inherited_in_ctx(ctx, self)
+                    .into(),
+            )),
         ));
-        let new_lhs = new_lhs.latest_version(self);
+        let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         new_lhs
             .set_range_min(self, arena, expr.clone())
             .into_expr_err(loc)?;
@@ -225,7 +241,12 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             .into_expr_err(loc)?;
 
         // to prevent some recursive referencing, forcibly increase lhs_cvar
-        self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?;
+        self.advance_var_in_ctx_forcible(
+            lhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+            ctx,
+            true,
+        )?;
 
         if !unchecked {
             match op {
@@ -268,7 +289,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
         }
 
-        Ok(ExprRet::Single(new_lhs.latest_version(self).into()))
+        Ok(ExprRet::Single(
+            new_lhs.latest_version_or_inherited_in_ctx(ctx, self).into(),
+        ))
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -343,7 +366,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 };
 
                 let expr = Elem::Expr(RangeExpr::<Concrete>::new(
-                    Elem::from(Reference::new(lhs_cvar.latest_version(self).into())),
+                    Elem::from(Reference::new(
+                        lhs_cvar
+                            .latest_version_or_inherited_in_ctx(ctx, self)
+                            .into(),
+                    )),
                     RangeOp::BitNot,
                     Elem::Null,
                 ));
@@ -428,7 +455,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
     ) -> Result<Option<ExprRet>, ExprErr> {
         // x - y >= type(x).min
-        let new_lhs = new_lhs.latest_version(self);
+        let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
 
         // in checked subtraction, we have to make sure x - y >= type(x).min ==> x >= type(x).min + y
@@ -440,7 +467,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
-                tmp_lhs.latest_version(self),
+                tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 min,
                 ctx,
                 loc,
@@ -471,7 +498,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
-                        tmp_lhs.latest_version(self),
+                        tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         max,
                         ctx,
                         loc,
@@ -498,7 +525,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
     ) -> Result<Option<ExprRet>, ExprErr> {
         // lhs + rhs <= type(lhs).max
-        let new_lhs = new_lhs.latest_version(self);
+        let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max
@@ -509,7 +536,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
-                tmp_lhs.latest_version(self),
+                tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
                 ctx,
                 loc,
@@ -542,7 +569,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
-                        new_lhs.latest_version(self),
+                        new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
                         ctx,
                         loc,
@@ -570,7 +597,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
     ) -> Result<Option<ExprRet>, ExprErr> {
         // lhs * rhs <= type(lhs).max
-        let new_lhs = new_lhs.latest_version(self);
+        let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max
@@ -581,7 +608,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
-                tmp_lhs.latest_version(self),
+                tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
                 ctx,
                 loc,
@@ -635,7 +662,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
-                        new_lhs.latest_version(self),
+                        new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
                         ctx,
                         loc,
@@ -682,7 +709,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
 
         // lhs ** rhs <= type(lhs).max
-        let new_lhs = new_lhs.latest_version(self);
+        let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max
@@ -693,7 +720,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
-                tmp_lhs.latest_version(self),
+                tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
                 ctx,
                 loc,
@@ -725,7 +752,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
-                        new_lhs.latest_version(self),
+                        new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
                         ctx,
                         loc,

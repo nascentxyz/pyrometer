@@ -453,7 +453,7 @@ where
         this_children
     }
 
-    /// Gets all children edges recursively
+    /// Gets all edge quads for a set of nodes
     fn edges_for_nodes(
         &self,
         nodes: &BTreeSet<NodeIdx>,

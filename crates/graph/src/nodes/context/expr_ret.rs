@@ -16,6 +16,8 @@ pub enum KilledKind {
     Revert,
     /// Unexpected parse error. This is likely a bug or invalid solidity. See the `errors` section of the CLI output or rerun with `--debug` for more information
     ParseError,
+    /// This context was not evaluated because it was not on the path to analyzing the requested context to debug
+    DebugIgnored,
 }
 
 impl KilledKind {
@@ -27,6 +29,7 @@ impl KilledKind {
             Unreachable => "Unsatisifiable bounds, therefore dead code",
             Revert => "Execution guaranteed to revert here!",
             ParseError => "Unexpected parse error. This is likely a bug or invalid solidity. See the `errors` section of the CLI output or rerun with `--debug` for more information",
+            DebugIgnored => "Ignored due to debug_ctx_path being set",
         }
     }
 }

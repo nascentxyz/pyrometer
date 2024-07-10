@@ -118,15 +118,32 @@ impl ContextVarNode {
         )
     }
 
-    pub fn maybe_ctx(&self, analyzer: &impl GraphBackend) -> Option<ContextNode> {
+    pub fn is_struct_field(&self, analyzer: &impl GraphBackend) -> bool {
+        self.struct_parent(analyzer).is_some()
+    }
+
+    pub fn struct_parent(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let first = self.first_version(analyzer);
         analyzer
             .graph()
             .edges_directed(first.0.into(), Direction::Outgoing)
-            .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::Variable))
-            .map(|edge| ContextNode::from(edge.target()))
-            .take(1)
-            .next()
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("field")))
+            .map(|edge| edge.target().into())
+    }
+
+    pub fn maybe_ctx(&self, analyzer: &impl GraphBackend) -> Option<ContextNode> {
+        if let Some(struct_parent) = self.struct_parent(analyzer) {
+            struct_parent.maybe_ctx(analyzer)
+        } else {
+            let first = self.first_version(analyzer);
+            analyzer
+                .graph()
+                .edges_directed(first.0.into(), Direction::Outgoing)
+                .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::Variable))
+                .map(|edge| ContextNode::from(edge.target()))
+                .take(1)
+                .next()
+        }
     }
 
     pub fn maybe_storage_var(&self, analyzer: &impl GraphBackend) -> Option<VarNode> {
@@ -212,6 +229,10 @@ impl ContextVarNode {
         Ok(self.underlying(analyzer)?.tmp_of())
     }
 
+    pub fn is_struct(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(!self.struct_to_fields(analyzer)?.is_empty())
+    }
+
     pub fn struct_to_fields(
         &self,
         analyzer: &impl GraphBackend,
@@ -227,6 +248,24 @@ impl ContextVarNode {
         } else {
             Ok(vec![])
         }
+    }
+
+    pub fn field_of_struct(
+        &self,
+        name: &str,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        let fields = self.struct_to_fields(analyzer)?;
+        Ok(fields
+            .iter()
+            .find(|field| {
+                if let Ok(field_name) = field.name(analyzer) {
+                    field_name.ends_with(&format!(".{}", name))
+                } else {
+                    false
+                }
+            })
+            .copied())
     }
 
     pub fn array_to_len_var(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {

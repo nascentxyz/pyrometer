@@ -440,7 +440,7 @@ pub trait YulBuilder:
         let name = format!("{}.slot", lhs.name(self).unwrap());
         tracing::trace!("Slot access: {}", name);
         if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name).unwrap() {
-            attr_var.latest_version(self)
+            attr_var.latest_version_or_inherited_in_ctx(ctx, self)
         } else {
             let slot_var = ContextVar {
                 loc: Some(loc),

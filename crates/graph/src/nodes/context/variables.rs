@@ -1,9 +1,12 @@
 use crate::{
-    nodes::{ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
+    nodes::{
+        ContextNode, ContextVarNode, EnumNode, ErrorNode, ExprRet, StructNode, TyNode, VarNode,
+    },
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, GraphError, Node, TypeNode,
 };
 use shared::GraphError;
 
+use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
@@ -30,6 +33,18 @@ impl ContextNode {
             .iter()
             .enumerate()
             .for_each(|(i, elem)| println!("{i}. {}", elem.debug_str(analyzer)));
+        Ok(())
+    }
+
+    /// Debug print the temprorary stack
+    pub fn debug_tmp_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+        let underlying_mut = self.underlying(analyzer)?;
+        underlying_mut
+            .tmp_expr
+            .iter()
+            .enumerate()
+            .filter(|(i, maybe_elem)| maybe_elem.is_some())
+            .for_each(|(i, elem)| println!("{i}. {}", elem.clone().unwrap().debug_str(analyzer)));
         Ok(())
     }
 
@@ -102,12 +117,189 @@ impl ContextNode {
         }
     }
 
+    /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found
+    pub fn struct_field_access_by_name_recurse(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        loc: Loc,
+        full_name: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        let split = full_name.split('.').collect::<Vec<_>>();
+        if split.len() != 2 {
+            return Ok(None);
+        }
+
+        let member_name = split[0];
+        let field_name = split[1];
+
+        // get the member
+        let Some(member) = self.var_by_name_or_recurse(analyzer, member_name)? else {
+            return Ok(None);
+        };
+
+        println!("name: {full_name}");
+        // maybe move var into this context
+        let member = self.maybe_move_var(member, loc, analyzer)?;
+        let global_first = member.global_first_version(analyzer);
+
+        let mut curr = member;
+        let mut field = None;
+        // recursively search for the field by looking at all major versions of the member (i.e. first version
+        // of the variable in a context)
+        println!("getting field {field_name}");
+        while field.is_none() && curr != global_first {
+            field = curr.field_of_struct(field_name, analyzer)?;
+            if let Some(prev) = curr.previous_or_inherited_version(analyzer) {
+                curr = prev;
+            } else {
+                break;
+            }
+        }
+
+        if let Some(field) = field {
+            println!("found field");
+            if let Some(ctx) = curr.maybe_ctx(analyzer) {
+                println!(
+                    "had context: {}, self: {}",
+                    ctx.path(analyzer),
+                    self.path(analyzer)
+                );
+                if ctx != *self {
+                    tracing::trace!(
+                        "moving field access {} from {} to {}",
+                        field.display_name(analyzer).unwrap(),
+                        ctx.path(analyzer),
+                        self.path(analyzer)
+                    );
+                    let mut new_cvar = field.latest_version(analyzer).underlying(analyzer)?.clone();
+                    new_cvar.loc = Some(loc);
+
+                    let new_cvarnode = analyzer.add_node(Node::ContextVar(new_cvar));
+                    analyzer.add_edge(
+                        new_cvarnode,
+                        member,
+                        Edge::Context(ContextEdge::AttrAccess("field")),
+                    );
+                }
+            }
+        }
+
+        Ok(field)
+    }
+
+    /// Gets all storage variables associated with a context
+    pub fn storage_vars(&self, analyzer: &impl AnalyzerBackend) -> Vec<ContextVarNode> {
+        self.underlying(analyzer)
+            .unwrap()
+            .cache
+            .vars
+            .clone()
+            .into_iter()
+            .filter(|(_, var)| var.is_storage(analyzer).unwrap())
+            .map(|(_, var)| var)
+            .collect::<Vec<_>>()
+    }
+
+    pub fn contract_vars_referenced(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {
+        // let mut storage_vars = self.storage_vars(analyzer);
+        let all_vars = self.all_vars(analyzer);
+        let all_contract_vars = all_vars
+            .into_iter()
+            .filter_map(|var| {
+                if analyzer
+                    .graph()
+                    .edges_directed(var.1 .0.into(), petgraph::Direction::Outgoing)
+                    .any(|edge| {
+                        matches!(edge.weight(), Edge::Context(ContextEdge::ContractVariable))
+                    })
+                {
+                    Some(var.1)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        all_contract_vars
+            .iter()
+            .filter_map(|var| {
+                let name = var.name(analyzer).unwrap();
+                Some(
+                    analyzer
+                        .user_types()
+                        .get(&name)?
+                        .iter()
+                        .filter_map(|idx| match analyzer.node(*idx) {
+                            Node::Var(_) => Some(VarNode::from(*idx)),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .flatten()
+            .collect()
+    }
+
+    pub fn usertype_vars_referenced(&self, analyzer: &impl AnalyzerBackend) -> Vec<TypeNode> {
+        let vars = self.all_vars(analyzer);
+        vars.iter()
+            .filter_map(|(_, var)| var.maybe_usertype(analyzer).ok())
+            .filter_map(|v| v)
+            .collect()
+    }
+
+    pub fn contract_vars_referenced_global(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {
+        let mut reffed_storage = self.contract_vars_referenced(analyzer);
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), petgraph::Direction::Incoming)
+            .filter(|edge| matches!(edge.weight(), Edge::Context(ContextEdge::Continue(_))))
+            .map(|edge| ContextNode::from(edge.source()))
+            .for_each(|cont| {
+                reffed_storage.extend(cont.contract_vars_referenced_global(analyzer));
+            });
+
+        reffed_storage.sort_by(|a, b| a.0.cmp(&b.0));
+        reffed_storage.dedup();
+        reffed_storage
+    }
+
+    pub fn usertype_vars_referenced_global(
+        &self,
+        analyzer: &impl AnalyzerBackend,
+    ) -> Vec<TypeNode> {
+        let mut reffed_usertypes = self.usertype_vars_referenced(analyzer);
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), petgraph::Direction::Incoming)
+            .filter(|edge| matches!(edge.weight(), Edge::Context(ContextEdge::Continue(_))))
+            .map(|edge| ContextNode::from(edge.source()))
+            .for_each(|cont| {
+                reffed_usertypes.extend(cont.usertype_vars_referenced_global(analyzer));
+            });
+
+        reffed_usertypes.sort_by(|a, b| a.cmp(&b));
+        reffed_usertypes.dedup();
+        reffed_usertypes
+    }
+
     /// Gets all variables associated with a context
     pub fn vars<'a>(
         &self,
         analyzer: &'a impl GraphBackend,
     ) -> &'a BTreeMap<String, ContextVarNode> {
         &self.underlying(analyzer).unwrap().cache.vars
+    }
+
+    /// Gets all variables associated with a context
+    pub fn all_vars(&self, analyzer: &impl GraphBackend) -> BTreeMap<String, ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), petgraph::Direction::Incoming)
+            .filter(|edge| matches!(edge.weight(), Edge::Context(ContextEdge::Variable)))
+            .map(|edge| ContextVarNode::from(edge.source()))
+            .map(|cvar| (cvar.name(analyzer).unwrap(), cvar))
+            .collect()
     }
 
     /// Gets all variables associated with a context
@@ -256,11 +448,22 @@ impl ContextNode {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextVarNode, GraphError> {
+        if let Ok(name) = var.name(analyzer) {
+            if let Some(ret_var) = self.latest_var_by_name(analyzer, &name) {
+                return Ok(ret_var);
+            }
+        }
+
         let var = var.latest_version(analyzer);
         if let Some(ctx) = var.maybe_ctx(analyzer) {
             if ctx != *self {
                 tracing::trace!(
-                    "moving var {} from {}",
+                    "moving var {}from {} to {}",
+                    if let Ok(name) = var.display_name(analyzer) {
+                        format!("{name} ")
+                    } else {
+                        "".to_string()
+                    },
                     ctx.path(analyzer),
                     self.path(analyzer)
                 );
@@ -268,6 +471,7 @@ impl ContextNode {
                 new_cvar.loc = Some(loc);
 
                 let new_cvarnode = analyzer.add_node(Node::ContextVar(new_cvar));
+                self.add_var(ContextVarNode::from(new_cvarnode), analyzer)?;
                 analyzer.add_edge(new_cvarnode, *self, Edge::Context(ContextEdge::Variable));
                 analyzer.add_edge(
                     new_cvarnode,

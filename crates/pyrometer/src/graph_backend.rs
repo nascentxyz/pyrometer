@@ -2,8 +2,9 @@ use crate::Analyzer;
 use graph::elem::RangeElem;
 use graph::nodes::Concrete;
 use graph::{
-    as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
-    Node,
+    as_dot_str,
+    nodes::{ContextNode, ContextVarNode},
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node,
 };
 use graph::{elem::Elem, nodes::ContextVarNode, TOKYO_NIGHT_COLORS};
 use reqwest::Client;
@@ -665,6 +666,33 @@ impl GraphDot for Analyzer {
                 .map(|edge| (edge.source(), edge.target(), *edge.weight(), edge.id()))
                 .collect::<BTreeSet<(NodeIdx, NodeIdx, Edge, EdgeIndex<usize>)>>(),
         );
+
+        let mut struct_parts = children
+            .iter()
+            .filter(|child| {
+                if matches!(g.node(**child), Node::ContextVar(..)) {
+                    ContextVarNode::from(**child).is_struct(g).unwrap_or(false)
+                } else {
+                    false
+                }
+            })
+            .copied()
+            .collect::<BTreeSet<NodeIdx>>();
+        let strukt_children = struct_parts
+            .iter()
+            .flat_map(|strukt| {
+                g.children_exclude(*strukt, 0, &[Edge::Context(ContextEdge::Subcontext)])
+            })
+            .collect::<BTreeSet<NodeIdx>>();
+        struct_parts.extend(strukt_children);
+
+        let edges_for_structs = g
+            .edges_for_nodes(&struct_parts)
+            .into_iter()
+            .filter(|(_, _, e, _)| *e != Edge::Context(ContextEdge::InputVariable))
+            .collect::<BTreeSet<_>>();
+        children_edges.extend(edges_for_structs);
+
         let preindent = " ".repeat(4 * depth.saturating_sub(1));
         let indent = " ".repeat(4 * depth);
         let child_node_str = children
