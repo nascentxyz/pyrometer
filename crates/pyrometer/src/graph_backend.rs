@@ -1301,8 +1301,11 @@ pub fn mermaid_node(
                 }
 
                 // color the forks
-                let ctx_node = graph::nodes::ContextVarNode::from(current_node).ctx(g);
-                gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+                if let Some(ctx_node) =
+                    graph::nodes::ContextVarNode::from(current_node).maybe_ctx(g)
+                {
+                    gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+                }
             }
             Node::Context(ctx) => {
                 // highlight self
