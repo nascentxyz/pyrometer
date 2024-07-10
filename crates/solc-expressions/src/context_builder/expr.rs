@@ -81,13 +81,15 @@ pub trait ExpressionParser:
             HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
             HexLiteral(hexes) => self.hex_literals(ctx, hexes),
             RationalNumberLiteral(loc, integer, fraction, exp, unit) => {
-                self.rational_number_literal(arena, ctx, *loc, integer, fraction, exp, unit)
+                self.rational_number_literal(arena, ctx, *loc, integer, fraction, exp, unit, false)
             }
             Negate(_loc, expr) => match &**expr {
                 NumberLiteral(loc, int, exp, unit) => {
                     self.number_literal(ctx, *loc, int, exp, true, unit)
                 }
                 HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, true),
+                RationalNumberLiteral(loc, integer, fraction, exp, unit) => self
+                    .rational_number_literal(arena, ctx, *loc, integer, fraction, exp, unit, true),
                 e => {
                     self.parse_ctx_expr(arena, e, ctx)?;
                     self.apply_to_edges(ctx, e.loc(), arena, &|analyzer, arena, ctx, loc| {

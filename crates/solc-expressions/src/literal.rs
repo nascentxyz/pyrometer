@@ -46,7 +46,14 @@ pub trait Literal: AnalyzerBackend + Sized {
                 // no need to set upper bit
                 I256::from_raw(val)
             } else {
-                I256::from(-1i32) * I256::from_raw(val)
+                let raw = I256::from_raw(val);
+                if raw < 0.into() {
+                    return Err(ExprErr::ParseError(
+                        loc,
+                        "Negative value cannot fit into int256".to_string(),
+                    ));
+                }
+                I256::from(-1i32) * raw
             };
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
         } else {
@@ -86,10 +93,11 @@ pub trait Literal: AnalyzerBackend + Sized {
         fraction: &str,
         exponent: &str,
         unit: &Option<Identifier>,
+        negative: bool,
     ) -> Result<(), ExprErr> {
         let int =
             U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
-        let exp = if !exponent.is_empty() {
+        let mut exp = if !exponent.is_empty() {
             U256::from_dec_str(exponent).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?
         } else {
             U256::from(0)
@@ -99,28 +107,70 @@ pub trait Literal: AnalyzerBackend + Sized {
         let fraction =
             U256::from_dec_str(fraction).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
 
-        let int_elem = Elem::min(
+        let unit_num = if let Some(unit) = unit {
+            self.unit_to_uint(unit)
+        } else {
+            U256::from(1)
+        };
+
+        let int_elem = Elem::max(
             Elem::from(Concrete::from(int)),
             Elem::from(Concrete::from(U256::from(1))),
         );
-        let exp_elem = Elem::from(Concrete::from(exp));
-        let mut rational_range = (Elem::from(Concrete::from(fraction))
-            + int_elem * Elem::from(Concrete::from(fraction_denom)))
-            * Elem::from(Concrete::from(U256::from(10))).pow(exp_elem);
 
-        if let Some(unit) = unit {
-            rational_range = rational_range * Elem::from(Concrete::from(self.unit_to_uint(unit)))
+        // move the decimal place to the right
+        let mut rational_range = int_elem * Elem::from(Concrete::from(fraction_denom));
+        // add the fraction
+        rational_range = rational_range + Elem::from(Concrete::from(fraction));
+        let mut rhs_power_res = U256::from(10).pow(exp) * unit_num;
+
+        if fraction > rhs_power_res {
+            return Err(ExprErr::ParseError(
+                loc,
+                format!("Invalid rational number: fraction part ({fraction}) has more precision than exponent ({exp}) and unit provide ({unit_num})"),
+            ));
         }
 
-        let cvar =
-            ContextVar::new_from_builtin(loc, self.builtin_or_add(Builtin::Uint(256)).into(), self)
-                .into_expr_err(loc)?;
-        let node = ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
-        node.set_range_max(self, arena, rational_range.clone())
-            .into_expr_err(loc)?;
-        node.set_range_min(self, arena, rational_range)
-            .into_expr_err(loc)?;
+        // decrease the exponentiation by the number of places we moved the decimal over
+        rhs_power_res /= fraction_denom;
 
+        rational_range = rational_range * Elem::from(Concrete::from(rhs_power_res));
+
+        let concrete_node = if negative {
+            let evaled = rational_range.maximize(self, arena).into_expr_err(loc)?;
+            let val = evaled.maybe_concrete().unwrap().val.uint_val().unwrap();
+            if val > U256::from(2).pow(255.into()) {
+                return Err(ExprErr::ParseError(
+                    loc,
+                    "Negative value cannot fit into int256".to_string(),
+                ));
+            }
+            rational_range = rational_range * Elem::from(Concrete::from(I256::from(-1i32)));
+            let evaled = rational_range
+                .maximize(self, arena)
+                .into_expr_err(loc)?
+                .maybe_concrete()
+                .unwrap()
+                .val
+                .fit_size();
+
+            ConcreteNode::from(self.add_node(Node::Concrete(evaled)))
+        } else {
+            let evaled = rational_range
+                .maximize(self, arena)
+                .into_expr_err(loc)?
+                .maybe_concrete()
+                .unwrap()
+                .val
+                .fit_size();
+            ConcreteNode::from(self.add_node(Node::Concrete(evaled)))
+        };
+
+        let ccvar = Node::ContextVar(
+            ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
+        );
+
+        let node = ContextVarNode::from(self.add_node(ccvar));
         ctx.add_var(node, self).into_expr_err(loc)?;
         self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
         ctx.push_expr(ExprRet::SingleLiteral(node.into()), self)
@@ -139,9 +189,16 @@ pub trait Literal: AnalyzerBackend + Sized {
         let integer: String = integer.chars().filter(|c| *c != '_').collect();
         let val = U256::from_str_radix(&integer, 16)
             .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
-        let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8) as u16;
+        let size: u16 = (((32 - (val.leading_zeros() / 8)) * 8).max(8)) as u16;
         let concrete_node = if negative {
-            let val = I256::from(-1i32) * I256::from_raw(val);
+            let raw = I256::from_raw(val);
+            if raw < 0.into() {
+                return Err(ExprErr::ParseError(
+                    loc,
+                    "Negative value cannot fit into int256".to_string(),
+                ));
+            }
+            let val = I256::from(-1i32) * raw;
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
         } else {
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))
@@ -160,52 +217,39 @@ pub trait Literal: AnalyzerBackend + Sized {
 
     /// hex"123123"
     fn hex_literals(&mut self, ctx: ContextNode, hexes: &[HexLiteral]) -> Result<(), ExprErr> {
-        if hexes.len() == 1 {
-            let mut h = H256::default();
-            let mut max = 0;
-            if let Ok(hex_val) = hex::decode(&hexes[0].hex) {
-                hex_val.iter().enumerate().for_each(|(i, hex_byte)| {
-                    if *hex_byte != 0x00u8 {
-                        max = i as u8;
-                    }
-                    h.0[i] = *hex_byte;
-                });
+        let mut h = vec![];
+        hexes.iter().for_each(|sub_hex| {
+            if let Ok(hex_val) = hex::decode(&sub_hex.hex) {
+                h.extend(hex_val)
             }
+        });
 
-            let concrete_node =
-                ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(max + 1, h))));
-            let ccvar = Node::ContextVar(
-                ContextVar::new_from_concrete(hexes[0].loc, ctx, concrete_node, self)
-                    .into_expr_err(hexes[0].loc)?,
-            );
-            let node = self.add_node(ccvar);
-            ctx.add_var(node.into(), self).into_expr_err(hexes[0].loc)?;
-            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-            ctx.push_expr(ExprRet::SingleLiteral(node), self)
-                .into_expr_err(hexes[0].loc)?;
-            Ok(())
-        } else {
-            let mut h = vec![];
-            hexes.iter().for_each(|sub_hex| {
-                if let Ok(hex_val) = hex::decode(&sub_hex.hex) {
-                    h.extend(hex_val)
+        let mut loc = hexes[0].loc;
+        loc.use_end_from(&hexes[hexes.len() - 1].loc);
+
+        let concrete_node = if h.len() <= 32 {
+            let mut target = H256::default();
+            let mut max = 1;
+            h.iter().enumerate().for_each(|(i, hex_byte)| {
+                if *hex_byte != 0x00u8 {
+                    max = i as u8 + 1;
                 }
+                target.0[i] = *hex_byte;
             });
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(max, target))))
+        } else {
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::DynBytes(h))))
+        };
 
-            let mut loc = hexes[0].loc;
-            loc.use_end_from(&hexes[hexes.len() - 1].loc);
-            let concrete_node =
-                ConcreteNode::from(self.add_node(Node::Concrete(Concrete::DynBytes(h))));
-            let ccvar = Node::ContextVar(
-                ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
-            );
-            let node = self.add_node(ccvar);
-            ctx.add_var(node.into(), self).into_expr_err(loc)?;
-            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-            ctx.push_expr(ExprRet::SingleLiteral(node), self)
-                .into_expr_err(loc)?;
-            Ok(())
-        }
+        let ccvar = Node::ContextVar(
+            ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
+        );
+        let node = self.add_node(ccvar);
+        ctx.add_var(node.into(), self).into_expr_err(loc)?;
+        self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+        ctx.push_expr(ExprRet::SingleLiteral(node), self)
+            .into_expr_err(loc)?;
+        Ok(())
     }
 
     fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &str) -> Result<(), ExprErr> {
@@ -442,7 +486,9 @@ mod tests {
         let loc = Loc::File(0, 0, 0);
 
         // create a rational number literal
-        analyzer.rational_number_literal(arena, ctx, loc, integer, fraction, exponent, &unit)?;
+        analyzer.rational_number_literal(
+            arena, ctx, loc, integer, fraction, exponent, &unit, negative,
+        )?;
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
@@ -695,9 +741,14 @@ mod tests {
             stack[0].literals_list()?.len() == 1,
             "ret stack[0] should have a single literal in the literal list"
         );
+        println!(
+            "{:#?}",
+            analyzer.graph.node_weight(stack[0].expect_single()?)
+        );
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
+
         let conc_value = min.maybe_concrete().unwrap().val;
         assert!(
             conc_value == expected,
@@ -732,7 +783,11 @@ mod tests {
                 loc: Loc::File(0, 0, 0),
             },
         ];
-        let expected = Concrete::DynBytes(vec![0x7B, 0xFF]);
+
+        let mut bytes = [0u8; 32];
+        bytes[0] = 0x7B;
+        bytes[1] = 0xFF;
+        let expected = Concrete::Bytes(2, H256::from_slice(&bytes));
         test_hex_literals(&hex_literals, expected)
     }
 
@@ -871,6 +926,7 @@ mod tests {
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
+        println!("{min}");
         let conc_value = min.maybe_concrete().unwrap().val;
         assert!(
             conc_value == expected,
