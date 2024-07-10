@@ -312,9 +312,9 @@ mod tests {
         let func_node = analyzer.graph.add_node(Node::Function(func)).into();
 
         let loc = Loc::File(0, 0, 0);
-        let ctx = Context::new(func_node, format!("{}", "test_fn"), loc);
-        let ctx_node = ContextNode::from(analyzer.graph.add_node(Node::Context(ctx)));
-        ctx_node
+        let ctx = Context::new(func_node, "test_fn".to_string(), loc);
+
+        ContextNode::from(analyzer.graph.add_node(Node::Context(ctx)))
     }
 
     fn test_number_literal(
