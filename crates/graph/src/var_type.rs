@@ -435,7 +435,6 @@ impl VarType {
     }
 
     pub fn range(&self, analyzer: &impl GraphBackend) -> Result<Option<SolcRange>, GraphError> {
-        println!("here: {:?}", self);
         match self {
             Self::User(_, Some(range)) => Ok(Some(range.clone())),
             Self::BuiltIn(_, Some(range)) => Ok(Some(range.clone())),
