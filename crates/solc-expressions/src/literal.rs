@@ -16,11 +16,12 @@ impl<T> Literal for T where T: AnalyzerBackend + Sized {}
 pub trait Literal: AnalyzerBackend + Sized {
     fn concrete_number_from_str(
         &mut self,
+        loc: Loc,
         integer: &str,
         exponent: &str,
         negative: bool,
         unit: &Option<Identifier>,
-    ) -> Concrete {
+    ) -> Result<Concrete, ExprErr> {
         let int = U256::from_dec_str(integer).unwrap();
         let val = if !exponent.is_empty() {
             let exp = U256::from_dec_str(exponent)
@@ -51,9 +52,9 @@ pub trait Literal: AnalyzerBackend + Sized {
                 }
                 I256::from(-1i32) * raw
             };
-            Concrete::Int(size, val)
+            Ok(Concrete::Int(size, val))
         } else {
-            Concrete::Uint(size, val)
+            Ok(Concrete::Uint(size, val))
         }
     }
     fn number_literal(
@@ -65,7 +66,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         negative: bool,
         unit: &Option<Identifier>,
     ) -> Result<(), ExprErr> {
-        let conc = self.concrete_number_from_str(integer, exponent, negative, unit);
+        let conc = self.concrete_number_from_str(loc, integer, exponent, negative, unit)?;
         let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(conc)));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
@@ -304,8 +305,24 @@ pub trait Literal: AnalyzerBackend + Sized {
                                 max_str = new_max;
                             }
 
-                            let min = self.concrete_number_from_str(min_str, "", min_neg, &None);
-                            let max = self.concrete_number_from_str(max_str, "", max_neg, &None);
+                            let min = self
+                                .concrete_number_from_str(
+                                    Loc::Implicit,
+                                    min_str,
+                                    "",
+                                    min_neg,
+                                    &None,
+                                )
+                                .ok()?;
+                            let max = self
+                                .concrete_number_from_str(
+                                    Loc::Implicit,
+                                    max_str,
+                                    "",
+                                    max_neg,
+                                    &None,
+                                )
+                                .ok()?;
 
                             Some(TestCommand::Variable(
                                 name.to_string(),
