@@ -89,7 +89,7 @@ impl ContextNode {
         tys.sort();
         tys.dedup();
 
-        idxs.retain(|i| tys.contains(&i));
+        idxs.retain(|i| tys.contains(i));
 
         Ok(())
     }

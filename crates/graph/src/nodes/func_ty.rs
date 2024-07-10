@@ -1,10 +1,9 @@
 use crate::{
-    nodes::{Concrete, ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode, VarNode},
+    nodes::{Concrete, ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
 
-use ethers_core::k256::elliptic_curve::rand_core::impls;
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};

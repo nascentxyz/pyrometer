@@ -1,8 +1,8 @@
 use crate::Analyzer;
 use graph::{
     as_dot_str,
-    elem::Elem,
-    nodes::{ContextNode, ContextVarNode},
+    elem::{Elem, RangeElem},
+    nodes::{Concrete, ContextNode, ContextVarNode},
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, TOKYO_NIGHT_COLORS,
 };
 use reqwest::Client;

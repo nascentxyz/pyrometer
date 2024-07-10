@@ -116,7 +116,7 @@ pub trait StatementParser:
                     Node::Function(fn_node) => {
                         mods_set = fn_node.modifiers_set;
                         entry_loc = Some(fn_node.loc);
-                        let mut ctx = Context::new(
+                        let ctx = Context::new(
                             FunctionNode::from(parent.into()),
                             self.add_if_err(
                                 FunctionNode::from(parent.into())

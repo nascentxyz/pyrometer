@@ -608,11 +608,13 @@ impl ContextVarNode {
         if let Some(to_range) = to_ty.range(analyzer)? {
             let mut min_expr = (*self)
                 .range_min(analyzer)?
-                .expect(&format!(
-                    "{:?}, {} had no min",
-                    self.loc(analyzer).unwrap(),
-                    self.display_name(analyzer).unwrap()
-                ))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{:?}, {} had no min",
+                        self.loc(analyzer).unwrap(),
+                        self.display_name(analyzer).unwrap()
+                    )
+                })
                 .cast(to_range.min.clone())
                 .min(
                     (*self)

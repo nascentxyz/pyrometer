@@ -4,7 +4,7 @@ use crate::{
 };
 use shared::GraphError;
 
-use petgraph::{visit::EdgeRef, Direction};
+use petgraph::visit::EdgeRef;
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
@@ -242,7 +242,7 @@ impl ContextNode {
         let vars = self.all_vars(analyzer);
         vars.iter()
             .filter_map(|(_, var)| var.maybe_usertype(analyzer).ok())
-            .filter_map(|v| v)
+            .flatten()
             .collect()
     }
 
@@ -276,7 +276,7 @@ impl ContextNode {
                 reffed_usertypes.extend(cont.usertype_vars_referenced_global(analyzer));
             });
 
-        reffed_usertypes.sort_by(|a, b| a.cmp(&b));
+        reffed_usertypes.sort();
         reffed_usertypes.dedup();
         reffed_usertypes
     }

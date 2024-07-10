@@ -6,7 +6,6 @@ use crate::{
 use shared::GraphError;
 
 use petgraph::{visit::EdgeRef, Direction};
-use shared::GraphError;
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
@@ -246,7 +245,7 @@ impl ContractNode {
                     .iter()
                     .filter_map(|strukt| {
                         if used.contains(strukt) {
-                            Some(format!("{}", strukt.reconstruct_src(analyzer).ok()?))
+                            Some(strukt.reconstruct_src(analyzer).ok()?.to_string())
                         } else {
                             None
                         }
@@ -297,7 +296,7 @@ impl ContractNode {
                     .iter()
                     .filter_map(|enu| {
                         if used.contains(enu) {
-                            Some(format!("{}", enu.reconstruct_src(analyzer).ok()?))
+                            Some(enu.reconstruct_src(analyzer).ok()?.to_string())
                         } else {
                             None
                         }
