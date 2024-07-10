@@ -33,7 +33,7 @@ pub trait ExpressionParser:
         expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        let res = if !ctx.killed_or_ret(self).unwrap() {
+        if !ctx.killed_or_ret(self).unwrap() {
             let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
             if edges.is_empty() {
                 self.parse_ctx_expr_inner(arena, expr, ctx)
@@ -45,9 +45,7 @@ pub trait ExpressionParser:
             }
         } else {
             Ok(())
-        };
-
-        Ok(())
+        }
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self).replace('.', "\n\t.")))]

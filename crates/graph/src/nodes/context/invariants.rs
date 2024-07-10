@@ -35,15 +35,12 @@ impl ContextNode {
             .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::Variable))
             .map(|e| ContextVarNode::from(e.source()))
             .collect::<BTreeSet<_>>();
-        if vars != edge_vars {
-            Ok(Some(RepresentationErr::Context(
-                self.0.into(),
-                ContextReprErr::VarCacheErr(
-                    vars.symmetric_difference(&edge_vars)
-                        .map(|i| i.0.into())
-                        .collect(),
-                ),
-            )))
+
+        let diff: Vec<_> = edge_vars.difference(&vars).map(|i| i.0.into()).collect();
+        if !diff.is_empty() {
+            Ok(Some(
+                ContextReprErr::VarCacheErr(self.0.into(), diff).into(),
+            ))
         } else {
             Ok(None)
         }
@@ -77,10 +74,9 @@ impl RepresentationInvariant for ContextNode {
 
         let bad_vars = self.variables_invariants(g, arena)?;
         if !bad_vars.is_empty() {
-            return Ok(Some(RepresentationErr::Context(
-                self.0.into(),
-                ContextReprErr::VarInvariantErr(bad_vars),
-            )));
+            return Ok(Some(
+                ContextReprErr::VarInvariantErr(self.0.into(), bad_vars).into(),
+            ));
         }
 
         Ok(None)

@@ -19,7 +19,7 @@ impl ContextVarNode {
                 Ok(Some(VarReprErr::Unresolved(self.0.into()).into()))
             }
             VarType::User(TypeNode::Contract(con), range) => Ok(None),
-            VarType::User(TypeNode::Struct(strt), range) => self.struct_has_all_fields(*strt, g),
+            VarType::User(TypeNode::Struct(strt), range) => self.struct_invariants(*strt, g),
             VarType::User(TypeNode::Enum(enu), range) => Ok(None),
             VarType::User(TypeNode::Ty(ty), range) => Ok(None),
             VarType::User(TypeNode::Func(func), range) => Ok(None),
@@ -44,6 +44,17 @@ impl ContextVarNode {
             }
             VarType::Concrete(cn) => Ok(None),
         }
+    }
+
+    fn struct_invariants(
+        &self,
+        strukt_node: StructNode,
+        g: &impl GraphBackend,
+    ) -> Result<Option<RepresentationErr>, GraphError> {
+        if let Some(err) = self.struct_has_all_fields(strukt_node, g)? {
+            return Ok(Some(err));
+        }
+        Ok(None)
     }
 
     fn struct_has_all_fields(

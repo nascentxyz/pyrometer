@@ -14,7 +14,9 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{
+    post_to_site, AnalyzerLike, ExprErr, GraphDot, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
+};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
@@ -41,7 +43,7 @@ pub trait StatementParser:
     ) where
         Self: Sized,
     {
-        let res = if let Some(parent) = parent_ctx {
+        if let Some(parent) = parent_ctx {
             match self.node(parent) {
                 Node::Context(_) => {
                     let ctx = ContextNode::from(parent.into());
@@ -68,17 +70,19 @@ pub trait StatementParser:
             }
         } else {
             self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx)
-        };
+        }
+
+        if unsafe { USE_DEBUG_SITE } {
+            post_to_site(&*self, arena);
+        }
 
         if let Some(errs) =
             self.add_if_err(self.is_representation_ok(arena).into_expr_err(stmt.loc()))
         {
-            if !errs.is_empty() {
-                panic!("bad nodes: {errs:#?}");
-            }
+            errs.into_iter().for_each(|err| {
+                self.add_expr_err(ExprErr::from_repr_err(stmt.loc(), err));
+            });
         }
-
-        res
     }
 
     #[tracing::instrument(level = "trace", skip_all)]

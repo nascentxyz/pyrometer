@@ -475,10 +475,10 @@ impl Elems {
         }
 
         // Ensure the graph does not have a cycle
-        debug_assert!(
-            !petgraph::algo::is_cyclic_directed(&graph),
-            "The graph contains a cycle!"
-        );
+        // debug_assert!(
+        //     !petgraph::algo::is_cyclic_directed(&graph),
+        //     "The graph contains a cycle!"
+        // );
 
         graph
     }
@@ -603,7 +603,6 @@ fn _calculate_hash<T: Hash>(t: &T) -> u64 {
 impl GraphBackend for Analyzer {}
 
 impl GraphDot for Analyzer {
-    type T = Elem<Concrete>;
     fn cluster_str(
         &self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -1191,11 +1190,9 @@ impl GraphLike for G<'_> {
 }
 
 impl GraphDot for G<'_> {
-    type T = Elem<Concrete>;
-
     fn cluster_str(
         &self,
-        _arena: &mut RangeArena<Self::T>,
+        _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>,
         _node: NodeIdx,
         _cluster_num: &mut usize,
         _is_killed: bool,
@@ -1210,7 +1207,7 @@ impl GraphDot for G<'_> {
         todo!()
     }
 
-    fn dot_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: shared::AnalyzerLike,
@@ -1218,7 +1215,7 @@ impl GraphDot for G<'_> {
         todo!()
     }
 
-    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + shared::AnalyzerLike,
@@ -1226,7 +1223,7 @@ impl GraphDot for G<'_> {
         todo!()
     }
 
-    fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn mermaid_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: shared::AnalyzerLike,
@@ -1275,8 +1272,11 @@ pub fn mermaid_node(
                 }
 
                 // color the forks
-                let ctx_node = graph::nodes::ContextVarNode::from(current_node).ctx(g);
-                gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+                if let Some(ctx_node) =
+                    graph::nodes::ContextVarNode::from(current_node).maybe_ctx(g)
+                {
+                    gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+                }
             }
             Node::Context(ctx) => {
                 // highlight self

@@ -9,7 +9,7 @@ use graph::{
 };
 use shared::{
     AnalyzerLike, ExprErr, GraphError, GraphLike, IntoExprErr, JoinStats, NodeIdx, RangeArena,
-    RepresentationErr,
+    RepresentationErr, USE_DEBUG_SITE,
 };
 
 use ahash::AHashMap;

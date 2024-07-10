@@ -405,16 +405,14 @@ impl GraphLike for DummyGraph {
 
 impl GraphBackend for DummyGraph {}
 impl GraphDot for DummyGraph {
-    type T = Elem<Concrete>;
-
-    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphDot>::T>) -> String {
+    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String {
         // Provide a basic implementation or a placeholder
         "digraph DummyGraph {}".to_string()
     }
 
     fn cluster_str(
         &self,
-        _arena: &mut RangeArena<Self::T>,
+        _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>,
         _node: NodeIdx,
         _cluster_num: &mut usize,
         _is_killed: bool,
@@ -431,14 +429,14 @@ impl GraphDot for DummyGraph {
         todo!()
     }
 
-    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
     {
         todo!()
     }
 
-    fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn mermaid_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
     {

@@ -70,9 +70,8 @@ pub trait GraphLike {
 
 /// A trait that constructs dot-like visualization strings (either mermaid or graphviz)
 pub trait GraphDot: GraphLike {
-    type T: Hash;
     /// Open a dot using graphviz
-    fn open_dot(&self, arena: &mut RangeArena<Self::T>)
+    fn open_dot(&self, arena: &mut RangeArena<<Self as GraphLike>::RangeElem>)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,
@@ -102,7 +101,7 @@ pub trait GraphDot: GraphLike {
             .expect("failed to execute process");
     }
 
-    fn open_mermaid(&self, arena: &mut RangeArena<Self::T>)
+    fn open_mermaid(&self, arena: &mut RangeArena<<Self as GraphLike>::RangeElem>)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,
@@ -149,7 +148,7 @@ pub trait GraphDot: GraphLike {
     /// Creates a subgraph for visually identifying contexts and subcontexts
     fn cluster_str(
         &self,
-        arena: &mut RangeArena<Self::T>,
+        arena: &mut RangeArena<<Self as GraphLike>::RangeElem>,
         node: NodeIdx,
         cluster_num: &mut usize,
         is_killed: bool,
@@ -162,18 +161,18 @@ pub trait GraphDot: GraphLike {
         Self: std::marker::Sized;
 
     /// Constructs a dot string
-    fn dot_str(&self, arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str(&self, arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike;
 
     /// Construct a dot string while filtering temporary variables
-    fn dot_str_no_tmps(&self, arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str_no_tmps(&self, arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + AnalyzerLike;
 
-    fn mermaid_str(&self, arena: &mut RangeArena<Self::T>) -> String
+    fn mermaid_str(&self, arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike;
@@ -185,7 +184,7 @@ struct GraphMessage {
     timestamp: u64,
 }
 
-pub fn post_to_site<G>(graph: &G, arena: &mut RangeArena<G::T>)
+pub fn post_to_site<G>(graph: &G, arena: &mut RangeArena<<G as GraphLike>::RangeElem>)
 where
     G: GraphDot + AnalyzerLike,
 {
@@ -195,7 +194,7 @@ where
     });
 }
 
-async fn post_to_site_async<G>(graph: &G, arena: &mut RangeArena<G::T>)
+async fn post_to_site_async<G>(graph: &G, arena: &mut RangeArena<<G as GraphLike>::RangeElem>)
 where
     G: GraphDot + AnalyzerLike,
 {

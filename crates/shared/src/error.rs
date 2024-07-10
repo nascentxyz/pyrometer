@@ -3,15 +3,36 @@ use solang_parser::pt::Loc;
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum RepresentationErr {
-    Context(NodeIdx, ContextReprErr),
+    Context(ContextReprErr),
     Variable(VarReprErr),
-    Graph(GraphError),
+}
+
+impl RepresentationErr {
+    fn msg(&self) -> &str {
+        match self {
+            Self::Context(c) => c.msg(),
+            Self::Variable(c) => c.msg(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
 pub enum ContextReprErr {
-    VarCacheErr(Vec<NodeIdx>),
-    VarInvariantErr(Vec<RepresentationErr>),
+    VarCacheErr(NodeIdx, Vec<NodeIdx>),
+    VarInvariantErr(NodeIdx, Vec<RepresentationErr>),
+}
+
+impl ContextReprErr {
+    fn msg(&self) -> &str {
+        match self {
+            Self::VarCacheErr(idx, nodes) => string_to_static_str(format!("context node {idx:?}: has a cache-edge mismatch: {nodes:?} are missing in either cache or edges")),
+            Self::VarInvariantErr(idx, errs) => string_to_static_str(format!("context node {idx:?}: has variable invariant errors: {}", errs.iter().map(|e| e.msg()).collect::<Vec<_>>().join(",\n\t"))),
+        }
+    }
+}
+
+fn string_to_static_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
 }
 
 #[derive(Debug, Clone, Ord, Eq, PartialEq, PartialOrd)]
@@ -25,9 +46,29 @@ pub enum VarReprErr {
     ArrayErr(NodeIdx, &'static str),
 }
 
+impl VarReprErr {
+    fn msg(&self) -> &str {
+        string_to_static_str(match self {
+            Self::Unresolved(idx) => format!("context variable node {idx:?}: is unresolved"),
+            Self::StructErr(idx, str) => format!("context variable node {idx:?}: {str}"),
+            Self::ContractErr(idx, str) => format!("context variable node {idx:?}: {str}"),
+            Self::EnumErr(idx, str) => format!("context variable node {idx:?}: {str}"),
+            Self::TyErr(idx, str) => format!("context variable node {idx:?}: {str}"),
+            Self::FuncErr(idx, str) => format!("context variable node {idx:?}: {str}"),
+            Self::ArrayErr(idx, str) => format!("context variable node {idx:?}: {str}"),
+        })
+    }
+}
+
 impl From<VarReprErr> for RepresentationErr {
     fn from(vre: VarReprErr) -> Self {
         RepresentationErr::Variable(vre)
+    }
+}
+
+impl From<ContextReprErr> for RepresentationErr {
+    fn from(cre: ContextReprErr) -> Self {
+        RepresentationErr::Context(cre)
     }
 }
 
@@ -104,6 +145,7 @@ pub enum ExprErr {
     InvalidFunctionInput(Loc, String),
     TakeFromFork(Loc, String),
     GraphError(Loc, GraphError),
+    ReprError(Loc, RepresentationErr),
     Unresolved(Loc, String),
 }
 
@@ -111,6 +153,10 @@ impl ExprErr {
     /// Convert from a graph error
     pub fn from_graph_err(loc: Loc, graph_err: GraphError) -> Self {
         Self::GraphError(loc, graph_err)
+    }
+
+    pub fn from_repr_err(loc: Loc, repr_err: RepresentationErr) -> Self {
+        Self::ReprError(loc, repr_err)
     }
 }
 
@@ -141,6 +187,7 @@ impl ExprErr {
             TakeFromFork(loc, ..) => *loc,
             GraphError(loc, ..) => *loc,
             Unresolved(loc, ..) => *loc,
+            ReprError(loc, ..) => *loc,
         }
     }
 
@@ -168,6 +215,8 @@ impl ExprErr {
             ExprErr::InvalidFunctionInput(_, msg, ..) => msg,
             ExprErr::TakeFromFork(_, msg, ..) => msg,
             ExprErr::Unresolved(_, msg, ..) => msg,
+            ExprErr::ReprError(_, RepresentationErr::Context(c)) => c.msg(),
+            ExprErr::ReprError(_, RepresentationErr::Variable(v)) => v.msg(),
             ExprErr::GraphError(_, GraphError::NodeConfusion(msg), ..) => msg,
             ExprErr::GraphError(_, GraphError::MaxStackDepthReached(msg), ..) => msg,
             ExprErr::GraphError(_, GraphError::MaxStackWidthReached(msg), ..) => msg,
@@ -205,6 +254,7 @@ impl ExprErr {
             ExprErr::IntrinsicNamedArgs(..) => "Arguments in calls to intrinsic functions cannot be named",
             ExprErr::InvalidFunctionInput(..) => "Arguments to this function call do not match required types",
             ExprErr::TakeFromFork(..) => "IR Error: Tried to take from an child context that ended up forking",
+            ExprErr::ReprError(..) => "Representation Error: This is a bug.",
             ExprErr::GraphError(_, GraphError::NodeConfusion(_), ..) => "Graph IR Error: Node type confusion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             ExprErr::GraphError(_, GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
             ExprErr::GraphError(_, GraphError::MaxStackWidthReached(_), ..) => "TODO: Max fork width reached - Need to widen variables and remove contexts",
