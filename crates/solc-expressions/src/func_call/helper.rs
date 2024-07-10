@@ -76,7 +76,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 .unwrap();
                         }
 
-                        println!("input: {}", input.name(self).unwrap());
                         let fields = input.struct_to_fields(self).ok()?;
                         if !fields.is_empty() {
                             println!(
