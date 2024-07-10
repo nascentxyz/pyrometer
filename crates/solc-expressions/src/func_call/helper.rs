@@ -45,7 +45,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         let mut new_cvar = self.add_if_err(res)?;
                         new_cvar.loc = Some(param.loc(self).unwrap());
                         new_cvar.name.clone_from(&name);
-                        new_cvar.display_name = name.clone();
+                        new_cvar.display_name.clone_from(&name);
                         new_cvar.is_tmp = false;
                         new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
                             param.underlying(self).unwrap().storage
