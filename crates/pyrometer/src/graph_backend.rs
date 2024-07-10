@@ -572,10 +572,10 @@ pub fn arena_mermaid_node(
             format!("{indent}{}{{{{\"{}\"}}}}", idx.index(), arena_idx)
         }
         ArenaNode::ELEM(label) => {
-            format!("{indent}{}(\"{}\")", idx.index(), label.replace("\"", "'"))
+            format!("{indent}{}(\"{}\")", idx.index(), label.replace('"', "'"))
         }
         ArenaNode::CVAR(label) => {
-            format!("{indent}{}(\"{}\")", idx.index(), label.replace("\"", "'"))
+            format!("{indent}{}(\"{}\")", idx.index(), label.replace('"', "'"))
         }
     };
 

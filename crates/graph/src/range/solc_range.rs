@@ -171,30 +171,12 @@ impl SolcRange {
             | c @ Concrete::Int(_, _)
             | c @ Concrete::Bool(_)
             | c @ Concrete::Address(_)
+            | c @ Concrete::String(_)
             | c @ Concrete::Bytes(_, _) => Some(SolcRange::new(
                 Elem::Concrete(RangeConcrete::new(c.clone(), Loc::Implicit)),
                 Elem::Concrete(RangeConcrete::new(c, Loc::Implicit)),
                 vec![],
             )),
-            Concrete::String(s) => {
-                let val = s
-                    .chars()
-                    .enumerate()
-                    .map(|(i, v)| {
-                        let idx = Elem::from(Concrete::from(U256::from(i)));
-                        let mut bytes = [0x00; 32];
-                        v.encode_utf8(&mut bytes[..]);
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
-                        (idx, v)
-                    })
-                    .collect::<BTreeMap<_, _>>();
-                let r = Elem::ConcreteDyn(RangeDyn::new(
-                    Elem::from(Concrete::from(U256::from(s.len()))),
-                    val,
-                    Loc::Implicit,
-                ));
-                Some(SolcRange::new(r.clone(), r, vec![]))
-            }
             Concrete::DynBytes(b) => {
                 let val = b
                     .iter()

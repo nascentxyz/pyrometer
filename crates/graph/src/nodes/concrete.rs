@@ -886,6 +886,29 @@ impl Concrete {
         }
     }
 
+    pub fn needed_size(&self) -> Option<u16> {
+        match self {
+            Concrete::Uint(_, val) => Some(((32 - (val.leading_zeros() / 8)) * 8).max(8) as u16),
+            Concrete::Int(_, val) => {
+                let unsigned = val.unsigned_abs();
+                Some(((32 - (unsigned.leading_zeros() / 8)) * 8).max(8) as u16)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn fit_size(self) -> Self {
+        if let Some(needed) = self.needed_size() {
+            match self {
+                Concrete::Uint(_, val) => Concrete::Uint(needed, val),
+                Concrete::Int(_, val) => Concrete::Int(needed, val),
+                _ => self,
+            }
+        } else {
+            self
+        }
+    }
+
     /// If its `Concrete::Uint`, gets the value
     pub fn uint_val(&self) -> Option<U256> {
         match self {
