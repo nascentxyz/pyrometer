@@ -59,11 +59,6 @@ impl VarNode {
             );
             let init = analyzer.parse_expr(arena, &expr, Some(parent));
 
-            println!(
-                "init here: {:?}, is constant: {}",
-                analyzer.node(init),
-                ContextVarNode::from(init).is_const(analyzer, arena)?
-            );
             let underlying = self.underlying(analyzer)?.clone();
             let mut set = false;
             if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
