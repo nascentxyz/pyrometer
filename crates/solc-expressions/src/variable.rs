@@ -114,7 +114,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             } else {
                 None
             };
-            println!("{:?} const var: {const_var:?}", self.node(idx));
 
             let var = if let Some(con) = const_var {
                 con

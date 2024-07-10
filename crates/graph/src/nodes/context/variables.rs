@@ -135,7 +135,6 @@ impl ContextNode {
             return Ok(None);
         };
 
-        println!("name: {full_name}");
         // maybe move var into this context
         let member = self.maybe_move_var(member, loc, analyzer)?;
         let global_first = member.global_first_version(analyzer);
@@ -144,7 +143,6 @@ impl ContextNode {
         let mut field = None;
         // recursively search for the field by looking at all major versions of the member (i.e. first version
         // of the variable in a context)
-        println!("getting field {field_name}");
         while field.is_none() && curr != global_first {
             field = curr.field_of_struct(field_name, analyzer)?;
             if let Some(prev) = curr.previous_or_inherited_version(analyzer) {
@@ -155,13 +153,7 @@ impl ContextNode {
         }
 
         if let Some(field) = field {
-            println!("found field");
             if let Some(ctx) = curr.maybe_ctx(analyzer) {
-                println!(
-                    "had context: {}, self: {}",
-                    ctx.path(analyzer),
-                    self.path(analyzer)
-                );
                 if ctx != *self {
                     tracing::trace!(
                         "moving field access {} from {} to {}",
