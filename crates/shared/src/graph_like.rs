@@ -147,6 +147,7 @@ pub trait GraphDot: GraphLike {
     }
 
     /// Creates a subgraph for visually identifying contexts and subcontexts
+    #[allow(clippy::too_many_arguments)]
     fn cluster_str(
         &self,
         arena: &mut RangeArena<Self::T>,

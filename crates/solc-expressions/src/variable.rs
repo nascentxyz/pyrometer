@@ -244,10 +244,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             }
             Some(StorageLocation::Memory(..)) | Some(StorageLocation::Calldata(..)) => idxs
                 .iter()
-                .find(|idx| match self.node(**idx) {
-                    Node::Struct(..) => true,
-                    _ => false,
-                })
+                .find(|idx| matches!(self.node(**idx), Node::Struct(..)))
                 .copied(),
             None => {
                 let t = &mut idxs;

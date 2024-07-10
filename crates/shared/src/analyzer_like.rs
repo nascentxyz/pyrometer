@@ -144,6 +144,7 @@ pub trait AnalyzerLike: GraphLike {
     fn add_expr_err(&mut self, err: Self::ExprErr);
     fn expr_errs(&self) -> Vec<Self::ExprErr>;
 
+    #[allow(clippy::type_complexity)]
     fn builtin_fn_inputs(
         &self,
     ) -> &AHashMap<String, (Vec<Self::FunctionParam>, Vec<Self::FunctionReturn>)>;

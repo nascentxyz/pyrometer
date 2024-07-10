@@ -5,7 +5,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend,
 };
 
-use shared::{GraphError, Search, NodeIdx};
+use shared::{GraphError, NodeIdx, Search};
 use std::collections::{BTreeMap, BTreeSet};
 
 impl ContextNode {

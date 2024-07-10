@@ -4,7 +4,8 @@ use crate::{
     AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
 };
 
-use shared::{NodeIdx, RangeArena, GraphError};
+use shared::{GraphError, NodeIdx, RangeArena};
+
 use petgraph::visit::EdgeRef;
 use solang_parser::pt::{ErrorDefinition, ErrorParameter, Expression, Identifier, Loc};
 

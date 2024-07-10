@@ -99,7 +99,7 @@ impl AnalyzerLike for Analyzer {
                 }
                 None
             }
-        };
+        }
 
         let mut contract_to_funcs: BTreeMap<
             Option<ContractNode>,
@@ -125,16 +125,12 @@ impl AnalyzerLike for Analyzer {
                 };
                 reqs.storage.iter().for_each(|var| {
                     if let Some(c) = var.maybe_associated_contract(self) {
-                        if !contract_to_funcs.contains_key(&Some(c)) {
-                            contract_to_funcs.insert(Some(c), vec![]);
-                        }
+                        contract_to_funcs.entry(Some(c)).or_default();
 
                         if let Some(func_c) = maybe_func_contract {
                             if let Some(needed) = recurse_find(func_c, c, self) {
                                 needed.into_iter().for_each(|c| {
-                                    if !contract_to_funcs.contains_key(&Some(c)) {
-                                        contract_to_funcs.insert(Some(c), vec![]);
-                                    }
+                                    contract_to_funcs.entry(Some(c)).or_default();
                                 });
                             }
                         }
@@ -142,16 +138,12 @@ impl AnalyzerLike for Analyzer {
                 });
 
                 if let Some(c) = maybe_associated_contract {
-                    if !contract_to_funcs.contains_key(&Some(c)) {
-                        contract_to_funcs.insert(Some(c), vec![]);
-                    }
+                    contract_to_funcs.entry(Some(c)).or_default();
 
                     if let Some(func_c) = maybe_func_contract {
                         if let Some(needed) = recurse_find(func_c, c, self) {
                             needed.into_iter().for_each(|c| {
-                                if !contract_to_funcs.contains_key(&Some(c)) {
-                                    contract_to_funcs.insert(Some(c), vec![]);
-                                }
+                                contract_to_funcs.entry(Some(c)).or_default();
                             });
                         }
                     }

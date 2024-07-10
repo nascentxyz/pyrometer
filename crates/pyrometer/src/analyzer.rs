@@ -1173,43 +1173,36 @@ impl Analyzer {
                     if let Some(idxs) = self.user_types.get(&ident.name).cloned() {
                         let mut found = false;
                         for idx in idxs.iter() {
-                            match self.node(*idx) {
-                                Node::Contract(_) => {
-                                    found = true;
-                                    let funcs = ContractNode::from(*idx).funcs(self);
-                                    let relevant_funcs: Vec<_> = funcs
-                                        .iter()
-                                        .filter_map(|func| {
-                                            let first_param: FunctionParamNode =
-                                                *func.params(self).iter().take(1).next()?;
-                                            let param_ty = first_param.ty(self).unwrap();
-                                            if param_ty == ty_idx {
-                                                Some(func)
-                                            } else {
-                                                None
-                                            }
-                                        })
-                                        .copied()
-                                        .collect();
+                            if let Node::Contract(_) = self.node(*idx) {
+                                found = true;
+                                let funcs = ContractNode::from(*idx).funcs(self);
+                                let relevant_funcs: Vec<_> = funcs
+                                    .iter()
+                                    .filter_map(|func| {
+                                        let first_param: FunctionParamNode =
+                                            *func.params(self).iter().take(1).next()?;
+                                        let param_ty = first_param.ty(self).unwrap();
+                                        if param_ty == ty_idx {
+                                            Some(func)
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .copied()
+                                    .collect();
 
-                                    if matches!(self.node(scope_node), Node::Contract(_)) {
-                                        self.add_edge(
-                                            scope_node,
-                                            *idx,
-                                            Edge::UsingContract(using_def.loc),
-                                        );
-                                    }
-
-                                    relevant_funcs.iter().for_each(|func| {
-                                        self.add_edge(
-                                            ty_idx,
-                                            *func,
-                                            Edge::LibraryFunction(scope_node),
-                                        );
-                                    });
-                                    break;
+                                if matches!(self.node(scope_node), Node::Contract(_)) {
+                                    self.add_edge(
+                                        scope_node,
+                                        *idx,
+                                        Edge::UsingContract(using_def.loc),
+                                    );
                                 }
-                                _ => {}
+
+                                relevant_funcs.iter().for_each(|func| {
+                                    self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
+                                });
+                                break;
                             }
                         }
                         if !found && !idxs.is_empty() {
@@ -1231,32 +1224,27 @@ impl Analyzer {
                             self.user_types.get(&ident_paths.path.identifiers[0].name)
                         {
                             for idx in idxs {
-                                match self.node(*idx) {
-                                    Node::Contract(_) => {
-                                        if let Some(func) = ContractNode::from(*idx)
-                                            .funcs(self)
-                                            .iter()
-                                            .find(|func| {
-                                                func.name(self).unwrap().starts_with(
-                                                    &ident_paths.path.identifiers[1].name,
-                                                )
-                                            })
-                                        {
-                                            self.add_edge(
-                                                ty_idx,
-                                                *func,
-                                                Edge::LibraryFunction(scope_node),
-                                            );
-                                        } else {
-                                            panic!(
-                                                "Cannot find library function {}.{}",
-                                                ident_paths.path.identifiers[0].name,
-                                                ident_paths.path.identifiers[1].name
-                                            );
-                                        }
-                                        break;
+                                if let Node::Contract(_) = self.node(*idx) {
+                                    if let Some(func) =
+                                        ContractNode::from(*idx).funcs(self).iter().find(|func| {
+                                            func.name(self)
+                                                .unwrap()
+                                                .starts_with(&ident_paths.path.identifiers[1].name)
+                                        })
+                                    {
+                                        self.add_edge(
+                                            ty_idx,
+                                            *func,
+                                            Edge::LibraryFunction(scope_node),
+                                        );
+                                    } else {
+                                        panic!(
+                                            "Cannot find library function {}.{}",
+                                            ident_paths.path.identifiers[0].name,
+                                            ident_paths.path.identifiers[1].name
+                                        );
                                     }
-                                    _ => {}
+                                    break;
                                 }
                             }
                         } else {
@@ -1551,7 +1539,7 @@ impl Analyzer {
         ty_node
     }
 
-    fn post_source_to_site(file_no: usize, path: &PathBuf, source: &str)
+    fn post_source_to_site(file_no: usize, path: &Path, source: &str)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,

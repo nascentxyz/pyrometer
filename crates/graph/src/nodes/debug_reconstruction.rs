@@ -3,6 +3,8 @@ use crate::{
     AnalyzerBackend, Edge, TypeNode,
 };
 
+use shared::GraphError;
+
 use petgraph::{visit::EdgeRef, Direction};
 use shared::GraphError;
 use solang_parser::pt::Loc;
@@ -446,7 +448,7 @@ impl ContractNode {
         let structs = self.reconstruct_structs(analyzer, contract_to_funcs)?;
         let enums = self.reconstruct_enums(analyzer, contract_to_funcs)?;
         let tys = self.reconstruct_tys(analyzer, contract_to_funcs)?;
-        let errs = self.reconstruct_errs(analyzer, contract_to_funcs)?;
+        let _errs = self.reconstruct_errs(analyzer, contract_to_funcs)?;
         let funcs = self.reconstruct_funcs(analyzer, contract_to_funcs)?;
         Ok(format!(
             "{reconstructed_name} {inherited} {{\n{usings}{structs}{enums}{tys}{storage}{funcs}\n}}"

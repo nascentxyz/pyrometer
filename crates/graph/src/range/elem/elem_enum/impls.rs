@@ -557,7 +557,6 @@ impl Elem<Concrete> {
     pub fn arenaized_flattened(
         &self,
         max: bool,
-        analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<Box<Elem<Concrete>>> {
         if let Some(idx) = arena.idx(self) {
@@ -586,7 +585,7 @@ impl Elem<Concrete> {
                     }
                     c @ Elem::Concrete(_) => Some(Box::new(c.clone())),
                     c @ Elem::Null => Some(Box::new(c.clone())),
-                    Elem::Arena(idx) => Elem::Arena(*idx).arenaized_flattened(max, analyzer, arena),
+                    Elem::Arena(idx) => Elem::Arena(*idx).arenaized_flattened(max, arena),
                 }
             } else {
                 None

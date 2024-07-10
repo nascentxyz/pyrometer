@@ -32,14 +32,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let res = self.exec(self.spread(analyzer, arena)?, maximize, analyzer, arena)?;
 
         if let Some(idx) = idx {
-            if let Some(t) = arena.ranges.get_mut(idx) {
-                if let Elem::Expr(expr) = &mut *t {
-                    tracing::trace!("setting cache");
-                    if maximize {
-                        expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
-                    } else {
-                        expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
-                    }
+            if let Some(Elem::Expr(expr)) = arena.ranges.get_mut(idx) {
+                tracing::trace!("setting cache");
+                if maximize {
+                    expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                } else {
+                    expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
                 }
             }
         }
@@ -73,13 +71,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(idx) = self.arena_idx(arena) {
-            if let Some(t) = arena.ranges.get_mut(idx) {
-                if let Elem::Expr(expr) = &mut *t {
-                    if maximize {
-                        expr.maximized.clone_from(&self.maximized);
-                    } else {
-                        expr.minimized.clone_from(&self.minimized);
-                    }
+            if let Some(Elem::Expr(expr)) = arena.ranges.get_mut(idx) {
+                if maximize {
+                    expr.maximized.clone_from(&self.maximized);
+                } else {
+                    expr.minimized.clone_from(&self.minimized);
                 }
             }
         }
@@ -293,16 +289,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Not => exec_not(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
-            RangeOp::BitAnd => exec_bit_and(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::BitOr => exec_bit_or(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::BitXor => exec_bit_xor(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::BitNot => exec_bit_not(&lhs_min, &lhs_max, maximize, analyzer, arena),
+            RangeOp::BitAnd => {
+                exec_bit_and(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, arena)
+            }
+            RangeOp::BitOr => exec_bit_or(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, arena),
+            RangeOp::BitXor => {
+                exec_bit_xor(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, arena)
+            }
+            RangeOp::BitNot => exec_bit_not(&lhs_min, &lhs_max, maximize, arena),
             RangeOp::Shl => exec_shl(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),

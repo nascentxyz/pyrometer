@@ -1,7 +1,5 @@
 use crate::{
-    nodes::{
-        ContextNode, ContextVarNode, EnumNode, ErrorNode, ExprRet, StructNode, TyNode, VarNode,
-    },
+    nodes::{ContextNode, ContextVarNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode,
 };
 use shared::GraphError;
@@ -43,7 +41,7 @@ impl ContextNode {
             .tmp_expr
             .iter()
             .enumerate()
-            .filter(|(i, maybe_elem)| maybe_elem.is_some())
+            .filter(|(_i, maybe_elem)| maybe_elem.is_some())
             .for_each(|(i, elem)| println!("{i}. {}", elem.clone().unwrap().debug_str(analyzer)));
         Ok(())
     }

@@ -187,12 +187,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     ) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some() || {
             if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Reference(ref arenaized) = *t {
-                        arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
-                    } else {
-                        false
-                    }
+                if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                    arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
                 } else {
                     false
                 }
@@ -209,12 +205,8 @@ impl RangeElem<Concrete> for Reference<Concrete> {
     ) -> (bool, bool) {
         let (arena_cached_min, arena_cached_max) = {
             if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Reference(ref arenaized) = *t {
-                        (arenaized.minimized.is_some(), arenaized.maximized.is_some())
-                    } else {
-                        (false, false)
-                    }
+                if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                    (arenaized.minimized.is_some(), arenaized.maximized.is_some())
                 } else {
                     (false, false)
                 }
@@ -237,12 +229,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
         if self.flattened_max.is_none() {
             if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Reference(ref arenaized) = *t {
-                        if arenaized.flattened_max.is_some() {
-                            tracing::trace!("reference cache flatten hit");
-                            return Ok(());
-                        }
+                if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                    if arenaized.flattened_max.is_some() {
+                        tracing::trace!("reference cache flatten hit");
+                        return Ok(());
                     }
                 }
             }
@@ -255,12 +245,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
         if self.flattened_min.is_none() {
             if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Reference(ref arenaized) = *t {
-                        if arenaized.flattened_min.is_some() {
-                            tracing::trace!("reference cache flatten hit");
-                            return Ok(());
-                        }
+                if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                    if arenaized.flattened_min.is_some() {
+                        tracing::trace!("reference cache flatten hit");
+                        return Ok(());
                     }
                 }
             }
@@ -292,12 +280,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
 
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Some(t) = arena.ranges.get(idx) {
-                if let Elem::Reference(ref arenaized) = *t {
-                    tracing::trace!("reference maximize cache hit");
-                    if let Some(MinMaxed::Maximized(cached)) = arenaized.maximized.clone() {
-                        return Ok(*cached);
-                    }
+            if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                tracing::trace!("reference maximize cache hit");
+                if let Some(MinMaxed::Maximized(cached)) = arenaized.maximized.clone() {
+                    return Ok(*cached);
                 }
             }
         }
@@ -332,12 +318,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
 
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Some(t) = arena.ranges.get(idx) {
-                if let Elem::Reference(ref arenaized) = *t {
-                    if let Some(MinMaxed::Minimized(cached)) = arenaized.minimized.clone() {
-                        tracing::trace!("reference minimize cache hit");
-                        return Ok(*cached);
-                    }
+            if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                if let Some(MinMaxed::Minimized(cached)) = arenaized.minimized.clone() {
+                    tracing::trace!("reference minimize cache hit");
+                    return Ok(*cached);
                 }
             }
         }
@@ -372,12 +356,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
 
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Some(t) = arena.ranges.get(idx) {
-                if let Elem::Reference(ref arenaized) = *t {
-                    if arenaized.flattened_max.is_some() {
-                        tracing::trace!("reference simplify maximize cache hit");
-                        return Ok(*arenaized.flattened_max.clone().unwrap());
-                    }
+            if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                if arenaized.flattened_max.is_some() {
+                    tracing::trace!("reference simplify maximize cache hit");
+                    return Ok(*arenaized.flattened_max.clone().unwrap());
                 }
             }
         }
@@ -406,12 +388,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
 
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
-            if let Some(t) = arena.ranges.get(idx) {
-                if let Elem::Reference(ref arenaized) = *t {
-                    if arenaized.flattened_min.is_some() {
-                        tracing::trace!("reference simplify minimize cache hit");
-                        return Ok(*arenaized.flattened_min.clone().unwrap());
-                    }
+            if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
+                if arenaized.flattened_min.is_some() {
+                    tracing::trace!("reference simplify minimize cache hit");
+                    return Ok(*arenaized.flattened_min.clone().unwrap());
                 }
             }
         }
