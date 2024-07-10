@@ -1,6 +1,6 @@
 use graph::{
     elem::*,
-    nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    nodes::{Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
@@ -97,7 +97,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     ) -> Result<(), ExprErr> {
         let int =
             U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
-        let mut exp = if !exponent.is_empty() {
+        let exp = if !exponent.is_empty() {
             U256::from_dec_str(exponent).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?
         } else {
             U256::from(0)
