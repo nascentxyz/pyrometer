@@ -1,6 +1,7 @@
-use crate::func_call::intrinsic_call::IntrinsicFuncCaller;
 use crate::{
-    context_builder::ContextBuilder, func_call::func_caller::FuncCaller, variable::Variable,
+    context_builder::ContextBuilder,
+    func_call::{func_caller::FuncCaller, intrinsic_call::IntrinsicFuncCaller},
+    variable::Variable,
     ExprTyParser,
 };
 
@@ -9,7 +10,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{post_to_site, ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
 
 use ethers_core::types::I256;
 use solang_parser::{
@@ -33,7 +34,7 @@ pub trait ExpressionParser:
         expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        if !ctx.killed_or_ret(self).unwrap() {
+        let res = if !ctx.killed_or_ret(self).unwrap() {
             let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
             if edges.is_empty() {
                 self.parse_ctx_expr_inner(arena, expr, ctx)
@@ -45,7 +46,11 @@ pub trait ExpressionParser:
             }
         } else {
             Ok(())
+        };
+        if unsafe { USE_DEBUG_SITE } {
+            post_to_site(&*self, arena);
         }
+        res
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self).replace('.', "\n\t.")))]

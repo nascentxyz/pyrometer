@@ -75,6 +75,10 @@ impl ContextVarNode {
         self.ty(analyzer)?.is_indexable(analyzer)
     }
 
+    pub fn needs_length(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        self.ty(analyzer)?.needs_length(analyzer)
+    }
+
     pub fn is_storage(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?.storage,

@@ -68,9 +68,9 @@ impl RepresentationInvariant for ContextNode {
         g: &impl GraphBackend,
         arena: &RangeArena<Elem<Concrete>>,
     ) -> Result<Option<RepresentationErr>, GraphError> {
-        if let Some(err) = self.cache_matches_edges(g)? {
-            return Ok(Some(err));
-        }
+        // if let Some(err) = self.cache_matches_edges(g)? {
+        //     return Ok(Some(err));
+        // }
 
         let bad_vars = self.variables_invariants(g, arena)?;
         if !bad_vars.is_empty() {

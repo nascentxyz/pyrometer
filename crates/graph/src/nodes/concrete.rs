@@ -64,6 +64,10 @@ impl ConcreteNode {
     pub fn is_indexable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_indexable())
     }
+
+    pub fn needs_length(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.needs_length())
+    }
 }
 
 impl From<NodeIdx> for ConcreteNode {
@@ -282,6 +286,10 @@ impl Concrete {
     /// Returns whether this concrete is indexable
     pub fn is_indexable(&self) -> bool {
         self.is_dyn() || matches!(self, Concrete::Bytes(..))
+    }
+
+    pub fn needs_length(&self) -> bool {
+        self.is_dyn()
     }
 
     /// Convert a U256 back into it's original type. This is used mostly

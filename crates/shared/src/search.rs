@@ -374,7 +374,6 @@ where
         max_depth: usize,
         exclude_edges: &[<Self as GraphLike>::Edge],
     ) -> BTreeSet<NodeIdx> {
-        tracing::trace!("children");
         let mut seen = Default::default();
         self.children_exclude_prevent_cycle(start, 0, max_depth, exclude_edges, &mut seen)
     }
@@ -424,7 +423,6 @@ where
 
     /// Gets all children recursively
     fn children(&self, start: NodeIdx) -> BTreeSet<NodeIdx> {
-        tracing::trace!("children");
         let mut seen = Default::default();
         self.children_prevent_cycle(start, &mut seen)
     }
@@ -466,8 +464,6 @@ where
     where
         <Self as GraphLike>::Edge: Ord,
     {
-        tracing::trace!("children_edges");
-
         nodes
             .iter()
             .flat_map(|node| {
@@ -497,7 +493,6 @@ where
     where
         <Self as GraphLike>::Edge: Ord,
     {
-        tracing::trace!("children_edges");
         let mut seen = Default::default();
         self.children_edges_prevent_cycle(start, &mut seen)
     }

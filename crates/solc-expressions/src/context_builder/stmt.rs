@@ -3,7 +3,7 @@ use crate::{
     func_call::{func_caller::FuncCaller, modifier::ModifierCaller},
     loops::Looper,
     yul::YulBuilder,
-    ExpressionParser,
+    ExpressionParser, TestCommandRunner,
 };
 
 use graph::{
@@ -31,7 +31,7 @@ impl<T> StatementParser for T where
 
 /// Solidity statement parser
 pub trait StatementParser:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
+    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser + TestCommandRunner
 {
     /// Performs setup for parsing a solidity statement
     fn parse_ctx_statement(
@@ -72,10 +72,6 @@ pub trait StatementParser:
             self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx)
         }
 
-        if unsafe { USE_DEBUG_SITE } {
-            post_to_site(&*self, arena);
-        }
-
         if let Some(errs) =
             self.add_if_err(self.is_representation_ok(arena).into_expr_err(stmt.loc()))
         {
@@ -97,7 +93,15 @@ pub trait StatementParser:
         Self: Sized,
     {
         use Statement::*;
-        // tracing::trace!("stmt: {:#?}, node: {:#?}", stmt, if let Some(node) = parent_ctx { Some(self.node(node.into())) } else { None});
+        // tracing::trace!(
+        //     "stmt: {:#?}, node: {:#?}",
+        //     stmt,
+        //     if let Some(node) = parent_ctx {
+        //         Some(self.node(node.into()))
+        //     } else {
+        //         None
+        //     }
+        // );
 
         // at the end of a statement we shouldn't have anything in the stack?
         if let Some(ctx) = parent_ctx {
@@ -423,6 +427,22 @@ pub trait StatementParser:
                 tracing::trace!("parsing expr, {expr:?}");
                 if let Some(parent) = parent_ctx {
                     let ctx = parent.into().into();
+                    if let solang_parser::pt::Expression::StringLiteral(lits) = expr {
+                        if lits.len() == 1 {
+                            if let Some(command) = self.test_string_literal(&lits[0].string) {
+                                let _ = self.apply_to_edges(
+                                    ctx,
+                                    *loc,
+                                    arena,
+                                    &|analyzer, arena, ctx, loc| {
+                                        analyzer.run_test_command(arena, ctx, loc, command.clone());
+                                        Ok(())
+                                    },
+                                );
+                            }
+                        }
+                    }
+
                     match self.parse_ctx_expr(arena, expr, ctx) {
                         Ok(()) => {
                             let res = self.apply_to_edges(

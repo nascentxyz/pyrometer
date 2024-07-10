@@ -4,11 +4,13 @@ contract BitAnd {
     }
 
     function bit_and_conc(bytes32 d) public {
-        require(bytes32(type(uint256).max) & bytes32(uint(100)) == 100);
-        require(bytes32(0) & bytes32(uint(100)) == 0);
-        require(bytes32(101) & bytes32(105) == 97);
-        require(bytes32(type(uint24).max) & bytes32(1225) == 1225);
-        require(bit_and(bytes32(50), bytes32(500)) == 48);
+        require(uint(bytes32(type(uint256).max) & bytes32(uint(100))) == 100);
+        require(uint(bytes32(0) & bytes32(uint(100))) == 0);
+        require(uint(bytes32(uint(101)) & bytes32(uint(105))) == 97);
+        require(
+            uint(bytes32(uint(type(uint24).max)) & bytes32(uint(1225))) == 1225
+        );
+        require(uint(bit_and(bytes32(uint(50)), bytes32(uint(500)))) == 48);
     }
 
     function bit_and(uint256 x, uint256 y) public returns (uint256) {
@@ -16,7 +18,7 @@ contract BitAnd {
     }
 
     function bit_and_conc(uint256 d) public {
-        require(type(uint256).max & int(100) == 100);
+        require(type(uint256).max & 100 == 100);
         require(0 & uint(100) == 0);
         require(101 & 105 == 97);
         require(type(uint24).max & 1225 == 1225);
@@ -34,10 +36,6 @@ contract BitAnd {
         require(type(int24).max & -5 == 8388603);
         require(int_bit_and(50, 500) == 48);
     }
-
-    function int_bit_and(int256 x, int256 y) public returns (int256) {
-        return x & y;
-    }
 }
 
 contract BitOr {
@@ -46,11 +44,17 @@ contract BitOr {
     }
 
     function bit_or_conc(bytes32 d) public {
-        require(bytes32(type(uint256).max) | bytes32(uint(100)) == bytes32(type(uint256).max));
-        require(bytes32(0) | bytes32(uint(100)) == bytes32(100));
-        require(bytes32(101) | bytes32(105) == bytes32(109));
-        require(bytes32(type(uint24).max) | bytes32(5) == bytes32(type(uint24).max) );
-        require(bit_or(bytes32(50), bytes32(500)) == 502);
+        require(
+            bytes32(type(uint256).max) | bytes32(uint(100)) ==
+                bytes32(type(uint256).max)
+        );
+        require(bytes32(0) | bytes32(uint(100)) == bytes32(uint(100)));
+        require(bytes32(uint(101)) | bytes32(uint(105)) == bytes32(uint(109)));
+        require(
+            bytes32(uint(type(uint24).max)) | bytes32(uint(5)) ==
+                bytes32(uint(type(uint24).max))
+        );
+        require(uint(bit_or(bytes32(uint(50)), bytes32(uint(500)))) == 502);
     }
 
     function bit_or(uint256 x, uint256 y) public returns (uint256) {
@@ -84,7 +88,10 @@ contract BitXor {
     }
 
     function bit_xor_conc(uint256 d) public {
-        require(type(uint256).max ^ uint(100) == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
+        require(
+            type(uint256).max ^ uint(100) ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639835
+        );
         require(0 ^ uint(100) == 100);
         require(101 ^ 105 == 12);
         require(type(uint24).max ^ 5 == 16777210);
@@ -96,7 +103,10 @@ contract BitXor {
     }
 
     function int_bit_xor_conc(uint256 d) public {
-        require(type(int256).max ^ int(100) == 57896044618658097711785492504343953926634992332820282019728792003956564819867);
+        require(
+            type(int256).max ^ int(100) ==
+                57896044618658097711785492504343953926634992332820282019728792003956564819867
+        );
         require(0 ^ int(100) == 100);
         require(101 ^ 105 == 12);
         require(type(int24).max ^ -5 == -8388604);
@@ -112,16 +122,34 @@ contract BitNot {
         assembly {
             x := not(100)
         }
-        require(x == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
+        require(
+            x ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639835
+        );
     }
 
     function bit_not(bytes32 d) public view returns (bytes32) {
         bytes32 x = hex"1111";
-        require(~x == bytes32(0xeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff));
+        require(
+            ~x ==
+                bytes32(
+                    0xeeeeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+                )
+        );
         bytes16 x16 = hex"1111";
-        require(~x16 == bytes32(0xeeeeffffffffffffffffffffffffffff00000000000000000000000000000000));
+        require(
+            ~x16 ==
+                bytes32(
+                    0xeeeeffffffffffffffffffffffffffff00000000000000000000000000000000
+                )
+        );
         bytes8 x8 = hex"1111";
-        require(~x8 == bytes32(0xeeeeffffffffffff000000000000000000000000000000000000000000000000));
+        require(
+            ~x8 ==
+                bytes32(
+                    0xeeeeffffffffffff000000000000000000000000000000000000000000000000
+                )
+        );
         return ~x;
     }
 
@@ -131,11 +159,23 @@ contract BitNot {
 
     function bit_not_conc(uint256 d) public {
         require(~type(uint256).max == 0);
-        require(~100 == 115792089237316195423570985008687907853269984665640564039457584007913129639835);
-        require(~101 == 115792089237316195423570985008687907853269984665640564039457584007913129639834);
-        require(~105 == 115792089237316195423570985008687907853269984665640564039457584007913129639830);
+        require(
+            ~uint(100) ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639835
+        );
+        require(
+            ~uint(101) ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639834
+        );
+        require(
+            ~uint(105) ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639830
+        );
         require(~type(uint24).max == 0);
-        require(bit_not(50) == 115792089237316195423570985008687907853269984665640564039457584007913129639885);
+        require(
+            bit_not(50) ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639885
+        );
     }
 
     function int_bit_not(int256 x) public returns (int256) {
@@ -202,14 +242,20 @@ contract BitShl {
         uint256 a8 = shl(100000000000000000000, 64);
         require(a8 == 1844674407370955161600000000000000000000);
         uint256 a9 = shl(100000000000000000000000000000000000, 128);
-        require(a9 == 34028236692093846346337460743176821145600000000000000000000000000000000000);
+        require(
+            a9 ==
+                34028236692093846346337460743176821145600000000000000000000000000000000000
+        );
         uint256 a10 = shl(1, 255);
-        require(a10 == 57896044618658097711785492504343953926634992332820282019728792003956564819968);
+        require(
+            a10 ==
+                57896044618658097711785492504343953926634992332820282019728792003956564819968
+        );
     }
 
     function int_shl_conc() public returns (int256) {
         int256 a1 = int_shl(100, 1);
-        require(a1 == 200);
+        "pyro:variable:a1:range:[200,200]";
         int256 a2 = int_shl(100, 2);
         require(a2 == 400);
         int256 a3 = int_shl(100, 4);
@@ -225,9 +271,15 @@ contract BitShl {
         int256 a8 = int_shl(100000000000000000000, 64);
         require(a8 == 1844674407370955161600000000000000000000);
         int256 a9 = int_shl(100000000000000000000000000000000000, 128);
-        require(a9 == 34028236692093846346337460743176821145600000000000000000000000000000000000);
+        require(
+            a9 ==
+                34028236692093846346337460743176821145600000000000000000000000000000000000
+        );
         int256 a10 = int_shl(1, 255);
-        require(a10 == -57896044618658097711785492504343953926634992332820282019728792003956564819968);
+        require(
+            a10 ==
+                -57896044618658097711785492504343953926634992332820282019728792003956564819968
+        );
 
         int256 a11 = int_shl(-100, 1);
         require(a11 == -200);
@@ -246,9 +298,15 @@ contract BitShl {
         int256 a18 = int_shl(-100000000000000000000, 64);
         require(a18 == -1844674407370955161600000000000000000000);
         int256 a19 = int_shl(-100000000000000000000000000000000000, 128);
-        require(a19 == -34028236692093846346337460743176821145600000000000000000000000000000000000);
+        require(
+            a19 ==
+                -34028236692093846346337460743176821145600000000000000000000000000000000000
+        );
         int256 a20 = int_shl(-1, 255);
-        require(a20 == -57896044618658097711785492504343953926634992332820282019728792003956564819968);
+        require(
+            a20 ==
+                -57896044618658097711785492504343953926634992332820282019728792003956564819968
+        );
         int256 a21 = int_shl(-1, 256);
         require(a21 == 0);
     }
@@ -282,7 +340,10 @@ contract BitShr {
         require(a8 == 5);
         uint256 a9 = shr(1000000000000000000000000000000000000000, 128);
         require(a9 == 2);
-        uint256 a10 = shr(1000000000000000000000000000000000000000000000000000000000000000000000000000, 248);
+        uint256 a10 = shr(
+            1000000000000000000000000000000000000000000000000000000000000000000000000000,
+            248
+        );
         require(a10 == 2);
     }
 
@@ -305,7 +366,10 @@ contract BitShr {
         require(a8 == 5);
         int256 a9 = int_shr(1000000000000000000000000000000000000000, 128);
         require(a9 == 2);
-        int256 a10 = int_shr(1000000000000000000000000000000000000000000000000000000000000000000000000000, 248);
+        int256 a10 = int_shr(
+            1000000000000000000000000000000000000000000000000000000000000000000000000000,
+            248
+        );
         require(a10 == 2);
 
         int256 a11 = int_shr(-100, 1);
@@ -326,7 +390,10 @@ contract BitShr {
         require(a18 == -5);
         int256 a19 = int_shr(-1000000000000000000000000000000000000000, 128);
         require(a19 == -2);
-        int256 a20 = int_shr(-1000000000000000000000000000000000000000000000000000000000000000000000000000, 248);
+        int256 a20 = int_shr(
+            -1000000000000000000000000000000000000000000000000000000000000000000000000000,
+            248
+        );
         require(a20 == -2);
     }
 }

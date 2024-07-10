@@ -146,6 +146,7 @@ pub enum ExprErr {
     TakeFromFork(Loc, String),
     GraphError(Loc, GraphError),
     ReprError(Loc, RepresentationErr),
+    TestError(Loc, String),
     Unresolved(Loc, String),
 }
 
@@ -188,6 +189,7 @@ impl ExprErr {
             GraphError(loc, ..) => *loc,
             Unresolved(loc, ..) => *loc,
             ReprError(loc, ..) => *loc,
+            TestError(loc, ..) => *loc,
         }
     }
 
@@ -215,6 +217,7 @@ impl ExprErr {
             ExprErr::InvalidFunctionInput(_, msg, ..) => msg,
             ExprErr::TakeFromFork(_, msg, ..) => msg,
             ExprErr::Unresolved(_, msg, ..) => msg,
+            ExprErr::TestError(_, msg) => msg,
             ExprErr::ReprError(_, RepresentationErr::Context(c)) => c.msg(),
             ExprErr::ReprError(_, RepresentationErr::Variable(v)) => v.msg(),
             ExprErr::GraphError(_, GraphError::NodeConfusion(msg), ..) => msg,
@@ -255,6 +258,7 @@ impl ExprErr {
             ExprErr::InvalidFunctionInput(..) => "Arguments to this function call do not match required types",
             ExprErr::TakeFromFork(..) => "IR Error: Tried to take from an child context that ended up forking",
             ExprErr::ReprError(..) => "Representation Error: This is a bug.",
+            ExprErr::TestError(..) => "Test error.",
             ExprErr::GraphError(_, GraphError::NodeConfusion(_), ..) => "Graph IR Error: Node type confusion. This is potentially a bug. Please report it at https://github.com/nascentxyz/pyrometer",
             ExprErr::GraphError(_, GraphError::MaxStackDepthReached(_), ..) => "Max call depth reached - either recursion or loop",
             ExprErr::GraphError(_, GraphError::MaxStackWidthReached(_), ..) => "TODO: Max fork width reached - Need to widen variables and remove contexts",

@@ -1,7 +1,7 @@
 use graph::{
     elem::*,
     nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge, Node, TestCommand, VariableCommand,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -14,15 +14,13 @@ impl<T> Literal for T where T: AnalyzerBackend + Sized {}
 
 /// Dealing with literal expression and parsing them into nodes
 pub trait Literal: AnalyzerBackend + Sized {
-    fn number_literal(
+    fn concrete_number_from_str(
         &mut self,
-        ctx: ContextNode,
-        loc: Loc,
         integer: &str,
         exponent: &str,
         negative: bool,
         unit: &Option<Identifier>,
-    ) -> Result<(), ExprErr> {
+    ) -> Concrete {
         let int = U256::from_dec_str(integer).unwrap();
         let val = if !exponent.is_empty() {
             let exp = U256::from_dec_str(exponent).unwrap();
@@ -38,18 +36,29 @@ pub trait Literal: AnalyzerBackend + Sized {
         };
 
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8).max(8) as u16;
-        let concrete_node = if negative {
+        if negative {
             let val = if val == U256::from(2).pow(255.into()) {
                 // no need to set upper bit
                 I256::from_raw(val)
             } else {
                 I256::from(-1i32) * I256::from_raw(val)
             };
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
+            Concrete::Int(size, val)
         } else {
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))
-        };
-
+            Concrete::Uint(size, val)
+        }
+    }
+    fn number_literal(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        integer: &str,
+        exponent: &str,
+        negative: bool,
+        unit: &Option<Identifier>,
+    ) -> Result<(), ExprErr> {
+        let conc = self.concrete_number_from_str(integer, exponent, negative, unit);
+        let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(conc)));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -213,6 +222,66 @@ pub trait Literal: AnalyzerBackend + Sized {
         ctx.push_expr(ExprRet::SingleLiteral(node), self)
             .into_expr_err(loc)?;
         Ok(())
+    }
+
+    fn test_string_literal(&mut self, s: &str) -> Option<TestCommand> {
+        let split = s.split("::").collect::<Vec<_>>();
+        if split.get(0).copied() == Some("pyro") {
+            match split.get(1).copied() {
+                Some("variable") => {
+                    let name = split.get(2).copied()?;
+                    match split.get(3).copied() {
+                        Some("range") => {
+                            let range = split
+                                .get(4)
+                                .copied()?
+                                .trim_start_matches('[')
+                                .trim_end_matches(']')
+                                .split(',')
+                                .collect::<Vec<_>>();
+                            let mut min_str = *range.get(0)?;
+                            let mut min_neg = false;
+                            if let Some(new_min) = min_str.strip_prefix('-') {
+                                min_neg = true;
+                                min_str = new_min;
+                            }
+
+                            let mut max_str = *range.get(1)?;
+                            let mut max_neg = false;
+                            if let Some(new_max) = max_str.strip_prefix('-') {
+                                max_neg = true;
+                                max_str = new_max;
+                            }
+
+                            let min = self.concrete_number_from_str(min_str, "", min_neg, &None);
+                            let max = self.concrete_number_from_str(max_str, "", max_neg, &None);
+
+                            Some(TestCommand::Variable(
+                                name.to_string(),
+                                VariableCommand::RangeAssert { min, max },
+                            ))
+                        }
+                        _ => None,
+                    }
+                }
+                Some("constraint") => {
+                    let constraint = split.get(2).copied()?;
+                    Some(TestCommand::Constraint(constraint.to_string()))
+                }
+                Some("coverage") => match split.get(2).copied() {
+                    Some("onlyPath") => {
+                        Some(TestCommand::Coverage(graph::CoverageCommand::OnlyPath))
+                    }
+                    Some("unreachable") => {
+                        Some(TestCommand::Coverage(graph::CoverageCommand::Unreachable))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<(), ExprErr> {
