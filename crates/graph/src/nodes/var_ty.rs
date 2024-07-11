@@ -53,15 +53,21 @@ impl VarNode {
         parent: NodeIdx,
     ) -> Result<(), GraphError> {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
-            tracing::trace!("Parsing variable initializer");
+            tracing::trace!(
+                "Parsing variable initializer for {}",
+                self.underlying(analyzer)?.name.as_ref().unwrap().name
+            );
             let init = analyzer.parse_expr(arena, &expr, Some(parent));
+
             let underlying = self.underlying(analyzer)?.clone();
             let mut set = false;
             if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
                 if let Some(initer) = VarType::try_from_idx(analyzer, init) {
                     if let Some(initer) = initer.try_cast(&ty, analyzer)? {
-                        set = true;
-                        self.underlying_mut(analyzer)?.initializer = Some(initer.ty_idx());
+                        if let Some(conc_idx) = initer.builtin_to_concrete_idx(analyzer, arena)? {
+                            set = true;
+                            self.underlying_mut(analyzer)?.initializer = Some(conc_idx);
+                        }
                     }
                 }
             }
@@ -174,6 +180,15 @@ impl VarNode {
             })
             .map(|edge| ContextVarNode::from(edge.source()))
             .collect()
+    }
+
+    pub fn reconstruct_src<'a>(
+        &self,
+        analyzer: &'a impl AnalyzerBackend,
+    ) -> Result<&'a str, GraphError> {
+        let loc = self.underlying(analyzer)?.loc;
+        let file_no = loc.try_file_no().unwrap();
+        Ok(&analyzer.file_mapping().get(&file_no).unwrap()[loc.start()..loc.end()])
     }
 }
 

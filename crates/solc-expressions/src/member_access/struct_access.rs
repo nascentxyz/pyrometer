@@ -28,12 +28,21 @@ pub trait StructAccess:
     ) -> Result<ExprRet, ExprErr> {
         let name = format!(
             "{}.{}",
-            struct_node.name(self).into_expr_err(loc)?,
+            if member_idx.index() != struct_node.0 {
+                ContextVarNode::from(member_idx).name(self).unwrap()
+            } else {
+                struct_node.name(self).into_expr_err(loc)?
+            },
             ident.name
         );
         tracing::trace!("Struct member access: {}", name);
-        if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
-            Ok(ExprRet::Single(attr_var.latest_version(self).into()))
+        if let Some(field) = ctx
+            .struct_field_access_by_name_recurse(self, loc, &name)
+            .into_expr_err(loc)?
+        {
+            Ok(ExprRet::Single(
+                field.latest_version_or_inherited_in_ctx(ctx, self).into(),
+            ))
         } else if let Some(field) = struct_node.find_field(self, ident) {
             let cvar = if let Some(parent) = maybe_parent {
                 parent
@@ -52,8 +61,8 @@ pub trait StructAccess:
                     ContextVarNode::from(member_idx).first_version(self),
                     Edge::Context(ContextEdge::AttrAccess("field")),
                 );
-                ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
-                self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                // ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
+                // self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
                 Ok(ExprRet::Single(fc_node))
             } else {
                 panic!("Couldn't create field variable");

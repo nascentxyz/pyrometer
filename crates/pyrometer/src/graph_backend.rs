@@ -1,11 +1,10 @@
 use crate::Analyzer;
-use graph::elem::RangeElem;
-use graph::nodes::Concrete;
 use graph::{
-    as_dot_str, nodes::ContextNode, AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend,
-    Node,
+    as_dot_str,
+    elem::{Elem, RangeElem},
+    nodes::{Concrete, ContextNode, ContextVarNode},
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, TOKYO_NIGHT_COLORS,
 };
-use graph::{elem::Elem, nodes::ContextVarNode, TOKYO_NIGHT_COLORS};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::RangeArena;
@@ -572,10 +571,10 @@ pub fn arena_mermaid_node(
             format!("{indent}{}{{{{\"{}\"}}}}", idx.index(), arena_idx)
         }
         ArenaNode::ELEM(label) => {
-            format!("{indent}{}(\"{}\")", idx.index(), label.replace('"', "'"))
+            format!("{indent}{}(\"{}\")", idx.index(), label.replace('\"', "'"))
         }
         ArenaNode::CVAR(label) => {
-            format!("{indent}{}(\"{}\")", idx.index(), label.replace('"', "'"))
+            format!("{indent}{}(\"{}\")", idx.index(), label.replace('\"', "'"))
         }
     };
 
@@ -665,6 +664,33 @@ impl GraphDot for Analyzer {
                 .map(|edge| (edge.source(), edge.target(), *edge.weight(), edge.id()))
                 .collect::<BTreeSet<(NodeIdx, NodeIdx, Edge, EdgeIndex<usize>)>>(),
         );
+
+        let mut struct_parts = children
+            .iter()
+            .filter(|child| {
+                if matches!(g.node(**child), Node::ContextVar(..)) {
+                    ContextVarNode::from(**child).is_struct(g).unwrap_or(false)
+                } else {
+                    false
+                }
+            })
+            .copied()
+            .collect::<BTreeSet<NodeIdx>>();
+        let strukt_children = struct_parts
+            .iter()
+            .flat_map(|strukt| {
+                g.children_exclude(*strukt, 0, &[Edge::Context(ContextEdge::Subcontext)])
+            })
+            .collect::<BTreeSet<NodeIdx>>();
+        struct_parts.extend(strukt_children);
+
+        let edges_for_structs = g
+            .edges_for_nodes(&struct_parts)
+            .into_iter()
+            .filter(|(_, _, e, _)| *e != Edge::Context(ContextEdge::InputVariable))
+            .collect::<BTreeSet<_>>();
+        children_edges.extend(edges_for_structs);
+
         let preindent = " ".repeat(4 * depth.saturating_sub(1));
         let indent = " ".repeat(4 * depth);
         let child_node_str = children
@@ -1275,8 +1301,11 @@ pub fn mermaid_node(
                 }
 
                 // color the forks
-                let ctx_node = graph::nodes::ContextVarNode::from(current_node).ctx(g);
-                gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+                if let Some(ctx_node) =
+                    graph::nodes::ContextVarNode::from(current_node).maybe_ctx(g)
+                {
+                    gather_context_info(g, indent, ctx_node, current_node, &mut node_str);
+                }
             }
             Node::Context(ctx) => {
                 // highlight self

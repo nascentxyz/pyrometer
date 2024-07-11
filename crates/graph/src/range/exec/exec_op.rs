@@ -32,14 +32,12 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         let res = self.exec(self.spread(analyzer, arena)?, maximize, analyzer, arena)?;
 
         if let Some(idx) = idx {
-            if let Some(t) = arena.ranges.get_mut(idx) {
-                if let Elem::Expr(expr) = &mut *t {
-                    tracing::trace!("setting cache");
-                    if maximize {
-                        expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
-                    } else {
-                        expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
-                    }
+            if let Some(Elem::Expr(expr)) = arena.ranges.get_mut(idx) {
+                tracing::trace!("setting cache");
+                if maximize {
+                    expr.maximized = Some(MinMaxed::Maximized(Box::new(res.clone())));
+                } else {
+                    expr.minimized = Some(MinMaxed::Minimized(Box::new(res.clone())));
                 }
             }
         }
@@ -73,13 +71,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         }
 
         if let Some(idx) = self.arena_idx(arena) {
-            if let Some(t) = arena.ranges.get_mut(idx) {
-                if let Elem::Expr(expr) = &mut *t {
-                    if maximize {
-                        expr.maximized.clone_from(&self.maximized);
-                    } else {
-                        expr.minimized.clone_from(&self.minimized);
-                    }
+            if let Some(Elem::Expr(expr)) = arena.ranges.get_mut(idx) {
+                if maximize {
+                    expr.maximized.clone_from(&self.maximized);
+                } else {
+                    expr.minimized.clone_from(&self.minimized);
                 }
             }
         }
@@ -127,138 +123,6 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 
         let finished = false;
         let mut ret = Ok(Elem::Null);
-        // if self.op == RangeOp::Cast {
-        //     // for a cast we can *actually* evaluate dynamic elem if lhs side is concrete
-        //     if lhs_is_conc {
-        //         ret = self.exec_op(maximize, analyzer);
-        //         finished = true;
-        //     } else {
-        //         // we can drop the cast if the max of the dynamic lhs is less than the cast
-        //         let concretized_lhs = self.lhs.maximize(analyzer, arena)?;
-        //         if matches!(
-        //             concretized_lhs.range_ord(&self.rhs, analyzer),
-        //             Some(std::cmp::Ordering::Less) | Some(std::cmp::Ordering::Equal)
-        //         ) {
-        //             ret = Ok(*self.lhs.clone());
-        //             finished = true;
-        //         }
-        //     }
-        // } else if matches!(self.op, RangeOp::Concat | RangeOp::Memcopy) {
-        //     // we can always execute a concat or memcopy
-        //     ret = self.exec_op(maximize, analyzer);
-        //     finished = true;
-        // } else if matches!(
-        //     self.op,
-        //     RangeOp::SetIndices | RangeOp::SetLength | RangeOp::GetLength | RangeOp::GetIndex
-        // ) {
-        //     match self.op {
-        //         RangeOp::GetLength => {
-        //             ret = if maximize {
-        //                 Ok(lhs_max
-        //                     .range_get_length()
-        //                     .unwrap_or_else(|| Elem::Expr(self.clone())))
-        //             } else {
-        //                 Ok(lhs_min
-        //                     .range_get_length()
-        //                     .unwrap_or_else(|| Elem::Expr(self.clone())))
-        //             };
-        //             finished = true;
-        //         }
-        //         RangeOp::SetLength => {
-        //             ret = if maximize {
-        //                 Ok(lhs_max
-        //                     .range_set_length(&rhs_max)
-        //                     .unwrap_or_else(|| Elem::Expr(self.clone())))
-        //             } else {
-        //                 Ok(lhs_min
-        //                     .range_set_length(&rhs_min)
-        //                     .unwrap_or_else(|| Elem::Expr(self.clone())))
-        //             };
-        //             finished = true;
-        //         }
-        //         RangeOp::GetIndex => {
-        //             if maximize {
-        //                 let res = match lhs_max {
-        //                     Elem::ConcreteDyn(RangeDyn { ref val, .. }) => val
-        //                         .iter()
-        //                         .try_fold(
-        //                             None,
-        //                             |mut acc: Option<Elem<Concrete>>, (key, (val, _))| {
-        //                                 if matches!(
-        //                                     key.overlaps_dual(&rhs_min, &rhs_max, true, analyzer)?,
-        //                                     Some(true)
-        //                                 ) {
-        //                                     if acc.is_none()
-        //                                         || matches!(
-        //                                             acc.clone().unwrap().range_ord(val, arena),
-        //                                             Some(std::cmp::Ordering::Greater)
-        //                                         )
-        //                                     {
-        //                                         acc = Some(val.clone());
-        //                                         Ok(acc)
-        //                                     } else {
-        //                                         Ok(acc)
-        //                                     }
-        //                                 } else {
-        //                                     Ok(acc)
-        //                                 }
-        //                             },
-        //                         )?
-        //                         .unwrap_or_else(|| Elem::Null),
-        //                     _ => Elem::Expr(self.clone()),
-        //                 };
-        //                 ret = Ok(res);
-        //                 finished = true;
-        //             } else {
-        //                 let res = match lhs_max {
-        //                     Elem::ConcreteDyn(RangeDyn { ref val, .. }) => val
-        //                         .iter()
-        //                         .try_fold(
-        //                             None,
-        //                             |mut acc: Option<Elem<Concrete>>, (key, (val, _))| {
-        //                                 if matches!(
-        //                                     key.overlaps_dual(&rhs_min, &rhs_max, true, analyzer)?,
-        //                                     Some(true)
-        //                                 ) {
-        //                                     if acc.is_none()
-        //                                         || matches!(
-        //                                             acc.clone().unwrap().range_ord(val, arena),
-        //                                             Some(std::cmp::Ordering::Less)
-        //                                         )
-        //                                     {
-        //                                         acc = Some(val.clone());
-        //                                         Ok(acc)
-        //                                     } else {
-        //                                         Ok(acc)
-        //                                     }
-        //                                 } else {
-        //                                     Ok(acc)
-        //                                 }
-        //                             },
-        //                         )?
-        //                         .unwrap_or_else(|| Elem::Null),
-        //                     _ => Elem::Expr(self.clone()),
-        //                 };
-        //                 ret = Ok(res);
-        //                 finished = true;
-        //             }
-        //         }
-        //         RangeOp::SetIndices => {
-        //             ret = if maximize {
-        //                 Ok(lhs_max
-        //                     .range_set_indices(&rhs_max)
-        //                     .unwrap_or_else(|| Elem::Expr(self.clone())))
-        //             } else {
-        //                 Ok(lhs_min
-        //                     .range_set_indices(&rhs_min)
-        //                     .unwrap_or_else(|| Elem::Expr(self.clone())))
-        //             };
-        //             finished = true;
-        //         }
-        //         _ => unreachable!(),
-        //     }
-        // }
-
         let parts = (lhs_min, lhs_max, rhs_min, rhs_max);
         match (lhs_is_conc, rhs_is_conc, finished) {
             (true, true, false) => {
@@ -425,16 +289,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Not => exec_not(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
-            RangeOp::BitAnd => exec_bit_and(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::BitOr => exec_bit_or(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::BitXor => exec_bit_xor(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::BitNot => exec_bit_not(&lhs_min, &lhs_max, maximize, analyzer, arena),
+            RangeOp::BitAnd => {
+                exec_bit_and(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, arena)
+            }
+            RangeOp::BitOr => exec_bit_or(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, arena),
+            RangeOp::BitXor => {
+                exec_bit_xor(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, arena)
+            }
+            RangeOp::BitNot => exec_bit_not(&lhs_min, &lhs_max, maximize, arena),
             RangeOp::Shl => exec_shl(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),

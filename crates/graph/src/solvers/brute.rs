@@ -465,7 +465,7 @@ impl SolcSolver for BruteBinSearchSolver {
                 if all_good {
                     Ok(AtomicSolveStatus::Sat(mapping))
                 } else {
-                    println!("thought we solved but we didnt");
+                    // println!("thought we solved but we didnt");
                     Ok(AtomicSolveStatus::Indeterminate)
                 }
             } else {
@@ -497,8 +497,6 @@ impl SolcSolver for BruteBinSearchSolver {
         let _atomic = &self.atomics[i];
 
         let lmr = self.lmrs[i].clone();
-        // println!("solving: {i}, {}, successful passes: {}", atomic.idxs[0].display_name(analyzer).unwrap(), self.successful_passes);
-        // println!("initial range: [{min_s},{max_s}], is_const: {}", atomic.idxs[0].is_const(analyzer)?);
         match self.check(
             i,
             (lmr.low, lmr.mid, lmr.high),
@@ -688,7 +686,7 @@ impl SolcSolver for BruteBinSearchSolver {
 
             match dl_solver.solve_partial(analyzer, arena)? {
                 SolveStatus::Unsat => {
-                    println!("TRUE UNSAT");
+                    // println!("TRUE UNSAT");
                     return Ok((false, None));
                 }
                 SolveStatus::Sat {

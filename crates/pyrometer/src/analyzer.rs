@@ -4,7 +4,7 @@ use graph::elem::Elem;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::{AnalyzerLike, GraphLike, JoinStats, NodeIdx, Search};
+use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
 use shared::{ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
 use solc_expressions::{FnCallBuilder, StatementParser};
 use tokio::runtime::Runtime;
@@ -116,7 +116,7 @@ pub struct Analyzer {
     /// A mapping of a solidity builtin to the index in the graph
     pub builtins: AHashMap<Builtin, NodeIdx>,
     /// A mapping of a user type's name to the index in the graph (i.e. `struct A` would mapped `A` -> index)
-    pub user_types: AHashMap<String, NodeIdx>,
+    pub user_types: AHashMap<String, Vec<NodeIdx>>,
     /// A mapping of solidity builtin function to a [Function] struct, i.e. `ecrecover` -> `Function { name: "ecrecover", ..}`
     pub builtin_fns: AHashMap<String, Function>,
     /// A mapping of solidity builtin functions to their indices in the graph
@@ -136,11 +136,13 @@ pub struct Analyzer {
     /// Per function, a list of functions that are called
     pub fn_calls_fns: BTreeMap<FunctionNode, Vec<FunctionNode>>,
 
-    pub join_stats: JoinStats,
+    pub apply_stats: ApplyStats,
     /// An arena of ranges
     pub range_arena: RangeArena<Elem<Concrete>>,
     /// Parsed functions
     pub handled_funcs: Vec<FunctionNode>,
+    /// Target Context to debug
+    pub minimize_debug: Option<String>,
 }
 
 impl Default for Analyzer {
@@ -167,7 +169,7 @@ impl Default for Analyzer {
             parse_fn: NodeIdx::from(0).into(),
             debug_panic: false,
             fn_calls_fns: Default::default(),
-            join_stats: JoinStats::default(),
+            apply_stats: ApplyStats::default(),
             range_arena: RangeArena {
                 ranges: vec![Elem::Null],
                 map: {
@@ -177,6 +179,7 @@ impl Default for Analyzer {
                 },
             },
             handled_funcs: Vec::default(),
+            minimize_debug: None,
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -252,19 +255,19 @@ impl Analyzer {
             format!("     Max depth of Contexts: {}", self.max_context_depth()),
             format!("     Max width of Contexts: {}", self.max_context_width()),
             format!(""),
-            format!("   Number of joins: {}, {} completed, {} variables reduced", self.join_stats.total_joins(), self.join_stats.completed_joins(), self.join_stats.reduced_vars()),
-            format!("      Number of pure joins: {}, {} completed, {} variables reduced", self.join_stats.total_pure_joins(), self.join_stats.completed_pure_joins(), self.join_stats.pure_reduced_vars()),
-            format!("           Number of simple pure joins: {}, {} completed, {} variables reduced", self.join_stats.pure_no_children_joins.num_joins, self.join_stats.pure_no_children_joins.completed_joins, self.join_stats.pure_no_children_joins.vars_reduced),
-            format!("           Number of children pure joins: {}, {} completed, {} variables reduced", self.join_stats.pure_children_no_forks_joins.num_joins, self.join_stats.pure_children_no_forks_joins.completed_joins, self.join_stats.pure_children_no_forks_joins.vars_reduced),
-            format!("           Number of fork children pure joins: {}, {} completed, {} variables reduced", self.join_stats.pure_children_forks_joins.num_joins, self.join_stats.pure_children_forks_joins.completed_joins, self.join_stats.pure_children_forks_joins.vars_reduced),
-            format!("      Number of view joins: {}, {} completed, {} variables reduced", self.join_stats.total_view_joins(), self.join_stats.completed_view_joins(), self.join_stats.view_reduced_vars()),
-            format!("           Number of simple view joins: {}, {} completed, {} variables reduced", self.join_stats.view_no_children_joins.num_joins, self.join_stats.view_no_children_joins.completed_joins, self.join_stats.view_no_children_joins.vars_reduced),
-            format!("           Number of children view joins: {}, {} completed, {} variables reduced", self.join_stats.view_children_no_forks_joins.num_joins, self.join_stats.view_children_no_forks_joins.completed_joins, self.join_stats.view_children_no_forks_joins.vars_reduced),
-            format!("           Number of fork children view joins: {}, {} completed, {} variables reduced", self.join_stats.view_children_forks_joins.num_joins, self.join_stats.view_children_forks_joins.completed_joins, self.join_stats.view_children_forks_joins.vars_reduced),
-            format!("      Number of mut joins: {}, {} completed, {} variables reduced", self.join_stats.total_mut_joins(), self.join_stats.completed_mut_joins(), self.join_stats.mut_reduced_vars()),
-            format!("           Number of simple mut joins: {}, {} completed, {} variables reduced", self.join_stats.mut_no_children_joins.num_joins, self.join_stats.mut_no_children_joins.completed_joins, self.join_stats.mut_no_children_joins.vars_reduced),
-            format!("           Number of children mut joins: {}, {} completed, {} variables reduced", self.join_stats.mut_children_no_forks_joins.num_joins, self.join_stats.mut_children_no_forks_joins.completed_joins, self.join_stats.mut_children_no_forks_joins.vars_reduced),
-            format!("           Number of fork children mut joins: {}, {} completed, {} variables reduced", self.join_stats.mut_children_forks_joins.num_joins, self.join_stats.mut_children_forks_joins.completed_joins, self.join_stats.mut_children_forks_joins.vars_reduced),
+            format!("   Number of applies: {}, {} completed, {} variables reduced", self.apply_stats.total_applies(), self.apply_stats.completed_applies(), self.apply_stats.reduced_vars()),
+            format!("      Number of pure applies: {}, {} completed, {} variables reduced", self.apply_stats.total_pure_applies(), self.apply_stats.completed_pure_applies(), self.apply_stats.pure_reduced_vars()),
+            format!("           Number of simple pure applies: {}, {} completed, {} variables reduced", self.apply_stats.pure_no_children_applies.num_applies, self.apply_stats.pure_no_children_applies.completed_applies, self.apply_stats.pure_no_children_applies.vars_reduced),
+            format!("           Number of children pure applies: {}, {} completed, {} variables reduced", self.apply_stats.pure_children_no_forks_applies.num_applies, self.apply_stats.pure_children_no_forks_applies.completed_applies, self.apply_stats.pure_children_no_forks_applies.vars_reduced),
+            format!("           Number of fork children pure applies: {}, {} completed, {} variables reduced", self.apply_stats.pure_children_forks_applies.num_applies, self.apply_stats.pure_children_forks_applies.completed_applies, self.apply_stats.pure_children_forks_applies.vars_reduced),
+            format!("      Number of view applies: {}, {} completed, {} variables reduced", self.apply_stats.total_view_applies(), self.apply_stats.completed_view_applies(), self.apply_stats.view_reduced_vars()),
+            format!("           Number of simple view applies: {}, {} completed, {} variables reduced", self.apply_stats.view_no_children_applies.num_applies, self.apply_stats.view_no_children_applies.completed_applies, self.apply_stats.view_no_children_applies.vars_reduced),
+            format!("           Number of children view applies: {}, {} completed, {} variables reduced", self.apply_stats.view_children_no_forks_applies.num_applies, self.apply_stats.view_children_no_forks_applies.completed_applies, self.apply_stats.view_children_no_forks_applies.vars_reduced),
+            format!("           Number of fork children view applies: {}, {} completed, {} variables reduced", self.apply_stats.view_children_forks_applies.num_applies, self.apply_stats.view_children_forks_applies.completed_applies, self.apply_stats.view_children_forks_applies.vars_reduced),
+            format!("      Number of mut applies: {}, {} completed, {} variables reduced", self.apply_stats.total_mut_applies(), self.apply_stats.completed_mut_applies(), self.apply_stats.mut_reduced_vars()),
+            format!("           Number of simple mut applies: {}, {} completed, {} variables reduced", self.apply_stats.mut_no_children_applies.num_applies, self.apply_stats.mut_no_children_applies.completed_applies, self.apply_stats.mut_no_children_applies.vars_reduced),
+            format!("           Number of children mut applies: {}, {} completed, {} variables reduced", self.apply_stats.mut_children_no_forks_applies.num_applies, self.apply_stats.mut_children_no_forks_applies.completed_applies, self.apply_stats.mut_children_no_forks_applies.vars_reduced),
+            format!("           Number of fork children mut applies: {}, {} completed, {} variables reduced", self.apply_stats.mut_children_forks_applies.num_applies, self.apply_stats.mut_children_forks_applies.completed_applies, self.apply_stats.mut_children_forks_applies.vars_reduced),
             format!(""),
             format!("====================================="),
         ]
@@ -715,10 +718,12 @@ impl Analyzer {
             }
             EnumDefinition(def) => {
                 let node = self.parse_enum_def(def);
+                s_node.add_enum(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Enum);
             }
             ErrorDefinition(def) => {
                 let node = self.parse_err_def(arena, def);
+                s_node.add_error(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Error);
             }
             VariableDefinition(def) => {
@@ -745,6 +750,7 @@ impl Analyzer {
             }
             TypeDefinition(def) => {
                 let node = self.parse_ty_def(arena, def);
+                s_node.add_ty(node, self).unwrap();
                 self.add_edge(node, sup_node, Edge::Ty);
             }
             EventDefinition(_def) => todo!(),
@@ -1048,19 +1054,47 @@ impl Analyzer {
         let inherits = contract.inherits.clone();
         let con_name = contract.name.clone().unwrap().name;
         let con_node: ContractNode =
-            if let Some(user_ty_node) = self.user_types.get(&con_name).cloned() {
-                let unresolved = self.node_mut(user_ty_node);
-                *unresolved = Node::Contract(contract);
-                user_ty_node.into()
+            if let Some(user_ty_nodes) = self.user_types.get(&con_name).cloned() {
+                // assert we only have at most one unknown at a time for a given name
+                assert!(
+                    user_ty_nodes.iter().fold(0, |mut acc, idx| {
+                        if matches!(self.node(*idx), Node::Unresolved(_)) {
+                            acc += 1;
+                        }
+                        acc
+                    }) <= 1
+                );
+                let mut ret = None;
+                // see if we can fill the unknown with this contract
+                for user_ty_node in user_ty_nodes.iter() {
+                    if matches!(self.node(*user_ty_node), Node::Unresolved(_)) {
+                        let unresolved = self.node_mut(*user_ty_node);
+                        *unresolved = Node::Contract(contract.clone());
+                        ret = Some(ContractNode::from(*user_ty_node));
+                        break;
+                    }
+                }
+                match ret {
+                    Some(ret) => ret,
+                    None => {
+                        // no unresolved to fill
+                        let node = self.add_node(Node::Contract(contract));
+                        let entry = self.user_types.entry(con_name).or_default();
+                        entry.push(node);
+                        node.into()
+                    }
+                }
             } else {
                 let node = self.add_node(Node::Contract(contract));
-                self.user_types.insert(con_name, node);
+                let entry = self.user_types.entry(con_name).or_default();
+                entry.push(node);
                 node.into()
             };
 
         inherits.iter().for_each(|contract_node| {
             self.add_edge(*contract_node, con_node, Edge::InheritedContract);
         });
+
         let mut usings = vec![];
         let mut func_nodes = vec![];
         let mut vars = vec![];
@@ -1100,7 +1134,7 @@ impl Analyzer {
             EventDefinition(_def) => {}
             Annotation(_anno) => todo!(),
             Using(using) => usings.push((*using.clone(), con_node.0.into())),
-            StraySemicolon(_loc) => todo!(),
+            StraySemicolon(_loc) => {}
         });
         (con_node, func_nodes, usings, unhandled_inherits, vars)
     }
@@ -1136,10 +1170,12 @@ impl Analyzer {
         match &using_def.list {
             UsingList::Library(ident_paths) => {
                 ident_paths.identifiers.iter().for_each(|ident| {
-                    if let Some(hopefully_contract) = self.user_types.get(&ident.name) {
-                        match self.node(*hopefully_contract) {
-                            Node::Contract(_) => {
-                                let funcs = ContractNode::from(*hopefully_contract).funcs(self);
+                    if let Some(idxs) = self.user_types.get(&ident.name).cloned() {
+                        let mut found = false;
+                        for idx in idxs.iter() {
+                            if let Node::Contract(_) = self.node(*idx) {
+                                found = true;
+                                let funcs = ContractNode::from(*idx).funcs(self);
                                 let relevant_funcs: Vec<_> = funcs
                                     .iter()
                                     .filter_map(|func| {
@@ -1154,15 +1190,27 @@ impl Analyzer {
                                     })
                                     .copied()
                                     .collect();
+
+                                if matches!(self.node(scope_node), Node::Contract(_)) {
+                                    self.add_edge(
+                                        scope_node,
+                                        *idx,
+                                        Edge::UsingContract(using_def.loc),
+                                    );
+                                }
+
                                 relevant_funcs.iter().for_each(|func| {
                                     self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
                                 });
+                                break;
                             }
-                            _ => self.add_expr_err(ExprErr::ParseError(
+                        }
+                        if !found && !idxs.is_empty() {
+                            self.add_expr_err(ExprErr::ParseError(
                                 using_def.loc(),
                                 "Tried to use a non-contract as a contract in a `using` statement"
                                     .to_string(),
-                            )),
+                            ))
                         }
                     } else {
                         panic!("Cannot find library contract {}", ident.name);
@@ -1172,25 +1220,32 @@ impl Analyzer {
             UsingList::Functions(vec_ident_paths) => {
                 vec_ident_paths.iter().for_each(|ident_paths| {
                     if ident_paths.path.identifiers.len() == 2 {
-                        if let Some(hopefully_contract) =
+                        if let Some(idxs) =
                             self.user_types.get(&ident_paths.path.identifiers[0].name)
                         {
-                            if let Some(func) = ContractNode::from(*hopefully_contract)
-                                .funcs(self)
-                                .iter()
-                                .find(|func| {
-                                    func.name(self)
-                                        .unwrap()
-                                        .starts_with(&ident_paths.path.identifiers[1].name)
-                                })
-                            {
-                                self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
-                            } else {
-                                panic!(
-                                    "Cannot find library function {}.{}",
-                                    ident_paths.path.identifiers[0].name,
-                                    ident_paths.path.identifiers[1].name
-                                );
+                            for idx in idxs {
+                                if let Node::Contract(_) = self.node(*idx) {
+                                    if let Some(func) =
+                                        ContractNode::from(*idx).funcs(self).iter().find(|func| {
+                                            func.name(self)
+                                                .unwrap()
+                                                .starts_with(&ident_paths.path.identifiers[1].name)
+                                        })
+                                    {
+                                        self.add_edge(
+                                            ty_idx,
+                                            *func,
+                                            Edge::LibraryFunction(scope_node),
+                                        );
+                                    } else {
+                                        panic!(
+                                            "Cannot find library function {}.{}",
+                                            ident_paths.path.identifiers[0].name,
+                                            ident_paths.path.identifiers[1].name
+                                        );
+                                    }
+                                    break;
+                                }
                             }
                         } else {
                             panic!(
@@ -1237,13 +1292,40 @@ impl Analyzer {
         let name = enu.name.clone().expect("Enum was not named").name;
 
         // check if we have an unresolved type by the same name
-        let enu_node: EnumNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-            let unresolved = self.node_mut(user_ty_node);
-            *unresolved = Node::Enum(enu);
-            user_ty_node.into()
+        let enu_node: EnumNode = if let Some(user_ty_nodes) = self.user_types.get(&name).cloned() {
+            // assert we only have at most one unknown at a time for a given name
+            assert!(
+                user_ty_nodes.iter().fold(0, |mut acc, idx| {
+                    if matches!(self.node(*idx), Node::Unresolved(_)) {
+                        acc += 1;
+                    }
+                    acc
+                }) <= 1
+            );
+            let mut ret = None;
+            // see if we can fill the unknown with this contract
+            for user_ty_node in user_ty_nodes.iter() {
+                if matches!(self.node(*user_ty_node), Node::Unresolved(_)) {
+                    let unresolved = self.node_mut(*user_ty_node);
+                    *unresolved = Node::Enum(enu.clone());
+                    ret = Some(EnumNode::from(*user_ty_node));
+                    break;
+                }
+            }
+            match ret {
+                Some(ret) => ret,
+                None => {
+                    // no unresolved to fill
+                    let node = self.add_node(enu);
+                    let entry = self.user_types.entry(name).or_default();
+                    entry.push(node);
+                    node.into()
+                }
+            }
         } else {
             let node = self.add_node(enu);
-            self.user_types.insert(name, node);
+            let entry = self.user_types.entry(name).or_default();
+            entry.push(node);
             node.into()
         };
 
@@ -1263,13 +1345,40 @@ impl Analyzer {
 
         // check if we have an unresolved type by the same name
         let strukt_node: StructNode =
-            if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-                let unresolved = self.node_mut(user_ty_node);
-                *unresolved = Node::Struct(strukt);
-                user_ty_node.into()
+            if let Some(user_ty_nodes) = self.user_types.get(&name).cloned() {
+                // assert we only have at most one unknown at a time for a given name
+                assert!(
+                    user_ty_nodes.iter().fold(0, |mut acc, idx| {
+                        if matches!(self.node(*idx), Node::Unresolved(_)) {
+                            acc += 1;
+                        }
+                        acc
+                    }) <= 1
+                );
+                let mut ret = None;
+                // see if we can fill the unknown with this contract
+                for user_ty_node in user_ty_nodes.iter() {
+                    if matches!(self.node(*user_ty_node), Node::Unresolved(_)) {
+                        let unresolved = self.node_mut(*user_ty_node);
+                        *unresolved = Node::Struct(strukt.clone());
+                        ret = Some(StructNode::from(*user_ty_node));
+                        break;
+                    }
+                }
+                match ret {
+                    Some(ret) => ret,
+                    None => {
+                        // no unresolved to fill
+                        let node = self.add_node(Node::Struct(strukt));
+                        let entry = self.user_types.entry(name).or_default();
+                        entry.push(node);
+                        node.into()
+                    }
+                }
             } else {
                 let node = self.add_node(strukt);
-                self.user_types.insert(name, node);
+                let entry = self.user_types.entry(name).or_default();
+                entry.push(node);
                 node.into()
             };
 
@@ -1377,8 +1486,9 @@ impl Analyzer {
         }
         let needs_final_pass = var.initializer_expr.is_some();
         let var_node = VarNode::from(self.add_node(var));
-        self.user_types
-            .insert(var_node.name(self).unwrap(), var_node.into());
+        let name = var_node.name(self).unwrap();
+        let entry = self.user_types.entry(name).or_default();
+        entry.push(var_node.into());
         (var_node, func, needs_final_pass)
     }
 
@@ -1390,19 +1500,46 @@ impl Analyzer {
         tracing::trace!("Parsing type definition");
         let ty = Ty::new(self, arena, ty_def.clone());
         let name = ty.name.name.clone();
-        let ty_node: TyNode = if let Some(user_ty_node) = self.user_types.get(&name).cloned() {
-            let unresolved = self.node_mut(user_ty_node);
-            *unresolved = Node::Ty(ty);
-            user_ty_node.into()
+        let ty_node: TyNode = if let Some(user_ty_nodes) = self.user_types.get(&name).cloned() {
+            // assert we only have at most one unknown at a time for a given name
+            assert!(
+                user_ty_nodes.iter().fold(0, |mut acc, idx| {
+                    if matches!(self.node(*idx), Node::Unresolved(_)) {
+                        acc += 1;
+                    }
+                    acc
+                }) <= 1
+            );
+            let mut ret = None;
+            // see if we can fill the unknown with this contract
+            for user_ty_node in user_ty_nodes.iter() {
+                if matches!(self.node(*user_ty_node), Node::Unresolved(_)) {
+                    let unresolved = self.node_mut(*user_ty_node);
+                    *unresolved = Node::Ty(ty.clone());
+                    ret = Some(TyNode::from(*user_ty_node));
+                    break;
+                }
+            }
+            match ret {
+                Some(ret) => ret,
+                None => {
+                    // no unresolved to fill
+                    let node = self.add_node(Node::Ty(ty));
+                    let entry = self.user_types.entry(name).or_default();
+                    entry.push(node);
+                    node.into()
+                }
+            }
         } else {
             let node = self.add_node(Node::Ty(ty));
-            self.user_types.insert(name, node);
+            let entry = self.user_types.entry(name).or_default();
+            entry.push(node);
             node.into()
         };
         ty_node
     }
 
-    fn post_source_to_site(file_no: usize, path: &PathBuf, source: &str)
+    fn post_source_to_site(file_no: usize, path: &Path, source: &str)
     where
         Self: std::marker::Sized,
         Self: AnalyzerLike,

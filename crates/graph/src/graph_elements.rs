@@ -261,6 +261,8 @@ pub enum Edge {
     LibraryFunction(NodeIdx),
     /// A connection for a builtin function
     BuiltinFunction,
+    /// A connection from one contract to another contract
+    UsingContract(Loc),
 }
 
 impl Heirarchical for Edge {
@@ -272,7 +274,7 @@ impl Heirarchical for Edge {
 
             Contract | Ty | Field | Enum | Struct | Error | Event | Var | InheritedContract
             | Modifier | FallbackFunc | Constructor | ReceiveFunc | LibraryFunction(_)
-            | BuiltinFunction | Func => 2,
+            | BuiltinFunction | Func | UsingContract(_) => 2,
 
             Context(_) | ErrorParam | FunctionParam | FunctionReturn | FuncModifier(_) => 3,
         }
@@ -333,6 +335,8 @@ pub enum ContextEdge {
     InheritedStorageVariable,
     /// A connection to the calldata variable
     CalldataVariable,
+    /// A contract variable (storage, consts, immutables, etc)
+    ContractVariable,
 
     /// A connection between a variable and a parent variable where the child is some attribute on the parent
     /// (i.e. `.length`)

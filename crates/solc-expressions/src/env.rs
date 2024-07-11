@@ -64,7 +64,11 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let name = format!("block.{}", ident_name);
         tracing::trace!("Block Env member access: {}", name);
         if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
-            Ok(ExprRet::Single(attr_var.latest_version(self).into()))
+            Ok(ExprRet::Single(
+                attr_var
+                    .latest_version_or_inherited_in_ctx(ctx, self)
+                    .into(),
+            ))
         } else {
             let (node, name) = match ident_name {
                 "hash" => {
@@ -295,7 +299,11 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         tracing::trace!("Msg Env member access: {}", name);
 
         if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
-            Ok(ExprRet::Single(attr_var.latest_version(self).into()))
+            Ok(ExprRet::Single(
+                attr_var
+                    .latest_version_or_inherited_in_ctx(ctx, self)
+                    .into(),
+            ))
         } else {
             let (node, name) = match ident_name {
                 "data" => {

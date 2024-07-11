@@ -309,7 +309,7 @@ pub trait YulBuilder:
             HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),
             StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
             Variable(ident) => {
-                self.variable(arena, ident, ctx, None)?;
+                self.variable(arena, ident, ctx, None, None)?;
                 self.apply_to_edges(ctx, ident.loc, arena, &|analyzer, _arena, edge_ctx, loc| {
                     if let Some(ret) = edge_ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
                         if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
@@ -440,7 +440,7 @@ pub trait YulBuilder:
         let name = format!("{}.slot", lhs.name(self).unwrap());
         tracing::trace!("Slot access: {}", name);
         if let Some(attr_var) = ctx.var_by_name_or_recurse(self, &name).unwrap() {
-            attr_var.latest_version(self)
+            attr_var.latest_version_or_inherited_in_ctx(ctx, self)
         } else {
             let slot_var = ContextVar {
                 loc: Some(loc),

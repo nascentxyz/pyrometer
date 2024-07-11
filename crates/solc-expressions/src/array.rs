@@ -141,8 +141,8 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx.kill(self, loc, kind).into_expr_err(loc)
             }
             (ExprRet::Single(parent), ExprRet::Single(index)) | (ExprRet::Single(parent), ExprRet::SingleLiteral(index)) => {
-                let index = ContextVarNode::from(index).latest_version(self);
-                let parent = ContextVarNode::from(parent).latest_version(self);
+                let index = ContextVarNode::from(index).latest_version_or_inherited_in_ctx(ctx, self);
+                let parent = ContextVarNode::from(parent).latest_version_or_inherited_in_ctx(ctx, self);
                 let _ = self.index_into_array_raw(arena, ctx, loc, index, parent, true, false)?;
                 Ok(())
             }
@@ -168,11 +168,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             let len_var = self
                 .get_length(arena, ctx, loc, parent, true)?
                 .unwrap()
-                .latest_version(self);
+                .latest_version_or_inherited_in_ctx(ctx, self);
             self.require(
                 arena,
-                len_var.latest_version(self),
-                idx.latest_version(self),
+                len_var.latest_version_or_inherited_in_ctx(ctx, self),
+                idx.latest_version_or_inherited_in_ctx(ctx, self),
                 ctx,
                 loc,
                 RangeOp::Gt,
@@ -187,7 +187,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             index.name(self).into_expr_err(loc)?
         );
         if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
-            let index_var = index_var.latest_version(self);
+            let index_var = index_var.latest_version_or_inherited_in_ctx(ctx, self);
             let index_var = self.advance_var_in_ctx(index_var, loc, ctx)?;
             if !return_var {
                 ctx.push_expr(ExprRet::Single(index_var.into()), self)
@@ -273,13 +273,19 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
             if !return_var {
                 ctx.push_expr(
-                    ExprRet::Single(idx_access_cvar.latest_version(self).into()),
+                    ExprRet::Single(
+                        idx_access_cvar
+                            .latest_version_or_inherited_in_ctx(ctx, self)
+                            .into(),
+                    ),
                     self,
                 )
                 .into_expr_err(loc)?;
                 Ok(None)
             } else {
-                Ok(Some(idx_access_cvar.latest_version(self)))
+                Ok(Some(
+                    idx_access_cvar.latest_version_or_inherited_in_ctx(ctx, self),
+                ))
             }
         }
     }
@@ -296,7 +302,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             // Was indeed an indexed value
             if let Some(index) = maybe_index_access.index_access_to_index(self) {
                 // Found the associated index
-                let next_arr = self.advance_var_in_ctx(arr.latest_version(self), loc, ctx)?;
+                let next_arr = self.advance_var_in_ctx(
+                    arr.latest_version_or_inherited_in_ctx(ctx, self),
+                    loc,
+                    ctx,
+                )?;
                 if next_arr
                     .underlying(self)
                     .into_expr_err(loc)?
@@ -330,8 +340,8 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     arena,
                     ctx,
                     loc,
-                    next_arr.latest_version(self),
-                    next_arr.latest_version(self),
+                    next_arr.latest_version_or_inherited_in_ctx(ctx, self),
+                    next_arr.latest_version_or_inherited_in_ctx(ctx, self),
                 )?;
             }
         }
@@ -346,7 +356,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         maybe_length: ContextVarNode,
     ) -> Result<(), ExprErr> {
         if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
+            let next_arr = self.advance_var_in_ctx(
+                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
+                loc,
+                ctx,
+            )?;
             let new_len = Elem::from(backing_arr).set_length(maybe_length.into());
             next_arr
                 .set_range_min(self, arena, new_len.clone())
@@ -366,7 +380,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         new_length: ContextVarNode,
         backing_arr: ContextVarNode,
     ) -> Result<(), ExprErr> {
-        let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
+        let next_arr = self.advance_var_in_ctx(
+            backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+            ctx,
+        )?;
         let new_len = Elem::from(backing_arr).get_length().max(new_length.into());
         let min = Elem::from(backing_arr).set_length(new_len);
 
@@ -397,7 +415,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         access: ContextVarNode,
         backing_arr: ContextVarNode,
     ) -> Result<(), ExprErr> {
-        let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
+        let next_arr = self.advance_var_in_ctx(
+            backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+            ctx,
+        )?;
         if next_arr
             .underlying(self)
             .into_expr_err(loc)?
@@ -433,7 +455,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 loc,
                 parent_nested_index,
                 next_arr,
-                backing_arr.latest_version(self),
+                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
             )
         } else {
             Ok(())
@@ -448,7 +470,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         maybe_length: ContextVarNode,
     ) -> Result<(), ExprErr> {
         if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
+            let next_arr = self.advance_var_in_ctx(
+                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
+                loc,
+                ctx,
+            )?;
             let new_len = Elem::from(backing_arr)
                 .get_length()
                 .max(maybe_length.into());
@@ -468,7 +494,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         maybe_length: ContextVarNode,
     ) -> Result<(), ExprErr> {
         if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(backing_arr.latest_version(self), loc, ctx)?;
+            let next_arr = self.advance_var_in_ctx(
+                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
+                loc,
+                ctx,
+            )?;
             let new_len = Elem::from(backing_arr)
                 .get_length()
                 .min(maybe_length.into());

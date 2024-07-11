@@ -22,32 +22,40 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         rhs_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, rhs_expr, ctx)?;
+        self.parse_ctx_expr(arena, lhs_expr, ctx)?;
         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
+            let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                return Err(ExprErr::NoLhs(
                     loc,
-                    "Assign operation had no right hand side".to_string(),
+                    "Assign operation had no left hand side".to_string(),
                 ));
             };
 
-            if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
+            if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
+                ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            analyzer.parse_ctx_expr(arena, lhs_expr, ctx)?;
+
+            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+            analyzer.parse_ctx_expr(arena, rhs_expr, ctx)?;
             analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
+                let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
+                    return Err(ExprErr::NoRhs(
                         loc,
-                        "Assign operation had no left hand side".to_string(),
+                        "Assign operation had no right hand side".to_string(),
                     ));
                 };
-                if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
+                let lhs_paths = ctx
+                    .pop_expr_latest(loc, analyzer)
+                    .into_expr_err(loc)?
+                    .unwrap()
+                    .flatten();
+
+                if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
+                    ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
                     return Ok(());
                 }
-                analyzer.match_assign_sides(arena, ctx, loc, &lhs_paths.flatten(), &rhs_paths)?;
+                analyzer.match_assign_sides(arena, ctx, loc, &lhs_paths, &rhs_paths)?;
                 Ok(())
             })
         })
@@ -69,19 +77,19 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
-                // let res = rhs_cvar
-                //     .literal_cast_from(&lhs_cvar, self)
-                //     .into_expr_err(loc);
-                // let _ = self.add_if_err(res);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 ctx.push_expr(self.assign(arena, loc, lhs_cvar, rhs_cvar, ctx)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 ctx.push_expr(self.assign(arena, loc, lhs_cvar, rhs_cvar, ctx)?, self)
                     .into_expr_err(loc)?;
                 Ok(())
@@ -132,8 +140,8 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             .into_expr_err(loc)?;
 
         let (new_lower_bound, new_upper_bound) = (
-            Elem::from(rhs_cvar.latest_version(self)),
-            Elem::from(rhs_cvar.latest_version(self)),
+            Elem::from(rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self)),
+            Elem::from(rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self)),
         );
 
         let needs_forcible = new_lower_bound
@@ -144,9 +152,18 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 .into_expr_err(loc)?;
 
         let new_lhs = if needs_forcible {
-            self.advance_var_in_ctx_forcible(lhs_cvar.latest_version(self), loc, ctx, true)?
+            self.advance_var_in_ctx_forcible(
+                lhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
+                loc,
+                ctx,
+                true,
+            )?
         } else {
-            self.advance_var_in_ctx(lhs_cvar.latest_version(self), loc, ctx)?
+            self.advance_var_in_ctx(
+                lhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
+                loc,
+                ctx,
+            )?
         };
 
         new_lhs.underlying_mut(self).into_expr_err(loc)?.tmp_of =
@@ -234,13 +251,21 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             let lhs_len_cvar = self.get_length(arena, ctx, loc, lhs_cvar, true)?.unwrap();
             self.assign(arena, loc, lhs_len_cvar, rhs_len_cvar, ctx)?;
             // update the range
-            self.update_array_if_length_var(arena, ctx, loc, lhs_len_cvar.latest_version(self))?;
+            self.update_array_if_length_var(
+                arena,
+                ctx,
+                loc,
+                lhs_len_cvar.latest_version_or_inherited_in_ctx(ctx, self),
+            )?;
         }
 
         self.update_array_if_index_access(arena, ctx, loc, lhs_cvar, rhs_cvar)?;
 
         // handle struct assignment
-        if let Ok(fields) = rhs_cvar.struct_to_fields(self) {
+        if let Ok(fields) = rhs_cvar
+            .latest_version_or_inherited_in_ctx(ctx, self)
+            .struct_to_fields(self)
+        {
             if !fields.is_empty() {
                 fields.into_iter().for_each(|field| {
                     let mut new_var = field.underlying(self).unwrap().clone();
@@ -260,7 +285,12 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         }
 
         // advance the rhs variable to avoid recursion issues
-        self.advance_var_in_ctx_forcible(rhs_cvar.latest_version(self), loc, ctx, true)?;
+        self.advance_var_in_ctx_forcible(
+            rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+            ctx,
+            true,
+        )?;
         Ok(ExprRet::Single(new_lhs.into()))
     }
 }

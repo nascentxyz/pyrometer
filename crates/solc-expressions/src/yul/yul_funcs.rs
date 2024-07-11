@@ -441,7 +441,7 @@ pub trait YulFuncCaller:
                 let vars = ctx.local_vars(self).clone();
                 vars.into_iter().try_for_each(|(_name, var)| {
                     // widen to any  max range
-                    let latest_var = var.latest_version(self);
+                    let latest_var = var.latest_version_or_inherited_in_ctx(ctx, self);
                     if matches!(
                         latest_var.underlying(self).into_expr_err(*loc)?.storage,
                         Some(StorageLocation::Memory(_))
@@ -731,8 +731,12 @@ pub trait YulFuncCaller:
                 var.ty.set_range(range).into_expr_err(loc)?;
                 let node = self.add_node(Node::ContextVar(var));
                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Return));
-                ctx.add_return_node(loc, ContextVarNode::from(node).latest_version(self), self)
-                    .into_expr_err(loc)
+                ctx.add_return_node(
+                    loc,
+                    ContextVarNode::from(node).latest_version_or_inherited_in_ctx(ctx, self),
+                    self,
+                )
+                .into_expr_err(loc)
             }
             ExprRet::Multi(sizes) => {
                 sizes

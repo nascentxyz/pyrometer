@@ -171,8 +171,10 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 self.cmp_inner(arena, ctx, loc, &ExprRet::Single(*rhs), op, rhs_paths)
             }
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
-                let lhs_cvar = ContextVarNode::from(*lhs).latest_version(self);
-                let rhs_cvar = ContextVarNode::from(*rhs).latest_version(self);
+                let lhs_cvar =
+                    ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
+                let rhs_cvar =
+                    ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 lhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
                 rhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
                 self.cmp_inner(

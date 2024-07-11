@@ -6,7 +6,7 @@ use crate::variable::Variable;
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},
     nodes::{
-        Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
+        Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FuncVis, FunctionNode,
         FunctionParamNode, KilledKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, SolcRange, VarType,
@@ -17,20 +17,20 @@ use solang_parser::pt::{Expression, Loc};
 
 use std::collections::BTreeMap;
 
-impl<T> FuncJoiner for T where
+impl<T> FuncApplier for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
         + Sized
         + GraphBackend
         + CallerHelper
-        + JoinStatTracker
+        + ApplyStatTracker
 {
 }
 /// A trait for calling a function
-pub trait FuncJoiner:
-    GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + JoinStatTracker
+pub trait FuncApplier:
+    GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ApplyStatTracker
 {
     #[tracing::instrument(level = "trace", skip_all)]
-    fn join(
+    fn apply(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
@@ -41,8 +41,8 @@ pub trait FuncJoiner:
         seen: &mut Vec<FunctionNode>,
     ) -> Result<bool, ExprErr> {
         tracing::trace!(
-            "Trying to join function: {}",
-            func.name(self).into_expr_err(loc)?
+            "Trying to apply function: {}",
+            func.loc_specified_name(self).into_expr_err(loc)?
         );
         // ensure no modifiers (for now)
         // if pure function:
@@ -50,169 +50,182 @@ pub trait FuncJoiner:
         //      grab return node's simplified range
         //      replace fundamentals with function inputs
         //      update ctx name in place
-
-        if func.is_pure(self).into_expr_err(loc)? {
-            // pure functions are guaranteed to not require the use of state, so
-            // the only things we care about are function inputs and function outputs
-            if let Some(body_ctx) = func.maybe_body_ctx(self) {
-                if body_ctx
-                    .underlying(self)
-                    .into_expr_err(loc)?
-                    .child
-                    .is_some()
-                {
-                    tracing::trace!("Joining function: {}", func.name(self).into_expr_err(loc)?);
-                    let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
-                    match edges.len() {
-                        0 => {}
-                        1 => {
-                            self.join_pure(
-                                arena,
-                                loc,
-                                func,
-                                params,
-                                func_inputs,
-                                body_ctx,
-                                edges[0],
-                                ctx,
-                                false,
-                            )?;
-                            return Ok(true);
-                        }
-                        2.. => {
-                            tracing::trace!(
-                                "Branching pure join function: {}",
-                                func.name(self).into_expr_err(loc)?
-                            );
-                            // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                            let new_forks = ctx.set_join_forks(loc, edges.clone(), self).unwrap();
-                            edges.into_iter().zip(new_forks.iter()).try_for_each(
-                                |(edge, new_fork)| {
-                                    let res = self.join_pure(
-                                        arena,
-                                        loc,
-                                        func,
-                                        params,
-                                        func_inputs,
-                                        body_ctx,
-                                        edge,
-                                        *new_fork,
-                                        true,
-                                    )?;
-                                    if !res {
-                                        new_fork
-                                            .kill(self, loc, KilledKind::Unreachable)
-                                            .into_expr_err(loc)?;
-                                        Ok(())
-                                    } else {
-                                        Ok(())
-                                    }
-                                },
-                            )?;
-                            return Ok(true);
-                        }
-                    }
-                } else {
-                    tracing::trace!(
-                        "Childless pure join: {}",
-                        func.name(self).into_expr_err(loc)?
-                    );
-                    self.join_pure(
-                        arena,
-                        loc,
-                        func,
-                        params,
-                        func_inputs,
-                        body_ctx,
-                        body_ctx,
-                        ctx,
-                        false,
-                    )?;
-                    return Ok(true);
-                }
-            } else {
-                tracing::trace!("Pure function not processed");
-                if ctx.associated_fn(self) == Ok(func) {
-                    return Ok(false);
-                }
-
-                if seen.contains(&func) {
-                    return Ok(false);
-                }
-
-                self.handled_funcs_mut().push(func);
-                if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                    self.parse_ctx_statement(arena, body, false, Some(func));
-                }
-
-                seen.push(func);
-                return self.join(arena, ctx, loc, func, params, func_inputs, seen);
-            }
-        } else if func.is_view(self).into_expr_err(loc)? {
-            if let Some(body_ctx) = func.maybe_body_ctx(self) {
-                if body_ctx
-                    .underlying(self)
-                    .into_expr_err(loc)?
-                    .child
-                    .is_some()
-                {
-                    let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
-                    if edges.len() == 1 {
+        //
+        match func.visibility(self).into_expr_err(loc)? {
+            FuncVis::Pure => {
+                // pure functions are guaranteed to not require the use of state, so
+                // the only things we care about are function inputs and function outputs
+                if let Some(body_ctx) = func.maybe_body_ctx(self) {
+                    if body_ctx
+                        .underlying(self)
+                        .into_expr_err(loc)?
+                        .child
+                        .is_some()
+                    {
                         tracing::trace!(
-                            "View join function: {}",
+                            "Applying function: {}",
                             func.name(self).into_expr_err(loc)?
                         );
-                        self.add_completed_view(false, false, false, body_ctx);
+                        let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
+                        match edges.len() {
+                            0 => {}
+                            1 => {
+                                self.apply_pure(
+                                    arena,
+                                    loc,
+                                    func,
+                                    params,
+                                    func_inputs,
+                                    body_ctx,
+                                    edges[0],
+                                    ctx,
+                                    false,
+                                )?;
+                                return Ok(true);
+                            }
+                            2.. => {
+                                tracing::trace!(
+                                    "Branching pure apply function: {}",
+                                    func.name(self).into_expr_err(loc)?
+                                );
+                                // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                                let new_forks =
+                                    ctx.set_apply_forks(loc, edges.clone(), self).unwrap();
+                                edges.into_iter().zip(new_forks.iter()).try_for_each(
+                                    |(edge, new_fork)| {
+                                        let res = self.apply_pure(
+                                            arena,
+                                            loc,
+                                            func,
+                                            params,
+                                            func_inputs,
+                                            body_ctx,
+                                            edge,
+                                            *new_fork,
+                                            true,
+                                        )?;
+                                        if !res {
+                                            new_fork
+                                                .kill(self, loc, KilledKind::Unreachable)
+                                                .into_expr_err(loc)?;
+                                            Ok(())
+                                        } else {
+                                            Ok(())
+                                        }
+                                    },
+                                )?;
+                                return Ok(true);
+                            }
+                        }
                     } else {
                         tracing::trace!(
-                            "Branching view join function: {}",
+                            "Childless pure apply: {}",
                             func.name(self).into_expr_err(loc)?
                         );
-                        self.add_completed_view(false, false, true, body_ctx);
+                        self.apply_pure(
+                            arena,
+                            loc,
+                            func,
+                            params,
+                            func_inputs,
+                            body_ctx,
+                            body_ctx,
+                            ctx,
+                            false,
+                        )?;
+                        return Ok(true);
                     }
                 } else {
-                    tracing::trace!(
-                        "Childless view join function: {}",
-                        func.name(self).into_expr_err(loc)?
-                    );
-                    self.add_completed_view(false, true, false, body_ctx);
+                    tracing::trace!("Pure function not processed");
+                    if ctx.associated_fn(self) == Ok(func) {
+                        return Ok(false);
+                    }
+
+                    if seen.contains(&func) {
+                        return Ok(false);
+                    }
+
+                    self.handled_funcs_mut().push(func);
+                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+                        self.parse_ctx_statement(arena, body, false, Some(func));
+                    }
+
+                    seen.push(func);
+                    return self.apply(arena, ctx, loc, func, params, func_inputs, seen);
                 }
-            } else {
-                tracing::trace!("View function not processed");
             }
-        } else if let Some(body_ctx) = func.maybe_body_ctx(self) {
-            if body_ctx
-                .underlying(self)
-                .into_expr_err(loc)?
-                .child
-                .is_some()
-            {
-                let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
-                if edges.len() == 1 {
-                    tracing::trace!("Mut join function: {}", func.name(self).into_expr_err(loc)?);
-                    self.add_completed_mut(false, false, false, body_ctx);
+            FuncVis::View => {
+                if let Some(body_ctx) = func.maybe_body_ctx(self) {
+                    if body_ctx
+                        .underlying(self)
+                        .into_expr_err(loc)?
+                        .child
+                        .is_some()
+                    {
+                        let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
+                        if edges.len() == 1 {
+                            tracing::trace!(
+                                "View apply function: {}",
+                                func.name(self).into_expr_err(loc)?
+                            );
+                            self.add_completed_view(false, false, false, body_ctx);
+                        } else {
+                            tracing::trace!(
+                                "Branching view apply function: {}",
+                                func.name(self).into_expr_err(loc)?
+                            );
+                            self.add_completed_view(false, false, true, body_ctx);
+                        }
+                    } else {
+                        tracing::trace!(
+                            "Childless view apply function: {}",
+                            func.name(self).into_expr_err(loc)?
+                        );
+                        self.add_completed_view(false, true, false, body_ctx);
+                    }
                 } else {
-                    tracing::trace!(
-                        "Branching mut join function: {}",
-                        func.name(self).into_expr_err(loc)?
-                    );
-                    self.add_completed_mut(false, false, true, body_ctx);
+                    tracing::trace!("View function not processed");
                 }
-            } else {
-                tracing::trace!(
-                    "Childless mut join function: {}",
-                    func.name(self).into_expr_err(loc)?
-                );
-                self.add_completed_mut(false, true, false, body_ctx);
             }
-        } else {
-            tracing::trace!("Mut function not processed");
+            FuncVis::Mut => {
+                if let Some(body_ctx) = func.maybe_body_ctx(self) {
+                    if body_ctx
+                        .underlying(self)
+                        .into_expr_err(loc)?
+                        .child
+                        .is_some()
+                    {
+                        let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
+                        if edges.len() == 1 {
+                            tracing::trace!(
+                                "Mut apply function: {}",
+                                func.name(self).into_expr_err(loc)?
+                            );
+                            self.add_completed_mut(false, false, false, body_ctx);
+                        } else {
+                            tracing::trace!(
+                                "Branching mut apply function: {}",
+                                func.name(self).into_expr_err(loc)?
+                            );
+                            self.add_completed_mut(false, false, true, body_ctx);
+                        }
+                    } else {
+                        tracing::trace!(
+                            "Childless mut apply function: {}",
+                            func.name(self).into_expr_err(loc)?
+                        );
+                        self.add_completed_mut(false, true, false, body_ctx);
+                    }
+                } else {
+                    tracing::trace!("Mut function not processed");
+                }
+            }
         }
 
         Ok(false)
     }
 
-    fn join_pure(
+    fn apply_pure(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
@@ -233,7 +246,7 @@ pub trait FuncJoiner:
             .enumerate()
             .map(|(i, (_, ret_node))| {
                 let mut new_var = ret_node.underlying(self).unwrap().clone();
-                let new_name = format!("{}.{i}", func.name(self).unwrap());
+                let new_name = format!("{}.{i}", func.loc_specified_name(self).unwrap());
                 new_var.name.clone_from(&new_name);
                 new_var.display_name = new_name;
                 if let Some(mut range) = new_var.ty.take_range() {
@@ -267,7 +280,7 @@ pub trait FuncJoiner:
                             let mut new_var = field.underlying(self).unwrap().clone();
                             let new_name = format!(
                                 "{}.{i}.{}",
-                                func.name(self).unwrap(),
+                                func.loc_specified_name(self).unwrap(),
                                 field.name(self).unwrap()
                             );
                             new_var.name.clone_from(&new_name);
@@ -379,12 +392,15 @@ pub trait FuncJoiner:
             }
         });
 
-        target_ctx.underlying_mut(self).into_expr_err(loc)?.path = format!(
+        let new_path = format!(
             "{}.{}.resume{{ {} }}",
             target_ctx.path(self),
             resulting_edge.path(self),
             target_ctx.associated_fn_name(self).unwrap()
         );
+        let underlying_mut = target_ctx.underlying_mut(self).into_expr_err(loc)?;
+        underlying_mut.path = new_path;
+        underlying_mut.applies.push(func);
         target_ctx
             .push_expr(ExprRet::Multi(rets), self)
             .into_expr_err(loc)?;
@@ -409,7 +425,7 @@ pub trait FuncJoiner:
             .try_for_each(|(param, func_input)| {
                 if let Some(name) = param.maybe_name(self).into_expr_err(loc)? {
                     let mut new_cvar = func_input
-                        .latest_version(self)
+                        .latest_version_or_inherited_in_ctx(ctx, self)
                         .underlying(self)
                         .into_expr_err(loc)?
                         .clone();
@@ -454,15 +470,15 @@ pub trait FuncJoiner:
                         let new_min = r.range_min().into_owned().cast(r2.range_min().into_owned());
                         let new_max = r.range_max().into_owned().cast(r2.range_max().into_owned());
                         replacement
-                            .latest_version(self)
+                            .latest_version_or_inherited_in_ctx(ctx, self)
                             .try_set_range_min(self, arena, new_min)
                             .into_expr_err(loc)?;
                         replacement
-                            .latest_version(self)
+                            .latest_version_or_inherited_in_ctx(ctx, self)
                             .try_set_range_max(self, arena, new_max)
                             .into_expr_err(loc)?;
                         replacement
-                            .latest_version(self)
+                            .latest_version_or_inherited_in_ctx(ctx, self)
                             .try_set_range_exclusions(self, r.exclusions)
                             .into_expr_err(loc)?;
                     }
@@ -531,9 +547,9 @@ pub trait FuncJoiner:
     }
 }
 
-impl<T> JoinStatTracker for T where T: AnalyzerLike + GraphBackend {}
+impl<T> ApplyStatTracker for T where T: AnalyzerLike + GraphBackend {}
 
-pub trait JoinStatTracker: AnalyzerLike {
+pub trait ApplyStatTracker: AnalyzerLike {
     fn add_completed_pure(
         &mut self,
         completed: bool,
@@ -546,12 +562,12 @@ pub trait JoinStatTracker: AnalyzerLike {
         match (no_children, forks) {
             (true, _) => {
                 let num_vars = target_ctx.vars(self).len();
-                let stats = self.join_stats_mut();
-                stats.pure_no_children_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.pure_no_children_applies.num_applies += 1;
                 if completed {
-                    stats.pure_no_children_joins.completed_joins += 1;
+                    stats.pure_no_children_applies.completed_applies += 1;
                 }
-                stats.pure_no_children_joins.vars_reduced += num_vars;
+                stats.pure_no_children_applies.vars_reduced += num_vars;
             }
             (false, false) => {
                 let mut parents = target_ctx.parent_list(self).unwrap();
@@ -561,18 +577,18 @@ pub trait JoinStatTracker: AnalyzerLike {
                     acc += ctx.vars(self).len();
                     acc
                 });
-                let stats = self.join_stats_mut();
-                stats.pure_children_no_forks_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.pure_children_no_forks_applies.num_applies += 1;
                 if completed {
-                    stats.pure_children_no_forks_joins.completed_joins += 1;
+                    stats.pure_children_no_forks_applies.completed_applies += 1;
                 }
-                stats.pure_children_no_forks_joins.vars_reduced += vars_reduced;
+                stats.pure_children_no_forks_applies.vars_reduced += vars_reduced;
             }
             (false, true) => {
-                let stats = self.join_stats_mut();
-                stats.pure_children_forks_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.pure_children_forks_applies.num_applies += 1;
                 if completed {
-                    stats.pure_children_forks_joins.completed_joins += 1;
+                    stats.pure_children_forks_applies.completed_applies += 1;
                 }
             }
         }
@@ -590,12 +606,12 @@ pub trait JoinStatTracker: AnalyzerLike {
         match (no_children, forks) {
             (true, _) => {
                 let num_vars = target_ctx.vars(self).len();
-                let stats = self.join_stats_mut();
-                stats.view_no_children_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.view_no_children_applies.num_applies += 1;
                 if completed {
-                    stats.view_no_children_joins.completed_joins += 1;
+                    stats.view_no_children_applies.completed_applies += 1;
                 }
-                stats.view_no_children_joins.vars_reduced += num_vars;
+                stats.view_no_children_applies.vars_reduced += num_vars;
             }
             (false, false) => {
                 let mut parents = target_ctx.parent_list(self).unwrap();
@@ -605,19 +621,19 @@ pub trait JoinStatTracker: AnalyzerLike {
                     acc += ctx.vars(self).len();
                     acc
                 });
-                let stats = self.join_stats_mut();
-                stats.view_children_no_forks_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.view_children_no_forks_applies.num_applies += 1;
                 if completed {
-                    stats.view_children_no_forks_joins.completed_joins += 1;
+                    stats.view_children_no_forks_applies.completed_applies += 1;
                 }
                 // parents is now: [body_ctx, ..., edges[0]]
-                stats.view_children_no_forks_joins.vars_reduced += vars_reduced;
+                stats.view_children_no_forks_applies.vars_reduced += vars_reduced;
             }
             (false, true) => {
-                let stats = self.join_stats_mut();
-                stats.view_children_forks_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.view_children_forks_applies.num_applies += 1;
                 if completed {
-                    stats.view_children_forks_joins.completed_joins += 1;
+                    stats.view_children_forks_applies.completed_applies += 1;
                 }
             }
         }
@@ -635,25 +651,25 @@ pub trait JoinStatTracker: AnalyzerLike {
         match (no_children, forks) {
             (true, _) => {
                 let num_vars = target_ctx.vars(self).len();
-                let stats = self.join_stats_mut();
-                stats.mut_no_children_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.mut_no_children_applies.num_applies += 1;
                 if completed {
-                    stats.mut_no_children_joins.completed_joins += 1;
+                    stats.mut_no_children_applies.completed_applies += 1;
                 }
-                stats.mut_no_children_joins.vars_reduced += num_vars;
+                stats.mut_no_children_applies.vars_reduced += num_vars;
             }
             (false, false) => {
-                let stats = self.join_stats_mut();
-                stats.mut_children_no_forks_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.mut_children_no_forks_applies.num_applies += 1;
                 if completed {
-                    stats.mut_children_no_forks_joins.completed_joins += 1;
+                    stats.mut_children_no_forks_applies.completed_applies += 1;
                 }
             }
             (false, true) => {
-                let stats = self.join_stats_mut();
-                stats.mut_children_forks_joins.num_joins += 1;
+                let stats = self.apply_stats_mut();
+                stats.mut_children_forks_applies.num_applies += 1;
                 if completed {
-                    stats.mut_children_forks_joins.completed_joins += 1;
+                    stats.mut_children_forks_applies.completed_applies += 1;
                 }
             }
         }

@@ -1,5 +1,7 @@
 use crate::{
-    nodes::{Concrete, ContractNode, FunctionNode, StructNode, VarNode},
+    nodes::{
+        Concrete, ContractNode, EnumNode, ErrorNode, FunctionNode, StructNode, TyNode, VarNode,
+    },
     range::elem::Elem,
     AsDotStr, GraphBackend, Node,
 };
@@ -14,6 +16,9 @@ pub struct SourceUnitPart {
     pub structs: Vec<StructNode>,
     pub constants: Vec<VarNode>,
     pub contracts: Vec<ContractNode>,
+    pub enums: Vec<EnumNode>,
+    pub tys: Vec<TyNode>,
+    pub errors: Vec<ErrorNode>,
 }
 
 impl SourceUnitPart {
@@ -113,6 +118,27 @@ impl SourceUnitPartNode {
         Ok(&self.underlying(analyzer)?.contracts)
     }
 
+    pub fn visible_enums<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Vec<EnumNode>, GraphError> {
+        Ok(&self.underlying(analyzer)?.enums)
+    }
+
+    pub fn visible_tys<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Vec<TyNode>, GraphError> {
+        Ok(&self.underlying(analyzer)?.tys)
+    }
+
+    pub fn visible_errors<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a Vec<ErrorNode>, GraphError> {
+        Ok(&self.underlying(analyzer)?.errors)
+    }
+
     pub fn add_func(
         &self,
         func: FunctionNode,
@@ -146,6 +172,29 @@ impl SourceUnitPartNode {
         analyzer: &mut impl GraphBackend,
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.constants.push(constant);
+        Ok(())
+    }
+
+    pub fn add_enum(
+        &self,
+        enu: EnumNode,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<(), GraphError> {
+        self.underlying_mut(analyzer)?.enums.push(enu);
+        Ok(())
+    }
+
+    pub fn add_ty(&self, ty: TyNode, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        self.underlying_mut(analyzer)?.tys.push(ty);
+        Ok(())
+    }
+
+    pub fn add_error(
+        &self,
+        error: ErrorNode,
+        analyzer: &mut impl GraphBackend,
+    ) -> Result<(), GraphError> {
+        self.underlying_mut(analyzer)?.errors.push(error);
         Ok(())
     }
 }

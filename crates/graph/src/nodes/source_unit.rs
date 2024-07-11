@@ -1,5 +1,8 @@
 use crate::{
-    nodes::{Concrete, ContractNode, FunctionNode, SourceUnitPartNode, StructNode, VarNode},
+    nodes::{
+        Concrete, ContractNode, EnumNode, ErrorNode, FunctionNode, SourceUnitPartNode, StructNode,
+        TyNode, VarNode,
+    },
     range::elem::Elem,
     AsDotStr, GraphBackend, Node,
 };
@@ -87,6 +90,45 @@ impl SourceUnitNode {
         Ok(&self.underlying(analyzer)?.parts)
     }
 
+    pub fn visible_nodes(&self, analyzer: &impl GraphBackend) -> Result<Vec<NodeIdx>, GraphError> {
+        let mut vis = self
+            .visible_funcs(analyzer)?
+            .iter()
+            .map(|i| i.0.into())
+            .collect::<Vec<NodeIdx>>();
+        vis.extend(
+            self.visible_structs(analyzer)?
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        vis.extend(
+            self.visible_enums(analyzer)?
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        vis.extend(
+            self.visible_errors(analyzer)?
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        vis.extend(
+            self.visible_tys(analyzer)?
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        vis.extend(
+            self.visible_constants(analyzer)?
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        vis.extend(
+            self.visible_contracts(analyzer)?
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        Ok(vis)
+    }
+
     pub fn visible_funcs(
         &self,
         analyzer: &impl GraphBackend,
@@ -106,6 +148,36 @@ impl SourceUnitNode {
         let mut nodes = vec![];
         self.parts(analyzer)?.iter().try_for_each(|part| {
             nodes.extend(part.visible_structs(analyzer)?);
+            Ok(())
+        })?;
+        Ok(nodes)
+    }
+
+    pub fn visible_enums(&self, analyzer: &impl GraphBackend) -> Result<Vec<EnumNode>, GraphError> {
+        let mut nodes = vec![];
+        self.parts(analyzer)?.iter().try_for_each(|part| {
+            nodes.extend(part.visible_enums(analyzer)?);
+            Ok(())
+        })?;
+        Ok(nodes)
+    }
+
+    pub fn visible_errors(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Vec<ErrorNode>, GraphError> {
+        let mut nodes = vec![];
+        self.parts(analyzer)?.iter().try_for_each(|part| {
+            nodes.extend(part.visible_errors(analyzer)?);
+            Ok(())
+        })?;
+        Ok(nodes)
+    }
+
+    pub fn visible_tys(&self, analyzer: &impl GraphBackend) -> Result<Vec<TyNode>, GraphError> {
+        let mut nodes = vec![];
+        self.parts(analyzer)?.iter().try_for_each(|part| {
+            nodes.extend(part.visible_tys(analyzer)?);
             Ok(())
         })?;
         Ok(nodes)

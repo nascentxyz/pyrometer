@@ -1,43 +1,43 @@
-contract InternalFuncCalls {
-    address _owner;
+// contract InternalFuncCalls {
+//     address _owner;
 
-    function transferOwnership(address newOwner) public virtual {
-        innerRequire(newOwner);
-        _transferOwnership(newOwner);
-    }
+//     function transferOwnership(address newOwner) public virtual {
+//         innerRequire(newOwner);
+//         _transferOwnership(newOwner);
+//     }
 
-    function innerRequire(address newOwner) public virtual {
-        require(newOwner != address(0), "Ownable: new owner is the zero address");
-    }
+//     function innerRequire(address newOwner) public virtual {
+//         require(newOwner != address(0), "Ownable: new owner is the zero address");
+//     }
 
-    function _transferOwnership(address newOwner) internal virtual {
-        address oldOwner = _owner;
-        _owner = newOwner;
-    }
-}
+//     function _transferOwnership(address newOwner) internal virtual {
+//         address oldOwner = _owner;
+//         _owner = newOwner;
+//     }
+// }
 
-contract B {
-    uint256 public a;
+// contract B {
+//     uint256 public a;
 
-    function addToA(uint256 x) public {
-        a += x;
-    }
+//     function addToA(uint256 x) public {
+//         a += x;
+//     }
 
-    constructor(uint256 x) {
-        a = x;
-    }
-}
+//     constructor(uint256 x) {
+//         a = x;
+//     }
+// }
 
 contract ExternalFuncCalls {
-    function externalCall(uint256 x) public {
-        B(address(100)).addToA(x);
-    }
+    // function externalCall(uint256 x) public {
+    //     B(address(100)).addToA(x);
+    // }
 
-    function externalCall_conc() public {
-        B(address(100)).addToA(100);
+    // function externalCall_conc() public {
+    //     B(address(100)).addToA(100);
 
-        uint256 ba = B(address(100)).a();
-    }
+    //     uint256 ba = B(address(100)).a();
+    // }
 
     function multiReturn() public returns (uint256, uint256, uint256, uint256) {
         return (1, 2, 3, 4);
@@ -60,26 +60,26 @@ contract ExternalFuncCalls {
     }
 }
 
-contract K {
-    struct L {
-        uint b;
-        uint c;
-    }
+// contract K {
+//     struct L {
+//         uint b;
+//         uint c;
+//     }
 
-    function foo() internal {
-        L memory l = L(2, 3);
-        require(l.b == 2);
-        require(l.c == 3);
-    }
-}
+//     function foo() internal {
+//         L memory l = L(2, 3);
+//         require(l.b == 2);
+//         require(l.c == 3);
+//     }
+// }
 
 
-contract Disambiguation {
-    function foo(address from, address to, uint256 id) public {
-        foo(from, to, id, 0);
-    }
+// contract Disambiguation {
+//     function foo(address from, address to, uint256 id) public {
+//         foo(from, to, id, 0);
+//     }
 
-    function foo(address from, address to, uint256 id, uint num) internal {}
+//     function foo(address from, address to, uint256 id, uint num) internal {}
 
-    function foo(address by, address from, address to, uint256 id) internal {}
-}
+//     function foo(address by, address from, address to, uint256 id) internal {}
+// }

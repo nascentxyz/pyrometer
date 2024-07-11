@@ -6,15 +6,12 @@ use crate::{
     },
 };
 
-use shared::RangeArena;
-
 pub fn add_ord_rules(
     x: &Elem<Concrete>,
     y: &Elem<Concrete>,
     ord_op: RangeOp,
     z: &Elem<Concrete>,
     ords: Ords,
-    arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match ord_op {
         RangeOp::Eq => {
@@ -118,7 +115,7 @@ pub fn add_ord_rules(
         RangeOp::Max => {
             // max{x + y, z}
             // same as gt but return lhs or rhs instead
-            match add_ord_rules(x, y, RangeOp::Gt, z, ords, arena) {
+            match add_ord_rules(x, y, RangeOp::Gt, z, ords) {
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Bool(b),
                     ..
@@ -139,7 +136,7 @@ pub fn add_ord_rules(
         RangeOp::Min => {
             // min{x - y, z}
             // same as lt but return lhs or rhs instead
-            match add_ord_rules(x, y, RangeOp::Lt, z, ords, arena) {
+            match add_ord_rules(x, y, RangeOp::Lt, z, ords) {
                 Some(Elem::Concrete(RangeConcrete {
                     val: Concrete::Bool(b),
                     ..
