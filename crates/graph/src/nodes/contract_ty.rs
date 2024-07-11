@@ -1,5 +1,8 @@
 use crate::{
-    nodes::{Concrete, FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode, VarNode},
+    nodes::{
+        Concrete, EnumNode, ErrorNode, FunctionNode, SourceUnitNode, SourceUnitPartNode,
+        StructNode, TyNode, VarNode,
+    },
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
 };
@@ -102,6 +105,10 @@ impl ContractNode {
                         self.name(analyzer)
                     )
                 });
+            self.underlying_mut(analyzer)
+                .unwrap()
+                .inherits
+                .push(ContractNode::from(*found));
             analyzer.add_edge(*found, *self, Edge::InheritedContract);
         });
     }
@@ -115,7 +122,7 @@ impl ContractNode {
         inherits.extend(
             inherits
                 .iter()
-                .flat_map(|i| i.direct_inherited_contracts(analyzer))
+                .flat_map(|i| i.all_inherited_contracts(analyzer))
                 .collect::<Vec<_>>(),
         );
         inherits.into_iter().collect::<Vec<_>>()
@@ -148,7 +155,7 @@ impl ContractNode {
     /// Gets all associated functions from the underlying node data for the [`Contract`]
     pub fn funcs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<FunctionNode> {
         analyzer
-            .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
+            .search_children_depth(self.0.into(), &Edge::Func, 0, 0)
             .into_iter()
             .map(FunctionNode::from)
             .collect()
@@ -156,7 +163,7 @@ impl ContractNode {
 
     pub fn constructor(&self, analyzer: &(impl GraphBackend + Search)) -> Option<FunctionNode> {
         analyzer
-            .search_children_depth(self.0.into(), &Edge::Constructor, 1, 0)
+            .search_children_depth(self.0.into(), &Edge::Constructor, 0, 0)
             .into_iter()
             .map(FunctionNode::from)
             .take(1)
@@ -166,7 +173,7 @@ impl ContractNode {
     /// Gets all associated storage vars from the underlying node data for the [`Contract`]
     pub fn direct_storage_vars(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<VarNode> {
         analyzer
-            .search_children_depth(self.0.into(), &Edge::Var, 1, 0)
+            .search_children_depth(self.0.into(), &Edge::Var, 0, 0)
             .into_iter()
             .map(VarNode::from)
             .collect()
@@ -188,7 +195,7 @@ impl ContractNode {
         analyzer: &mut (impl Search + AnalyzerBackend),
     ) -> BTreeMap<String, FunctionNode> {
         analyzer
-            .search_children_depth(self.0.into(), &Edge::Func, 1, 0)
+            .search_children_depth(self.0.into(), &Edge::Func, 0, 0)
             .into_iter()
             .map(|i| {
                 let fn_node = FunctionNode::from(i);
@@ -225,9 +232,33 @@ impl ContractNode {
 
     pub fn structs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<StructNode> {
         analyzer
-            .search_children_depth(self.0.into(), &Edge::Struct, 1, 0)
+            .search_children_depth(self.0.into(), &Edge::Struct, 0, 0)
             .into_iter()
             .map(StructNode::from)
+            .collect()
+    }
+
+    pub fn enums(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<EnumNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Enum, 0, 0)
+            .into_iter()
+            .map(EnumNode::from)
+            .collect()
+    }
+
+    pub fn tys(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<TyNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Ty, 0, 0)
+            .into_iter()
+            .map(TyNode::from)
+            .collect()
+    }
+
+    pub fn errs(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<ErrorNode> {
+        analyzer
+            .search_children_depth(self.0.into(), &Edge::Error, 0, 0)
+            .into_iter()
+            .map(ErrorNode::from)
             .collect()
     }
 
@@ -241,6 +272,34 @@ impl ContractNode {
                 .collect::<Vec<_>>(),
         );
         structs
+    }
+
+    pub fn visible_local_nodes(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<NodeIdx> {
+        let mut nodes = self
+            .structs(analyzer)
+            .iter()
+            .map(|i| i.0.into())
+            .collect::<Vec<_>>();
+        nodes.extend(self.enums(analyzer).iter().map(|i| NodeIdx::from(i.0)));
+        nodes.extend(self.tys(analyzer).iter().map(|i| NodeIdx::from(i.0)));
+        nodes.extend(self.errs(analyzer).iter().map(|i| NodeIdx::from(i.0)));
+        nodes.extend(
+            self.direct_storage_vars(analyzer)
+                .iter()
+                .map(|i| NodeIdx::from(i.0)),
+        );
+        nodes
+    }
+
+    pub fn visible_nodes(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<NodeIdx> {
+        let mut nodes = self.visible_local_nodes(analyzer);
+        let inherited = self.all_inherited_contracts(analyzer);
+        nodes.extend(
+            inherited
+                .iter()
+                .flat_map(|c| c.visible_local_nodes(analyzer)),
+        );
+        nodes
     }
 
     /// Gets all associated modifiers from the underlying node data for the [`Contract`]

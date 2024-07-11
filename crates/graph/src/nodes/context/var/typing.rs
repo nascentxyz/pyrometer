@@ -1,11 +1,13 @@
 use crate::{
     elem::Elem,
-    nodes::{Builtin, Concrete, ContextNode, ContextVarNode},
+    nodes::{
+        Builtin, Concrete, ContextNode, ContextVarNode, EnumNode, ErrorNode, StructNode, TyNode,
+    },
     range::{
         elem::{RangeElem, RangeExpr, RangeOp},
         RangeEval,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode, VarType,
 };
 
 use shared::{GraphError, RangeArena, Search, StorageLocation};
@@ -91,6 +93,58 @@ impl ContextVarNode {
             self.underlying(analyzer)?.storage,
             Some(StorageLocation::Memory(..))
         ))
+    }
+
+    pub fn maybe_struct(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<StructNode>, GraphError> {
+        if let VarType::User(TypeNode::Struct(ut), _) = self.ty(analyzer)? {
+            Ok(Some(*ut))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn maybe_enum(&self, analyzer: &impl GraphBackend) -> Result<Option<EnumNode>, GraphError> {
+        if let VarType::User(TypeNode::Enum(ut), _) = self.ty(analyzer)? {
+            Ok(Some(*ut))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn maybe_ty_node(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<TyNode>, GraphError> {
+        if let VarType::User(TypeNode::Ty(ut), _) = self.ty(analyzer)? {
+            Ok(Some(*ut))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn maybe_err_node(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<ErrorNode>, GraphError> {
+        if let VarType::User(TypeNode::Error(ut), _) = self.ty(analyzer)? {
+            Ok(Some(*ut))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn maybe_usertype(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<TypeNode>, GraphError> {
+        if let VarType::User(ut, _) = self.ty(analyzer)? {
+            Ok(Some(*ut))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn is_return_assignment(&self, analyzer: &impl GraphBackend) -> bool {
@@ -558,7 +612,13 @@ impl ContextVarNode {
         if let Some(to_range) = to_ty.range(analyzer)? {
             let mut min_expr = (*self)
                 .range_min(analyzer)?
-                .unwrap()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{:?}, {} had no min",
+                        self.loc(analyzer).unwrap(),
+                        self.display_name(analyzer).unwrap()
+                    )
+                })
                 .cast(to_range.min.clone())
                 .min(
                     (*self)

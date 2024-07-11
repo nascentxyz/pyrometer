@@ -40,6 +40,7 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
 
     /// Get all possible library functions
     fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> BTreeSet<FunctionNode> {
+        tracing::trace!("looking for library functions of type: {:?}", self.node(ty));
         let mut funcs: BTreeSet<FunctionNode> = BTreeSet::new();
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {
             // search for contract scoped `using` statements

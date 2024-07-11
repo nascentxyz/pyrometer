@@ -5,92 +5,92 @@ use ahash::AHashMap;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct JoinStats {
-    pub pure_no_children_joins: JoinStat,
-    pub pure_children_no_forks_joins: JoinStat,
-    pub pure_children_forks_joins: JoinStat,
+pub struct ApplyStats {
+    pub pure_no_children_applies: ApplyStat,
+    pub pure_children_no_forks_applies: ApplyStat,
+    pub pure_children_forks_applies: ApplyStat,
 
-    pub view_no_children_joins: JoinStat,
-    pub view_children_no_forks_joins: JoinStat,
-    pub view_children_forks_joins: JoinStat,
+    pub view_no_children_applies: ApplyStat,
+    pub view_children_no_forks_applies: ApplyStat,
+    pub view_children_forks_applies: ApplyStat,
 
-    pub mut_no_children_joins: JoinStat,
-    pub mut_children_no_forks_joins: JoinStat,
-    pub mut_children_forks_joins: JoinStat,
+    pub mut_no_children_applies: ApplyStat,
+    pub mut_children_no_forks_applies: ApplyStat,
+    pub mut_children_forks_applies: ApplyStat,
 }
 
-impl JoinStats {
-    pub fn total_joins(&self) -> usize {
-        self.total_pure_joins() + self.total_view_joins() + self.total_mut_joins()
+impl ApplyStats {
+    pub fn total_applies(&self) -> usize {
+        self.total_pure_applies() + self.total_view_applies() + self.total_mut_applies()
     }
 
-    pub fn completed_joins(&self) -> usize {
-        self.completed_pure_joins() + self.completed_view_joins() + self.completed_mut_joins()
+    pub fn completed_applies(&self) -> usize {
+        self.completed_pure_applies() + self.completed_view_applies() + self.completed_mut_applies()
     }
 
     pub fn reduced_vars(&self) -> usize {
         self.pure_reduced_vars() + self.view_reduced_vars() + self.mut_reduced_vars()
     }
 
-    pub fn total_pure_joins(&self) -> usize {
-        self.pure_no_children_joins.num_joins
-            + self.pure_children_no_forks_joins.num_joins
-            + self.pure_children_forks_joins.num_joins
+    pub fn total_pure_applies(&self) -> usize {
+        self.pure_no_children_applies.num_applies
+            + self.pure_children_no_forks_applies.num_applies
+            + self.pure_children_forks_applies.num_applies
     }
 
-    pub fn completed_pure_joins(&self) -> usize {
-        self.pure_no_children_joins.completed_joins
-            + self.pure_children_no_forks_joins.completed_joins
-            + self.pure_children_forks_joins.completed_joins
+    pub fn completed_pure_applies(&self) -> usize {
+        self.pure_no_children_applies.completed_applies
+            + self.pure_children_no_forks_applies.completed_applies
+            + self.pure_children_forks_applies.completed_applies
     }
 
     pub fn pure_reduced_vars(&self) -> usize {
-        self.pure_no_children_joins.vars_reduced
-            + self.pure_children_no_forks_joins.vars_reduced
-            + self.pure_children_forks_joins.vars_reduced
+        self.pure_no_children_applies.vars_reduced
+            + self.pure_children_no_forks_applies.vars_reduced
+            + self.pure_children_forks_applies.vars_reduced
     }
 
-    pub fn total_view_joins(&self) -> usize {
-        self.view_no_children_joins.num_joins
-            + self.view_children_no_forks_joins.num_joins
-            + self.view_children_forks_joins.num_joins
+    pub fn total_view_applies(&self) -> usize {
+        self.view_no_children_applies.num_applies
+            + self.view_children_no_forks_applies.num_applies
+            + self.view_children_forks_applies.num_applies
     }
 
-    pub fn completed_view_joins(&self) -> usize {
-        self.view_no_children_joins.completed_joins
-            + self.view_children_no_forks_joins.completed_joins
-            + self.view_children_forks_joins.completed_joins
+    pub fn completed_view_applies(&self) -> usize {
+        self.view_no_children_applies.completed_applies
+            + self.view_children_no_forks_applies.completed_applies
+            + self.view_children_forks_applies.completed_applies
     }
 
     pub fn view_reduced_vars(&self) -> usize {
-        self.view_no_children_joins.vars_reduced
-            + self.view_children_no_forks_joins.vars_reduced
-            + self.view_children_forks_joins.vars_reduced
+        self.view_no_children_applies.vars_reduced
+            + self.view_children_no_forks_applies.vars_reduced
+            + self.view_children_forks_applies.vars_reduced
     }
 
-    pub fn total_mut_joins(&self) -> usize {
-        self.mut_no_children_joins.num_joins
-            + self.mut_children_no_forks_joins.num_joins
-            + self.mut_children_forks_joins.num_joins
+    pub fn total_mut_applies(&self) -> usize {
+        self.mut_no_children_applies.num_applies
+            + self.mut_children_no_forks_applies.num_applies
+            + self.mut_children_forks_applies.num_applies
     }
 
-    pub fn completed_mut_joins(&self) -> usize {
-        self.mut_no_children_joins.completed_joins
-            + self.mut_children_no_forks_joins.completed_joins
-            + self.mut_children_forks_joins.completed_joins
+    pub fn completed_mut_applies(&self) -> usize {
+        self.mut_no_children_applies.completed_applies
+            + self.mut_children_no_forks_applies.completed_applies
+            + self.mut_children_forks_applies.completed_applies
     }
 
     pub fn mut_reduced_vars(&self) -> usize {
-        self.mut_no_children_joins.vars_reduced
-            + self.mut_children_no_forks_joins.vars_reduced
-            + self.mut_children_forks_joins.vars_reduced
+        self.mut_no_children_applies.vars_reduced
+            + self.mut_children_no_forks_applies.vars_reduced
+            + self.mut_children_forks_applies.vars_reduced
     }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct JoinStat {
-    pub num_joins: usize,
-    pub completed_joins: usize,
+pub struct ApplyStat {
+    pub num_applies: usize,
+    pub completed_applies: usize,
     pub vars_reduced: usize,
 }
 
@@ -113,6 +113,8 @@ pub trait AnalyzerLike: GraphLike {
     type FunctionParam;
     /// Type of a function return paramter
     type FunctionReturn;
+    /// Type of a context node
+    type ContextNode;
 
     /// Type of a builtin
     type Builtin;
@@ -127,8 +129,8 @@ pub trait AnalyzerLike: GraphLike {
     fn max_depth(&self) -> usize;
     /// Returns the configured max fork width
     fn max_width(&self) -> usize;
-    fn user_types(&self) -> &AHashMap<String, NodeIdx>;
-    fn user_types_mut(&mut self) -> &mut AHashMap<String, NodeIdx>;
+    fn user_types(&self) -> &AHashMap<String, Vec<NodeIdx>>;
+    fn user_types_mut(&mut self) -> &mut AHashMap<String, Vec<NodeIdx>>;
     fn parse_expr(
         &mut self,
         arena: &mut RangeArena<Self::RangeElem>,
@@ -142,6 +144,7 @@ pub trait AnalyzerLike: GraphLike {
     fn add_expr_err(&mut self, err: Self::ExprErr);
     fn expr_errs(&self) -> Vec<Self::ExprErr>;
 
+    #[allow(clippy::type_complexity)]
     fn builtin_fn_inputs(
         &self,
     ) -> &AHashMap<String, (Vec<Self::FunctionParam>, Vec<Self::FunctionReturn>)>;
@@ -180,11 +183,12 @@ pub trait AnalyzerLike: GraphLike {
         }
     }
 
-    fn join_stats_mut(&mut self) -> &mut JoinStats;
+    fn apply_stats_mut(&mut self) -> &mut ApplyStats;
     fn handled_funcs(&self) -> &[Self::FunctionNode];
     fn handled_funcs_mut(&mut self) -> &mut Vec<Self::FunctionNode>;
-    fn file_mapping(&self) -> BTreeMap<usize, String>;
-
+    fn file_mapping(&self) -> BTreeMap<usize, &str>;
+    fn minimize_debug(&self) -> &Option<String>;
+    fn minimize_err(&mut self, ctx: Self::ContextNode) -> String;
     fn is_representation_ok(
         &self,
         arena: &RangeArena<<Self as GraphLike>::RangeElem>,

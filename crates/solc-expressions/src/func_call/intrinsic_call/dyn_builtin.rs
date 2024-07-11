@@ -145,7 +145,12 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                         .collect::<Result<Vec<_>, ExprErr>>()?;
 
                     // create the length variable
-                    let _ = self.tmp_length(arena, acc.latest_version(self), ctx, loc);
+                    let _ = self.tmp_length(
+                        arena,
+                        acc.latest_version_or_inherited_in_ctx(ctx, self),
+                        ctx,
+                        loc,
+                    );
 
                     Ok(())
                 }

@@ -1,3 +1,6 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+
 mod graph_elements;
 mod range;
 mod test_command;

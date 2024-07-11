@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 pub mod bounds;
 
 use ariadne::{Cache, Label, Report, ReportKind, Span};

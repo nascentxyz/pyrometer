@@ -145,6 +145,7 @@ impl RangeElem<Concrete> for RangeConcrete<Concrete> {
         Ok(())
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn range_eq(&self, other: &Self, arena: &mut RangeArena<Elem<Concrete>>) -> bool {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(self_val), Some(other_val)) => self_val == other_val,

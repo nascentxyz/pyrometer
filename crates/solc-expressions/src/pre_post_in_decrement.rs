@@ -141,7 +141,7 @@ pub trait PrePostIncDecrement:
                 self.match_in_de_crement(arena, ctx, pre, increment, loc, &ExprRet::Single(*var))
             }
             ExprRet::Single(var) => {
-                let cvar = ContextVarNode::from(*var).latest_version(self);
+                let cvar = ContextVarNode::from(*var).latest_version_or_inherited_in_ctx(ctx, self);
                 let elem = Elem::from(cvar);
                 let one = Elem::from(Concrete::from(U256::from(1))).cast(elem.clone());
 
@@ -160,8 +160,13 @@ pub trait PrePostIncDecrement:
                         new_cvar
                             .set_range_max(self, arena, elem + one)
                             .into_expr_err(loc)?;
-                        ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
-                            .into_expr_err(loc)?;
+                        ctx.push_expr(
+                            ExprRet::Single(
+                                dup.latest_version_or_inherited_in_ctx(ctx, self).into(),
+                            ),
+                            self,
+                        )
+                        .into_expr_err(loc)?;
                         Ok(())
                     } else {
                         let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
@@ -177,8 +182,13 @@ pub trait PrePostIncDecrement:
                         new_cvar
                             .set_range_max(self, arena, elem + one)
                             .into_expr_err(loc)?;
-                        ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
-                            .into_expr_err(loc)?;
+                        ctx.push_expr(
+                            ExprRet::Single(
+                                dup.latest_version_or_inherited_in_ctx(ctx, self).into(),
+                            ),
+                            self,
+                        )
+                        .into_expr_err(loc)?;
                         Ok(())
                     }
                 } else if pre {
@@ -194,8 +204,11 @@ pub trait PrePostIncDecrement:
                     new_cvar
                         .set_range_max(self, arena, elem - one)
                         .into_expr_err(loc)?;
-                    ctx.push_expr(ExprRet::Single(dup.latest_version(self).into()), self)
-                        .into_expr_err(loc)?;
+                    ctx.push_expr(
+                        ExprRet::Single(dup.latest_version_or_inherited_in_ctx(ctx, self).into()),
+                        self,
+                    )
+                    .into_expr_err(loc)?;
                     Ok(())
                 } else {
                     let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;

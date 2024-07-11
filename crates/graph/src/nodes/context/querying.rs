@@ -5,7 +5,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend,
 };
 
-use shared::{GraphError, Search};
+use shared::{GraphError, NodeIdx, Search};
 use std::collections::{BTreeMap, BTreeSet};
 
 impl ContextNode {
@@ -66,6 +66,32 @@ impl ContextNode {
                 "Expected context to have an associated source but didnt".to_string(),
             ))
         }
+    }
+
+    pub fn keep_inscope_tys(
+        &self,
+        idxs: &mut Vec<NodeIdx>,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        let mut tys = self
+            .visible_structs(analyzer)?
+            .iter()
+            .map(|i| i.0.into())
+            .collect::<Vec<_>>();
+        if let Some(contract) = self.maybe_associated_contract(analyzer)? {
+            tys.extend(contract.visible_nodes(analyzer));
+        }
+
+        if let Some(source) = self.maybe_associated_source(analyzer) {
+            tys.extend(source.visible_nodes(analyzer)?);
+        }
+
+        tys.sort();
+        tys.dedup();
+
+        idxs.retain(|i| tys.contains(i));
+
+        Ok(())
     }
 
     /// Gets visible functions
@@ -226,7 +252,8 @@ impl ContextNode {
 
         let mut structs = source.visible_structs(analyzer)?;
         let contract = self.associated_contract(analyzer)?;
-        structs.extend(contract.visible_structs(analyzer));
+        let contract_visible = contract.visible_structs(analyzer);
+        structs.extend(contract_visible);
 
         structs.sort();
         structs.dedup();

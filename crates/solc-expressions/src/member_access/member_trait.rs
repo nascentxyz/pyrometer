@@ -142,7 +142,12 @@ pub trait MemberAccess:
         member_idx: NodeIdx,
     ) -> Result<Vec<FunctionNode>, ExprErr> {
         let res = match self.node(member_idx) {
-            Node::ContextVar(cvar) => match &cvar.ty {
+            Node::ContextVar(cvar) => {
+                tracing::trace!(
+                    "looking for visible member functions of type: {:?}",
+                    cvar.ty
+                );
+                match &cvar.ty {
                 VarType::User(TypeNode::Contract(con_node), _) => {
                     let cnode = *con_node;
                     let mut funcs = cnode.linearized_functions(self).into_expr_err(loc)?;
@@ -178,6 +183,10 @@ pub trait MemberAccess:
                     .possible_library_funcs(ctx, ty.0.into())
                     .into_iter()
                     .collect::<Vec<_>>(),
+                VarType::User(TypeNode::Error(err), _) => self
+                    .possible_library_funcs(ctx, err.0.into())
+                    .into_iter()
+                    .collect::<Vec<_>>(),
                 VarType::User(TypeNode::Func(func_node), _) => self
                     .possible_library_funcs(ctx, func_node.0.into())
                     .into_iter()
@@ -190,7 +199,8 @@ pub trait MemberAccess:
                         _ => unreachable!()
                     }
                 }
-            },
+                }
+            }
             Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
             Node::Concrete(_)
             | Node::Ty(_)

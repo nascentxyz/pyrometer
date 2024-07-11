@@ -109,7 +109,7 @@ pub fn collapse(
 
             match (expr.op, op) {
                 (RangeOp::Sub(false), _) if ORD_OPS.contains(&op) => {
-                    if let Some(res) = sub_ord_rules(x, y, op, &z, ords, arena) {
+                    if let Some(res) = sub_ord_rules(x, y, op, &z, ords) {
                         MaybeCollapsed::Collapsed(res)
                     } else {
                         MaybeCollapsed::Not(Elem::Expr(expr), z)
@@ -170,14 +170,14 @@ pub fn collapse(
 
             match (expr.op, op) {
                 (RangeOp::Sub(false), _) if ORD_OPS.contains(&op) => {
-                    if let Some(res) = sub_ord_rules(x, y, op, &z, ords, arena) {
+                    if let Some(res) = sub_ord_rules(x, y, op, &z, ords) {
                         MaybeCollapsed::Collapsed(res)
                     } else {
                         MaybeCollapsed::Not(Elem::Expr(expr), z)
                     }
                 }
                 (RangeOp::Add(false), _) if ORD_OPS.contains(&op) => {
-                    if let Some(res) = add_ord_rules(x, y, op, &z, ords, arena) {
+                    if let Some(res) = add_ord_rules(x, y, op, &z, ords) {
                         MaybeCollapsed::Collapsed(res)
                     } else {
                         MaybeCollapsed::Not(Elem::Expr(expr), z)
@@ -186,9 +186,9 @@ pub fn collapse(
                 (RangeOp::Eq, RangeOp::Eq) => {
                     // ((x == y) == z)
                     // can skip if x and z eq
-                    if ords.x_eq_z() || ords.y_eq_z() {
-                        MaybeCollapsed::Collapsed(Elem::Expr(expr))
-                    } else if z.range_eq(&Elem::from(Concrete::from(true)), arena) {
+                    if (ords.x_eq_z() || ords.y_eq_z())
+                        || z.range_eq(&Elem::from(Concrete::from(true)), arena)
+                    {
                         MaybeCollapsed::Collapsed(Elem::Expr(expr))
                     } else {
                         MaybeCollapsed::Not(Elem::Expr(expr), z)

@@ -107,6 +107,9 @@ struct Args {
     /// Post pyrometer debugging information to debugging site
     #[clap(long)]
     pub debug_site: bool,
+
+    #[clap(long)]
+    pub minimize_debug: Option<String>,
 }
 
 pub fn subscriber() {
@@ -238,10 +241,10 @@ fn main() {
     let mut analyzer = Analyzer {
         max_depth: args.max_stack_depth,
         root: Root::RemappingsDirectory(env::current_dir().unwrap()),
+        debug_panic: args.debug_panic || args.minimize_debug.is_some(),
+        minimize_debug: args.minimize_debug,
         ..Default::default()
     };
-    println!("debug panic: {}", args.debug_panic);
-    analyzer.debug_panic = args.debug_panic;
 
     let (current_path, sol) = if args.path.ends_with(".sol") {
         let sol = fs::read_to_string(args.path.clone()).expect("Could not find file");
@@ -490,10 +493,15 @@ fn main() {
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
-                let analysis = analyzer
-                    .bounds_for_all(arena, &file_mapping, ctx, config)
-                    .as_cli_compat(&file_mapping);
-                analysis.print_reports(&mut source_map, &analyzer, arena);
+                if !matches!(
+                    ctx.underlying(&analyzer).unwrap().killed,
+                    Some((_, graph::nodes::KilledKind::DebugIgnored))
+                ) {
+                    let analysis = analyzer
+                        .bounds_for_all(arena, &file_mapping, ctx, config)
+                        .as_cli_compat(&file_mapping);
+                    analysis.print_reports(&mut source_map, &analyzer, arena);
+                }
             }
         }
     } else {

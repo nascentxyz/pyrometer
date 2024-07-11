@@ -282,12 +282,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     ) -> bool {
         self.flattened_min.is_some() && self.flattened_max.is_some() || {
             if let Some(idx) = self.arena_idx(arena) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Expr(ref arenaized) = *t {
-                        arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
-                    } else {
-                        false
-                    }
+                if let Some(Elem::Expr(ref arenaized)) = arena.ranges.get(idx) {
+                    arenaized.flattened_min.is_some() && arenaized.flattened_max.is_some()
                 } else {
                     false
                 }
@@ -304,12 +300,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     ) -> (bool, bool) {
         let (arena_cached_min, arena_cached_max) = {
             if let Some(idx) = self.arena_idx(arena) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Expr(ref arenaized) = *t {
-                        (arenaized.minimized.is_some(), arenaized.maximized.is_some())
-                    } else {
-                        (false, false)
-                    }
+                if let Some(Elem::Expr(ref arenaized)) = arena.ranges.get(idx) {
+                    (arenaized.minimized.is_some(), arenaized.maximized.is_some())
                 } else {
                     (false, false)
                 }
@@ -527,7 +519,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         ) -> Result<Elem<Concrete>, GraphError> {
             let Elem::Expr(this) = this else {
                 this.cache_flatten(analyzer, arena)?;
-                if let Some(t) = this.arenaized_flattened(false, analyzer, arena) {
+                if let Some(t) = this.arenaized_flattened(false, arena) {
                     return Ok(*t);
                 } else {
                     return Ok(this.clone());
@@ -587,7 +579,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         ) -> Result<Elem<Concrete>, GraphError> {
             let Elem::Expr(this) = this else {
                 this.cache_flatten(analyzer, arena)?;
-                if let Some(t) = this.arenaized_flattened(true, analyzer, arena) {
+                if let Some(t) = this.arenaized_flattened(true, arena) {
                     return Ok(*t);
                 } else {
                     return Ok(this.clone());
@@ -642,11 +634,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
         if self.flattened_max.is_none() {
             if let Some(idx) = self.arena_idx(arena) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Expr(ref arenaized) = *t {
-                        if arenaized.flattened_max.is_some() {
-                            return Ok(());
-                        }
+                if let Some(Elem::Expr(ref arenaized)) = arena.ranges.get(idx) {
+                    if arenaized.flattened_max.is_some() {
+                        return Ok(());
                     }
                 };
             } else {
@@ -664,11 +654,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
         if self.flattened_min.is_none() {
             if let Some(idx) = self.arena_idx(arena) {
-                if let Some(t) = arena.ranges.get(idx) {
-                    if let Elem::Expr(ref arenaized) = *t {
-                        if arenaized.flattened_min.is_some() {
-                            return Ok(());
-                        }
+                if let Some(Elem::Expr(ref arenaized)) = arena.ranges.get(idx) {
+                    if arenaized.flattened_min.is_some() {
+                        return Ok(());
                     }
                 };
             } else {

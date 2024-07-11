@@ -90,11 +90,18 @@ pub trait ContextBuilder:
                     .and_then(|i| i)
                     .into_expr_err(*loc);
 
-                let latest = ContextVarNode::from(*expr).latest_version(self);
+                let latest =
+                    ContextVarNode::from(*expr).latest_version_or_inherited_in_ctx(ctx, self);
 
                 match target_var {
                     Ok(Some(target_var)) => {
                         // perform a cast
+                        tracing::trace!(
+                            "{}: casting {:?} to {:?}",
+                            ctx.path(self),
+                            latest.ty(self).unwrap(),
+                            target_var.ty(self).unwrap(),
+                        );
                         let next = self
                             .advance_var_in_ctx_forcible(latest, *loc, ctx, true)
                             .unwrap();

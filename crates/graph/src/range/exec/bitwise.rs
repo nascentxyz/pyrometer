@@ -1,6 +1,5 @@
 use crate::nodes::{Builtin, Concrete};
 use crate::range::{elem::*, exec_traits::*};
-use crate::GraphBackend;
 
 use shared::RangeArena;
 
@@ -242,7 +241,6 @@ pub fn exec_bit_and(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max, rhs_min, rhs_max) {
@@ -253,7 +251,6 @@ pub fn exec_bit_and(
                 rhs_min,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -264,7 +261,6 @@ pub fn exec_bit_and(
                 rhs_min,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -275,7 +271,6 @@ pub fn exec_bit_and(
                 &d.as_sized_bytes()?,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -286,7 +281,6 @@ pub fn exec_bit_and(
                 rhs_min,
                 &d.as_sized_bytes()?,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -387,7 +381,6 @@ pub fn exec_bit_or(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max, rhs_min, rhs_max) {
@@ -398,7 +391,6 @@ pub fn exec_bit_or(
                 rhs_min,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -409,7 +401,6 @@ pub fn exec_bit_or(
                 rhs_min,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -420,7 +411,6 @@ pub fn exec_bit_or(
                 &d.as_sized_bytes()?,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -431,7 +421,6 @@ pub fn exec_bit_or(
                 rhs_min,
                 &d.as_sized_bytes()?,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -506,7 +495,6 @@ pub fn exec_bit_xor(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max, rhs_min, rhs_max) {
@@ -517,7 +505,6 @@ pub fn exec_bit_xor(
                 rhs_min,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -528,7 +515,6 @@ pub fn exec_bit_xor(
                 rhs_min,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -539,7 +525,6 @@ pub fn exec_bit_xor(
                 &d.as_sized_bytes()?,
                 rhs_max,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -550,7 +535,6 @@ pub fn exec_bit_xor(
                 rhs_min,
                 &d.as_sized_bytes()?,
                 maximize,
-                analyzer,
                 arena,
             );
         }
@@ -634,15 +618,14 @@ pub fn exec_bit_not(
     lhs_min: &Elem<Concrete>,
     lhs_max: &Elem<Concrete>,
     maximize: bool,
-    analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     match (lhs_min, lhs_max) {
         (Elem::ConcreteDyn(d), _) => {
-            return exec_bit_not(&d.as_sized_bytes()?, lhs_max, maximize, analyzer, arena);
+            return exec_bit_not(&d.as_sized_bytes()?, lhs_max, maximize, arena);
         }
         (_, Elem::ConcreteDyn(d)) => {
-            return exec_bit_not(lhs_min, &d.as_sized_bytes()?, maximize, analyzer, arena);
+            return exec_bit_not(lhs_min, &d.as_sized_bytes()?, maximize, arena);
         }
         _ => {}
     }

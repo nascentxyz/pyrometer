@@ -1,6 +1,7 @@
 use crate::{
-    nodes::Concrete, range::elem::Elem, AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
-    VarType,
+    nodes::{Concrete, ContractNode},
+    range::elem::Elem,
+    AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node, VarType,
 };
 
 use shared::{GraphError, NodeIdx, RangeArena};
@@ -63,6 +64,23 @@ impl StructNode {
             .filter(|edge| Edge::Field == *edge.weight())
             .map(|edge| FieldNode::from(edge.source()))
             .find(|field_node| field_node.name(analyzer).unwrap() == ident.name)
+    }
+
+    pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Outgoing)
+            .filter(|edge| matches!(*edge.weight(), Edge::Struct))
+            .filter_map(|edge| {
+                let node = edge.target();
+                match analyzer.node(node) {
+                    Node::Contract(_) => Some(ContractNode::from(node)),
+                    _ => None,
+                }
+            })
+            .take(1)
+            .next()
+            .map(ContractNode::from)
     }
 }
 
