@@ -123,56 +123,26 @@ impl ContextNode {
         full_name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         let split = full_name.split('.').collect::<Vec<_>>();
-        if split.len() != 2 {
+        if split.len() < 2 {
             return Ok(None);
         }
 
-        let member_name = split[0];
-        let field_name = split[1];
+        let member_name = split[0..=split.len() - 2].join(".");
+        let field_name = split.last().unwrap();
 
         // get the member
-        let Some(member) = self.var_by_name_or_recurse(analyzer, member_name)? else {
+        let Some(member) = self.var_by_name_or_recurse(analyzer, &member_name)? else {
             return Ok(None);
         };
 
         // maybe move var into this context
         let member = self.maybe_move_var(member, loc, analyzer)?;
-        let global_first = member.global_first_version(analyzer);
-
-        let mut curr = member;
-        let mut field = None;
-        // recursively search for the field by looking at all major versions of the member (i.e. first version
-        // of the variable in a context)
-        while field.is_none() && curr != global_first {
-            field = curr.field_of_struct(field_name, analyzer)?;
-            if let Some(prev) = curr.previous_or_inherited_version(analyzer) {
-                curr = prev;
-            } else {
-                break;
-            }
-        }
-
-        if let Some(field) = field {
-            if let Some(ctx) = curr.maybe_ctx(analyzer) {
-                if ctx != *self {
-                    tracing::trace!(
-                        "moving field access {} from {} to {}",
-                        field.display_name(analyzer).unwrap(),
-                        ctx.path(analyzer),
-                        self.path(analyzer)
-                    );
-                    let mut new_cvar = field.latest_version(analyzer).underlying(analyzer)?.clone();
-                    new_cvar.loc = Some(loc);
-
-                    let new_cvarnode = analyzer.add_node(Node::ContextVar(new_cvar));
-                    analyzer.add_edge(
-                        new_cvarnode,
-                        member,
-                        Edge::Context(ContextEdge::AttrAccess("field")),
-                    );
-                }
-            }
-        }
+        let fields = member.struct_to_fields(analyzer)?;
+        let field = fields.into_iter().find(|field| {
+            let full_name = field.name(analyzer).unwrap();
+            let target_field_name = full_name.split('.').last().unwrap();
+            *field_name == target_field_name
+        });
 
         Ok(field)
     }
@@ -239,6 +209,7 @@ impl ContextNode {
     }
 
     pub fn contract_vars_referenced_global(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {
+        println!("getting storage vars for: {}", self.path(analyzer));
         let mut reffed_storage = self.contract_vars_referenced(analyzer);
         analyzer
             .graph()
@@ -460,14 +431,22 @@ impl ContextNode {
                 let mut new_cvar = var.latest_version(analyzer).underlying(analyzer)?.clone();
                 new_cvar.loc = Some(loc);
 
-                let new_cvarnode = analyzer.add_node(Node::ContextVar(new_cvar));
-                self.add_var(ContextVarNode::from(new_cvarnode), analyzer)?;
-                analyzer.add_edge(new_cvarnode, *self, Edge::Context(ContextEdge::Variable));
+                let new_cvarnode =
+                    ContextVarNode::from(analyzer.add_node(Node::ContextVar(new_cvar)));
+
+                self.add_var(new_cvarnode, analyzer)?;
+                analyzer.add_edge(new_cvarnode.0, *self, Edge::Context(ContextEdge::Variable));
                 analyzer.add_edge(
-                    new_cvarnode,
+                    new_cvarnode.0,
                     var.0,
                     Edge::Context(ContextEdge::InheritedVariable),
                 );
+
+                let fields = new_cvarnode.struct_to_fields(analyzer)?;
+                fields.iter().try_for_each(|field| {
+                    let _ = self.maybe_move_var(*field, loc, analyzer)?;
+                    Ok(())
+                })?;
                 Ok(new_cvarnode.into())
             } else {
                 Ok(var)

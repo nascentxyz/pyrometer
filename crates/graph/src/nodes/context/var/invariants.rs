@@ -52,7 +52,10 @@ impl ContextVarNode {
         strukt_node: StructNode,
         g: &impl GraphBackend,
     ) -> Result<Option<RepresentationErr>, GraphError> {
-        if let Some(err) = self.struct_has_all_fields(strukt_node, g)? {
+        if let Some(err) = self
+            .first_version(g)
+            .struct_has_all_fields(strukt_node, g)?
+        {
             return Ok(Some(err));
         }
         Ok(None)
@@ -83,6 +86,7 @@ impl ContextVarNode {
                     .to_string()
             })
             .collect();
+
         let mut target_field_names: Vec<_> = struct_fields
             .iter()
             .map(|field| field.name(g).unwrap())
@@ -90,9 +94,38 @@ impl ContextVarNode {
 
         real_field_names.sort();
         target_field_names.sort();
-        if real_field_names != target_field_names {
+        if real_field_names.len() < target_field_names.len() {
             Ok(Some(
-                VarReprErr::StructErr(self.0.into(), "Missing fields").into(),
+                VarReprErr::StructErr(
+                    self.0.into(),
+                    Box::leak(
+                        format!("{} has missing fields", self.display_name(g).unwrap())
+                            .into_boxed_str(),
+                    ),
+                )
+                .into(),
+            ))
+        } else if real_field_names.len() > target_field_names.len() {
+            Ok(Some(
+                VarReprErr::StructErr(
+                    self.0.into(),
+                    Box::leak(
+                        format!("{} has extra fields", self.display_name(g).unwrap())
+                            .into_boxed_str(),
+                    ),
+                )
+                .into(),
+            ))
+        } else if real_field_names != target_field_names {
+            Ok(Some(
+                VarReprErr::StructErr(
+                    self.0.into(),
+                    Box::leak(
+                        format!("{} has misnamed fields", self.display_name(g).unwrap())
+                            .into_boxed_str(),
+                    ),
+                )
+                .into(),
             ))
         } else {
             Ok(None)

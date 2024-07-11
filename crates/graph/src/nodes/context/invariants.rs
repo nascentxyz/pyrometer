@@ -52,14 +52,13 @@ impl ContextNode {
         g: &impl GraphBackend,
         arena: &RangeArena<Elem<Concrete>>,
     ) -> Result<Vec<RepresentationErr>, GraphError> {
-        let vars: Vec<_> = self.vars(g).values().collect();
-        Ok(vars
-            .iter()
-            .map(|var| var.is_representation_ok(g, arena))
-            .collect::<Result<Vec<Option<_>>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>())
+        let mut res = vec![];
+        for var in self.vars(g).values() {
+            if let Some(err) = var.is_representation_ok(g, arena)? {
+                res.push(err);
+            }
+        }
+        Ok(res)
     }
 }
 

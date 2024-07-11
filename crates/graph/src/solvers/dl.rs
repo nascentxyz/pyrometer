@@ -863,7 +863,7 @@ impl DLSolver {
                     .rhs
                     .into_elem()
                     .wrapping_sub(Elem::from(Concrete::from(U256::one())))
-                    .atoms_or_part(analyzer, arena);
+                    .atoms_or_part(None, analyzer, arena);
                 Self::dl_atom_normalize(
                     SolverAtom {
                         ty: OpType::DL,

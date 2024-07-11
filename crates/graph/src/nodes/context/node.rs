@@ -114,6 +114,22 @@ impl ContextNode {
         Ok(())
     }
 
+    /// Propogate that this context has ended up the context graph
+    pub fn propogate_applied(
+        &self,
+        applied: FunctionNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        let underlying = self.underlying_mut(analyzer)?;
+        if !underlying.applies.contains(&applied) {
+            underlying.applies.push(applied);
+        }
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+            parent.propogate_applied(applied, analyzer)?;
+        }
+        Ok(())
+    }
+
     /// Gets the return nodes for this context
     pub fn return_nodes(
         &self,
