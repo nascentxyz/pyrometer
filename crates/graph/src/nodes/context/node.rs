@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{Concrete, Context, ContextVarNode, KilledKind},
+    nodes::{Concrete, Context, ContextVarNode, FunctionNode, KilledKind},
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
