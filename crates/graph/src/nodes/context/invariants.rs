@@ -5,11 +5,12 @@ use crate::{
     range::elem::Elem,
     ContextEdge, Edge, GraphBackend, RepresentationInvariant,
 };
-use shared::{ContextReprErr, GraphError, NodeIdx, RangeArena, RepresentationErr};
+use shared::{ContextReprErr, GraphError, RangeArena, RepresentationErr};
 
 use petgraph::{visit::EdgeRef, Direction};
 
 impl ContextNode {
+    #[allow(dead_code)]
     fn cache_matches_edges(
         &self,
         g: &impl GraphBackend,

@@ -1,9 +1,9 @@
 use crate::{
-    nodes::{Builtin, Concrete, ContextNode, ContextVarNode, StructNode},
+    nodes::{Builtin, Concrete, ContextVarNode, StructNode},
     range::elem::Elem,
     ContextEdge, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
-use shared::{GraphError, NodeIdx, RangeArena, RepresentationErr, VarReprErr};
+use shared::{GraphError, RangeArena, RepresentationErr, VarReprErr};
 
 use petgraph::{visit::EdgeRef, Direction};
 
@@ -11,19 +11,20 @@ impl ContextVarNode {
     fn ty_check(
         &self,
         g: &impl GraphBackend,
-        arena: &RangeArena<Elem<Concrete>>,
+        _arena: &RangeArena<Elem<Concrete>>,
     ) -> Result<Option<RepresentationErr>, GraphError> {
         match self.ty(g)? {
             // we should have all types resolved by now
-            VarType::User(TypeNode::Unresolved(u), range) => {
+            VarType::User(TypeNode::Unresolved(_u), _range) => {
                 Ok(Some(VarReprErr::Unresolved(self.0.into()).into()))
             }
-            VarType::User(TypeNode::Contract(con), range) => Ok(None),
-            VarType::User(TypeNode::Struct(strt), range) => self.struct_invariants(*strt, g),
-            VarType::User(TypeNode::Enum(enu), range) => Ok(None),
-            VarType::User(TypeNode::Ty(ty), range) => Ok(None),
-            VarType::User(TypeNode::Func(func), range) => Ok(None),
-            VarType::BuiltIn(bn, range) => {
+            VarType::User(TypeNode::Contract(_con), _range) => Ok(None),
+            VarType::User(TypeNode::Struct(strt), _range) => self.struct_invariants(*strt, g),
+            VarType::User(TypeNode::Enum(_enu), _range) => Ok(None),
+            VarType::User(TypeNode::Ty(_ty), _range) => Ok(None),
+            VarType::User(TypeNode::Func(_func), _range) => Ok(None),
+            VarType::User(TypeNode::Error(_err), _) => Ok(None),
+            VarType::BuiltIn(bn, _range) => {
                 let Node::Builtin(b) = g.node(*bn) else {
                     panic!("here")
                 };
@@ -31,18 +32,18 @@ impl ContextVarNode {
                     Builtin::Address | Builtin::Payable | Builtin::AddressPayable => Ok(None),
                     Builtin::Bool => Ok(None),
                     Builtin::String => Ok(None),
-                    Builtin::Bytes(size) => Ok(None),
+                    Builtin::Bytes(_size) => Ok(None),
                     Builtin::DynamicBytes => Ok(None),
-                    Builtin::Int(size) => Ok(None),
-                    Builtin::Uint(size) => Ok(None),
-                    Builtin::Array(inner_ty) => Ok(None),
-                    Builtin::SizedArray(size, inner_ty) => Ok(None),
-                    Builtin::Mapping(key_ty, v_ty) => Ok(None),
+                    Builtin::Int(_size) => Ok(None),
+                    Builtin::Uint(_size) => Ok(None),
+                    Builtin::Array(_inner_ty) => Ok(None),
+                    Builtin::SizedArray(_size, _inner_ty) => Ok(None),
+                    Builtin::Mapping(_key_ty, _v_ty) => Ok(None),
                     Builtin::Rational => Ok(None),
-                    Builtin::Func(inputs, rets) => Ok(None),
+                    Builtin::Func(_inputs, _rets) => Ok(None),
                 }
             }
-            VarType::Concrete(cn) => Ok(None),
+            VarType::Concrete(_cn) => Ok(None),
         }
     }
 

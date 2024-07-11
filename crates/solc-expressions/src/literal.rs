@@ -1,6 +1,6 @@
 use graph::{
     elem::*,
-    nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    nodes::{Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, TestCommand, VariableCommand,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
@@ -22,7 +22,12 @@ pub trait Literal: AnalyzerBackend + Sized {
         negative: bool,
         unit: &Option<Identifier>,
     ) -> Result<Concrete, ExprErr> {
-        let int = U256::from_dec_str(integer).unwrap();
+        let Ok(int) = U256::from_dec_str(integer) else {
+            return Err(ExprErr::ParseError(
+                loc,
+                format!("{integer} is too large, it does not fit into a uint256"),
+            ));
+        };
         let val = if !exponent.is_empty() {
             let exp = U256::from_dec_str(exponent)
                 .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
@@ -278,7 +283,7 @@ pub trait Literal: AnalyzerBackend + Sized {
 
     fn test_string_literal(&mut self, s: &str) -> Option<TestCommand> {
         let split = s.split("::").collect::<Vec<_>>();
-        if split.get(0).copied() == Some("pyro") {
+        if split.first().copied() == Some("pyro") {
             match split.get(1).copied() {
                 Some("variable") => {
                     let name = split.get(2).copied()?;
@@ -291,7 +296,7 @@ pub trait Literal: AnalyzerBackend + Sized {
                                 .trim_end_matches(']')
                                 .split(',')
                                 .collect::<Vec<_>>();
-                            let mut min_str = *range.get(0)?;
+                            let mut min_str = *range.first()?;
                             let mut min_neg = false;
                             if let Some(new_min) = min_str.strip_prefix('-') {
                                 min_neg = true;

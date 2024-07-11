@@ -7,7 +7,7 @@ use crate::{
 
 use graph::{
     elem::*,
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::{post_to_site, ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
@@ -50,6 +50,25 @@ pub trait ExpressionParser:
         if unsafe { USE_DEBUG_SITE } {
             post_to_site(&*self, arena);
         }
+
+        if ctx
+            .underlying(self)
+            .into_expr_err(expr.loc())?
+            .expr_ret_stack
+            .is_empty()
+        {
+            if let Some(errs) =
+                self.add_if_err(self.is_representation_ok(arena).into_expr_err(expr.loc()))
+            {
+                if !errs.is_empty() {
+                    ctx.kill(self, expr.loc(), KilledKind::ParseError).unwrap();
+                    errs.into_iter().for_each(|err| {
+                        self.add_expr_err(ExprErr::from_repr_err(expr.loc(), err));
+                    });
+                }
+            }
+        }
+
         res
     }
 

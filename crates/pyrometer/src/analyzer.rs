@@ -6,13 +6,13 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
 use shared::{ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
-use solc_expressions::{FnCallBuilder, StatementParser};
+use solc_expressions::StatementParser;
 use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
 use ahash::AHashMap;
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
-use petgraph::{graph::*, stable_graph::StableGraph, Directed};
+use petgraph::{graph::*, Directed};
 use serde_json::Value;
 use solang_parser::{
     diagnostics::Diagnostic,

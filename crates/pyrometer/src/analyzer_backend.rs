@@ -2,14 +2,15 @@ use crate::Analyzer;
 use graph::{
     elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, Function,
-        FunctionNode, FunctionParam, FunctionParamNode, FunctionReturn, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContractNode,
+        FuncReconstructionReqs, Function, FunctionNode, FunctionParam, FunctionParamNode,
+        FunctionReturn, KilledKind, MsgNode,
     },
-    AnalyzerBackend, Edge, Node, RepresentationInvariant, VarType,
+    AnalyzerBackend, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
 use shared::{
-    AnalyzerLike, ExprErr, GraphError, GraphLike, IntoExprErr, JoinStats, NodeIdx, RangeArena,
-    RepresentationErr, USE_DEBUG_SITE,
+    AnalyzerLike, ApplyStats, ExprErr, GraphError, GraphLike, IntoExprErr, NodeIdx, RangeArena,
+    RepresentationErr,
 };
 
 use ahash::AHashMap;
@@ -67,7 +68,8 @@ impl AnalyzerLike for Analyzer {
 
     fn minimize_err(&mut self, ctx: ContextNode) -> String {
         let genesis = ctx.genesis(self).unwrap();
-        let family_tree = genesis.family_tree(self).unwrap();
+        let mut family_tree = genesis.family_tree(self).unwrap();
+        family_tree.push(genesis);
         let mut needed_functions = family_tree
             .iter()
             .map(|c| c.associated_fn(self).unwrap())
@@ -107,6 +109,8 @@ impl AnalyzerLike for Analyzer {
             Option<ContractNode>,
             Vec<(FunctionNode, FuncReconstructionReqs)>,
         > = Default::default();
+
+        println!("contract_to_funcs: {contract_to_funcs:#?}");
 
         let mut tys = vec![];
         let mut enums = vec![];
@@ -232,7 +236,9 @@ impl AnalyzerLike for Analyzer {
 
     fn add_expr_err(&mut self, err: ExprErr) {
         if self.debug_panic() {
+            println!("here1");
             if let Some(path) = self.minimize_debug().clone() {
+                println!("here2");
                 let reconstruction_edge: ContextNode = self
                     .graph
                     .node_indices()
@@ -240,6 +246,7 @@ impl AnalyzerLike for Analyzer {
                         Node::Context(context) if context.killed.is_some() => {
                             match context.killed.unwrap() {
                                 (_, KilledKind::ParseError) => {
+                                    println!("here3");
                                     // println!("found context: {}", context.path);
                                     let edges = graph::nodes::ContextNode::from(node)
                                         .all_edges(self)
@@ -253,14 +260,20 @@ impl AnalyzerLike for Analyzer {
 
                                     Some(reconstruction_edge)
                                 }
-                                _ => None,
+                                e => {
+                                    println!("here4");
+                                    println!("{e:?}");
+                                    None
+                                }
                             }
                         }
                         _ => None,
                     })
                     .unwrap();
+                println!("here5");
 
                 let min_str = self.minimize_err(reconstruction_edge);
+                println!("here6: {min_str}");
                 // println!("reconstructed source:\n{} placed in {}", min_str, path);
 
                 let mut file = std::fs::OpenOptions::new()

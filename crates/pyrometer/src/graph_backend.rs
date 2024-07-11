@@ -546,7 +546,8 @@ flowchart TB
             format!("LS-{}_LE-{}_{}", from.index(), to.index(), &graph[edge])
         })
         .collect::<Vec<_>>()
-        .join(";");
+        .join(";")
+        + " ";
 
     let invis_data = format!(
         "    {}(\"{}\"):::INVIS\n    classDef INVIS display:none",

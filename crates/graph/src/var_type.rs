@@ -798,6 +798,14 @@ impl VarType {
             ))),
         }
     }
+
+    pub fn maybe_struct(&self) -> Option<StructNode> {
+        if let VarType::User(TypeNode::Struct(sn), _) = self {
+            Some(*sn)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]

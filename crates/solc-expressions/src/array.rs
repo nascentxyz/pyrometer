@@ -200,6 +200,8 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             let ty = parent.ty(self).into_expr_err(loc)?.clone();
 
             let ty = ty.dynamic_underlying_ty(self).into_expr_err(loc)?;
+            let maybe_struct = ty.maybe_struct();
+
             let has_range = ty.ref_range(self).into_expr_err(loc)?.is_some();
             let index_access_var = ContextVar {
                 loc: Some(loc),
@@ -232,6 +234,13 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 parent,
                 Edge::Context(ContextEdge::IndexAccess),
             );
+
+            if let Some(strukt) = maybe_struct {
+                strukt
+                    .add_fields_to_cvar(self, loc, ContextVarNode::from(idx_access_node))
+                    .into_expr_err(loc)?;
+            }
+
             self.add_edge(idx_access_node, ctx, Edge::Context(ContextEdge::Variable));
             ctx.add_var(idx_access_node.into(), self)
                 .into_expr_err(loc)?;

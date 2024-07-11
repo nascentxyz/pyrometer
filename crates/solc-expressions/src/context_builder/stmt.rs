@@ -14,9 +14,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{
-    post_to_site, AnalyzerLike, ExprErr, GraphDot, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
-};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::{
@@ -71,14 +69,6 @@ pub trait StatementParser:
         } else {
             self.parse_ctx_stmt_inner(arena, stmt, unchecked, parent_ctx)
         }
-
-        if let Some(errs) =
-            self.add_if_err(self.is_representation_ok(arena).into_expr_err(stmt.loc()))
-        {
-            errs.into_iter().for_each(|err| {
-                self.add_expr_err(ExprErr::from_repr_err(stmt.loc(), err));
-            });
-        }
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -107,6 +97,24 @@ pub trait StatementParser:
         if let Some(ctx) = parent_ctx {
             if let Node::Context(_) = self.node(ctx) {
                 let c = ContextNode::from(ctx.into());
+                if let Some(errs) =
+                    self.add_if_err(self.is_representation_ok(arena).into_expr_err(stmt.loc()))
+                {
+                    if !errs.is_empty() {
+                        let Some(is_killed) =
+                            self.add_if_err(c.is_killed(self).into_expr_err(stmt.loc()))
+                        else {
+                            return;
+                        };
+                        if !is_killed {
+                            c.kill(self, stmt.loc(), KilledKind::ParseError).unwrap();
+                            errs.into_iter().for_each(|err| {
+                                self.add_expr_err(ExprErr::from_repr_err(stmt.loc(), err));
+                            });
+                        }
+                    }
+                }
+
                 let _ = c.pop_expr_latest(stmt.loc(), self);
                 if unchecked {
                     let _ = c.set_unchecked(self);

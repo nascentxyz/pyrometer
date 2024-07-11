@@ -1,29 +1,13 @@
-use crate::{
-    context_builder::ContextBuilder,
-    func_call::{func_caller::FuncCaller, modifier::ModifierCaller},
-    loops::Looper,
-    yul::YulBuilder,
-    ExpressionParser,
-};
+use crate::ExpressionParser;
 
 use graph::{
     elem::{Elem, RangeElem},
-    nodes::{
-        Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
-        FunctionParamNode, FunctionReturnNode, KilledKind,
-    },
-    AnalyzerBackend, CallFork, ContextEdge, CoverageCommand, Edge, Node, TestCommand,
-    VariableCommand,
+    nodes::{Concrete, ContextNode},
+    AnalyzerBackend, CoverageCommand, TestCommand, VariableCommand,
 };
-use shared::{
-    post_to_site, AnalyzerLike, ExprErr, GraphDot, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
-};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use petgraph::{visit::EdgeRef, Direction};
-use solang_parser::{
-    helpers::CodeLocation,
-    pt::{Expression, Loc, Statement, YulStatement},
-};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> TestCommandRunner for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
@@ -56,8 +40,7 @@ pub trait TestCommandRunner:
                             loc,
                             format!(
                                 "Variable \"{var_name}\"'s minimum was {}, expected {}",
-                                eval_min,
-                                min
+                                eval_min, min
                             ),
                         ));
                     }
@@ -66,8 +49,7 @@ pub trait TestCommandRunner:
                             loc,
                             format!(
                                 "Variable \"{var_name}\"'s maximum was {}, expected {}",
-                                eval_max,
-                                max
+                                eval_max, max
                             ),
                         ));
                     }
@@ -94,18 +76,20 @@ pub trait TestCommandRunner:
             }
             TestCommand::Coverage(CoverageCommand::OnlyPath) => {
                 if let Some(parent) = ctx.underlying(self).unwrap().parent_ctx {
-                    if !parent.underlying(self).unwrap().child.is_none() {
+                    if parent.underlying(self).unwrap().child.is_some() {
                         self.add_expr_err(ExprErr::TestError(
                             loc,
-                            format!("Expected a single path, but another was reached"),
+                            "Expected a single path, but another was reached".to_string(),
                         ));
                     }
                 }
             }
             TestCommand::Coverage(CoverageCommand::Unreachable) => {
-                self.add_expr_err(ExprErr::TestError(loc, format!("Hit an unreachable path")));
+                self.add_expr_err(ExprErr::TestError(
+                    loc,
+                    "Hit an unreachable path".to_string(),
+                ));
             }
-            _ => {}
         }
 
         None
