@@ -470,7 +470,7 @@ impl ContextNode {
                 fields.iter().try_for_each(|field| {
                     self.recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
                 })?;
-                Ok(new_cvarnode.into())
+                Ok(new_cvarnode)
             } else {
                 Ok(var)
             }

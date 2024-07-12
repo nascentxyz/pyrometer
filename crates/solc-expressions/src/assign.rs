@@ -3,7 +3,7 @@ use crate::{array::Array, variable::Variable, ContextBuilder, ExpressionParser, 
 use graph::{
     elem::{Elem, RangeElem},
     nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 
 use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};

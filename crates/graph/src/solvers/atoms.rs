@@ -302,7 +302,7 @@ impl Atomize for Elem<Concrete> {
         match self {
             Elem::Arena(_) => {
                 self.dearenaize_clone(arena)
-                    .atoms_or_part(Some(&self), analyzer, arena)
+                    .atoms_or_part(Some(self), analyzer, arena)
             }
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
@@ -311,17 +311,17 @@ impl Atomize for Elem<Concrete> {
                 match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
                     MaybeCollapsed::Concretes(_l, _r) => {
                         let exec_res = expr.exec_op(true, analyzer, arena).unwrap();
-                        return exec_res.atoms_or_part(Some(&self), analyzer, arena);
+                        return exec_res.atoms_or_part(Some(self), analyzer, arena);
                     }
                     MaybeCollapsed::Collapsed(elem) => {
-                        return elem.atoms_or_part(Some(&self), analyzer, arena);
+                        return elem.atoms_or_part(Some(self), analyzer, arena);
                     }
                     MaybeCollapsed::Not(..) => {}
                 }
 
                 match (
-                    expr.lhs.atoms_or_part(Some(&self), analyzer, arena),
-                    expr.rhs.atoms_or_part(Some(&self), analyzer, arena),
+                    expr.lhs.atoms_or_part(Some(self), analyzer, arena),
+                    expr.rhs.atoms_or_part(Some(self), analyzer, arena),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         // println!("part part");
@@ -373,7 +373,7 @@ impl Atomize for Elem<Concrete> {
                                 if res == Elem::Expr(expr.clone()) {
                                     AtomOrPart::Part(res)
                                 } else {
-                                    res.atoms_or_part(Some(&self), analyzer, arena)
+                                    res.atoms_or_part(Some(self), analyzer, arena)
                                 }
                             }
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),

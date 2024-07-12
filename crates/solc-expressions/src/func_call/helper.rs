@@ -654,8 +654,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                     .into_iter()
                                     .map(|i| (i, new_in_inheritor))
                                     .collect::<Vec<_>>();
-                                while !struct_stack.is_empty() {
-                                    let (field, parent) = struct_stack.pop().unwrap();
+                                while let Some((field, parent)) = struct_stack.pop() {
                                     let underlying =
                                         field.underlying(analyzer).into_expr_err(loc)?;
                                     let new_field_in_inheritor =

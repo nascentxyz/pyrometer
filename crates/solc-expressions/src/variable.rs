@@ -567,8 +567,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .into_iter()
                         .map(|i| (i, new_cvarnode))
                         .collect::<Vec<_>>();
-                    while !struct_stack.is_empty() {
-                        let (field, parent) = struct_stack.pop().unwrap();
+                    while let Some((field, parent)) = struct_stack.pop() {
                         let underlying = field.underlying(self).into_expr_err(loc)?;
                         let new_field_in_inheritor =
                             self.add_node(Node::ContextVar(underlying.clone()));
@@ -665,8 +664,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .into_iter()
                         .map(|i| (i, new_cvarnode))
                         .collect::<Vec<_>>();
-                    while !struct_stack.is_empty() {
-                        let (field, parent) = struct_stack.pop().unwrap();
+                    while let Some((field, parent)) = struct_stack.pop() {
                         let underlying = field.underlying(self).into_expr_err(loc)?;
                         let new_field_in_inheritor =
                             self.add_node(Node::ContextVar(underlying.clone()));
