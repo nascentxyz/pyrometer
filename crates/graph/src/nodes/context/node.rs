@@ -52,6 +52,7 @@ impl ContextNode {
         &self,
         analyzer: &'a mut impl AnalyzerBackend<Node = Node>,
     ) -> Result<&'a mut Context, GraphError> {
+        analyzer.mark_dirty(self.0.into());
         match analyzer.node_mut(*self) {
             Node::Context(c) => Ok(c),
             Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(

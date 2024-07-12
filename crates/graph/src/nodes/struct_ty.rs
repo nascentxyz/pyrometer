@@ -104,6 +104,10 @@ impl StructNode {
                 cvar,
                 Edge::Context(ContextEdge::AttrAccess("field")),
             );
+            // do so recursively
+            if let Some(field_struct) = ContextVarNode::from(fc_node).ty(analyzer)?.maybe_struct() {
+                field_struct.add_fields_to_cvar(analyzer, loc, ContextVarNode::from(fc_node))?;
+            }
             Ok(())
         })
     }

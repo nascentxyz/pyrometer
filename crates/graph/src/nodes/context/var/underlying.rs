@@ -400,7 +400,7 @@ impl ContextVar {
 
     pub fn set_range_exclusions(
         &mut self,
-        new_exclusions: Vec<usize>,
+        new_exclusions: Vec<Elem<Concrete>>,
         fallback_range: Option<SolcRange>,
     ) -> Result<(), GraphError> {
         match &mut self.ty {
@@ -457,7 +457,7 @@ impl ContextVar {
 
     pub fn try_set_range_exclusions(
         &mut self,
-        new_exclusions: Vec<usize>,
+        new_exclusions: Vec<Elem<Concrete>>,
         fallback_range: Option<SolcRange>,
     ) -> bool {
         match &mut self.ty {

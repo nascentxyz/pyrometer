@@ -482,7 +482,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                             return Ok(*min.clone());
                         }
                     }
-                    Null => return Ok(Elem::Null),
                     _ => {}
                 }
             }
@@ -513,15 +512,21 @@ impl RangeElem<Concrete> for Elem<Concrete> {
 
                 match arena.ranges.get_mut(idx) {
                     Some(Self::Reference(ref mut d)) => {
-                        tracing::trace!("simplify minimize cache MISS: {self}");
+                        tracing::trace!(
+                            "simplify minimize cache MISS: {self}, new simp min: {min}"
+                        );
                         d.flattened_min = Some(Box::new(min.clone()));
                     }
                     Some(Self::Expr(ref mut expr)) => {
-                        tracing::trace!("simplify minimize cache MISS: {self}");
+                        tracing::trace!(
+                            "simplify minimize cache MISS: {self}, new simp min: {min}"
+                        );
                         expr.flattened_min = Some(Box::new(min.clone()));
                     }
                     Some(Self::ConcreteDyn(ref mut d)) => {
-                        tracing::trace!("simplify minimize cache MISS: {self}");
+                        tracing::trace!(
+                            "simplify minimize cache MISS: {self}, new simp min: {min}"
+                        );
                         d.flattened_min = Some(Box::new(min.clone()));
                     }
                     _ => {}

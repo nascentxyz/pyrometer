@@ -402,6 +402,30 @@ impl ContextNode {
         }
     }
 
+    pub fn recursive_move_struct_field(
+        &self,
+        parent: ContextVarNode,
+        field: ContextVarNode,
+        loc: Loc,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        let mut new_cvar = field.latest_version(analyzer).underlying(analyzer)?.clone();
+        new_cvar.loc = Some(loc);
+
+        let new_cvarnode = ContextVarNode::from(analyzer.add_node(Node::ContextVar(new_cvar)));
+
+        analyzer.add_edge(
+            new_cvarnode.0,
+            parent.0,
+            Edge::Context(ContextEdge::AttrAccess("field")),
+        );
+
+        let sub_fields = field.struct_to_fields(analyzer)?;
+        sub_fields.iter().try_for_each(|sub_field| {
+            self.recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
+        })
+    }
+
     /// May move the variable from an old context to this context
     pub fn maybe_move_var(
         &self,
@@ -442,10 +466,9 @@ impl ContextNode {
                     Edge::Context(ContextEdge::InheritedVariable),
                 );
 
-                let fields = new_cvarnode.struct_to_fields(analyzer)?;
+                let fields = var.struct_to_fields(analyzer)?;
                 fields.iter().try_for_each(|field| {
-                    let _ = self.maybe_move_var(*field, loc, analyzer)?;
-                    Ok(())
+                    self.recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
                 })?;
                 Ok(new_cvarnode.into())
             } else {

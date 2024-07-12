@@ -97,9 +97,8 @@ pub trait StatementParser:
         if let Some(ctx) = parent_ctx {
             if let Node::Context(_) = self.node(ctx) {
                 let c = ContextNode::from(ctx.into());
-                if let Some(errs) =
-                    self.add_if_err(self.is_representation_ok(arena).into_expr_err(stmt.loc()))
-                {
+                let res = self.is_representation_ok(arena).into_expr_err(stmt.loc());
+                if let Some(errs) = self.add_if_err(res) {
                     if !errs.is_empty() {
                         let Some(is_killed) =
                             self.add_if_err(c.is_killed(self).into_expr_err(stmt.loc()))
@@ -142,6 +141,7 @@ pub trait StatementParser:
                     Node::Function(fn_node) => {
                         mods_set = fn_node.modifiers_set;
                         entry_loc = Some(fn_node.loc);
+                        tracing::trace!("creating genesis context for function");
                         let ctx = Context::new(
                             FunctionNode::from(parent.into()),
                             self.add_if_err(
@@ -206,6 +206,13 @@ pub trait StatementParser:
                                 ctx_node,
                                 Edge::Context(ContextEdge::CalldataVariable),
                             );
+
+                            let ty = ContextVarNode::from(cvar_node).ty(self).unwrap();
+                            if let Some(strukt) = ty.maybe_struct() {
+                                strukt
+                                    .add_fields_to_cvar(self, *loc, ContextVarNode::from(cvar_node))
+                                    .unwrap();
+                            }
 
                             Some((param_node, ContextVarNode::from(cvar_node)))
                         } else {
@@ -423,6 +430,7 @@ pub trait StatementParser:
                                     "Variable definition had no left hand side".to_string(),
                                 ));
                             };
+
                             if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
                                 ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                                 return Ok(());

@@ -44,6 +44,7 @@ pub trait StructAccess:
                 field.latest_version_or_inherited_in_ctx(ctx, self).into(),
             ))
         } else if let Some(field) = struct_node.find_field(self, ident) {
+            println!("here1234");
             let cvar = if let Some(parent) = maybe_parent {
                 parent
             } else {

@@ -190,7 +190,7 @@ pub trait AnalyzerLike: GraphLike {
     fn minimize_debug(&self) -> &Option<String>;
     fn minimize_err(&mut self, ctx: Self::ContextNode) -> String;
     fn is_representation_ok(
-        &self,
+        &mut self,
         arena: &RangeArena<<Self as GraphLike>::RangeElem>,
     ) -> Result<Vec<RepresentationErr>, GraphError>;
 }

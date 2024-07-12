@@ -10,7 +10,7 @@ use lazy_static::lazy_static;
 use petgraph::{Directed, Graph};
 use solang_parser::pt::{Identifier, Loc};
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 pub trait RepresentationInvariant {
     fn is_representation_ok(
@@ -400,6 +400,15 @@ impl GraphLike for DummyGraph {
     type RangeElem = Elem<Concrete>;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
         panic!("Dummy Graph")
+    }
+
+    fn mark_dirty(&mut self, _node: NodeIdx) {}
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx> {
+        todo!()
+    }
+
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx> {
+        todo!()
     }
 
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {

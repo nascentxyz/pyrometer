@@ -24,6 +24,7 @@ use solang_parser::{
     },
 };
 
+use std::collections::BTreeSet;
 use std::{
     collections::BTreeMap,
     fs,
@@ -111,6 +112,8 @@ pub struct Analyzer {
     pub block: BlockNode,
     /// The underlying graph holding all of the elements of the contracts
     pub graph: Graph<Node, Edge, Directed, usize>,
+    /// Nodes that may have been mutated in some way
+    pub dirty_nodes: BTreeSet<NodeIdx>,
     /// The entry node - this is the root of the dag, all relevant things should eventually point back to this (otherwise can be discarded)
     pub entry: NodeIdx,
     /// A mapping of a solidity builtin to the index in the graph
@@ -157,6 +160,7 @@ impl Default for Analyzer {
             tmp_msg: None,
             block: BlockNode(0),
             graph: Default::default(),
+            dirty_nodes: Default::default(),
             entry: NodeIndex::from(0),
             builtins: Default::default(),
             user_types: Default::default(),

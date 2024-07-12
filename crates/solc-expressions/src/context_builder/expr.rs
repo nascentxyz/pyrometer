@@ -57,9 +57,8 @@ pub trait ExpressionParser:
             .expr_ret_stack
             .is_empty()
         {
-            if let Some(errs) =
-                self.add_if_err(self.is_representation_ok(arena).into_expr_err(expr.loc()))
-            {
+            let res = self.is_representation_ok(arena).into_expr_err(expr.loc());
+            if let Some(errs) = self.add_if_err(res) {
                 if !errs.is_empty() {
                     ctx.kill(self, expr.loc(), KilledKind::ParseError).unwrap();
                     errs.into_iter().for_each(|err| {

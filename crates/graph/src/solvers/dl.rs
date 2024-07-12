@@ -1059,7 +1059,7 @@ impl DLSolver {
                             };
                             Some(res)
                         }
-                        other => panic!("other op: {}, {constraint:#?}", other.to_string()),
+                        _other => return None,
                     }
                 } else if constraint.rhs.is_part() {
                     let new_rhs = AtomOrPart::Atom(SolverAtom {

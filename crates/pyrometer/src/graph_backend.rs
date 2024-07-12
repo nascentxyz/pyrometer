@@ -35,26 +35,15 @@ impl GraphLike for Analyzer {
         &self.graph
     }
 
-    fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx
-    where
-        Self: std::marker::Sized,
-        Self: GraphLike,
-    {
-        let res = self.graph_mut().add_node(node.into());
-        res
+    fn mark_dirty(&mut self, node: NodeIdx) {
+        self.dirty_nodes.insert(node);
     }
 
-    fn add_edge(
-        &mut self,
-        from_node: impl Into<NodeIdx>,
-        to_node: impl Into<NodeIdx>,
-        edge: impl Into<Self::Edge>,
-    ) where
-        Self: std::marker::Sized,
-        Self: GraphLike,
-    {
-        self.graph_mut()
-            .add_edge(from_node.into(), to_node.into(), edge.into());
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx> {
+        &self.dirty_nodes
+    }
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx> {
+        &mut self.dirty_nodes
     }
 }
 
@@ -1208,6 +1197,15 @@ impl GraphLike for G<'_> {
     type Edge = Edge;
     type RangeElem = Elem<Concrete>;
     fn graph_mut(&mut self) -> &mut Graph<Node, Edge, Directed, usize> {
+        panic!("Should not call this")
+    }
+
+    fn mark_dirty(&mut self, _node: NodeIdx) {}
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx> {
+        panic!("Should not call this")
+    }
+
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx> {
         panic!("Should not call this")
     }
 

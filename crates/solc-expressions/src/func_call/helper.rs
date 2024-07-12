@@ -617,7 +617,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 inheritor_ctx,
                 loc,
                 arena,
-                &|analyzer, arena, inheritor_ctx, loc| {
+                &|analyzer, _arena, inheritor_ctx, loc| {
                     let vars = grantor_ctx.local_vars(analyzer).clone();
                     vars.iter().try_for_each(|(name, old_var)| {
                         let var = old_var.latest_version(analyzer);
@@ -625,27 +625,13 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         if var.is_storage(analyzer).into_expr_err(loc)? {
                             if let Some(inheritor_var) = inheritor_ctx.var_by_name(analyzer, name) {
                                 let inheritor_var = inheritor_var.latest_version(analyzer);
-                                if let Some(r) = underlying.ty.range(analyzer).into_expr_err(loc)? {
-                                    let new_inheritor_var = analyzer
-                                        .advance_var_in_ctx(
-                                            inheritor_var,
-                                            underlying.loc.expect("No loc for val change"),
-                                            inheritor_ctx,
-                                        )
-                                        .unwrap();
-                                    let _ = new_inheritor_var.set_range_min(
-                                        analyzer,
-                                        arena,
-                                        r.range_min().into_owned(),
-                                    );
-                                    let _ = new_inheritor_var.set_range_max(
-                                        analyzer,
-                                        arena,
-                                        r.range_max().into_owned(),
-                                    );
-                                    let _ = new_inheritor_var
-                                        .set_range_exclusions(analyzer, r.exclusions.clone());
-                                }
+                                analyzer
+                                    .advance_var_in_ctx(
+                                        inheritor_var,
+                                        underlying.loc.expect("No loc for val change"),
+                                        inheritor_ctx,
+                                    )
+                                    .unwrap();
                             } else {
                                 let new_in_inheritor =
                                     analyzer.add_node(Node::ContextVar(underlying.clone()));
@@ -662,6 +648,33 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                     var,
                                     Edge::Context(ContextEdge::InheritedVariable),
                                 );
+                                let from_fields =
+                                    var.struct_to_fields(analyzer).into_expr_err(loc)?;
+                                let mut struct_stack = from_fields
+                                    .into_iter()
+                                    .map(|i| (i, new_in_inheritor))
+                                    .collect::<Vec<_>>();
+                                while !struct_stack.is_empty() {
+                                    let (field, parent) = struct_stack.pop().unwrap();
+                                    let underlying =
+                                        field.underlying(analyzer).into_expr_err(loc)?;
+                                    let new_field_in_inheritor =
+                                        analyzer.add_node(Node::ContextVar(underlying.clone()));
+                                    analyzer.add_edge(
+                                        new_field_in_inheritor,
+                                        parent,
+                                        Edge::Context(ContextEdge::AttrAccess("field")),
+                                    );
+
+                                    let sub_fields =
+                                        field.struct_to_fields(analyzer).into_expr_err(loc)?;
+                                    struct_stack.extend(
+                                        sub_fields
+                                            .into_iter()
+                                            .map(|i| (i, new_field_in_inheritor))
+                                            .collect::<Vec<_>>(),
+                                    );
+                                }
                             }
                         }
                         Ok(())

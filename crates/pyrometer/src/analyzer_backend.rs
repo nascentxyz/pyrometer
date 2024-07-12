@@ -2,9 +2,9 @@ use crate::Analyzer;
 use graph::{
     elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContractNode,
-        FuncReconstructionReqs, Function, FunctionNode, FunctionParam, FunctionParamNode,
-        FunctionReturn, KilledKind, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode,
+        ContractNode, FuncReconstructionReqs, Function, FunctionNode, FunctionParam,
+        FunctionParamNode, FunctionReturn, KilledKind, MsgNode,
     },
     AnalyzerBackend, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
@@ -82,6 +82,14 @@ impl AnalyzerLike for Analyzer {
         needed_functions.sort_by(|a, b| a.0.cmp(&b.0));
         needed_functions.dedup();
 
+        println!(
+            "needed functions: {:#?}",
+            needed_functions
+                .iter()
+                .map(|i| i.name(self).unwrap())
+                .collect::<Vec<_>>()
+        );
+
         fn recurse_find(
             contract: ContractNode,
             target_contract: ContractNode,
@@ -110,13 +118,12 @@ impl AnalyzerLike for Analyzer {
             Vec<(FunctionNode, FuncReconstructionReqs)>,
         > = Default::default();
 
-        println!("contract_to_funcs: {contract_to_funcs:#?}");
-
         let mut tys = vec![];
         let mut enums = vec![];
         let mut structs = vec![];
         let mut errs = vec![];
         needed_functions.into_iter().for_each(|func| {
+            println!("iterating with func: {}", func.name(self).unwrap());
             let maybe_func_contract = func.maybe_associated_contract(self);
             let reqs = func.reconstruction_requirements(self);
             reqs.usertypes.iter().for_each(|var| {
@@ -260,11 +267,7 @@ impl AnalyzerLike for Analyzer {
 
                                     Some(reconstruction_edge)
                                 }
-                                e => {
-                                    println!("here4");
-                                    println!("{e:?}");
-                                    None
-                                }
+                                e => None,
                             }
                         }
                         _ => None,
@@ -527,21 +530,30 @@ impl AnalyzerLike for Analyzer {
     }
 
     fn is_representation_ok(
-        &self,
+        &mut self,
         arena: &RangeArena<<Self as GraphLike>::RangeElem>,
     ) -> Result<Vec<RepresentationErr>, GraphError> {
-        let t: Vec<_> = self
-            .graph()
-            .node_indices()
-            .map(|idx| match self.node(idx) {
-                Node::Context(..) => ContextNode::from(idx).is_representation_ok(self, arena),
-                _ => Ok(None),
-            })
-            .collect::<Result<Vec<Option<_>>, GraphError>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        Ok(t)
+        let mut res = vec![];
+        let dirty = self.take_dirty_nodes();
+        for node in dirty {
+            match self.node(node) {
+                Node::Context(..) => {
+                    if let Some(err) = ContextNode::from(node).is_representation_ok(self, arena)? {
+                        res.push(err);
+                    }
+                }
+                Node::ContextVar(..) => {
+                    if ContextVarNode::from(node).maybe_ctx(self).is_some() {
+                        if let Some(err) =
+                            ContextVarNode::from(node).is_representation_ok(self, arena)?
+                        {
+                            res.push(err);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(res)
     }
 }

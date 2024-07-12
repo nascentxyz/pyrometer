@@ -42,6 +42,7 @@ pub trait GraphLike {
     /// Add a node to the graph
     fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx {
         let res = self.graph_mut().add_node(node.into());
+        self.mark_dirty(res);
         res
     }
     /// Get a reference to a node in the graph
@@ -56,6 +57,14 @@ pub trait GraphLike {
             .node_weight_mut(node.into())
             .expect("Index not in graph")
     }
+
+    fn mark_dirty(&mut self, node: NodeIdx);
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx>;
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx>;
+    fn take_dirty_nodes(&mut self) -> BTreeSet<NodeIdx> {
+        std::mem::take(self.dirty_nodes_mut())
+    }
+
     /// Add an edge to the graph
     fn add_edge(
         &mut self,
@@ -63,8 +72,11 @@ pub trait GraphLike {
         to_node: impl Into<NodeIdx>,
         edge: impl Into<Self::Edge>,
     ) {
-        self.graph_mut()
-            .add_edge(from_node.into(), to_node.into(), edge.into());
+        let from = from_node.into();
+        let to = to_node.into();
+        self.mark_dirty(from);
+        self.mark_dirty(to);
+        self.graph_mut().add_edge(from, to, edge.into());
     }
 }
 
