@@ -733,6 +733,14 @@ impl VarType {
         }
     }
 
+    pub fn needs_length(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => Ok(node.needs_length(analyzer)?),
+            Self::Concrete(node) => Ok(node.needs_length(analyzer)?),
+            _ => Ok(false),
+        }
+    }
+
     pub fn ty_eq(&self, other: &Self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         match (self, other) {
             (VarType::User(s, _), VarType::User(o, _)) => {
@@ -788,6 +796,14 @@ impl VarType {
             e => Err(GraphError::NodeConfusion(format!(
                 "Expected to be builtin castable but wasnt: {e:?}"
             ))),
+        }
+    }
+
+    pub fn maybe_struct(&self) -> Option<StructNode> {
+        if let VarType::User(TypeNode::Struct(sn), _) = self {
+            Some(*sn)
+        } else {
+            None
         }
     }
 }

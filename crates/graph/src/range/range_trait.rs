@@ -61,11 +61,11 @@ pub trait Range<T: Ord + Hash> {
     /// Set the range maximum
     fn set_range_max(&mut self, new: Self::ElemTy);
     /// Set the range exclusions
-    fn set_range_exclusions(&mut self, new: Vec<usize>)
+    fn set_range_exclusions(&mut self, new: Vec<Self::ElemTy>)
     where
         Self: std::marker::Sized;
     /// Add an exclusion value to the range
-    fn add_range_exclusion(&mut self, new: usize)
+    fn add_range_exclusion(&mut self, new: Self::ElemTy)
     where
         Self: std::marker::Sized;
     /// Replace a potential recursion causing node index with a new index

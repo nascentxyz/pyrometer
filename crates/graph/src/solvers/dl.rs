@@ -863,7 +863,7 @@ impl DLSolver {
                     .rhs
                     .into_elem()
                     .wrapping_sub(Elem::from(Concrete::from(U256::one())))
-                    .atoms_or_part(analyzer, arena);
+                    .atoms_or_part(None, analyzer, arena);
                 Self::dl_atom_normalize(
                     SolverAtom {
                         ty: OpType::DL,
@@ -1059,7 +1059,7 @@ impl DLSolver {
                             };
                             Some(res)
                         }
-                        other => panic!("other op: {}, {constraint:#?}", other.to_string()),
+                        _other => return None,
                     }
                 } else if constraint.rhs.is_part() {
                     let new_rhs = AtomOrPart::Atom(SolverAtom {

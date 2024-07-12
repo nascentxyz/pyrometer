@@ -1057,7 +1057,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             RangeOp::Neq => {
                 // check if contains
-                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
+                let mut elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
 
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range
@@ -1097,8 +1097,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         .into_expr_err(loc)?;
                 } else {
                     // just add as an exclusion
-                    let idx = arena.idx_or_upsert(elem, self);
-                    nonconst_range.add_range_exclusion(idx);
+                    elem.arenaize(self, arena).into_expr_err(loc)?;
+                    nonconst_range.add_range_exclusion(elem);
                     nonconst_var
                         .set_range_exclusions(self, nonconst_range.exclusions)
                         .into_expr_err(loc)?;
@@ -1304,18 +1304,20 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     return Ok(true);
                 }
 
-                let rhs_elem = Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
+                let mut rhs_elem =
+                    Elem::from(new_rhs.latest_version_or_inherited_in_ctx(ctx, self));
                 // just add as an exclusion
-                let idx = arena.idx_or_upsert(rhs_elem, self);
-                lhs_range.add_range_exclusion(idx);
+                rhs_elem.arenaize(self, arena).into_expr_err(loc)?;
+                lhs_range.add_range_exclusion(rhs_elem);
                 new_lhs
                     .set_range_exclusions(self, lhs_range.exclusions)
                     .into_expr_err(loc)?;
 
-                let lhs_elem = Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self));
+                let mut lhs_elem =
+                    Elem::from(new_lhs.latest_version_or_inherited_in_ctx(ctx, self));
                 // just add as an exclusion
-                let idx = arena.idx_or_upsert(lhs_elem, self);
-                rhs_range.add_range_exclusion(idx);
+                lhs_elem.arenaize(self, arena).into_expr_err(loc)?;
+                rhs_range.add_range_exclusion(lhs_elem);
                 new_rhs
                     .set_range_exclusions(self, rhs_range.exclusions)
                     .into_expr_err(loc)?;

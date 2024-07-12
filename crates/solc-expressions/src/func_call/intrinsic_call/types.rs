@@ -189,7 +189,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                             .into_expr_err(loc)?;
                     }
 
-                    if cvar.is_indexable(analyzer).into_expr_err(loc)? {
+                    if cvar.needs_length(analyzer).into_expr_err(loc)? {
                         // input is indexable. get the length attribute, create a new length for the casted type
                         let _ = analyzer.create_length(
                             arena,

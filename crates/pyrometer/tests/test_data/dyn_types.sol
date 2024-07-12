@@ -6,7 +6,7 @@ contract DynTypes {
         uint256 b;
     }
 
-    mapping (address => Strukt) public someMapping;
+    mapping(address => Strukt) public someMapping;
 
     function bytes_dyn(bytes calldata x) public {
         bytes memory y = x;
@@ -15,7 +15,7 @@ contract DynTypes {
         require(y.length == 9);
     }
 
-    function array_dyn(uint256[] calldata x) public {
+    function array_dyn(uint256[] memory x) public {
         x[0] = 5;
         require(x.length < 10);
         uint256[] memory y = x;
@@ -23,7 +23,10 @@ contract DynTypes {
         require(y.length == 9);
     }
 
-    function nested_bytes_dyn(bytes[] calldata x, uint y) public returns (bytes1) {
+    function nested_bytes_dyn(
+        bytes[] memory x,
+        uint y
+    ) public returns (bytes1) {
         bytes memory a = hex"1337";
         x[0] = a;
         require(x[0][0] == hex"13");
@@ -71,11 +74,10 @@ contract DynTypes {
         h[0] = holder;
         inLoop(h, tokens);
     }
-    
+
     function inLoop(address[] memory holders, address[] memory tokens) public {
         for (uint j = 0; j < holders.length; j++) {
             address holder = holders[j];
         }
     }
-
 }

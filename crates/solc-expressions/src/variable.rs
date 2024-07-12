@@ -357,6 +357,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
+
+                if let Some(strukt) = lhs.ty(self).into_expr_err(loc)?.maybe_struct() {
+                    strukt
+                        .add_fields_to_cvar(self, loc, lhs)
+                        .into_expr_err(loc)?;
+                }
                 let rhs = ContextVarNode::from(*rhs);
 
                 self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
@@ -370,6 +376,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             (ExprRet::Single(ty), None) => {
                 let name = var_decl.name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
+                let maybe_struct = ty.maybe_struct();
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
@@ -385,6 +392,11 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
+                if let Some(strukt) = maybe_struct {
+                    strukt
+                        .add_fields_to_cvar(self, loc, lhs)
+                        .into_expr_err(loc)?;
+                }
                 Ok(false)
             }
             (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => Ok(rhs_sides
@@ -549,6 +561,30 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         cvar_node.0,
                         Edge::Context(ContextEdge::InheritedVariable),
                     );
+
+                    let from_fields = cvar_node.struct_to_fields(self).into_expr_err(loc)?;
+                    let mut struct_stack = from_fields
+                        .into_iter()
+                        .map(|i| (i, new_cvarnode))
+                        .collect::<Vec<_>>();
+                    while let Some((field, parent)) = struct_stack.pop() {
+                        let underlying = field.underlying(self).into_expr_err(loc)?;
+                        let new_field_in_inheritor =
+                            self.add_node(Node::ContextVar(underlying.clone()));
+                        self.add_edge(
+                            new_field_in_inheritor,
+                            parent,
+                            Edge::Context(ContextEdge::AttrAccess("field")),
+                        );
+
+                        let sub_fields = field.struct_to_fields(self).into_expr_err(loc)?;
+                        struct_stack.extend(
+                            sub_fields
+                                .into_iter()
+                                .map(|i| (i, new_field_in_inheritor))
+                                .collect::<Vec<_>>(),
+                        );
+                    }
                 } else {
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
@@ -558,6 +594,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         }
+
+        self.mark_dirty(new_cvarnode);
 
         Ok(ContextVarNode::from(new_cvarnode))
     }
@@ -620,6 +658,30 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         cvar_node.0,
                         Edge::Context(ContextEdge::InheritedVariable),
                     );
+
+                    let from_fields = cvar_node.struct_to_fields(self).into_expr_err(loc)?;
+                    let mut struct_stack = from_fields
+                        .into_iter()
+                        .map(|i| (i, new_cvarnode))
+                        .collect::<Vec<_>>();
+                    while let Some((field, parent)) = struct_stack.pop() {
+                        let underlying = field.underlying(self).into_expr_err(loc)?;
+                        let new_field_in_inheritor =
+                            self.add_node(Node::ContextVar(underlying.clone()));
+                        self.add_edge(
+                            new_field_in_inheritor,
+                            parent,
+                            Edge::Context(ContextEdge::AttrAccess("field")),
+                        );
+
+                        let sub_fields = field.struct_to_fields(self).into_expr_err(loc)?;
+                        struct_stack.extend(
+                            sub_fields
+                                .into_iter()
+                                .map(|i| (i, new_field_in_inheritor))
+                                .collect::<Vec<_>>(),
+                        );
+                    }
                 } else {
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
@@ -629,6 +691,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         }
+
+        self.mark_dirty(new_cvarnode);
 
         Ok(ContextVarNode::from(new_cvarnode))
     }

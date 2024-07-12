@@ -6,13 +6,13 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
 use shared::{ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
-use solc_expressions::{FnCallBuilder, StatementParser};
+use solc_expressions::StatementParser;
 use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
 use ahash::AHashMap;
 use ariadne::{Cache, Color, Config, Fmt, Label, Report, ReportKind, Source, Span};
-use petgraph::{graph::*, stable_graph::StableGraph, Directed};
+use petgraph::{graph::*, Directed};
 use serde_json::Value;
 use solang_parser::{
     diagnostics::Diagnostic,
@@ -24,6 +24,7 @@ use solang_parser::{
     },
 };
 
+use std::collections::BTreeSet;
 use std::{
     collections::BTreeMap,
     fs,
@@ -111,6 +112,8 @@ pub struct Analyzer {
     pub block: BlockNode,
     /// The underlying graph holding all of the elements of the contracts
     pub graph: Graph<Node, Edge, Directed, usize>,
+    /// Nodes that may have been mutated in some way
+    pub dirty_nodes: BTreeSet<NodeIdx>,
     /// The entry node - this is the root of the dag, all relevant things should eventually point back to this (otherwise can be discarded)
     pub entry: NodeIdx,
     /// A mapping of a solidity builtin to the index in the graph
@@ -157,6 +160,7 @@ impl Default for Analyzer {
             tmp_msg: None,
             block: BlockNode(0),
             graph: Default::default(),
+            dirty_nodes: Default::default(),
             entry: NodeIndex::from(0),
             builtins: Default::default(),
             user_types: Default::default(),
@@ -569,59 +573,59 @@ impl Analyzer {
         });
 
         elems.into_iter().for_each(|final_pass_item| {
-            final_pass_item
-                .funcs
-                .iter()
-                .for_each(|func| self.analyze_fn_calls(*func));
-            let mut func_mapping = BTreeMap::default();
-            let mut call_dep_graph: StableGraph<FunctionNode, usize> = StableGraph::default();
-            let fn_calls_fns = std::mem::take(&mut self.fn_calls_fns);
-            fn_calls_fns.iter().for_each(|(func, calls)| {
-                if !calls.is_empty() {
-                    let func_idx = if let Some(idx) = func_mapping.get(func) {
-                        *idx
-                    } else {
-                        let idx = call_dep_graph.add_node(*func);
-                        func_mapping.insert(func, idx);
-                        idx
-                    };
+            // final_pass_item
+            //     .funcs
+            //     .iter()
+            //     .for_each(|func| self.analyze_fn_calls(*func));
+            // let mut func_mapping = BTreeMap::default();
+            // let mut call_dep_graph: StableGraph<FunctionNode, usize> = StableGraph::default();
+            // let fn_calls_fns = std::mem::take(&mut self.fn_calls_fns);
+            // fn_calls_fns.iter().for_each(|(func, calls)| {
+            //     if !calls.is_empty() {
+            //         let func_idx = if let Some(idx) = func_mapping.get(func) {
+            //             *idx
+            //         } else {
+            //             let idx = call_dep_graph.add_node(*func);
+            //             func_mapping.insert(func, idx);
+            //             idx
+            //         };
 
-                    calls.iter().for_each(|call| {
-                        let call_idx = if let Some(idx) = func_mapping.get(call) {
-                            *idx
-                        } else {
-                            let idx = call_dep_graph.add_node(*call);
-                            func_mapping.insert(call, idx);
-                            idx
-                        };
+            //         calls.iter().for_each(|call| {
+            //             let call_idx = if let Some(idx) = func_mapping.get(call) {
+            //                 *idx
+            //             } else {
+            //                 let idx = call_dep_graph.add_node(*call);
+            //                 func_mapping.insert(call, idx);
+            //                 idx
+            //             };
 
-                        call_dep_graph.add_edge(func_idx, call_idx, 0);
-                    });
-                } else {
-                    self.handled_funcs.push(*func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(arena, body, false, Some(*func));
-                    }
-                }
-            });
+            //             call_dep_graph.add_edge(func_idx, call_idx, 0);
+            //         });
+            //     } else {
+            //         self.handled_funcs.push(*func);
+            //         if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+            //             self.parse_ctx_statement(arena, body, false, Some(*func));
+            //         }
+            //     }
+            // });
 
-            let mut res = petgraph::algo::toposort(&call_dep_graph, None);
-            while let Err(cycle) = res {
-                call_dep_graph.remove_node(cycle.node_id());
-                res = petgraph::algo::toposort(&call_dep_graph, None);
-            }
+            // let mut res = petgraph::algo::toposort(&call_dep_graph, None);
+            // while let Err(cycle) = res {
+            //     call_dep_graph.remove_node(cycle.node_id());
+            //     res = petgraph::algo::toposort(&call_dep_graph, None);
+            // }
 
-            let indices = res.unwrap();
+            // let indices = res.unwrap();
 
-            indices.iter().for_each(|idx| {
-                let func = call_dep_graph.node_weight(*idx).unwrap();
-                if !self.handled_funcs.contains(func) {
-                    self.handled_funcs.push(*func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(arena, body, false, Some(*func));
-                    }
-                }
-            });
+            // indices.iter().for_each(|idx| {
+            //     let func = call_dep_graph.node_weight(*idx).unwrap();
+            //     if !self.handled_funcs.contains(func) {
+            //         self.handled_funcs.push(*func);
+            //         if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+            //             self.parse_ctx_statement(arena, body, false, Some(*func));
+            //         }
+            //     }
+            // });
 
             final_pass_item.funcs.into_iter().for_each(|func| {
                 if !self.handled_funcs.contains(&func) {
@@ -631,7 +635,7 @@ impl Analyzer {
                 }
             });
 
-            self.fn_calls_fns = fn_calls_fns;
+            // self.fn_calls_fns = fn_calls_fns;
         });
     }
 

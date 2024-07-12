@@ -275,6 +275,7 @@ pub static LIA_OPS: &[RangeOp] = &[
 pub trait Atomize {
     fn atoms_or_part(
         &self,
+        prev: Option<&Self>,
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> AtomOrPart;
@@ -289,11 +290,20 @@ impl Atomize for Elem<Concrete> {
     #[tracing::instrument(level = "trace", skip_all)]
     fn atoms_or_part(
         &self,
+        prev: Option<&Self>,
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> AtomOrPart {
+        if let Some(prev) = prev {
+            if *prev == *self {
+                return AtomOrPart::Part(self.clone());
+            }
+        }
         match self {
-            Elem::Arena(_) => self.dearenaize_clone(arena).atoms_or_part(analyzer, arena),
+            Elem::Arena(_) => {
+                self.dearenaize_clone(arena)
+                    .atoms_or_part(Some(self), analyzer, arena)
+            }
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             _e @ Elem::Expr(expr) => {
@@ -301,17 +311,17 @@ impl Atomize for Elem<Concrete> {
                 match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
                     MaybeCollapsed::Concretes(_l, _r) => {
                         let exec_res = expr.exec_op(true, analyzer, arena).unwrap();
-                        return exec_res.atoms_or_part(analyzer, arena);
+                        return exec_res.atoms_or_part(Some(self), analyzer, arena);
                     }
                     MaybeCollapsed::Collapsed(elem) => {
-                        return elem.atoms_or_part(analyzer, arena);
+                        return elem.atoms_or_part(Some(self), analyzer, arena);
                     }
                     MaybeCollapsed::Not(..) => {}
                 }
 
                 match (
-                    expr.lhs.atoms_or_part(analyzer, arena),
-                    expr.rhs.atoms_or_part(analyzer, arena),
+                    expr.lhs.atoms_or_part(Some(self), analyzer, arena),
+                    expr.rhs.atoms_or_part(Some(self), analyzer, arena),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
                         // println!("part part");
@@ -348,28 +358,22 @@ impl Atomize for Elem<Concrete> {
                                 };
                                 AtomOrPart::Atom(atom)
                             }
-                            (Elem::Expr(_), Elem::Expr(_)) => {
-                                todo!("here");
-                            }
+                            (Elem::Expr(_), Elem::Expr(_)) => AtomOrPart::Part(self.clone()),
                             (Elem::Expr(_), Elem::Reference(Reference { .. })) => {
-                                todo!("here1");
+                                AtomOrPart::Part(self.clone())
                             }
                             (Elem::Reference(Reference { .. }), Elem::Expr(_)) => {
-                                todo!("here2");
+                                AtomOrPart::Part(self.clone())
                             }
-                            (Elem::Expr(_), Elem::Concrete(_)) => {
-                                todo!("here3");
-                            }
-                            (Elem::Concrete(_), Elem::Expr(_)) => {
-                                todo!("here4");
-                            }
+                            (Elem::Expr(_), Elem::Concrete(_)) => AtomOrPart::Part(self.clone()),
+                            (Elem::Concrete(_), Elem::Expr(_)) => AtomOrPart::Part(self.clone()),
                             (Elem::Concrete(_), Elem::Concrete(_)) => {
                                 let _ = expr.clone().arenaize(analyzer, arena);
                                 let res = expr.exec_op(true, analyzer, arena).unwrap();
                                 if res == Elem::Expr(expr.clone()) {
                                     AtomOrPart::Part(res)
                                 } else {
-                                    res.atoms_or_part(analyzer, arena)
+                                    res.atoms_or_part(Some(self), analyzer, arena)
                                 }
                             }
                             (Elem::ConcreteDyn(_), _) => AtomOrPart::Part(Elem::Null),
@@ -412,7 +416,7 @@ impl Atomize for Elem<Concrete> {
             ConcreteDyn(_) => None, //{ println!("was concDyn"); None},
             Expr(_) => {
                 // println!("atomized: was expr");
-                let AtomOrPart::Atom(mut a) = self.atoms_or_part(analyzer, arena) else {
+                let AtomOrPart::Atom(mut a) = self.atoms_or_part(None, analyzer, arena) else {
                     // println!("returning none");
                     return None;
                 };

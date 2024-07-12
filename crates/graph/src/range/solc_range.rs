@@ -13,18 +13,14 @@ use std::{borrow::Cow, collections::BTreeMap};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub struct FlattenedRange {
-    pub min: usize,
-    pub max: usize,
-    pub exclusions: Vec<usize>,
+    pub min: Elem<Concrete>,
+    pub max: Elem<Concrete>,
+    pub exclusions: Vec<Elem<Concrete>>,
 }
 
 impl From<FlattenedRange> for SolcRange {
     fn from(range: FlattenedRange) -> Self {
-        SolcRange::new(
-            Elem::Arena(range.min),
-            Elem::Arena(range.max),
-            range.exclusions,
-        )
+        SolcRange::new(range.min, range.max, range.exclusions)
     }
 }
 
@@ -34,7 +30,7 @@ pub struct SolcRange {
     pub min_cached: Option<usize>,
     pub max: Elem<Concrete>,
     pub max_cached: Option<usize>,
-    pub exclusions: Vec<usize>,
+    pub exclusions: Vec<Elem<Concrete>>,
     pub flattened: Option<FlattenedRange>,
 }
 
@@ -56,7 +52,7 @@ impl AsDotStr for SolcRange {
                 .s,
             self.exclusions
                 .iter()
-                .map(|excl| Elem::Arena(*excl).to_range_string(false, analyzer, arena).s)
+                .map(|excl| excl.to_range_string(false, analyzer, arena).s)
                 .collect::<Vec<_>>()
                 .join(", ")
         )
@@ -102,7 +98,7 @@ impl SolcRange {
         Ok(deps)
     }
 
-    pub fn new(min: Elem<Concrete>, max: Elem<Concrete>, exclusions: Vec<usize>) -> Self {
+    pub fn new(min: Elem<Concrete>, max: Elem<Concrete>, exclusions: Vec<Elem<Concrete>>) -> Self {
         Self {
             min,
             min_cached: None,
@@ -121,18 +117,12 @@ impl SolcRange {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
         if let Some(ref mut flattened) = &mut self.flattened {
-            Elem::Arena(flattened.min).replace_dep(
-                to_replace,
-                replacement.clone(),
-                analyzer,
-                arena,
-            );
-            Elem::Arena(flattened.max).replace_dep(
-                to_replace,
-                replacement.clone(),
-                analyzer,
-                arena,
-            );
+            flattened
+                .min
+                .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+            flattened
+                .max
+                .replace_dep(to_replace, replacement.clone(), analyzer, arena);
         }
         self.min
             .replace_dep(to_replace, replacement.clone(), analyzer, arena);
@@ -538,22 +528,24 @@ impl SolcRange {
             return Ok(cached.clone());
         }
 
-        let mut min = Elem::Arena(arena.idx_or_upsert(self.min.clone(), analyzer));
-        let mut max = Elem::Arena(arena.idx_or_upsert(self.max.clone(), analyzer));
+        let mut min = self.min.clone();
+        min.arenaize(analyzer, arena)?;
         min.cache_flatten(analyzer, arena)?;
+        let mut max = self.max.clone();
+        max.arenaize(analyzer, arena)?;
         max.cache_flatten(analyzer, arena)?;
 
         self.min = min.clone();
         self.max = max.clone();
 
-        let simp_min = min.simplify_minimize(analyzer, arena)?;
-        let simp_max = max.simplify_maximize(analyzer, arena)?;
-        let min = arena.idx_or_upsert(simp_min, analyzer);
-        let max = arena.idx_or_upsert(simp_max, analyzer);
+        let mut simp_min = min.simplify_minimize(analyzer, arena)?;
+        simp_min.arenaize(analyzer, arena)?;
+        let mut simp_max = max.simplify_maximize(analyzer, arena)?;
+        simp_max.arenaize(analyzer, arena)?;
 
         let flat_range = FlattenedRange {
-            min,
-            max,
+            min: simp_min,
+            max: simp_max,
             exclusions: self.exclusions.clone(),
         };
         self.flattened = Some(flat_range.clone());
@@ -583,10 +575,12 @@ impl Range<Concrete> for SolcRange {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
-        let min = std::mem::take(&mut self.min);
-        let max = std::mem::take(&mut self.max);
-        self.min = Elem::Arena(arena.idx_or_upsert(min, analyzer));
-        self.max = Elem::Arena(arena.idx_or_upsert(max, analyzer));
+        let mut min = std::mem::take(&mut self.min);
+        let mut max = std::mem::take(&mut self.max);
+        min.arenaize(analyzer, arena)?;
+        max.arenaize(analyzer, arena)?;
+        self.min = min;
+        self.max = max;
         if self.max_cached.is_none() {
             let max = self.range_max_mut();
             max.cache_maximize(analyzer, arena)?;
@@ -646,11 +640,7 @@ impl Range<Concrete> for SolcRange {
     }
 
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {
-        self.exclusions
-            .clone()
-            .into_iter()
-            .map(Elem::Arena)
-            .collect()
+        self.exclusions.clone().into_iter().collect()
     }
     fn set_range_min(&mut self, new: Self::ElemTy) {
         self.min_cached = None;
@@ -663,14 +653,15 @@ impl Range<Concrete> for SolcRange {
         self.max = new;
     }
 
-    fn add_range_exclusion(&mut self, new: usize) {
+    fn add_range_exclusion(&mut self, new: Elem<Concrete>) {
         if !self.exclusions.contains(&new) {
             self.exclusions.push(new);
         }
     }
-    fn set_range_exclusions(&mut self, new: Vec<usize>) {
+    fn set_range_exclusions(&mut self, new: Vec<Elem<Concrete>>) {
         self.exclusions = new;
     }
+
     fn filter_min_recursion(
         &mut self,
         self_idx: NodeIdx,

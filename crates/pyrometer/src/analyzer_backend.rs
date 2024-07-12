@@ -2,13 +2,16 @@ use crate::Analyzer;
 use graph::{
     elem::Elem,
     nodes::{
-        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContractNode,
-        FuncReconstructionReqs, Function, FunctionNode, FunctionParam, FunctionParamNode,
-        FunctionReturn, KilledKind, MsgNode,
+        BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode,
+        ContractNode, FuncReconstructionReqs, Function, FunctionNode, FunctionParam,
+        FunctionParamNode, FunctionReturn, KilledKind, MsgNode,
     },
-    AnalyzerBackend, Edge, GraphBackend, Node, TypeNode, VarType,
+    AnalyzerBackend, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
-use shared::{AnalyzerLike, ApplyStats, ExprErr, GraphLike, IntoExprErr, NodeIdx, RangeArena};
+use shared::{
+    AnalyzerLike, ApplyStats, ExprErr, GraphError, GraphLike, IntoExprErr, NodeIdx, RangeArena,
+    RepresentationErr,
+};
 
 use ahash::AHashMap;
 use ethers_core::types::U256;
@@ -65,7 +68,8 @@ impl AnalyzerLike for Analyzer {
 
     fn minimize_err(&mut self, ctx: ContextNode) -> String {
         let genesis = ctx.genesis(self).unwrap();
-        let family_tree = genesis.family_tree(self).unwrap();
+        let mut family_tree = genesis.family_tree(self).unwrap();
+        family_tree.push(genesis);
         let mut needed_functions = family_tree
             .iter()
             .map(|c| c.associated_fn(self).unwrap())
@@ -77,6 +81,14 @@ impl AnalyzerLike for Analyzer {
         needed_functions.extend(applies);
         needed_functions.sort_by(|a, b| a.0.cmp(&b.0));
         needed_functions.dedup();
+
+        println!(
+            "needed functions: {:#?}",
+            needed_functions
+                .iter()
+                .map(|i| i.name(self).unwrap())
+                .collect::<Vec<_>>()
+        );
 
         fn recurse_find(
             contract: ContractNode,
@@ -111,6 +123,7 @@ impl AnalyzerLike for Analyzer {
         let mut structs = vec![];
         let mut errs = vec![];
         needed_functions.into_iter().for_each(|func| {
+            println!("iterating with func: {}", func.name(self).unwrap());
             let maybe_func_contract = func.maybe_associated_contract(self);
             let reqs = func.reconstruction_requirements(self);
             reqs.usertypes.iter().for_each(|var| {
@@ -230,7 +243,9 @@ impl AnalyzerLike for Analyzer {
 
     fn add_expr_err(&mut self, err: ExprErr) {
         if self.debug_panic() {
+            println!("here1");
             if let Some(path) = self.minimize_debug().clone() {
+                println!("here2");
                 let reconstruction_edge: ContextNode = self
                     .graph
                     .node_indices()
@@ -238,6 +253,7 @@ impl AnalyzerLike for Analyzer {
                         Node::Context(context) if context.killed.is_some() => {
                             match context.killed.unwrap() {
                                 (_, KilledKind::ParseError) => {
+                                    println!("here3");
                                     // println!("found context: {}", context.path);
                                     let edges = graph::nodes::ContextNode::from(node)
                                         .all_edges(self)
@@ -251,14 +267,16 @@ impl AnalyzerLike for Analyzer {
 
                                     Some(reconstruction_edge)
                                 }
-                                _ => None,
+                                e => None,
                             }
                         }
                         _ => None,
                     })
                     .unwrap();
+                println!("here5");
 
                 let min_str = self.minimize_err(reconstruction_edge);
+                println!("here6: {min_str}");
                 // println!("reconstructed source:\n{} placed in {}", min_str, path);
 
                 let mut file = std::fs::OpenOptions::new()
@@ -509,5 +527,33 @@ impl AnalyzerLike for Analyzer {
     }
     fn minimize_debug(&self) -> &Option<String> {
         &self.minimize_debug
+    }
+
+    fn is_representation_ok(
+        &mut self,
+        arena: &RangeArena<<Self as GraphLike>::RangeElem>,
+    ) -> Result<Vec<RepresentationErr>, GraphError> {
+        let mut res = vec![];
+        let dirty = self.take_dirty_nodes();
+        for node in dirty {
+            match self.node(node) {
+                Node::Context(..) => {
+                    if let Some(err) = ContextNode::from(node).is_representation_ok(self, arena)? {
+                        res.push(err);
+                    }
+                }
+                Node::ContextVar(..) => {
+                    if ContextVarNode::from(node).maybe_ctx(self).is_some() {
+                        if let Some(err) =
+                            ContextVarNode::from(node).is_representation_ok(self, arena)?
+                        {
+                            res.push(err);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(res)
     }
 }

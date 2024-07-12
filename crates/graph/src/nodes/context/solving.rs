@@ -54,10 +54,10 @@ impl ContextNode {
         Ok(ranges
             .iter()
             .filter_map(|(_dep, range)| {
-                if let Some(atom) = Elem::Arena(range.min).atomize(analyzer, arena) {
+                if let Some(atom) = range.min.atomize(analyzer, arena) {
                     Some(atom)
                 } else {
-                    Elem::Arena(range.max).atomize(analyzer, arena)
+                    range.max.atomize(analyzer, arena)
                 }
             })
             .collect::<Vec<SolverAtom>>())
@@ -131,7 +131,7 @@ impl ContextNode {
                 let r = range.flattened_range(analyzer, arena)?.into_owned();
 
                 // add the atomic constraint
-                if let Some(atom) = Elem::Arena(r.min).atomize(analyzer, arena) {
+                if let Some(atom) = r.min.atomize(analyzer, arena) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
                     let constraints = solver.add_constraints(vec![atom], analyzer, arena);
                     constraints
@@ -140,7 +140,7 @@ impl ContextNode {
                             solver.add_constraint(constraint, normalized);
                         });
                     self.underlying_mut(analyzer)?.dl_solver = solver;
-                } else if let Some(atom) = Elem::Arena(r.max).atomize(analyzer, arena) {
+                } else if let Some(atom) = r.max.atomize(analyzer, arena) {
                     let mut solver = std::mem::take(&mut self.underlying_mut(analyzer)?.dl_solver);
                     let constraints = solver.add_constraints(vec![atom], analyzer, arena);
                     constraints

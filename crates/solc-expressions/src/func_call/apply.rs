@@ -41,8 +41,9 @@ pub trait FuncApplier:
         seen: &mut Vec<FunctionNode>,
     ) -> Result<bool, ExprErr> {
         tracing::trace!(
-            "Trying to apply function: {}",
-            func.loc_specified_name(self).into_expr_err(loc)?
+            "Trying to apply function: {} onto context {}",
+            func.loc_specified_name(self).into_expr_err(loc)?,
+            ctx.path(self)
         );
         // ensure no modifiers (for now)
         // if pure function:
@@ -55,8 +56,8 @@ pub trait FuncApplier:
             FuncVis::Pure => {
                 // pure functions are guaranteed to not require the use of state, so
                 // the only things we care about are function inputs and function outputs
-                if let Some(body_ctx) = func.maybe_body_ctx(self) {
-                    if body_ctx
+                if let Some(apply_ctx) = func.maybe_body_ctx(self) {
+                    if apply_ctx
                         .underlying(self)
                         .into_expr_err(loc)?
                         .child
@@ -66,21 +67,23 @@ pub trait FuncApplier:
                             "Applying function: {}",
                             func.name(self).into_expr_err(loc)?
                         );
-                        let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
+                        let edges = apply_ctx.successful_edges(self).into_expr_err(loc)?;
                         match edges.len() {
                             0 => {}
                             1 => {
-                                self.apply_pure(
+                                if !self.apply_pure(
                                     arena,
                                     loc,
                                     func,
                                     params,
                                     func_inputs,
-                                    body_ctx,
+                                    apply_ctx,
                                     edges[0],
                                     ctx,
                                     false,
-                                )?;
+                                )? {
+                                    ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
+                                }
                                 return Ok(true);
                             }
                             2.. => {
@@ -99,7 +102,7 @@ pub trait FuncApplier:
                                             func,
                                             params,
                                             func_inputs,
-                                            body_ctx,
+                                            apply_ctx,
                                             edge,
                                             *new_fork,
                                             true,
@@ -122,17 +125,20 @@ pub trait FuncApplier:
                             "Childless pure apply: {}",
                             func.name(self).into_expr_err(loc)?
                         );
-                        self.apply_pure(
+                        let res = self.apply_pure(
                             arena,
                             loc,
                             func,
                             params,
                             func_inputs,
-                            body_ctx,
-                            body_ctx,
+                            apply_ctx,
+                            apply_ctx,
                             ctx,
                             false,
                         )?;
+                        if !res {
+                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
+                        }
                         return Ok(true);
                     }
                 } else {
@@ -185,6 +191,20 @@ pub trait FuncApplier:
                     }
                 } else {
                     tracing::trace!("View function not processed");
+                    if ctx.associated_fn(self) == Ok(func) {
+                        return Ok(false);
+                    }
+
+                    if seen.contains(&func) {
+                        return Ok(false);
+                    }
+
+                    self.handled_funcs_mut().push(func);
+                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+                        self.parse_ctx_statement(arena, body, false, Some(func));
+                    }
+
+                    seen.push(func);
                 }
             }
             FuncVis::Mut => {
@@ -218,6 +238,20 @@ pub trait FuncApplier:
                     }
                 } else {
                     tracing::trace!("Mut function not processed");
+                    if ctx.associated_fn(self) == Ok(func) {
+                        return Ok(false);
+                    }
+
+                    if seen.contains(&func) {
+                        return Ok(false);
+                    }
+
+                    self.handled_funcs_mut().push(func);
+                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
+                        self.parse_ctx_statement(arena, body, false, Some(func));
+                    }
+
+                    seen.push(func);
                 }
             }
         }
@@ -232,13 +266,14 @@ pub trait FuncApplier:
         func: FunctionNode,
         params: &[FunctionParamNode],
         func_inputs: &[ContextVarNode],
-        body_ctx: ContextNode,
+        apply_ctx: ContextNode,
         resulting_edge: ContextNode,
         target_ctx: ContextNode,
         forks: bool,
     ) -> Result<bool, ExprErr> {
         let replacement_map =
-            self.basic_inputs_replacement_map(arena, body_ctx, loc, params, func_inputs)?;
+            self.basic_inputs_replacement_map(arena, apply_ctx, loc, params, func_inputs)?;
+        tracing::trace!("applying pure function - replacement map: {replacement_map:#?}");
         let mut rets: Vec<_> = resulting_edge
             .return_nodes(self)
             .into_expr_err(loc)?
@@ -400,7 +435,16 @@ pub trait FuncApplier:
         );
         let underlying_mut = target_ctx.underlying_mut(self).into_expr_err(loc)?;
         underlying_mut.path = new_path;
-        underlying_mut.applies.push(func);
+
+        target_ctx
+            .propogate_applied(func, self)
+            .into_expr_err(loc)?;
+        if let Some(body) = func.maybe_body_ctx(self) {
+            for app in body.underlying(self).into_expr_err(loc)?.applies.clone() {
+                target_ctx.propogate_applied(app, self).into_expr_err(loc)?;
+            }
+        }
+
         target_ctx
             .push_expr(ExprRet::Multi(rets), self)
             .into_expr_err(loc)?;
@@ -411,12 +455,12 @@ pub trait FuncApplier:
     fn basic_inputs_replacement_map(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
+        apply_ctx: ContextNode,
         loc: Loc,
         params: &[FunctionParamNode],
         func_inputs: &[ContextVarNode],
     ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, ExprErr> {
-        let inputs = ctx.input_variables(self);
+        let inputs = apply_ctx.input_variables(self);
         let mut replacement_map: BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)> =
             BTreeMap::default();
         params
@@ -425,13 +469,11 @@ pub trait FuncApplier:
             .try_for_each(|(param, func_input)| {
                 if let Some(name) = param.maybe_name(self).into_expr_err(loc)? {
                     let mut new_cvar = func_input
-                        .latest_version_or_inherited_in_ctx(ctx, self)
+                        .latest_version_or_inherited_in_ctx(apply_ctx, self)
                         .underlying(self)
                         .into_expr_err(loc)?
                         .clone();
                     new_cvar.loc = Some(param.loc(self).unwrap());
-                    // new_cvar.name = name.clone();
-                    // new_cvar.display_name = name.clone();
                     new_cvar.is_tmp = false;
                     new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
                         param.underlying(self).unwrap().storage
@@ -444,12 +486,6 @@ pub trait FuncApplier:
                     let replacement =
                         ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
 
-                    self.add_edge(
-                        replacement,
-                        *func_input,
-                        Edge::Context(ContextEdge::InputVariable),
-                    );
-
                     if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
                         if !replacement.ty_eq_ty(&param_ty, self).into_expr_err(loc)? {
                             replacement
@@ -460,7 +496,7 @@ pub trait FuncApplier:
 
                     if let Some(_len_var) = replacement.array_to_len_var(self) {
                         // bring the length variable along as well
-                        self.get_length(arena, ctx, loc, *func_input, false)
+                        self.get_length(arena, apply_ctx, loc, *func_input, false)
                             .unwrap();
                     }
 
@@ -470,21 +506,18 @@ pub trait FuncApplier:
                         let new_min = r.range_min().into_owned().cast(r2.range_min().into_owned());
                         let new_max = r.range_max().into_owned().cast(r2.range_max().into_owned());
                         replacement
-                            .latest_version_or_inherited_in_ctx(ctx, self)
+                            .latest_version_or_inherited_in_ctx(apply_ctx, self)
                             .try_set_range_min(self, arena, new_min)
                             .into_expr_err(loc)?;
                         replacement
-                            .latest_version_or_inherited_in_ctx(ctx, self)
+                            .latest_version_or_inherited_in_ctx(apply_ctx, self)
                             .try_set_range_max(self, arena, new_max)
                             .into_expr_err(loc)?;
                         replacement
-                            .latest_version_or_inherited_in_ctx(ctx, self)
+                            .latest_version_or_inherited_in_ctx(apply_ctx, self)
                             .try_set_range_exclusions(self, r.exclusions)
                             .into_expr_err(loc)?;
                     }
-
-                    ctx.add_var(replacement, self).unwrap();
-                    self.add_edge(replacement, ctx, Edge::Context(ContextEdge::Variable));
 
                     let Some(correct_input) = inputs
                         .iter()
@@ -496,37 +529,59 @@ pub trait FuncApplier:
                         ));
                     };
 
-                    if let Ok(fields) = correct_input.struct_to_fields(self) {
-                        if !fields.is_empty() {
-                            let replacement_fields = func_input.struct_to_fields(self).unwrap();
-                            fields.iter().for_each(|field| {
-                                let field_name = field.name(self).unwrap();
-                                let to_replace_field_name =
-                                    field_name.split('.').collect::<Vec<_>>()[1];
-                                if let Some(replacement_field) =
-                                    replacement_fields.iter().find(|replacement_field| {
-                                        let name = replacement_field.name(self).unwrap();
-                                        let replacement_name =
-                                            name.split('.').collect::<Vec<_>>()[1];
-                                        to_replace_field_name == replacement_name
-                                    })
-                                {
-                                    let mut replacement_field_as_elem =
-                                        Elem::from(*replacement_field);
-                                    replacement_field_as_elem.arenaize(self, arena).unwrap();
-                                    if let Some(next) = field.next_version(self) {
-                                        replacement_map.insert(
-                                            next.0.into(),
-                                            (replacement_field_as_elem.clone(), *replacement_field),
-                                        );
-                                    }
-                                    replacement_map.insert(
-                                        field.0.into(),
-                                        (replacement_field_as_elem, *replacement_field),
-                                    );
-                                }
-                            });
-                        }
+                    let target_fields = correct_input.struct_to_fields(self).into_expr_err(loc)?;
+                    let replacement_fields =
+                        func_input.struct_to_fields(self).into_expr_err(loc)?;
+                    let match_field =
+                        |this: &Self,
+                         target_field: ContextVarNode,
+                         replacement_fields: &[ContextVarNode]|
+                         -> Option<(ContextVarNode, ContextVarNode)> {
+                            let target_full_name = target_field.name(this).clone().unwrap();
+                            let target_field_name = target_full_name
+                                .split('.')
+                                .collect::<Vec<_>>()
+                                .last()
+                                .cloned()
+                                .unwrap();
+                            let replacement_field =
+                                replacement_fields.iter().find(|rep_field| {
+                                    let replacement_full_name = rep_field.name(this).unwrap();
+                                    let replacement_field_name = replacement_full_name
+                                        .split('.')
+                                        .collect::<Vec<_>>()
+                                        .last()
+                                        .cloned()
+                                        .unwrap();
+                                    replacement_field_name == target_field_name
+                                })?;
+                            Some((target_field, *replacement_field))
+                        };
+
+                    let mut struct_stack = target_fields
+                        .into_iter()
+                        .filter_map(|i| match_field(self, i, &replacement_fields[..]))
+                        .collect::<Vec<_>>();
+
+                    while let Some((target_field, replacement_field)) = struct_stack.pop() {
+                        let mut replacement_field_as_elem = Elem::from(replacement_field);
+                        replacement_field_as_elem.arenaize(self, arena).unwrap();
+                        let to_replace = target_field.next_version(self).unwrap_or(target_field);
+                        replacement_map.insert(
+                            to_replace.0.into(),
+                            (replacement_field_as_elem.clone(), replacement_field),
+                        );
+
+                        let target_sub_fields =
+                            target_field.struct_to_fields(self).into_expr_err(loc)?;
+                        let replacement_sub_fields = replacement_field
+                            .struct_to_fields(self)
+                            .into_expr_err(loc)?;
+                        let subs = target_sub_fields
+                            .into_iter()
+                            .filter_map(|i| match_field(self, i, &replacement_sub_fields[..]))
+                            .collect::<Vec<_>>();
+                        struct_stack.extend(subs);
                     }
 
                     let mut replacement_as_elem = Elem::from(replacement);

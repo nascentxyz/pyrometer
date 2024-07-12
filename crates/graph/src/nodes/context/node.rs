@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{Concrete, Context, ContextVarNode, KilledKind},
+    nodes::{Concrete, Context, ContextVarNode, FunctionNode, KilledKind},
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
@@ -52,6 +52,7 @@ impl ContextNode {
         &self,
         analyzer: &'a mut impl AnalyzerBackend<Node = Node>,
     ) -> Result<&'a mut Context, GraphError> {
+        analyzer.mark_dirty(self.0.into());
         match analyzer.node_mut(*self) {
             Node::Context(c) => Ok(c),
             Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
@@ -110,6 +111,22 @@ impl ContextNode {
             let live_edges = &mut parent.underlying_mut(analyzer)?.number_of_live_edges;
             *live_edges = live_edges.saturating_sub(1 + curr_live);
             parent.propogate_end(analyzer)?;
+        }
+        Ok(())
+    }
+
+    /// Propogate that this context has ended up the context graph
+    pub fn propogate_applied(
+        &self,
+        applied: FunctionNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        let underlying = self.underlying_mut(analyzer)?;
+        if !underlying.applies.contains(&applied) {
+            underlying.applies.push(applied);
+        }
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+            parent.propogate_applied(applied, analyzer)?;
         }
         Ok(())
     }

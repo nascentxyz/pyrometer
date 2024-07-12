@@ -1,13 +1,24 @@
 use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
-use shared::{AnalyzerLike, GraphDot, GraphLike, Heirarchical, NodeIdx, RangeArena};
+use shared::{
+    AnalyzerLike, GraphDot, GraphError, GraphLike, Heirarchical, NodeIdx, RangeArena,
+    RepresentationErr,
+};
 
 use lazy_static::lazy_static;
 use petgraph::{Directed, Graph};
 use solang_parser::pt::{Identifier, Loc};
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+
+pub trait RepresentationInvariant {
+    fn is_representation_ok(
+        &self,
+        g: &impl GraphBackend,
+        arena: &RangeArena<Elem<Concrete>>,
+    ) -> Result<Option<RepresentationErr>, GraphError>;
+}
 
 pub trait GraphBackend:
     GraphLike<Edge = Edge, Node = Node, RangeElem = Elem<Concrete>> + GraphDot
@@ -391,6 +402,15 @@ impl GraphLike for DummyGraph {
         panic!("Dummy Graph")
     }
 
+    fn mark_dirty(&mut self, _node: NodeIdx) {}
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx> {
+        todo!()
+    }
+
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx> {
+        todo!()
+    }
+
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         panic!("Dummy Graph")
     }
@@ -398,16 +418,14 @@ impl GraphLike for DummyGraph {
 
 impl GraphBackend for DummyGraph {}
 impl GraphDot for DummyGraph {
-    type T = Elem<Concrete>;
-
-    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphDot>::T>) -> String {
+    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String {
         // Provide a basic implementation or a placeholder
         "digraph DummyGraph {}".to_string()
     }
 
     fn cluster_str(
         &self,
-        _arena: &mut RangeArena<Self::T>,
+        _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>,
         _node: NodeIdx,
         _cluster_num: &mut usize,
         _is_killed: bool,
@@ -424,14 +442,14 @@ impl GraphDot for DummyGraph {
         todo!()
     }
 
-    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
     {
         todo!()
     }
 
-    fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn mermaid_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
     {

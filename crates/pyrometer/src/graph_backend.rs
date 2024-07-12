@@ -35,26 +35,15 @@ impl GraphLike for Analyzer {
         &self.graph
     }
 
-    fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx
-    where
-        Self: std::marker::Sized,
-        Self: GraphLike,
-    {
-        let res = self.graph_mut().add_node(node.into());
-        res
+    fn mark_dirty(&mut self, node: NodeIdx) {
+        self.dirty_nodes.insert(node);
     }
 
-    fn add_edge(
-        &mut self,
-        from_node: impl Into<NodeIdx>,
-        to_node: impl Into<NodeIdx>,
-        edge: impl Into<Self::Edge>,
-    ) where
-        Self: std::marker::Sized,
-        Self: GraphLike,
-    {
-        self.graph_mut()
-            .add_edge(from_node.into(), to_node.into(), edge.into());
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx> {
+        &self.dirty_nodes
+    }
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx> {
+        &mut self.dirty_nodes
     }
 }
 
@@ -474,10 +463,10 @@ impl Elems {
         }
 
         // Ensure the graph does not have a cycle
-        debug_assert!(
-            !petgraph::algo::is_cyclic_directed(&graph),
-            "The graph contains a cycle!"
-        );
+        // debug_assert!(
+        //     !petgraph::algo::is_cyclic_directed(&graph),
+        //     "The graph contains a cycle!"
+        // );
 
         graph
     }
@@ -546,7 +535,8 @@ flowchart TB
             format!("LS-{}_LE-{}_{}", from.index(), to.index(), &graph[edge])
         })
         .collect::<Vec<_>>()
-        .join(";");
+        .join(";")
+        + " ";
 
     let invis_data = format!(
         "    {}(\"{}\"):::INVIS\n    classDef INVIS display:none",
@@ -602,7 +592,6 @@ fn _calculate_hash<T: Hash>(t: &T) -> u64 {
 impl GraphBackend for Analyzer {}
 
 impl GraphDot for Analyzer {
-    type T = Elem<Concrete>;
     fn cluster_str(
         &self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -1211,17 +1200,24 @@ impl GraphLike for G<'_> {
         panic!("Should not call this")
     }
 
+    fn mark_dirty(&mut self, _node: NodeIdx) {}
+    fn dirty_nodes(&self) -> &BTreeSet<NodeIdx> {
+        panic!("Should not call this")
+    }
+
+    fn dirty_nodes_mut(&mut self) -> &mut BTreeSet<NodeIdx> {
+        panic!("Should not call this")
+    }
+
     fn graph(&self) -> &Graph<Node, Edge, Directed, usize> {
         self.graph
     }
 }
 
 impl GraphDot for G<'_> {
-    type T = Elem<Concrete>;
-
     fn cluster_str(
         &self,
-        _arena: &mut RangeArena<Self::T>,
+        _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>,
         _node: NodeIdx,
         _cluster_num: &mut usize,
         _is_killed: bool,
@@ -1236,7 +1232,7 @@ impl GraphDot for G<'_> {
         todo!()
     }
 
-    fn dot_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: shared::AnalyzerLike,
@@ -1244,7 +1240,7 @@ impl GraphDot for G<'_> {
         todo!()
     }
 
-    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn dot_str_no_tmps(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + shared::AnalyzerLike,
@@ -1252,7 +1248,7 @@ impl GraphDot for G<'_> {
         todo!()
     }
 
-    fn mermaid_str(&self, _arena: &mut RangeArena<Self::T>) -> String
+    fn mermaid_str(&self, _arena: &mut RangeArena<<Self as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: shared::AnalyzerLike,

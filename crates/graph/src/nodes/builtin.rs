@@ -110,6 +110,10 @@ impl BuiltInNode {
         Ok(self.underlying(analyzer)?.is_indexable())
     }
 
+    pub fn needs_length(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.needs_length())
+    }
+
     /// Returns the zero range for this builtin type, i.e. uint256 -> [0, 0]
     pub fn zero_range(
         &self,
@@ -350,6 +354,13 @@ impl Builtin {
                 | Builtin::Mapping(..)
                 | Builtin::Bytes(..)
                 | Builtin::String
+        )
+    }
+
+    pub fn needs_length(&self) -> bool {
+        matches!(
+            self,
+            Builtin::DynamicBytes | Builtin::Array(..) | Builtin::SizedArray(..) | Builtin::String
         )
     }
 

@@ -81,6 +81,7 @@ impl ContextVarNode {
         &self,
         analyzer: &'a mut impl GraphBackend,
     ) -> Result<&'a mut ContextVar, GraphError> {
+        analyzer.mark_dirty(self.0.into());
         match analyzer.node_mut(*self) {
             Node::ContextVar(c) => Ok(c),
             Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
@@ -230,14 +231,14 @@ impl ContextVarNode {
     }
 
     pub fn is_struct(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(!self.struct_to_fields(analyzer)?.is_empty())
+        Ok(self.ty(analyzer)?.maybe_struct().is_some())
     }
 
     pub fn struct_to_fields(
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        if self.ref_range(analyzer)?.is_none() {
+        if self.is_struct(analyzer)? {
             let fields = analyzer
                 .graph()
                 .edges_directed(self.first_version(analyzer).into(), Direction::Incoming)

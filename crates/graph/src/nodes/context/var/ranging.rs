@@ -309,7 +309,7 @@ impl ContextVarNode {
     pub fn set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        new_exclusions: Vec<usize>,
+        new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         tracing::trace!(
             "setting range exclusions for {}",
@@ -405,7 +405,7 @@ impl ContextVarNode {
     pub fn try_set_range_exclusions(
         &self,
         analyzer: &mut impl GraphBackend,
-        new_exclusions: Vec<usize>,
+        new_exclusions: Vec<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
         tracing::trace!(
             "setting range exclusions for: {}",

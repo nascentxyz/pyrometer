@@ -16,10 +16,12 @@ impl<T> ContextBuilder for T where
 mod expr;
 mod fn_calls;
 mod stmt;
+mod test_command_runner;
 
 pub use expr::*;
 pub use fn_calls::*;
 pub use stmt::*;
+pub use test_command_runner::*;
 
 /// Dispatcher for building up a context of a function
 pub trait ContextBuilder:
