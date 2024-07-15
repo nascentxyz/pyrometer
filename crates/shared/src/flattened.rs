@@ -7,16 +7,20 @@ pub enum ExprFlag {
     FunctionName(usize),
     New,
     Negate,
-    Skip,
+    OnlyTrueFork,
+    OnlyFalseFork,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum FlatExpr {
     VarDef(Loc, Option<&'static str>, Option<StorageLocation>, bool),
-    If(Loc),
-    EndIfCond,
-    EndIfTrue,
-    EndIfElseFalse,
+    If {
+        loc: Loc,
+        true_cond: usize,
+        false_cond: usize,
+        true_body: usize,
+        false_body: usize,
+    },
 
     FunctionCallName(usize),
 

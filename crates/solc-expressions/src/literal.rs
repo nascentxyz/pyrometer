@@ -393,7 +393,7 @@ mod tests {
         num_literal: &str,
         exponent: &str,
         negative: bool,
-        unit: Option<Identifier>,
+        unit: Option<&str>,
         expected: Concrete,
     ) -> Result<()> {
         // setup
@@ -407,7 +407,7 @@ mod tests {
         let loc = Loc::File(0, 0, 0);
 
         // create a number literal
-        analyzer.number_literal(ctx, loc, num_literal, exponent, negative, &unit)?;
+        analyzer.number_literal(ctx, loc, num_literal, exponent, negative, unit)?;
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
@@ -481,10 +481,7 @@ mod tests {
     fn test_number_literal_positive_with_zero_exponent_and_unit() -> Result<()> {
         let num_literal = "123";
         let exponent = "0";
-        let unit = Some(Identifier {
-            name: "ether".into(),
-            loc: Loc::File(0, 0, 0),
-        });
+        let unit = Some("ether");
         let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
@@ -493,10 +490,7 @@ mod tests {
     fn test_number_literal_positive_with_unit() -> Result<()> {
         let num_literal = "123";
         let exponent = "";
-        let unit = Some(Identifier {
-            name: "ether".into(),
-            loc: Loc::File(0, 0, 0),
-        });
+        let unit = Some("ether");
         let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
         test_number_literal(num_literal, exponent, false, unit, expected)
     }

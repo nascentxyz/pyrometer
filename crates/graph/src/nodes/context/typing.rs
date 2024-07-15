@@ -12,6 +12,16 @@ impl ContextNode {
         Ok(underlying.fn_call.is_none() && underlying.ext_fn_call.is_none() && !underlying.is_fork)
     }
 
+    pub fn was_true_fork(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        Ok(matches!(underlying.fork_true_false, Some(true)))
+    }
+
+    pub fn was_false_fork(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        Ok(matches!(underlying.fork_true_false, Some(true)))
+    }
+
     pub fn has_continuation(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.continuation_of.is_some())
     }

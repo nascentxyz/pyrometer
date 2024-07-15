@@ -31,6 +31,8 @@ pub struct Context {
     pub killed: Option<(Loc, KilledKind)>,
     /// Denotes whether this context is a fork of another context
     pub is_fork: bool,
+    /// Denotes whether this was the true path of a fork
+    pub fork_true_false: Option<bool>,
     /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
     pub fn_call: Option<FunctionNode>,
     /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
@@ -77,6 +79,7 @@ impl Context {
             killed: None,
             ctx_deps: Default::default(),
             is_fork: false,
+            fork_true_false: None,
             fn_call: None,
             ext_fn_call: None,
             child: None,
@@ -176,6 +179,11 @@ impl Context {
             continuation_of: None,
             path,
             is_fork: fork_expr.is_some(),
+            fork_true_false: match fork_expr {
+                Some("true") => Some(true),
+                Some("false") => Some(false),
+                _ => None,
+            },
             fn_call,
             ext_fn_call,
             ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),
@@ -275,6 +283,7 @@ impl Context {
             returning_ctx: None,
             continuation_of: None,
             is_fork: false,
+            fork_true_false: None,
             fn_call: None,
             ext_fn_call: None,
             ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),

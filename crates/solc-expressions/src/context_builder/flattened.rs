@@ -15,7 +15,7 @@ use graph::{
 };
 
 use shared::{
-    string_to_static, AnalyzerLike, ExprErr, ExprFlag, FlatExpr, IntoExprErr, RangeArena,
+    string_to_static, AnalyzerLike, ExprErr, ExprFlag, FlatExpr, IntoExprErr, NodeIdx, RangeArena,
     StorageLocation,
 };
 use solang_parser::pt::Identifier;
@@ -69,10 +69,15 @@ pub trait Flatten:
             Args(_loc, _args) => {}
             If(loc, if_expr, true_body, None) => {
                 self.push_expr(FlatExpr::If(*loc));
+                self.push_expr(FlatExpr::IfOnlyTrue);
                 self.traverse_expression(if_expr);
+                self.push_expr(FlatExpr::IfOnlyFalse);
+                self.traverse_expression(if_expr);
+                self.push_expr(FlatExpr::Not(*loc));
                 self.push_expr(FlatExpr::EndIfCond);
+                self.push_expr(FlatExpr::IfOnlyTrueBody);
                 self.traverse_statement(true_body);
-                self.push_expr(FlatExpr::EndIfTrue);
+                self.push_expr(FlatExpr::EndIfTrueBody);
             }
             If(loc, if_expr, true_body, Some(false_body)) => {
                 self.push_expr(FlatExpr::IfElse(*loc));
@@ -299,6 +304,31 @@ pub trait Flatten:
         }
     }
 
+    fn skip_this_ctx(&mut self, ctx: ContextNode) -> bool {
+        let flag = self.take_expr_flag();
+        match flag {
+            Some(ExprFlag::OnlyTrueFork) => {
+                if !ctx.was_true_fork(self).unwrap() {
+                    self.set_expr_flag(flag.unwrap());
+                    return true;
+                }
+            }
+            Some(ExprFlag::OnlyFalseFork) => {
+                if !ctx.was_false_fork(self).unwrap() {
+                    self.set_expr_flag(flag.unwrap());
+                    return true;
+                }
+            }
+            _ => {}
+        }
+
+        if let Some(flag) = flag {
+            self.set_expr_flag(flag);
+        }
+
+        false
+    }
+
     fn interpret_expr(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -306,7 +336,17 @@ pub trait Flatten:
         next: FlatExpr,
     ) -> Result<(), ExprErr> {
         use FlatExpr::*;
-        tracing::trace!("parsing {:?} in context {}", next, ctx.path(self));
+
+        if self.skip_this_ctx(ctx) {
+            return Ok(());
+        }
+
+        tracing::trace!(
+            "parsing {:?} in context {} - flag: {:?}",
+            next,
+            ctx.path(self),
+            self.peek_flag()
+        );
         match next {
             // Flag expressions
             FunctionCallName(n) => {
@@ -319,6 +359,15 @@ pub trait Flatten:
             }
             New(_) => {
                 self.set_expr_flag(ExprFlag::New);
+                Ok(())
+            }
+            IfOnlyTrue => {
+                self.set_expr_flag(ExprFlag::OnlyTrueFork);
+                Ok(())
+            }
+            IfOnlyFalse => {
+                let _ = self.take_expr_flag();
+                self.set_expr_flag(ExprFlag::OnlyFalseFork);
                 Ok(())
             }
 
@@ -344,7 +393,38 @@ pub trait Flatten:
             Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
             | MoreEqual(loc) => self.interp_cmp(arena, ctx, loc, next),
 
-            If(..) => Ok(()),
+            If(loc) => {
+                let tctx =
+                    Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
+                        .into_expr_err(loc)?;
+                let true_subctx = ContextNode::from(self.add_node(Node::Context(tctx)));
+                let fctx =
+                    Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
+                        .into_expr_err(loc)?;
+                let false_subctx = ContextNode::from(self.add_node(Node::Context(fctx)));
+                ctx.set_child_fork(true_subctx, false_subctx, self)
+                    .into_expr_err(loc)?;
+                true_subctx
+                    .set_continuation_ctx(self, ctx, "fork_true")
+                    .into_expr_err(loc)?;
+                false_subctx
+                    .set_continuation_ctx(self, ctx, "fork_false")
+                    .into_expr_err(loc)?;
+                let ctx_fork = self.add_node(Node::ContextFork);
+                self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+                self.add_edge(
+                    NodeIdx::from(true_subctx.0),
+                    ctx_fork,
+                    Edge::Context(ContextEdge::Subcontext),
+                );
+                self.add_edge(
+                    NodeIdx::from(false_subctx.0),
+                    ctx_fork,
+                    Edge::Context(ContextEdge::Subcontext),
+                );
+
+                Ok(())
+            }
             IfElse(..) => Ok(()),
             other => {
                 tracing::trace!("unhandled: {other:?}");
@@ -467,32 +547,37 @@ pub trait Flatten:
             unreachable!()
         };
 
-        if let Some(ExprFlag::FunctionName(n)) = self.take_expr_flag() {
-            let maybe_fn = self
-                .find_func(arena, ctx, name.to_string(), n)
-                .into_expr_err(loc)?;
-            if let Some(fn_node) = maybe_fn {
-                let as_var = ContextVar::maybe_from_user_ty(self, loc, fn_node.into()).unwrap();
-                let fn_var = ContextVarNode::from(self.add_node(as_var));
-                ctx.add_var(fn_var, self).into_expr_err(loc)?;
-                self.add_edge(fn_var, ctx, Edge::Context(ContextEdge::Variable));
-                ctx.push_expr(ExprRet::Single(fn_var.into()), self)
-                    .into_expr_err(loc)
-            } else {
-                Ok(())
+        match self.take_expr_flag() {
+            Some(ExprFlag::FunctionName(n)) => {
+                let maybe_fn = self
+                    .find_func(arena, ctx, name.to_string(), n)
+                    .into_expr_err(loc)?;
+                return if let Some(fn_node) = maybe_fn {
+                    let as_var = ContextVar::maybe_from_user_ty(self, loc, fn_node.into()).unwrap();
+                    let fn_var = ContextVarNode::from(self.add_node(as_var));
+                    ctx.add_var(fn_var, self).into_expr_err(loc)?;
+                    self.add_edge(fn_var, ctx, Edge::Context(ContextEdge::Variable));
+                    ctx.push_expr(ExprRet::Single(fn_var.into()), self)
+                        .into_expr_err(loc)
+                } else {
+                    Ok(())
+                };
             }
-        } else {
-            self.variable(
-                arena,
-                &solang_parser::pt::Identifier {
-                    loc,
-                    name: name.to_string(),
-                },
-                ctx,
-                None,
-                None,
-            )
+            Some(other) => {
+                self.set_expr_flag(other);
+            }
+            _ => {}
         }
+        self.variable(
+            arena,
+            &solang_parser::pt::Identifier {
+                loc,
+                name: name.to_string(),
+            },
+            ctx,
+            None,
+            None,
+        )
     }
 
     fn interp_assign(
