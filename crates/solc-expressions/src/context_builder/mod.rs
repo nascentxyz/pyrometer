@@ -156,11 +156,11 @@ pub trait ContextBuilder:
         ) -> Result<(), ExprErr>,
     ) -> Result<(), ExprErr> {
         let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
-        tracing::trace!(
-            "Applying to live edges of: {}. edges: {:#?}",
-            ctx.path(self),
-            live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
-        );
+        // tracing::trace!(
+        //     "Applying to live edges of: {}. edges: {:#?}",
+        //     ctx.path(self),
+        //     live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
+        // );
         if !ctx.killed_or_ret(self).into_expr_err(loc)? {
             if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
                 if live_edges.is_empty() {

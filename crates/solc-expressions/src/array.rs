@@ -30,7 +30,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                     return Ok(());
                 }
-                analyzer.match_ty(ctx, ty_expr, ret)
+                analyzer.match_ty(ctx, ty_expr.loc(), ret)
             } else {
                 Err(ExprErr::NoLhs(
                     loc,
@@ -40,40 +40,34 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         })
     }
 
-    fn match_ty(
-        &mut self,
-        ctx: ContextNode,
-        ty_expr: &Expression,
-        ret: ExprRet,
-    ) -> Result<(), ExprErr> {
+    fn match_ty(&mut self, ctx: ContextNode, loc: Loc, ret: ExprRet) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner_ty) | ExprRet::SingleLiteral(inner_ty) => {
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                     let dyn_b = Builtin::Array(var_type);
                     if let Some(idx) = self.builtins().get(&dyn_b) {
                         ctx.push_expr(ExprRet::Single(*idx), self)
-                            .into_expr_err(ty_expr.loc())?;
+                            .into_expr_err(loc)?;
                     } else {
                         let idx = self.add_node(Node::Builtin(dyn_b.clone()));
                         self.builtins_mut().insert(dyn_b, idx);
                         ctx.push_expr(ExprRet::Single(idx), self)
-                            .into_expr_err(ty_expr.loc())?;
+                            .into_expr_err(loc)?;
                     }
                     Ok(())
                 } else {
-                    Err(ExprErr::ArrayTy(ty_expr.loc(), "Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.".to_string()))
+                    Err(ExprErr::ArrayTy(loc, "Expected to be able to convert to a var type from an index to determine array type. This is a bug. Please report it at github.com/nascentxyz/pyrometer.".to_string()))
                 }
             }
             ExprRet::Multi(inner) => {
                 inner
                     .into_iter()
-                    .map(|i| self.match_ty(ctx, ty_expr, i))
+                    .map(|i| self.match_ty(ctx, loc, i))
                     .collect::<Result<Vec<_>, ExprErr>>()?;
                 Ok(())
             }
             ExprRet::CtxKilled(kind) => {
-                ctx.kill(self, ty_expr.loc(), kind)
-                    .into_expr_err(ty_expr.loc())?;
+                ctx.kill(self, loc, kind).into_expr_err(loc)?;
                 Ok(())
             }
             ExprRet::Null => Ok(()),

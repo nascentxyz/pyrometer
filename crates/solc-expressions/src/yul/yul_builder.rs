@@ -34,6 +34,7 @@ pub trait YulBuilder:
     ) where
         Self: Sized,
     {
+        panic!("here");
         if let Some(true) = self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc())) {
             return;
         }
@@ -58,6 +59,7 @@ pub trait YulBuilder:
     ) where
         Self: Sized,
     {
+        panic!("here");
         use YulStatement::*;
         // println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
 
@@ -299,76 +301,77 @@ pub trait YulBuilder:
         expr: &YulExpression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        use YulExpression::*;
-        match expr {
-            BoolLiteral(loc, b, _) => self.bool_literal(ctx, *loc, *b),
-            NumberLiteral(loc, int, expr, unit) => {
-                self.number_literal(ctx, *loc, int, expr, false, unit)
-            }
-            HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
-            HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),
-            StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
-            Variable(ident) => {
-                self.variable(arena, ident, ctx, None, None)?;
-                self.apply_to_edges(ctx, ident.loc, arena, &|analyzer, _arena, edge_ctx, loc| {
-                    if let Some(ret) = edge_ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
-                        if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
-                            .is_memory(analyzer)
-                            .into_expr_err(loc)?
-                        {
-                            // its a memory based variable, push a uint instead
-                            let b = Builtin::Uint(256);
-                            let var = ContextVar::new_from_builtin(
-                                loc,
-                                analyzer.builtin_or_add(b).into(),
-                                analyzer,
-                            )
-                            .into_expr_err(loc)?;
-                            let node = analyzer.add_node(Node::ContextVar(var));
-                            edge_ctx
-                                .push_expr(ExprRet::Single(node), analyzer)
-                                .into_expr_err(loc)
-                        } else {
-                            edge_ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                        }
-                    } else {
-                        Err(ExprErr::Unresolved(
-                            ident.loc,
-                            format!("Could not find variable with name: {}", ident.name),
-                        ))
-                    }
-                })
-            }
-            FunctionCall(yul_func_call) => self.yul_func_call(arena, yul_func_call, ctx),
-            SuffixAccess(loc, yul_member_expr, ident) => {
-                self.parse_inputs(arena, ctx, *loc, &[*yul_member_expr.clone()])?;
+        panic!("here");
+        // use YulExpression::*;
+        // match expr {
+        //     BoolLiteral(loc, b, _) => self.bool_literal(ctx, *loc, *b),
+        //     NumberLiteral(loc, int, expr, unit) => {
+        //         self.number_literal(ctx, *loc, int, expr, false, unit)
+        //     }
+        //     HexNumberLiteral(loc, b, _unit) => self.hex_num_literal(ctx, *loc, b, false),
+        //     HexStringLiteral(lit, _) => self.hex_literals(ctx, &[lit.clone()]),
+        //     StringLiteral(lit, _) => self.string_literal(ctx, lit.loc, &lit.string),
+        //     Variable(ident) => {
+        //         self.variable(arena, ident, ctx, None, None)?;
+        //         self.apply_to_edges(ctx, ident.loc, arena, &|analyzer, _arena, edge_ctx, loc| {
+        //             if let Some(ret) = edge_ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
+        //                 if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
+        //                     .is_memory(analyzer)
+        //                     .into_expr_err(loc)?
+        //                 {
+        //                     // its a memory based variable, push a uint instead
+        //                     let b = Builtin::Uint(256);
+        //                     let var = ContextVar::new_from_builtin(
+        //                         loc,
+        //                         analyzer.builtin_or_add(b).into(),
+        //                         analyzer,
+        //                     )
+        //                     .into_expr_err(loc)?;
+        //                     let node = analyzer.add_node(Node::ContextVar(var));
+        //                     edge_ctx
+        //                         .push_expr(ExprRet::Single(node), analyzer)
+        //                         .into_expr_err(loc)
+        //                 } else {
+        //                     edge_ctx.push_expr(ret, analyzer).into_expr_err(loc)
+        //                 }
+        //             } else {
+        //                 Err(ExprErr::Unresolved(
+        //                     ident.loc,
+        //                     format!("Could not find variable with name: {}", ident.name),
+        //                 ))
+        //             }
+        //         })
+        //     }
+        //     FunctionCall(yul_func_call) => self.yul_func_call(arena, yul_func_call, ctx),
+        //     SuffixAccess(loc, yul_member_expr, ident) => {
+        //         self.parse_inputs(arena, ctx, *loc, &[*yul_member_expr.clone()])?;
 
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let Ok(Some(lhs)) = ctx.pop_expr_latest(loc, analyzer) else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "`.slot` had no left hand side".to_string(),
-                        ));
-                    };
-                    match &*ident.name {
-                        "slot" => {
-                            let slot_var = analyzer.slot(
-                                ctx,
-                                loc,
-                                lhs.expect_single().into_expr_err(loc)?.into(),
-                            );
-                            ctx.push_expr(ExprRet::Single(slot_var.into()), analyzer)
-                                .into_expr_err(loc)?;
-                            Ok(())
-                        }
-                        _ => Err(ExprErr::Todo(
-                            expr.loc(),
-                            format!("Yul member access `{}` not yet supported", ident.name),
-                        )),
-                    }
-                })
-            }
-        }
+        //         self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
+        //             let Ok(Some(lhs)) = ctx.pop_expr_latest(loc, analyzer) else {
+        //                 return Err(ExprErr::NoLhs(
+        //                     loc,
+        //                     "`.slot` had no left hand side".to_string(),
+        //                 ));
+        //             };
+        //             match &*ident.name {
+        //                 "slot" => {
+        //                     let slot_var = analyzer.slot(
+        //                         ctx,
+        //                         loc,
+        //                         lhs.expect_single().into_expr_err(loc)?.into(),
+        //                     );
+        //                     ctx.push_expr(ExprRet::Single(slot_var.into()), analyzer)
+        //                         .into_expr_err(loc)?;
+        //                     Ok(())
+        //                 }
+        //                 _ => Err(ExprErr::Todo(
+        //                     expr.loc(),
+        //                     format!("Yul member access `{}` not yet supported", ident.name),
+        //                 )),
+        //             }
+        //         })
+        //     }
+        // }
     }
 
     /// Match [`ExprRet`] from the sides of an `YulAssign` to perform the assignment

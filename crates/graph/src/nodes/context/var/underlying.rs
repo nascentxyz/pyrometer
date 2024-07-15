@@ -510,6 +510,10 @@ impl ContextVar {
                     let name = e.name.clone().expect("Enum had no name").name;
                     (name, None)
                 }
+                Node::Builtin(bn) => {
+                    let name = bn.as_string(analyzer).ok()?;
+                    (name, None)
+                }
                 Node::Var(var) => {
                     let name = var.name.clone().expect("Variable had no name").name;
                     let storage = if var.in_contract {

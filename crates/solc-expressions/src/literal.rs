@@ -20,7 +20,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         exponent: &str,
         negative: bool,
-        unit: &Option<Identifier>,
+        unit: Option<&str>,
     ) -> Result<Concrete, ExprErr> {
         let Ok(int) = U256::from_dec_str(integer) else {
             return Err(ExprErr::ParseError(
@@ -69,7 +69,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         exponent: &str,
         negative: bool,
-        unit: &Option<Identifier>,
+        unit: Option<&str>,
     ) -> Result<(), ExprErr> {
         let conc = self.concrete_number_from_str(loc, integer, exponent, negative, unit)?;
         let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(conc)));
@@ -84,8 +84,8 @@ pub trait Literal: AnalyzerBackend + Sized {
         Ok(())
     }
 
-    fn unit_to_uint(&self, unit: &Identifier) -> U256 {
-        match &*unit.name {
+    fn unit_to_uint(&self, unit: &str) -> U256 {
+        match unit {
             "gwei" => U256::from(10).pow(9.into()),
             "ether" => U256::from(10).pow(18.into()),
             "minutes" => U256::from(60),
@@ -105,7 +105,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         fraction: &str,
         exponent: &str,
-        unit: &Option<Identifier>,
+        unit: Option<&str>,
         negative: bool,
     ) -> Result<(), ExprErr> {
         let int =
@@ -229,16 +229,11 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     /// hex"123123"
-    fn hex_literals(&mut self, ctx: ContextNode, hexes: &[HexLiteral]) -> Result<(), ExprErr> {
+    fn hex_literals(&mut self, ctx: ContextNode, loc: Loc, hex: &str) -> Result<(), ExprErr> {
         let mut h = vec![];
-        hexes.iter().for_each(|sub_hex| {
-            if let Ok(hex_val) = hex::decode(&sub_hex.hex) {
-                h.extend(hex_val)
-            }
-        });
-
-        let mut loc = hexes[0].loc;
-        loc.use_end_from(&hexes[hexes.len() - 1].loc);
+        if let Ok(hex_val) = hex::decode(hex) {
+            h.extend(hex_val)
+        }
 
         let concrete_node = if h.len() <= 32 {
             let mut target = H256::default();
@@ -311,22 +306,10 @@ pub trait Literal: AnalyzerBackend + Sized {
                             }
 
                             let min = self
-                                .concrete_number_from_str(
-                                    Loc::Implicit,
-                                    min_str,
-                                    "",
-                                    min_neg,
-                                    &None,
-                                )
+                                .concrete_number_from_str(Loc::Implicit, min_str, "", min_neg, None)
                                 .ok()?;
                             let max = self
-                                .concrete_number_from_str(
-                                    Loc::Implicit,
-                                    max_str,
-                                    "",
-                                    max_neg,
-                                    &None,
-                                )
+                                .concrete_number_from_str(Loc::Implicit, max_str, "", max_neg, None)
                                 .ok()?;
 
                             Some(TestCommand::Variable(

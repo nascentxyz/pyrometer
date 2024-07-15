@@ -5,6 +5,9 @@ use solang_parser::pt::{Expression, Loc, Statement, Type};
 #[derive(Debug, Clone, Copy)]
 pub enum ExprFlag {
     FunctionName(usize),
+    New,
+    Negate,
+    Skip,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -92,7 +95,6 @@ pub enum FlatExpr {
     HexLiteral(Loc, &'static str),
     AddressLiteral(Loc, &'static str),
     Variable(Loc, &'static str),
-    FuncToCall(Loc, &'static str),
     ArrayLiteral(Loc),
 }
 

@@ -573,6 +573,11 @@ impl AnalyzerLike for Analyzer {
     }
 
     fn set_expr_flag(&mut self, flag: ExprFlag) {
+        debug_assert!(
+            self.expr_flag.is_none(),
+            "overwrote expr_flag: new: {flag:?}, old: {:?}",
+            self.expr_flag
+        );
         self.expr_flag = Some(flag)
     }
 

@@ -34,7 +34,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    ctx.append_tmp_expr(analyzer.match_ty(ctx, &loc, &ret, input)?, analyzer)
+                    ctx.append_tmp_expr(analyzer.match_input_ty(ctx, &loc, &ret, input)?, analyzer)
                         .into_expr_err(loc)
                 })
             } else {
@@ -56,7 +56,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         })
     }
 
-    fn match_ty(
+    fn match_input_ty(
         &mut self,
         ctx: ContextNode,
         loc: &Loc,
@@ -117,7 +117,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             ExprRet::Multi(inner) => Ok(ExprRet::Multi(
                 inner
                     .iter()
-                    .map(|i| self.match_ty(ctx, loc, i, input))
+                    .map(|i| self.match_input_ty(ctx, loc, i, input))
                     .collect::<Result<_, _>>()?,
             )),
             ExprRet::CtxKilled(kind) => Ok(ExprRet::CtxKilled(*kind)),
