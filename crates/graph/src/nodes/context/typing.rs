@@ -4,6 +4,8 @@ use crate::{
 };
 use shared::GraphError;
 
+use super::underlying;
+
 impl ContextNode {
     /// Checks if its an anonymous function call (i.e. loop)
     pub fn is_anonymous_fn_call(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
@@ -12,14 +14,20 @@ impl ContextNode {
         Ok(underlying.fn_call.is_none() && underlying.ext_fn_call.is_none() && !underlying.is_fork)
     }
 
-    pub fn was_true_fork(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        let underlying = self.underlying(analyzer)?;
-        Ok(matches!(underlying.fork_true_false, Some(true)))
+    pub fn increment_parse_idx(&self, analyzer: &mut impl AnalyzerBackend) -> usize {
+        let underlying_mut = self.underlying_mut(analyzer).unwrap();
+        let curr = underlying_mut.parse_idx;
+        underlying_mut.parse_idx += 1;
+        curr
     }
 
-    pub fn was_false_fork(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        let underlying = self.underlying(analyzer)?;
-        Ok(matches!(underlying.fork_true_false, Some(true)))
+    pub fn skip_n_exprs(&self, n: usize, analyzer: &mut impl AnalyzerBackend) {
+        let underlying_mut = self.underlying_mut(analyzer).unwrap();
+        underlying_mut.parse_idx += n;
+    }
+
+    pub fn parse_idx(&self, analyzer: &impl GraphBackend) -> usize {
+        self.underlying(analyzer).unwrap().parse_idx
     }
 
     pub fn has_continuation(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {

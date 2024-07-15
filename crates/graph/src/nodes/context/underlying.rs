@@ -14,6 +14,8 @@ use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
+    /// The current parse index of the stack
+    pub parse_idx: usize,
     /// The function associated with this context
     pub parent_fn: FunctionNode,
     /// Whether this function call is actually a modifier call
@@ -31,8 +33,6 @@ pub struct Context {
     pub killed: Option<(Loc, KilledKind)>,
     /// Denotes whether this context is a fork of another context
     pub is_fork: bool,
-    /// Denotes whether this was the true path of a fork
-    pub fork_true_false: Option<bool>,
     /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
     pub fn_call: Option<FunctionNode>,
     /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
@@ -70,6 +70,7 @@ impl Context {
     /// Creates a new context from a function
     pub fn new(parent_fn: FunctionNode, fn_name: String, loc: Loc) -> Self {
         Context {
+            parse_idx: 0,
             parent_fn,
             parent_ctx: None,
             returning_ctx: None,
@@ -79,7 +80,6 @@ impl Context {
             killed: None,
             ctx_deps: Default::default(),
             is_fork: false,
-            fork_true_false: None,
             fn_call: None,
             ext_fn_call: None,
             child: None,
@@ -173,17 +173,13 @@ impl Context {
 
         tracing::trace!("new subcontext path: {path}, depth: {depth}");
         Ok(Context {
+            parse_idx: parent_ctx.parse_idx(analyzer),
             parent_fn,
             parent_ctx: Some(parent_ctx),
             returning_ctx,
             continuation_of: None,
             path,
             is_fork: fork_expr.is_some(),
-            fork_true_false: match fork_expr {
-                Some("true") => Some(true),
-                Some("false") => Some(false),
-                _ => None,
-            },
             fn_call,
             ext_fn_call,
             ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),
@@ -277,13 +273,13 @@ impl Context {
 
         tracing::trace!("new subcontext path: {path}, depth: {depth}");
         Ok(Context {
+            parse_idx: parent_ctx.parse_idx(analyzer),
             parent_fn,
             parent_ctx: Some(parent_ctx),
             path,
             returning_ctx: None,
             continuation_of: None,
             is_fork: false,
-            fork_true_false: None,
             fn_call: None,
             ext_fn_call: None,
             ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),

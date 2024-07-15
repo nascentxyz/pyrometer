@@ -19,7 +19,7 @@ use shared::{
     StorageLocation,
 };
 use solang_parser::pt::Identifier;
-use solang_parser::pt::{Expression, Loc, Statement, Type};
+use solang_parser::pt::{CodeLocation, Expression, Loc, Statement, Type};
 
 impl<T> Flatten for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -67,26 +67,62 @@ pub trait Flatten:
                 }
             }
             Args(_loc, _args) => {}
-            If(loc, if_expr, true_body, None) => {
-                self.push_expr(FlatExpr::If(*loc));
-                self.push_expr(FlatExpr::IfOnlyTrue);
+            If(loc, if_expr, true_body, maybe_false_body) => {
+                // 1. Add conditional expressions
+                // 2. Remove added conditional expressions
+                // 3. Clone and negate for false side
+                // 4. Add true body expressions
+                // 5. Remove true body expressions
+                // 6. Add false body expressions
+                // 7. Remove false body expressions
+                // 8. construct an `If` that lets the intepreter jump to each
+                // based on their size
+                let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr);
-                self.push_expr(FlatExpr::IfOnlyFalse);
-                self.traverse_expression(if_expr);
-                self.push_expr(FlatExpr::Not(*loc));
-                self.push_expr(FlatExpr::EndIfCond);
-                self.push_expr(FlatExpr::IfOnlyTrueBody);
+                let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+                let mut false_cond = true_cond.clone();
+                false_cond.push(FlatExpr::Not(if_expr.loc()));
+
+                let true_cond_delta = true_cond.len();
+                let false_cond_delta = false_cond.len();
+
                 self.traverse_statement(true_body);
-                self.push_expr(FlatExpr::EndIfTrueBody);
-            }
-            If(loc, if_expr, true_body, Some(false_body)) => {
-                self.push_expr(FlatExpr::IfElse(*loc));
-                self.traverse_expression(if_expr);
-                self.push_expr(FlatExpr::EndIfCond);
-                self.traverse_statement(true_body);
-                self.push_expr(FlatExpr::EndIfTrue);
-                self.traverse_statement(false_body);
-                self.push_expr(FlatExpr::EndIfElseFalse);
+                let true_body = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+                let true_body_delta = true_body.len();
+
+                let (if_expr, false_body) = if let Some(false_body) = maybe_false_body {
+                    self.traverse_statement(false_body);
+                    let false_body = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+                    let false_body_delta = false_body.len();
+                    (
+                        FlatExpr::If {
+                            loc: *loc,
+                            true_cond: true_cond_delta,
+                            false_cond: false_cond_delta,
+                            true_body: true_body_delta,
+                            false_body: false_body_delta,
+                        },
+                        false_body,
+                    )
+                } else {
+                    (
+                        FlatExpr::If {
+                            loc: *loc,
+                            true_cond: true_cond_delta,
+                            false_cond: false_cond_delta,
+                            true_body: true_body_delta,
+                            false_body: 0,
+                        },
+                        vec![],
+                    )
+                };
+
+                self.push_expr(if_expr);
+                let stack = self.expr_stack_mut();
+                stack.extend(true_cond);
+                stack.extend(false_cond);
+                stack.extend(true_body);
+                stack.extend(false_body);
             }
             While(loc, cond, body) => {}
             For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {}
@@ -288,58 +324,52 @@ pub trait Flatten:
 
         let res = func.add_params_to_ctx(ctx, self).into_expr_err(body_loc);
         self.add_if_err(res);
-
-        for next in stack {
-            let res = self.apply_to_edges(
-                ctx,
-                body_loc,
-                arena,
-                &|analyzer: &mut Self,
-                  arena: &mut RangeArena<Elem<Concrete>>,
-                  ctx: ContextNode,
-                  _: Loc| analyzer.interpret_expr(arena, ctx, next),
-            );
-
+        while !ctx.is_ended(self).unwrap() && ctx.parse_idx(self) < stack.len() {
+            let res = self.interpret_inner(arena, ctx, body_loc, &stack[..]);
             self.add_if_err(res);
         }
     }
 
-    fn skip_this_ctx(&mut self, ctx: ContextNode) -> bool {
-        let flag = self.take_expr_flag();
-        match flag {
-            Some(ExprFlag::OnlyTrueFork) => {
-                if !ctx.was_true_fork(self).unwrap() {
-                    self.set_expr_flag(flag.unwrap());
-                    return true;
-                }
-            }
-            Some(ExprFlag::OnlyFalseFork) => {
-                if !ctx.was_false_fork(self).unwrap() {
-                    self.set_expr_flag(flag.unwrap());
-                    return true;
-                }
-            }
-            _ => {}
-        }
-
-        if let Some(flag) = flag {
-            self.set_expr_flag(flag);
-        }
-
-        false
+    fn interpret_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        body_loc: Loc,
+        stack: &[FlatExpr],
+    ) -> Result<(), ExprErr> {
+        self.flat_apply_to_edges(
+            ctx,
+            body_loc,
+            arena,
+            stack,
+            &|analyzer: &mut Self,
+              arena: &mut RangeArena<Elem<Concrete>>,
+              ctx: ContextNode,
+              _: Loc,
+              stack: &[FlatExpr]| {
+                analyzer.interpret_expr(arena, ctx, body_loc, stack)
+            },
+        )
     }
 
     fn interpret_expr(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        next: FlatExpr,
+        body_loc: Loc,
+        stack: &[FlatExpr],
     ) -> Result<(), ExprErr> {
         use FlatExpr::*;
 
-        if self.skip_this_ctx(ctx) {
+        if ctx.is_killed(self).unwrap() {
             return Ok(());
         }
+
+        let parse_idx = ctx.increment_parse_idx(self);
+        let Some(next) = stack.get(parse_idx) else {
+            return Ok(());
+        };
+        let next = *next;
 
         tracing::trace!(
             "parsing {:?} in context {} - flag: {:?}",
@@ -361,15 +391,6 @@ pub trait Flatten:
                 self.set_expr_flag(ExprFlag::New);
                 Ok(())
             }
-            IfOnlyTrue => {
-                self.set_expr_flag(ExprFlag::OnlyTrueFork);
-                Ok(())
-            }
-            IfOnlyFalse => {
-                let _ = self.take_expr_flag();
-                self.set_expr_flag(ExprFlag::OnlyFalseFork);
-                Ok(())
-            }
 
             // Literals
             AddressLiteral(loc, lit) => self.address_literal(ctx, loc, lit),
@@ -388,12 +409,19 @@ pub trait Flatten:
             ArrayTy(..) => self.interp_array_ty(arena, ctx, next),
 
             FunctionCall(..) => self.interp_func_call(arena, ctx, next),
+            Not(..) => self.interp_not(arena, ctx, next),
 
             // Comparator
             Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
             | MoreEqual(loc) => self.interp_cmp(arena, ctx, loc, next),
 
-            If(loc) => {
+            If {
+                loc,
+                true_cond,
+                false_cond,
+                true_body,
+                false_body,
+            } => {
                 let tctx =
                     Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
                         .into_expr_err(loc)?;
@@ -422,6 +450,34 @@ pub trait Flatten:
                     ctx_fork,
                     Edge::Context(ContextEdge::Subcontext),
                 );
+
+                // parse the true condition expressions
+                for i in 0..true_cond {
+                    self.interpret_inner(arena, true_subctx, loc, stack)?;
+                }
+                // skip the false condition expressions
+                true_subctx.skip_n_exprs(false_cond, self);
+
+                // skip the true condition expressions
+                false_subctx.skip_n_exprs(true_cond, self);
+                // parse the false condition expressions
+                for i in 0..false_cond {
+                    self.interpret_inner(arena, false_subctx, loc, stack)?;
+                }
+
+                // todo: the kill check
+                for i in 0..true_body {
+                    self.interpret_inner(arena, true_subctx, loc, stack)?;
+                }
+                // skip the false condition expressions
+                true_subctx.skip_n_exprs(false_body, self);
+
+                // skip the true body expressions
+                false_subctx.skip_n_exprs(true_body, self);
+                // parse the false body expressions
+                for i in 0..false_body {
+                    self.interpret_inner(arena, false_subctx, loc, stack)?;
+                }
 
                 Ok(())
             }
@@ -452,6 +508,22 @@ pub trait Flatten:
             FlatExpr::MoreEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Gte, &rhs),
             _ => unreachable!(),
         }
+    }
+
+    fn interp_not(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        not: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::Not(loc) = not else {
+            unreachable!()
+        };
+
+        let res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+        let [inner] = into_sized::<ExprRet, 1>(res);
+
+        self.not_inner(arena, ctx, loc, inner.flatten())
     }
 
     fn interp_var_def(
@@ -682,6 +754,45 @@ pub trait Flatten:
                 self.rational_number_literal(arena, ctx, loc, integer, fraction, exp, unit, negate)
             }
             _ => unreachable!(),
+        }
+    }
+
+    /// Apply an expression or statement to all *live* edges of a context. This is used everywhere
+    /// to ensure we only ever update *live* contexts. If a context has a subcontext, we *never*
+    /// want to update the original context. We only ever want to operate on the latest edges.
+    fn flat_apply_to_edges(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        stack: &[FlatExpr],
+        closure: &impl Fn(
+            &mut Self,
+            &mut RangeArena<Elem<Concrete>>,
+            ContextNode,
+            Loc,
+            &[FlatExpr],
+        ) -> Result<(), ExprErr>,
+    ) -> Result<(), ExprErr> {
+        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
+        if !ctx.killed_or_ret(self).into_expr_err(loc)? {
+            if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
+                if live_edges.is_empty() {
+                    Ok(())
+                } else {
+                    live_edges
+                        .iter()
+                        .try_for_each(|ctx| closure(self, arena, *ctx, loc, stack))
+                }
+            } else if live_edges.is_empty() {
+                closure(self, arena, ctx, loc, stack)
+            } else {
+                live_edges
+                    .iter()
+                    .try_for_each(|ctx| closure(self, arena, *ctx, loc, stack))
+            }
+        } else {
+            Ok(())
         }
     }
 }

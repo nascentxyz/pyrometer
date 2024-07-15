@@ -7,8 +7,6 @@ pub enum ExprFlag {
     FunctionName(usize),
     New,
     Negate,
-    OnlyTrueFork,
-    OnlyFalseFork,
 }
 
 #[derive(Debug, Clone, Copy)]
