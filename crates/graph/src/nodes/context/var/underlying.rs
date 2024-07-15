@@ -39,6 +39,12 @@ impl TmpConstruction {
     }
 }
 
+impl From<ContextVar> for Node {
+    fn from(var: ContextVar) -> Self {
+        Node::ContextVar(var)
+    }
+}
+
 impl ContextVar {
     pub fn eq_ignore_loc(&self, other: &Self) -> bool {
         self.name == other.name

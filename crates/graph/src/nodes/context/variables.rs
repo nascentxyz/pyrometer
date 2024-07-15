@@ -499,6 +499,30 @@ impl ContextNode {
         }
     }
 
+    pub fn pop_n_latest_exprs(
+        &self,
+        n: usize,
+        loc: Loc,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Vec<ExprRet>, GraphError> {
+        let underlying_mut = self.underlying_mut(analyzer)?;
+
+        let mut res = vec![];
+        for _ in 0..n {
+            if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
+                res.push(elem);
+            } else {
+                return Err(GraphError::StackLengthMismatch(format!(
+                    "Expected {n} ExprRets on stack, but had fewer"
+                )));
+            }
+        }
+
+        res.into_iter()
+            .map(|elem| self.maybe_move_expr(elem, loc, analyzer))
+            .collect::<Result<Vec<_>, _>>()
+    }
+
     /// Gets local vars that were assigned from a function return
     pub fn vars_assigned_from_fn_ret(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
         self.local_vars(analyzer)

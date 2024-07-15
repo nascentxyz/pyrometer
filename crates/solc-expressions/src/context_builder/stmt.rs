@@ -389,7 +389,13 @@ pub trait StatementParser:
                                                 analyzer.match_var_def(
                                                     arena,
                                                     ctx,
-                                                    var_decl,
+                                                    (
+                                                        var_decl
+                                                            .name
+                                                            .as_ref()
+                                                            .map(|n| n.name.clone()),
+                                                        var_decl.storage.clone().map(Into::into),
+                                                    ),
                                                     loc,
                                                     &lhs_paths,
                                                     Some(&rhs_paths),
@@ -435,7 +441,17 @@ pub trait StatementParser:
                                 ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
                                 return Ok(());
                             }
-                            analyzer.match_var_def(arena, ctx, var_decl, loc, &lhs_paths, None)?;
+                            analyzer.match_var_def(
+                                arena,
+                                ctx,
+                                (
+                                    var_decl.name.as_ref().map(|n| n.name.clone()),
+                                    var_decl.storage.clone().map(Into::into),
+                                ),
+                                loc,
+                                &lhs_paths,
+                                None,
+                            )?;
                             Ok(())
                         });
                     let _ = self.widen_if_limit_hit(ctx, res);

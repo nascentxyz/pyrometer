@@ -919,7 +919,7 @@ impl GraphDot for Analyzer {
         }
     }
 
-    fn dot_str(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
+    fn dot_str(&self, arena: &mut RangeArena<<Analyzer as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerBackend,
@@ -1006,7 +1006,7 @@ impl GraphDot for Analyzer {
         dot_str.join("\n")
     }
 
-    fn dot_str_no_tmps(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
+    fn dot_str_no_tmps(&self, arena: &mut RangeArena<<Analyzer as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + AnalyzerBackend,
@@ -1080,7 +1080,7 @@ impl GraphDot for Analyzer {
         dot_str.join("\n")
     }
 
-    fn mermaid_str(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
+    fn mermaid_str(&self, arena: &mut RangeArena<<Analyzer as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerBackend,

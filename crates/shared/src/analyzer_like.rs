@@ -193,4 +193,12 @@ pub trait AnalyzerLike: GraphLike {
         &mut self,
         arena: &RangeArena<<Self as GraphLike>::RangeElem>,
     ) -> Result<Vec<RepresentationErr>, GraphError>;
+
+    type FlatExpr;
+    type ExprFlag;
+    fn push_expr(&mut self, flat: Self::FlatExpr);
+    fn expr_stack(&self) -> &[Self::FlatExpr];
+    fn expr_stack_mut(&mut self) -> &mut Vec<Self::FlatExpr>;
+    fn take_expr_flag(&mut self) -> Option<Self::ExprFlag>;
+    fn set_expr_flag(&mut self, flag: Self::ExprFlag);
 }

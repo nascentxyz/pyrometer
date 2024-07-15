@@ -2,8 +2,8 @@ use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
 use shared::{
-    AnalyzerLike, GraphDot, GraphError, GraphLike, Heirarchical, NodeIdx, RangeArena,
-    RepresentationErr,
+    AnalyzerLike, ExprFlag, FlatExpr, GraphDot, GraphError, GraphLike, Heirarchical, NodeIdx,
+    RangeArena, RepresentationErr,
 };
 
 use lazy_static::lazy_static;
@@ -33,6 +33,8 @@ pub trait AnalyzerBackend:
         FunctionParam = FunctionParam,
         FunctionReturn = FunctionReturn,
         Function = Function,
+        ExprFlag = ExprFlag,
+        FlatExpr = FlatExpr,
     > + GraphBackend
 {
     fn add_concrete_var(

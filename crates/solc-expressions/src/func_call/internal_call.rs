@@ -8,10 +8,10 @@ use crate::{
 
 use graph::{
     elem::Elem,
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, VarType,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
 
@@ -185,6 +185,66 @@ pub trait InternalFuncCaller:
             })
         } else {
             todo!("Disambiguate named function call");
+        }
+    }
+
+    fn find_func(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        name: String,
+        num_inputs: usize,
+    ) -> Result<Option<FunctionNode>, GraphError> {
+        let funcs = ctx.visible_funcs(self)?;
+        let possible_funcs = funcs
+            .iter()
+            .filter(|func| func.name(self).unwrap().starts_with(&format!("{name}(")))
+            .filter(|func| {
+                // filter by params
+                func.params(self).len() == num_inputs
+            })
+            .copied()
+            .collect::<Vec<_>>();
+
+        match possible_funcs.len() {
+            0 => Ok(None),
+            1 => Ok(Some(possible_funcs[0])),
+            _ => {
+                let stack = &ctx.underlying(self)?.expr_ret_stack;
+                let len = stack.len();
+                let inputs = &stack[len - num_inputs - 1..];
+                let resizeables: Vec<_> = inputs
+                    .iter()
+                    .map(|input| input.expect_single().ok())
+                    .map(|idx| {
+                        let Some(idx) = idx else {
+                            return false;
+                        };
+                        match VarType::try_from_idx(self, idx) {
+                            Some(VarType::BuiltIn(bn, _)) => {
+                                matches!(
+                                    self.node(bn),
+                                    Node::Builtin(Builtin::Uint(_))
+                                        | Node::Builtin(Builtin::Int(_))
+                                        | Node::Builtin(Builtin::Bytes(_))
+                                )
+                            }
+                            Some(VarType::Concrete(c)) => {
+                                matches!(
+                                    self.node(c),
+                                    Node::Concrete(Concrete::Uint(_, _))
+                                        | Node::Concrete(Concrete::Int(_, _))
+                                        | Node::Concrete(Concrete::Bytes(_, _))
+                                )
+                            }
+                            _ => false,
+                        }
+                    })
+                    .collect();
+
+                let inputs = ExprRet::Multi(inputs.to_vec());
+                Ok(self.disambiguate_fn_call(arena, &name, resizeables, &inputs, &possible_funcs))
+            }
         }
     }
 

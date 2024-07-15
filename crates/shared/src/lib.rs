@@ -1,11 +1,13 @@
 mod analyzer_like;
 mod error;
+mod flattened;
 pub mod gas;
 mod graph_like;
 mod search;
 
 pub use analyzer_like::*;
 pub use error::*;
+pub use flattened::*;
 pub use graph_like::*;
 pub use search::*;
 

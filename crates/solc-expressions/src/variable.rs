@@ -314,7 +314,10 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        var_decl: &VariableDeclaration,
+        (name, storage): (
+            Option<impl ToString + Clone>,
+            Option<shared::StorageLocation>,
+        ),
         loc: Loc,
         lhs_paths: &ExprRet,
         rhs_paths: Option<&ExprRet>,
@@ -333,20 +336,20 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 self.match_var_def(
                     arena,
                     ctx,
-                    var_decl,
+                    (name, storage),
                     loc,
                     lhs_paths,
                     Some(&ExprRet::Single(rhs_cvar.into())),
                 )
             }
             (ExprRet::Single(ty), Some(ExprRet::Single(rhs))) => {
-                let name = var_decl.name.clone().expect("Variable wasn't named");
+                let name = name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
                     display_name: name.to_string(),
-                    storage: var_decl.storage.as_ref().map(|s| s.clone().into()),
+                    storage: storage.as_ref().map(|s| s.clone().into()),
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,
@@ -374,14 +377,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 Ok(false)
             }
             (ExprRet::Single(ty), None) => {
-                let name = var_decl.name.clone().expect("Variable wasn't named");
+                let name = name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let maybe_struct = ty.maybe_struct();
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
                     display_name: name.to_string(),
-                    storage: var_decl.storage.as_ref().map(|s| s.clone().into()),
+                    storage: storage.as_ref().map(|s| s.clone().into()),
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,
@@ -401,19 +404,25 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             }
             (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => Ok(rhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, l, Some(expr_ret)))
+                .map(|expr_ret| {
+                    self.match_var_def(arena, ctx, (name.clone(), storage), loc, l, Some(expr_ret))
+                })
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => Ok(lhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, expr_ret, r))
+                .map(|expr_ret| {
+                    self.match_var_def(arena, ctx, (name.clone(), storage), loc, expr_ret, r)
+                })
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), None) => Ok(lhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, expr_ret, None))
+                .map(|expr_ret| {
+                    self.match_var_def(arena, ctx, (name.clone(), storage), loc, expr_ret, None)
+                })
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
@@ -427,7 +436,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             self.match_var_def(
                                 arena,
                                 ctx,
-                                var_decl,
+                                (name.clone(), storage),
                                 loc,
                                 lhs_expr_ret,
                                 Some(rhs_expr_ret),
@@ -443,7 +452,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             self.match_var_def(
                                 arena,
                                 ctx,
-                                var_decl,
+                                (name.clone(), storage),
                                 loc,
                                 lhs_paths,
                                 Some(rhs_expr_ret),
@@ -454,10 +463,13 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .all(|e| *e))
                 }
             }
-            (_e, _f) => Err(ExprErr::Todo(
-                loc,
-                "Unhandled ExprRet combination in `match_var_def`".to_string(),
-            )),
+            (e, f) => {
+                println!("{e:?}, {f:?}");
+                Err(ExprErr::Todo(
+                    loc,
+                    "Unhandled ExprRet combination in `match_var_def`".to_string(),
+                ))
+            }
         }
     }
 

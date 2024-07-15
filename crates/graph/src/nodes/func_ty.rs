@@ -1,5 +1,8 @@
 use crate::{
-    nodes::{Concrete, ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, SourceUnitNode,
+        SourceUnitPartNode,
+    },
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
@@ -411,6 +414,17 @@ impl FunctionNode {
             });
             params
         }
+    }
+
+    pub fn add_params_to_ctx(
+        &self,
+        ctx: ContextNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        self.params(analyzer).iter().try_for_each(|param| {
+            let _ = param.maybe_add_to_ctx(ctx, analyzer)?;
+            Ok(())
+        })
     }
 
     pub fn ordered_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
@@ -945,6 +959,23 @@ impl FunctionParamNode {
 
     pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<NodeIdx, GraphError> {
         Ok(self.underlying(analyzer)?.ty)
+    }
+
+    pub fn maybe_add_to_ctx(
+        &self,
+        ctx: ContextNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<bool, GraphError> {
+        if let Some(var) =
+            ContextVar::maybe_new_from_func_param(analyzer, self.underlying(analyzer)?.clone())
+        {
+            let var = ContextVarNode::from(analyzer.add_node(var));
+            ctx.add_var(var, analyzer)?;
+            analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 

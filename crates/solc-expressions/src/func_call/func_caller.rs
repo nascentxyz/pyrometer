@@ -1,9 +1,12 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
 use crate::{
-    func_call::apply::FuncApplier, func_call::modifier::ModifierCaller, helper::CallerHelper,
-    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
-    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExpressionParser, StatementParser,
+    func_call::{apply::FuncApplier, modifier::ModifierCaller},
+    helper::CallerHelper,
+    internal_call::InternalFuncCaller,
+    intrinsic_call::IntrinsicFuncCaller,
+    namespaced_call::NameSpaceFuncCaller,
+    ContextBuilder, ExpressionParser, StatementParser,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -176,7 +179,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
 }
 
 impl<T> FuncCaller for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
 }
 /// A trait for calling a function
