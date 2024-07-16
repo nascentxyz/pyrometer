@@ -363,7 +363,7 @@ pub trait ExpressionParser:
         //             self,
         //         )
         //         .into_expr_err(*loc)?;
-        //         let cvar = self.add_node(Node::ContextVar(var));
+        //         let cvar = self.add_node(var);
         //         ctx.add_var(cvar.into(), self).into_expr_err(*loc)?;
         //         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
         //         ctx.push_expr(ExprRet::Single(cvar), self)

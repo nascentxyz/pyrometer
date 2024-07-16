@@ -170,8 +170,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx,
                 loc,
                 RangeOp::Gt,
-                RangeOp::Lt,
-                (RangeOp::Lte, RangeOp::Gte),
             )?;
         }
 
@@ -222,7 +220,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ty,
             };
 
-            let idx_access_node = self.add_node(Node::ContextVar(index_access_var));
+            let idx_access_node = self.add_node(index_access_var);
             self.add_edge(
                 idx_access_node,
                 parent,

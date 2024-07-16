@@ -68,7 +68,7 @@ pub trait ConstructorCaller:
             ty: ty.expect("No type for node"),
         };
 
-        let arr = ContextVarNode::from(self.add_node(Node::ContextVar(new_arr)));
+        let arr = ContextVarNode::from(self.add_node(new_arr));
 
         let len_var = ContextVar {
             loc: Some(loc),
@@ -87,7 +87,7 @@ pub trait ConstructorCaller:
                 .clone(),
         };
 
-        let len_cvar = self.add_node(Node::ContextVar(len_var));
+        let len_cvar = self.add_node(len_var);
         self.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
         ctx.add_var(arr, self).into_expr_err(loc)?;
         self.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -178,7 +178,7 @@ pub trait ConstructorCaller:
         loc: Loc,
     ) -> Result<(), ExprErr> {
         let var = ContextVar::new_from_struct(loc, strukt, ctx, self).into_expr_err(loc)?;
-        let cvar = self.add_node(Node::ContextVar(var));
+        let cvar = self.add_node(var);
         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
         let inputs = inputs.as_vec();
@@ -198,7 +198,7 @@ pub trait ConstructorCaller:
                 )
                 .expect("Invalid struct field");
 
-                let fc_node = self.add_node(Node::ContextVar(field_cvar));
+                let fc_node = self.add_node(field_cvar);
                 self.add_edge(
                     fc_node,
                     cvar,

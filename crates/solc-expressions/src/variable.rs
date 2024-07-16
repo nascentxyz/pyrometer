@@ -141,7 +141,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
             };
 
-            let new_cvarnode = self.add_node(Node::ContextVar(var));
+            let new_cvarnode = self.add_node(var);
 
             ctx.add_var(new_cvarnode.into(), self)
                 .into_expr_err(ident.loc)?;
@@ -357,7 +357,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     is_return: false,
                     ty,
                 };
-                let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                let lhs = ContextVarNode::from(self.add_node(var));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -392,7 +392,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     is_return: false,
                     ty,
                 };
-                let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                let lhs = ContextVarNode::from(self.add_node(var));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 if let Some(strukt) = maybe_struct {
@@ -556,7 +556,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
 
                 new_cvar.loc = Some(loc);
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 if old_ctx != ctx {
                     tracing::trace!(
                         "moving var {} into new context: from {} to {}",
@@ -581,8 +581,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .collect::<Vec<_>>();
                     while let Some((field, parent)) = struct_stack.pop() {
                         let underlying = field.underlying(self).into_expr_err(loc)?;
-                        let new_field_in_inheritor =
-                            self.add_node(Node::ContextVar(underlying.clone()));
+                        let new_field_in_inheritor = self.add_node(underlying.clone());
                         self.add_edge(
                             new_field_in_inheritor,
                             parent,
@@ -602,7 +601,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
             } else {
                 new_cvar.loc = Some(loc);
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         }
@@ -653,7 +652,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
                 new_cvar.loc = Some(loc);
                 // new_cvar.display_name = format!("{}_{}", new_cvar.name, cvar_node.prev_versions(self));
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 if old_ctx != ctx {
                     tracing::trace!(
                         "moving var {} into new context: from {} to {}",
@@ -678,8 +677,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .collect::<Vec<_>>();
                     while let Some((field, parent)) = struct_stack.pop() {
                         let underlying = field.underlying(self).into_expr_err(loc)?;
-                        let new_field_in_inheritor =
-                            self.add_node(Node::ContextVar(underlying.clone()));
+                        let new_field_in_inheritor = self.add_node(underlying.clone());
                         self.add_edge(
                             new_field_in_inheritor,
                             parent,
@@ -699,7 +697,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
             } else {
                 new_cvar.loc = Some(loc);
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         }
@@ -732,7 +730,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             .clone();
         new_cvar.loc = Some(loc);
 
-        let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+        let new_cvarnode = self.add_node(new_cvar);
         self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
 
         Ok(ContextVarNode::from(new_cvarnode))
@@ -747,7 +745,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             .unwrap()
             .clone();
         new_cvar.loc = Some(loc);
-        let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+        let new_cvarnode = self.add_node(new_cvar);
         self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         ContextVarNode::from(new_cvarnode)
             .underlying_mut(self)

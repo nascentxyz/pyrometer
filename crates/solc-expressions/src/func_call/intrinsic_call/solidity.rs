@@ -1,5 +1,4 @@
-use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{func_call::helper::CallerHelper, require::Require, ContextBuilder, ExpressionParser};
+use crate::func_call::helper::CallerHelper;
 
 use graph::{
     elem::Elem,
@@ -24,96 +23,78 @@ pub trait SolidityCaller:
     fn solidity_call(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        func_name: String,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
         ctx: ContextNode,
+        func_name: &str,
+        inputs: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "keccak256" => {
-                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
-                    };
+                let cvar = if let Ok(var) = inputs.expect_single() {
+                    ContextVarNode::from(var)
+                } else {
+                    return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
+                };
 
-                    let cvar = if let Ok(var) = input.expect_single() {
-                        ContextVarNode::from(var)
-                    } else {
-                        return Err(ExprErr::NoRhs(loc, "No input into keccak256".to_string()));
-                    };
+                if cvar.is_const(self, arena).into_expr_err(loc)? {
+                    let bytes = cvar
+                        .evaled_range_min(self, arena)
+                        .unwrap()
+                        .unwrap()
+                        .as_bytes(self, true, arena)
+                        .unwrap();
+                    let mut out = [0; 32];
+                    keccak_hash::keccak_256(&bytes, &mut out);
 
-                    if cvar.is_const(analyzer, arena).into_expr_err(loc)? {
-                        let bytes = cvar
-                            .evaled_range_min(analyzer, arena)
-                            .unwrap()
-                            .unwrap()
-                            .as_bytes(analyzer, true, arena)
-                            .unwrap();
-                        let mut out = [0; 32];
-                        keccak_hash::keccak_256(&bytes, &mut out);
-
-                        let hash = Node::Concrete(Concrete::from(H256(out)));
-                        let hash_node = ConcreteNode::from(analyzer.add_node(hash));
-                        let var = ContextVar::new_from_concrete(loc, ctx, hash_node, analyzer)
-                            .into_expr_err(loc)?;
-                        let cvar = analyzer.add_node(Node::ContextVar(var));
-                        ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                            .into_expr_err(loc)?;
-                    } else {
-                        let var = ContextVar::new_from_builtin(
-                            loc,
-                            analyzer.builtin_or_add(Builtin::Bytes(32)).into(),
-                            analyzer,
-                        )
+                    let hash_node = ConcreteNode::from(self.add_node(Concrete::from(H256(out))));
+                    let var = ContextVar::new_from_concrete(loc, ctx, hash_node, self)
                         .into_expr_err(loc)?;
-                        let cvar = analyzer.add_node(Node::ContextVar(var));
-                        ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                            .into_expr_err(loc)?;
-                    }
+                    let cvar = self.add_node(var);
+                    ctx.push_expr(ExprRet::Single(cvar), self)
+                        .into_expr_err(loc)?;
+                } else {
+                    let var = ContextVar::new_from_builtin(
+                        loc,
+                        self.builtin_or_add(Builtin::Bytes(32)).into(),
+                        self,
+                    )
+                    .into_expr_err(loc)?;
+                    let cvar = self.add_node(var);
+                    ctx.push_expr(ExprRet::Single(cvar), self)
+                        .into_expr_err(loc)?;
+                }
 
-                    Ok(())
-                })
+                Ok(())
             }
             "addmod" => {
                 // TODO: actually calcuate this if possible
-                input_exprs.parse(arena, self, ctx, loc)?;
-
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
-                    let var = ContextVar::new_from_builtin(
-                        loc,
-                        analyzer.builtin_or_add(Builtin::Uint(256)).into(),
-                        analyzer,
-                    )
+                let var = ContextVar::new_from_builtin(
+                    loc,
+                    self.builtin_or_add(Builtin::Uint(256)).into(),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                let cvar = self.add_node(var);
+                ctx.push_expr(ExprRet::Single(cvar), self)
                     .into_expr_err(loc)?;
-                    let cvar = analyzer.add_node(Node::ContextVar(var));
-                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                        .into_expr_err(loc)?;
-                    Ok(())
-                })
+                Ok(())
             }
             "mulmod" => {
                 // TODO: actually calcuate this if possible
-                input_exprs.parse(arena, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
-                    let var = ContextVar::new_from_builtin(
-                        loc,
-                        analyzer.builtin_or_add(Builtin::Uint(256)).into(),
-                        analyzer,
-                    )
+                let var = ContextVar::new_from_builtin(
+                    loc,
+                    self.builtin_or_add(Builtin::Uint(256)).into(),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                let cvar = self.add_node(var);
+                ctx.push_expr(ExprRet::Single(cvar), self)
                     .into_expr_err(loc)?;
-                    let cvar = analyzer.add_node(Node::ContextVar(var));
-                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                        .into_expr_err(loc)?;
-                    Ok(())
-                })
+                Ok(())
             }
             "require" | "assert" => {
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
-                    analyzer.handle_require(arena, input_exprs.unnamed_args().unwrap(), ctx)
-                })
+                // self.handle_require(arena, input_exprs.unnamed_args().unwrap(), ctx)
+                todo!()
             }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

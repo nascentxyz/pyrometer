@@ -1019,7 +1019,7 @@ pub trait Flatten:
             VarType::User(TypeNode::Func(s), _) => {
                 if self.builtin_fn_nodes().iter().any(|(_, v)| *v == func) {
                     // its a builtin function call
-                    todo!("builtin fn")
+                    self.call_builtin(arena, ctx, &*s.name(self).into_expr_err(loc)?, inputs, loc)
                 } else {
                     self.func_call(arena, ctx, loc, &inputs, s, None, None)
                 }

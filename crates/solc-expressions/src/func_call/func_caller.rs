@@ -242,7 +242,7 @@ pub trait FuncCaller:
             ),
         };
 
-        let new_cvarnode = self.add_node(Node::ContextVar(var));
+        let new_cvarnode = self.add_node(var);
         ctx.add_var(new_cvarnode.into(), self).into_expr_err(*loc)?;
         self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
         if let Some(func_node) = ContextVarNode::from(new_cvarnode)
@@ -473,7 +473,7 @@ pub trait FuncCaller:
                 if let Some(var) =
                     ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
                 {
-                    let cvar = self.add_node(Node::ContextVar(var));
+                    let cvar = self.add_node(var);
                     callee_ctx.add_var(cvar.into(), self).unwrap();
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
                 }

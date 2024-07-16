@@ -210,7 +210,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .concrete_to_builtin(self)
                     .into_expr_err(loc)?;
 
-                let new_var = self.add_node(Node::ContextVar(new_lhs_underlying));
+                let new_var = self.add_node(new_lhs_underlying);
                 ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
                 self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
                 ContextVarNode::from(new_var)
@@ -375,7 +375,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     Elem::Null,
                 ));
 
-                let out_var = ContextVarNode::from(self.add_node(Node::ContextVar(out_var)));
+                let out_var = ContextVarNode::from(self.add_node(out_var));
 
                 out_var
                     .set_range_min(self, arena, expr.clone())
@@ -428,16 +428,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::zero()), loc)?;
 
         if self
-            .require(
-                arena,
-                tmp_rhs,
-                zero_node,
-                ctx,
-                loc,
-                RangeOp::Neq,
-                RangeOp::Neq,
-                (RangeOp::Eq, RangeOp::Neq),
-            )?
+            .require(arena, tmp_rhs, zero_node, ctx, loc, RangeOp::Neq)?
             .is_none()
         {
             return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
@@ -472,8 +463,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx,
                 loc,
                 RangeOp::Gte,
-                RangeOp::Lte,
-                (RangeOp::Lte, RangeOp::Gte),
             )?
             .is_none()
         {
@@ -503,8 +492,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx,
                         loc,
                         RangeOp::Lte,
-                        RangeOp::Gte,
-                        (RangeOp::Gte, RangeOp::Lte),
                     )?
                     .is_none()
                 {
@@ -541,8 +528,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx,
                 loc,
                 RangeOp::Lte,
-                RangeOp::Gte,
-                (RangeOp::Gte, RangeOp::Lte),
             )?
             .is_none()
         {
@@ -574,8 +559,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx,
                         loc,
                         RangeOp::Gte,
-                        RangeOp::Lte,
-                        (RangeOp::Lte, RangeOp::Gte),
                     )?
                     .is_none()
                 {
@@ -613,8 +596,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx,
                 loc,
                 RangeOp::Lte,
-                RangeOp::Gte,
-                (RangeOp::Gte, RangeOp::Lte),
             )?
             .is_none()
         {
@@ -667,8 +648,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx,
                         loc,
                         RangeOp::Gte,
-                        RangeOp::Lte,
-                        (RangeOp::Lte, RangeOp::Gte),
                     )?
                     .is_none()
                 {
@@ -693,16 +672,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let zero = rhs.ty_zero_concrete(self).into_expr_err(loc)?.unwrap();
         let zero = self.add_concrete_var(ctx, zero, loc)?;
         if self
-            .require(
-                arena,
-                rhs,
-                zero,
-                ctx,
-                loc,
-                RangeOp::Gte,
-                RangeOp::Lte,
-                (RangeOp::Lte, RangeOp::Gte),
-            )?
+            .require(arena, rhs, zero, ctx, loc, RangeOp::Gte)?
             .is_none()
         {
             return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
@@ -725,8 +695,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx,
                 loc,
                 RangeOp::Lte,
-                RangeOp::Gte,
-                (RangeOp::Gte, RangeOp::Lte),
             )?
             .is_none()
         {
@@ -757,8 +725,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         ctx,
                         loc,
                         RangeOp::Gte,
-                        RangeOp::Lte,
-                        (RangeOp::Lte, RangeOp::Gte),
                     )?
                     .is_none()
                 {

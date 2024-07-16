@@ -51,7 +51,7 @@ pub trait BuiltinAccess:
                             let bn = self.builtin_or_add(Builtin::DynamicBytes);
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
-                            let node = self.add_node(Node::ContextVar(cvar));
+                            let node = self.add_node(cvar);
                             ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
@@ -61,7 +61,7 @@ pub trait BuiltinAccess:
                             let bn = self.builtin_or_add(Builtin::Bytes(32));
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
-                            let node = self.add_node(Node::ContextVar(cvar));
+                            let node = self.add_node(cvar);
                             ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
@@ -71,7 +71,7 @@ pub trait BuiltinAccess:
                             let bn = self.builtin_or_add(Builtin::Uint(256));
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
-                            let node = self.add_node(Node::ContextVar(cvar));
+                            let node = self.add_node(cvar);
                             ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
@@ -80,7 +80,7 @@ pub trait BuiltinAccess:
                             let bn = self.builtin_or_add(Builtin::Bool);
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
-                            let node = self.add_node(Node::ContextVar(cvar));
+                            let node = self.add_node(cvar);
                             ctx.add_var(node.into(), self).into_expr_err(loc)?;
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
@@ -209,14 +209,14 @@ pub trait BuiltinAccess:
                     match &*ident.name {
                         "max" => {
                             let c = Concrete::Int(size, max);
-                            let node = self.add_node(Node::Concrete(c)).into();
+                            let node = self.add_node(c).into();
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
                             var.name = format!("int{size}.max");
                             var.display_name.clone_from(&var.name);
                             var.is_tmp = true;
                             var.is_symbolic = false;
-                            let cvar = self.add_node(Node::ContextVar(var));
+                            let cvar = self.add_node(var);
                             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(cvar))
@@ -224,14 +224,14 @@ pub trait BuiltinAccess:
                         "min" => {
                             let min = max * I256::from(-1i32) - I256::from(1i32);
                             let c = Concrete::Int(size, min);
-                            let node = self.add_node(Node::Concrete(c)).into();
+                            let node = self.add_node(c).into();
                             let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                                 .into_expr_err(loc)?;
                             var.name = format!("int{size}.min");
                             var.display_name.clone_from(&var.name);
                             var.is_tmp = true;
                             var.is_symbolic = false;
-                            let cvar = self.add_node(Node::ContextVar(var));
+                            let cvar = self.add_node(var);
                             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(cvar))
@@ -253,14 +253,14 @@ pub trait BuiltinAccess:
                             U256::from(2).pow(U256::from(size)) - 1
                         };
                         let c = Concrete::Uint(size, max);
-                        let node = self.add_node(Node::Concrete(c)).into();
+                        let node = self.add_node(c).into();
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                             .into_expr_err(loc)?;
                         var.name = format!("uint{size}.max");
                         var.display_name.clone_from(&var.name);
                         var.is_tmp = true;
                         var.is_symbolic = false;
-                        let cvar = self.add_node(Node::ContextVar(var));
+                        let cvar = self.add_node(var);
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         Ok(ExprRet::Single(cvar))
@@ -268,14 +268,14 @@ pub trait BuiltinAccess:
                     "min" => {
                         let min = U256::zero();
                         let c = Concrete::from(min);
-                        let node = self.add_node(Node::Concrete(c)).into();
+                        let node = self.add_node(c).into();
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
                             .into_expr_err(loc)?;
                         var.name = format!("uint{size}.min");
                         var.display_name.clone_from(&var.name);
                         var.is_tmp = true;
                         var.is_symbolic = false;
-                        let cvar = self.add_node(Node::ContextVar(var));
+                        let cvar = self.add_node(var);
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                         Ok(ExprRet::Single(cvar))

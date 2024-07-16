@@ -314,7 +314,7 @@ pub trait YulFuncCaller:
                 let b = Builtin::Uint(256);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -324,7 +324,7 @@ pub trait YulFuncCaller:
                 let b = Builtin::Uint(256);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -338,7 +338,7 @@ pub trait YulFuncCaller:
                 let b = Builtin::Uint(256);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -386,7 +386,7 @@ pub trait YulFuncCaller:
                 let b = Builtin::Bytes(32);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -401,7 +401,7 @@ pub trait YulFuncCaller:
                 range.min = Elem::from(Concrete::from(U256::from(0)));
                 range.max = Elem::from(Concrete::from(U256::from(1)));
                 var.ty.set_range(range).into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -412,7 +412,7 @@ pub trait YulFuncCaller:
                     ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                         .into_expr_err(*loc)?;
                 var.display_name = format!("{id}_success");
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -426,7 +426,7 @@ pub trait YulFuncCaller:
                 let b = Builtin::Uint(8);
                 let var = ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                     .into_expr_err(*loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)?;
                 Ok(())
@@ -570,7 +570,7 @@ pub trait YulFuncCaller:
                     ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                         .into_expr_err(*loc)?;
                 var.display_name = "selfbalance()".to_string();
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)
             }
@@ -580,7 +580,7 @@ pub trait YulFuncCaller:
                     ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                         .into_expr_err(*loc)?;
                 var.display_name = "address()".to_string();
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)
             }
@@ -618,7 +618,7 @@ pub trait YulFuncCaller:
                     ContextVar::new_from_builtin(*loc, self.builtin_or_add(b).into(), self)
                         .into_expr_err(*loc)?;
                 var.display_name = "codesize()".to_string();
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(node), self)
                     .into_expr_err(*loc)
             }
@@ -726,7 +726,7 @@ pub trait YulFuncCaller:
                 }
                 var.is_return = true;
                 var.ty.set_range(range).into_expr_err(loc)?;
-                let node = self.add_node(Node::ContextVar(var));
+                let node = self.add_node(var);
                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Return));
                 ctx.add_return_node(
                     loc,

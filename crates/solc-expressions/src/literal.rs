@@ -72,7 +72,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         unit: Option<&str>,
     ) -> Result<(), ExprErr> {
         let conc = self.concrete_number_from_str(loc, integer, exponent, negative, unit)?;
-        let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(conc)));
+        let concrete_node = ConcreteNode::from(self.add_node(conc));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -167,7 +167,7 @@ pub trait Literal: AnalyzerBackend + Sized {
                 .val
                 .fit_size();
 
-            ConcreteNode::from(self.add_node(Node::Concrete(evaled)))
+            ConcreteNode::from(self.add_node(evaled))
         } else {
             let evaled = rational_range
                 .maximize(self, arena)
@@ -176,7 +176,7 @@ pub trait Literal: AnalyzerBackend + Sized {
                 .unwrap()
                 .val
                 .fit_size();
-            ConcreteNode::from(self.add_node(Node::Concrete(evaled)))
+            ConcreteNode::from(self.add_node(evaled))
         };
 
         let ccvar = Node::ContextVar(
@@ -212,9 +212,9 @@ pub trait Literal: AnalyzerBackend + Sized {
                 ));
             }
             let val = I256::from(-1i32) * raw;
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
+            ConcreteNode::from(self.add_node(Concrete::Int(size, val)))
         } else {
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))
+            ConcreteNode::from(self.add_node(Concrete::Uint(size, val)))
         };
 
         let ccvar = Node::ContextVar(
@@ -244,9 +244,9 @@ pub trait Literal: AnalyzerBackend + Sized {
                 }
                 target.0[i] = *hex_byte;
             });
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(max, target))))
+            ConcreteNode::from(self.add_node(Concrete::Bytes(max, target)))
         } else {
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::DynBytes(h))))
+            ConcreteNode::from(self.add_node(Concrete::DynBytes(h)))
         };
 
         let ccvar = Node::ContextVar(
@@ -263,8 +263,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &str) -> Result<(), ExprErr> {
         let addr = Address::from_str(addr).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
 
-        let concrete_node =
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Address(addr))));
+        let concrete_node = ConcreteNode::from(self.add_node(Concrete::Address(addr)));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -341,8 +340,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<(), ExprErr> {
-        let concrete_node =
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::String(s.to_string()))));
+        let concrete_node = ConcreteNode::from(self.add_node(Concrete::String(s.to_string())));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -355,7 +353,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     fn bool_literal(&mut self, ctx: ContextNode, loc: Loc, b: bool) -> Result<(), ExprErr> {
-        let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(b))));
+        let concrete_node = ConcreteNode::from(self.add_node(Concrete::Bool(b)));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );

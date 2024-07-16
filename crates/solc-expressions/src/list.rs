@@ -45,7 +45,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         is_return: false,
                         ty,
                     };
-                    let input_node = self.add_node(Node::ContextVar(var));
+                    let input_node = self.add_node(var);
                     ctx.add_var(input_node.into(), self).into_expr_err(*loc)?;
                     self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
                     Ok(ExprRet::Single(input_node))
@@ -71,7 +71,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 is_return: false,
                                 ty,
                             };
-                            let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
+                            let input_node = self.add_node(new_lhs_underlying);
                             ctx.add_var(input_node.into(), self).into_expr_err(*loc)?;
                             self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(input_node))
@@ -118,7 +118,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         is_return: false,
                         ty,
                     };
-                    let input_node = self.add_node(Node::ContextVar(var));
+                    let input_node = self.add_node(var);
                     ctx.add_var(input_node.into(), self).into_expr_err(loc)?;
                     self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
                     Ok(ExprRet::Single(input_node))
@@ -144,7 +144,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 is_return: false,
                                 ty,
                             };
-                            let input_node = self.add_node(Node::ContextVar(new_lhs_underlying));
+                            let input_node = self.add_node(new_lhs_underlying);
                             ctx.add_var(input_node.into(), self).into_expr_err(loc)?;
                             self.add_edge(input_node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(input_node))

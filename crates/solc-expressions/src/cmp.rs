@@ -88,11 +88,8 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ),
                 };
 
-                ctx.push_expr(
-                    ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
-                    self,
-                )
-                .into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Single(self.add_node(out_var)), self)
+                    .into_expr_err(loc)?;
                 Ok(())
             }
             ExprRet::Multi(f) => Err(ExprErr::MultiNot(
@@ -253,11 +250,8 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ),
                 };
 
-                ctx.push_expr(
-                    ExprRet::Single(self.add_node(Node::ContextVar(out_var))),
-                    self,
-                )
-                .into_expr_err(loc)
+                ctx.push_expr(ExprRet::Single(self.add_node(out_var)), self)
+                    .into_expr_err(loc)
             }
             (l @ ExprRet::Single(_lhs), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides

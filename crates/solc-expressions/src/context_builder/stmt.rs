@@ -175,7 +175,7 @@ pub trait StatementParser:
         //                 let func_param = self.add_if_err(res)?;
         //                 if let Some(cvar) = ContextVar::maybe_new_from_func_param(self, func_param)
         //                 {
-        //                     let cvar_node = self.add_node(Node::ContextVar(cvar));
+        //                     let cvar_node = self.add_node(cvar);
         //                     ContextNode::from(ctx_node)
         //                         .add_var(cvar_node.into(), self)
         //                         .unwrap();
@@ -215,7 +215,7 @@ pub trait StatementParser:
         //                 let res = ret_node.underlying(self).into_expr_err(stmt.loc()).cloned();
         //                 let func_ret = self.add_if_err(res).unwrap();
         //                 if let Some(cvar) = ContextVar::maybe_new_from_func_ret(self, func_ret) {
-        //                     let cvar_node = self.add_node(Node::ContextVar(cvar));
+        //                     let cvar_node = self.add_node(cvar);
         //                     ContextNode::from(ctx_node)
         //                         .add_var(cvar_node.into(), self)
         //                         .unwrap();

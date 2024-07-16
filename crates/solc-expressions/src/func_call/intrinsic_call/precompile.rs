@@ -1,13 +1,12 @@
-use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{func_call::helper::CallerHelper, ContextBuilder, ExpressionParser};
-use graph::nodes::{FunctionNode, SubContextKind};
+use crate::func_call::helper::CallerHelper;
+use graph::nodes::SubContextKind;
 
 use graph::{
     elem::Elem,
     nodes::{Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -24,152 +23,99 @@ pub trait PrecompileCaller:
     fn precompile_call(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        func_name: String,
-        func_idx: NodeIdx,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
         ctx: ContextNode,
+        func_name: &str,
+        inputs: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match &*func_name {
             "sha256" => {
-                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "sha256 call was not given input".to_string(),
-                        ));
-                    };
-                    if matches!(input, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(input, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    let var = ContextVar::new_from_builtin(
-                        loc,
-                        analyzer.builtin_or_add(Builtin::Bytes(32)).into(),
-                        analyzer,
-                    )
+                // TODO: Compile time calculate the hash if we have concretes.
+                let var = ContextVar::new_from_builtin(
+                    loc,
+                    self.builtin_or_add(Builtin::Bytes(32)).into(),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                let cvar = self.add_node(var);
+                ctx.push_expr(ExprRet::Single(cvar), self)
                     .into_expr_err(loc)?;
-                    let cvar = analyzer.add_node(Node::ContextVar(var));
-                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                        .into_expr_err(loc)?;
-                    Ok(())
-                })
+                Ok(())
             }
             "ripemd160" => {
-                self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "ripemd160 was not given input".to_string(),
-                        ));
-                    };
-                    if matches!(input, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(input, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    let var = ContextVar::new_from_builtin(
-                        loc,
-                        analyzer.builtin_or_add(Builtin::Bytes(32)).into(),
-                        analyzer,
-                    )
+                // TODO: Compile time calculate the hash if we have concretes.
+                let var = ContextVar::new_from_builtin(
+                    loc,
+                    self.builtin_or_add(Builtin::Bytes(32)).into(),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                let cvar = self.add_node(var);
+                ctx.push_expr(ExprRet::Single(cvar), self)
                     .into_expr_err(loc)?;
-                    let cvar = analyzer.add_node(Node::ContextVar(var));
-                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                        .into_expr_err(loc)?;
-                    Ok(())
-                })
+                Ok(())
             }
             "ecrecover" => {
-                input_exprs.parse(arena, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
-                    let cctx =
-                        Context::new_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-                    let call_ctx = analyzer.add_node(Node::Context(cctx));
-                    ctx.set_child_call(call_ctx.into(), analyzer)
-                        .into_expr_err(loc)?;
-                    let call_node = analyzer.add_node(Node::FunctionCall);
-                    analyzer.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
-                    analyzer.add_edge(call_node, ctx, Edge::Context(ContextEdge::Subcontext));
-                    analyzer.add_edge(call_ctx, call_node, Edge::Context(ContextEdge::Subcontext));
-
-                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "ecrecover did not receive inputs".to_string(),
-                        ));
-                    };
-
-                    let input = if let Some(ordered_param_names) =
-                        FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer)
-                    {
-                        input_exprs.order(input, ordered_param_names)
-                    } else {
-                        input
-                    };
-
-                    if matches!(input, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(input, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    let mut inner_vals = vec![];
-                    match input {
-                        ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
-                            inner_vals
-                                .push(ContextVarNode::from(var).display_name(analyzer).unwrap());
-                        }
-                        _ => inner_vals.push("<unknown>".to_string()),
-                    }
-                    let inner_name = inner_vals.into_iter().collect::<Vec<_>>().join(", ");
-                    let mut var = ContextVar::new_from_builtin(
-                        loc,
-                        analyzer.builtin_or_add(Builtin::Address).into(),
-                        analyzer,
-                    )
+                let func_idx = *(self.builtin_fn_nodes().get("ecrecover").unwrap());
+                let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
+                let cctx = Context::new_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
+                let call_ctx = self.add_node(Node::Context(cctx));
+                ctx.set_child_call(call_ctx.into(), self)
                     .into_expr_err(loc)?;
-                    var.display_name = format!("ecrecover({})", inner_name);
-                    var.is_symbolic = true;
-                    var.is_return = true;
-                    let cvar = analyzer.add_node(Node::ContextVar(var));
-                    ctx.add_var(cvar.into(), analyzer).into_expr_err(loc)?;
-                    analyzer.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Variable));
-                    analyzer.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Return));
-                    ContextNode::from(call_ctx)
-                        .add_return_node(loc, cvar.into(), analyzer)
-                        .into_expr_err(loc)?;
+                let call_node = self.add_node(Node::FunctionCall);
+                self.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
+                self.add_edge(call_node, ctx, Edge::Context(ContextEdge::Subcontext));
+                self.add_edge(call_ctx, call_node, Edge::Context(ContextEdge::Subcontext));
 
-                    let subctx_kind = SubContextKind::new_fn_ret(call_ctx.into(), ctx);
-                    let rctx =
-                        Context::new_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-                    let ret_ctx = analyzer.add_node(Node::Context(rctx));
-                    ContextNode::from(call_ctx)
-                        .set_child_call(ret_ctx.into(), analyzer)
-                        .into_expr_err(loc)?;
+                let mut inner_vals = vec![];
+                match inputs {
+                    ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
+                        inner_vals.push(ContextVarNode::from(var).display_name(self).unwrap());
+                    }
+                    _ => inner_vals.push("<unknown>".to_string()),
+                }
+                let inner_name = inner_vals.into_iter().collect::<Vec<_>>().join(", ");
+                let mut var = ContextVar::new_from_builtin(
+                    loc,
+                    self.builtin_or_add(Builtin::Address).into(),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                var.display_name = format!("ecrecover({})", inner_name);
+                var.is_symbolic = true;
+                var.is_return = true;
+                let cvar = self.add_node(var);
+                ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
+                self.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Variable));
+                self.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Return));
+                ContextNode::from(call_ctx)
+                    .add_return_node(loc, cvar.into(), self)
+                    .into_expr_err(loc)?;
 
-                    let tmp_ret = ContextVarNode::from(cvar)
-                        .as_tmp(
-                            ContextNode::from(call_ctx)
-                                .underlying(analyzer)
-                                .unwrap()
-                                .loc,
-                            ret_ctx.into(),
-                            analyzer,
-                        )
-                        .unwrap();
-                    tmp_ret.underlying_mut(analyzer).unwrap().is_return = true;
-                    tmp_ret.underlying_mut(analyzer).unwrap().display_name =
-                        format!("ecrecover({}).return", inner_name);
-                    ctx.add_var(tmp_ret, analyzer).into_expr_err(loc)?;
-                    analyzer.add_edge(tmp_ret, ret_ctx, Edge::Context(ContextEdge::Variable));
+                let subctx_kind = SubContextKind::new_fn_ret(call_ctx.into(), ctx);
+                let rctx = Context::new_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
+                let ret_ctx = self.add_node(Node::Context(rctx));
+                ContextNode::from(call_ctx)
+                    .set_child_call(ret_ctx.into(), self)
+                    .into_expr_err(loc)?;
 
-                    ContextNode::from(ret_ctx)
-                        .push_expr(ExprRet::Single(tmp_ret.into()), analyzer)
-                        .into_expr_err(loc)?;
-                    Ok(())
-                })
+                let tmp_ret = ContextVarNode::from(cvar)
+                    .as_tmp(
+                        ContextNode::from(call_ctx).underlying(self).unwrap().loc,
+                        ret_ctx.into(),
+                        self,
+                    )
+                    .unwrap();
+                tmp_ret.underlying_mut(self).unwrap().is_return = true;
+                tmp_ret.underlying_mut(self).unwrap().display_name =
+                    format!("ecrecover({}).return", inner_name);
+                ctx.add_var(tmp_ret, self).into_expr_err(loc)?;
+                self.add_edge(tmp_ret, ret_ctx, Edge::Context(ContextEdge::Variable));
+
+                ContextNode::from(ret_ctx)
+                    .push_expr(ExprRet::Single(tmp_ret.into()), self)
+                    .into_expr_err(loc)?;
+                Ok(())
             }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

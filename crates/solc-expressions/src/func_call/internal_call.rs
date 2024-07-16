@@ -102,7 +102,7 @@ pub trait InternalFuncCaller:
                 let strukt = possible_structs[0];
                 let var =
                     ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
-                let cvar = self.add_node(Node::ContextVar(var));
+                let cvar = self.add_node(var);
                 ctx.add_var(cvar.into(), self).into_expr_err(*loc)?;
                 self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -117,7 +117,7 @@ pub trait InternalFuncCaller:
                     )
                     .expect("Invalid struct field");
 
-                    let fc_node = self.add_node(Node::ContextVar(field_cvar));
+                    let fc_node = self.add_node(field_cvar);
                     self.add_edge(
                         fc_node,
                         cvar,

@@ -206,9 +206,7 @@ pub trait YulCondOp:
         match true_cvars {
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, *kind).into_expr_err(loc)?,
             ExprRet::Single(_true_cvar) | ExprRet::SingleLiteral(_true_cvar) => {
-                let cnode = ConcreteNode::from(
-                    self.add_node(Node::Concrete(Concrete::Uint(1, U256::from(0)))),
-                );
+                let cnode = ConcreteNode::from(self.add_node(Concrete::Uint(1, U256::from(0))));
                 let tmp_true = Node::ContextVar(
                     ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(loc)?,
@@ -216,16 +214,7 @@ pub trait YulCondOp:
                 let rhs_paths =
                     ExprRet::Single(ContextVarNode::from(self.add_node(tmp_true)).into());
 
-                self.handle_require_inner(
-                    arena,
-                    ctx,
-                    loc,
-                    true_cvars,
-                    &rhs_paths,
-                    RangeOp::Gt,
-                    RangeOp::Lt,
-                    (RangeOp::Lt, RangeOp::Gt),
-                )?;
+                self.handle_require_inner(arena, ctx, loc, true_cvars, &rhs_paths, RangeOp::Gt)?;
             }
             ExprRet::Multi(ref true_paths) => {
                 // TODO: validate this
@@ -251,9 +240,7 @@ pub trait YulCondOp:
         match false_cvars {
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, *kind).into_expr_err(loc)?,
             ExprRet::Single(_false_cvar) | ExprRet::SingleLiteral(_false_cvar) => {
-                let cnode = ConcreteNode::from(
-                    self.add_node(Node::Concrete(Concrete::Uint(1, U256::from(0)))),
-                );
+                let cnode = ConcreteNode::from(self.add_node(Concrete::Uint(1, U256::from(0))));
                 let tmp_true = Node::ContextVar(
                     ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                         .into_expr_err(loc)?,
@@ -261,16 +248,7 @@ pub trait YulCondOp:
                 let rhs_paths =
                     ExprRet::Single(ContextVarNode::from(self.add_node(tmp_true)).into());
 
-                self.handle_require_inner(
-                    arena,
-                    ctx,
-                    loc,
-                    false_cvars,
-                    &rhs_paths,
-                    RangeOp::Eq,
-                    RangeOp::Neq,
-                    (RangeOp::Neq, RangeOp::Eq),
-                )?;
+                self.handle_require_inner(arena, ctx, loc, false_cvars, &rhs_paths, RangeOp::Eq)?;
             }
             ExprRet::Multi(ref false_paths) => {
                 // TODO: validate this

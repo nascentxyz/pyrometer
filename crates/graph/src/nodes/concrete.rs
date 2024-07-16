@@ -104,6 +104,12 @@ pub enum Concrete {
     Array(Vec<Concrete>),
 }
 
+impl From<Concrete> for Node {
+    fn from(c: Concrete) -> Node {
+        Node::Concrete(c)
+    }
+}
+
 impl Default for Concrete {
     fn default() -> Self {
         Concrete::Uint(0, U256::zero())

@@ -82,7 +82,7 @@ pub trait ContextBuilder:
                             .map(|underlying| {
                                 ContextVar::new_from_func_ret(ctx, self, underlying).map(|var| {
                                     var.map(|var| {
-                                        ContextVarNode::from(self.add_node(Node::ContextVar(var)))
+                                        ContextVarNode::from(self.add_node(var))
                                     }).ok_or(GraphError::NodeConfusion("Could not construct a context variable from function return".to_string()))
                                     .map(Some)
                                 }).and_then(|i| i)

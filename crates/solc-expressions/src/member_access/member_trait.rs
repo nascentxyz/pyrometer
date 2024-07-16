@@ -325,7 +325,7 @@ pub trait MemberAccess:
                 let selector_node = ConcreteNode::from(self.add_node(selector_conc));
                 let var = ContextVar::new_from_concrete(loc, ctx, selector_node, self)
                     .into_expr_err(loc)?;
-                let cvar = self.add_node(Node::ContextVar(var));
+                let cvar = self.add_node(var);
                 Ok(ExprRet::Single(cvar))
             }
             _ => Err(ExprErr::MemberAccessNotFound(

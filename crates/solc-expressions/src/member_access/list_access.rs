@@ -130,7 +130,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 Some(range),
             ),
         };
-        let len_node = ContextVarNode::from(self.add_node(Node::ContextVar(len_var)));
+        let len_node = ContextVarNode::from(self.add_node(len_var));
         self.add_edge(
             len_node,
             target_array,
@@ -203,7 +203,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                     range,
                 ),
             };
-            let len_node = self.add_node(Node::ContextVar(len_var));
+            let len_node = self.add_node(len_var);
 
             let next_arr = self
                 .advance_var_in_ctx(

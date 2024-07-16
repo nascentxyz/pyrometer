@@ -456,7 +456,7 @@ pub trait YulBuilder:
                     SolcRange::try_from_builtin(&Builtin::Uint(256)),
                 ),
             };
-            let slot_node = self.add_node(Node::ContextVar(slot_var));
+            let slot_node = self.add_node(slot_var);
 
             self.add_edge(slot_node, lhs, Edge::Context(ContextEdge::SlotAccess));
             self.add_edge(slot_node, ctx, Edge::Context(ContextEdge::Variable));

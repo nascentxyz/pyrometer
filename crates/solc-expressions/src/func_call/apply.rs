@@ -328,7 +328,7 @@ pub trait FuncApplier:
                     });
                 }
 
-                let mut new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let mut new_cvar = ContextVarNode::from(self.add_node(new_var));
                 self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
                 target_ctx.add_var(new_cvar, self).unwrap();
 
@@ -363,8 +363,7 @@ pub trait FuncApplier:
                                     }
                                 });
                             }
-                            let new_field =
-                                ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                            let new_field = ContextVarNode::from(self.add_node(new_var));
                             self.add_edge(
                                 new_field,
                                 new_cvar,
@@ -421,7 +420,7 @@ pub trait FuncApplier:
                         }
                     });
                 }
-                let new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let new_cvar = ContextVarNode::from(self.add_node(new_var));
 
                 if new_cvar.is_const(self, arena)?
                     && new_cvar.evaled_range_min(self, arena)?
@@ -444,7 +443,7 @@ pub trait FuncApplier:
             if let Some(var) =
                 ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
             {
-                let cvar = self.add_node(Node::ContextVar(var));
+                let cvar = self.add_node(var);
                 target_ctx.add_var(cvar.into(), self).unwrap();
                 self.add_edge(cvar, target_ctx, Edge::Context(ContextEdge::Variable));
                 rets.push(ExprRet::Single(cvar));
@@ -508,8 +507,7 @@ pub trait FuncApplier:
                         None
                     };
 
-                    let replacement =
-                        ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+                    let replacement = ContextVarNode::from(self.add_node(new_cvar));
 
                     self.add_edge(
                         replacement,

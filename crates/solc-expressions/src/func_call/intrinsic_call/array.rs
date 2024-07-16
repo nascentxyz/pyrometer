@@ -16,6 +16,40 @@ impl<T> ArrayCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = 
 /// Trait for calling array-based intrinsic functions
 pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Perform an `array.<..>` function call
+    fn array_call_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        func_name: &str,
+        inputs: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        match &*func_name {
+            "push" => {
+                let inputs_vec = inputs.as_vec();
+                let arr = inputs_vec[0].expect_single().into_expr_err(loc)?;
+                let push_elem = if let Some(push_elem) = inputs_vec.get(1) {
+                    Some(push_elem.expect_single().into_expr_err(loc)?)
+                } else {
+                    None
+                };
+
+                todo!();
+            }
+            "pop" => {
+                todo!();
+            }
+            _ => Err(ExprErr::FunctionNotFound(
+                loc,
+                format!(
+                    "Could not find builtin array function: \"{func_name}\", context: {}",
+                    ctx.path(self),
+                ),
+            )),
+        }
+    }
+
+    /// Perform an `array.<..>` function call
     fn array_call(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -283,64 +317,6 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                         index_access.latest_version(analyzer),
                         arr.latest_version(analyzer),
                     )
-                    // let Some(array) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    //     return Err(ExprErr::NoLhs(
-                    //         loc,
-                    //         "array[].pop() was not an array to pop from".to_string(),
-                    //     ));
-                    // };
-                    // if matches!(array, ExprRet::CtxKilled(_)) {
-                    //     ctx.push_expr(array, analyzer).into_expr_err(loc)?;
-                    //     return Ok(());
-                    // }
-
-                    // let arr = array.expect_single().into_expr_err(loc)?;
-                    // let arr = ContextVarNode::from(arr).latest_version(analyzer);
-                    // // get length
-                    // let len = analyzer.get_length(ctx, loc, arr, true)?.unwrap().latest_version(analyzer);
-
-                    // // Subtract one from it
-                    // let cnode = analyzer.add_node(Node::Concrete(Concrete::from(U256::from(1))));
-                    // let tmp_one = Node::ContextVar(
-                    //     ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode.into(), analyzer)
-                    //         .into_expr_err(loc)?,
-                    // );
-                    // let one = ContextVarNode::from(analyzer.add_node(tmp_one.clone()));
-                    // let new_len_expr = analyzer.op(
-                    //     loc,
-                    //     len,
-                    //     one,
-                    //     ctx,
-                    //     RangeOp::Sub(false),
-                    //     false,
-                    // )?;
-
-                    // if matches!(new_len_expr, ExprRet::CtxKilled(_)) {
-                    //     ctx.push_expr(new_len_expr, analyzer).into_expr_err(loc)?;
-                    //     return Ok(());
-                    // }
-
-                    // // connect the new length
-                    // let new_len = ContextVarNode::from(new_len_expr.expect_single().unwrap()).latest_version(analyzer);
-                    // let next_arr = analyzer.advance_var_in_ctx(arr.latest_version(analyzer), loc, ctx)?;
-                    // analyzer.add_edge(new_len.latest_version(analyzer), next_arr, Edge::Context(ContextEdge::AttrAccess("length")));
-
-                    // let min = Elem::from(arr).set_indices(RangeDyn::new_for_indices(vec![(new_len.into(), Elem::Null)], loc)); //.set_length(new_len.into());
-                    // let max = Elem::from(arr).set_indices(RangeDyn::new_for_indices(vec![(new_len.into(), Elem::Null)], loc)); //.set_length(new_len.into());
-
-                    // let cnode = analyzer.add_node(Node::Concrete(Concrete::from(U256::zero())));
-                    // let tmp_zero = Node::ContextVar(
-                    //     ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode.into(), analyzer)
-                    //         .into_expr_err(loc)?,
-                    // );
-                    // let zero = ContextVarNode::from(analyzer.add_node(tmp_one));
-                    // analyzer.add_edge(zero, next_arr.latest_version(analyzer), Edge::Context(ContextEdge::StorageWrite));
-                    // next_arr
-                    //         .set_range_min(analyzer, min)
-                    //         .into_expr_err(loc)?;
-                    // next_arr
-                    //         .set_range_max(analyzer, max)
-                    //         .into_expr_err(loc)
                 })
             }
             _ => Err(ExprErr::FunctionNotFound(

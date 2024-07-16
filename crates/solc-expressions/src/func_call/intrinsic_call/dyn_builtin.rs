@@ -1,4 +1,3 @@
-use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{variable::Variable, ListAccess};
 
 use graph::{
@@ -19,13 +18,13 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     fn dyn_builtin_call(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        func_name: String,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
         ctx: ContextNode,
+        func_name: &str,
+        inputs: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match &*func_name {
-            "concat" => self.concat(arena, &loc, input_exprs, ctx),
+            "concat" => self.concat(arena, ctx, inputs, loc),
             _ => Err(ExprErr::FunctionNotFound(
                 loc,
                 format!(
@@ -41,46 +40,23 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
     fn concat(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        loc: &Loc,
-        input_exprs: &NamedOrUnnamedArgs,
         ctx: ContextNode,
+        inputs: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
-        todo!("uses tmp expr stack");
-        // input_exprs.unnamed_args().unwrap()[1..]
-        //     .iter()
-        //     .try_for_each(|expr| {
-        //         self.parse_ctx_expr(arena, expr, ctx)?;
-        //         self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
-        //             let input = ctx
-        //                 .pop_expr_latest(loc, analyzer)
-        //                 .into_expr_err(loc)?
-        //                 .unwrap_or(ExprRet::Null);
-        //             ctx.append_tmp_expr(input, analyzer).into_expr_err(loc)
-        //         })
-        //     })?;
-
-        // self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-        //     let Some(inputs) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-        //         return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()));
-        //     };
-        //     if matches!(inputs, ExprRet::CtxKilled(_)) {
-        //         ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-        //         return Ok(());
-        //     }
-        //     let inputs = inputs.as_vec();
-        //     if inputs.is_empty() {
-        //         ctx.push_expr(ExprRet::Multi(vec![]), analyzer)
-        //             .into_expr_err(loc)?;
-        //         Ok(())
-        //     } else {
-        //         let start = &inputs[0];
-        //         if inputs.len() > 1 {
-        //             analyzer.match_concat(arena, ctx, loc, start.clone(), &inputs[1..], false)
-        //         } else {
-        //             analyzer.match_concat(arena, ctx, loc, start.clone(), &[], false)
-        //         }
-        //     }
-        // })
+        let inputs = inputs.as_vec();
+        if inputs.is_empty() {
+            ctx.push_expr(ExprRet::Multi(vec![]), self)
+                .into_expr_err(loc)?;
+            Ok(())
+        } else {
+            let start = &inputs[0];
+            if inputs.len() > 1 {
+                self.match_concat(arena, ctx, loc, start.clone(), &inputs[1..], false)
+            } else {
+                self.match_concat(arena, ctx, loc, start.clone(), &[], false)
+            }
+        }
     }
 
     /// Match on the expression returns
@@ -186,12 +162,12 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 ) {
                     (accum_node @ Concrete::String(..), right_node @ Concrete::String(..)) => {
                         let new_val = accum_node.clone().concat(right_node).unwrap();
-                        let new_cnode = self.add_node(Node::Concrete(new_val));
+                        let new_cnode = self.add_node(new_val);
                         VarType::Concrete(new_cnode.into())
                     }
                     (accum_node @ Concrete::DynBytes(..), right_node @ Concrete::DynBytes(..)) => {
                         let new_val = accum_node.clone().concat(right_node).unwrap();
-                        let new_cnode = self.add_node(Node::Concrete(new_val));
+                        let new_cnode = self.add_node(new_val);
                         VarType::Concrete(new_cnode.into())
                     }
                     (a, b) => {

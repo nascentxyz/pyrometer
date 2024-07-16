@@ -234,6 +234,20 @@ impl RangeOp {
         };
         Some(t)
     }
+
+    pub fn require_rhs(self) -> Option<Self> {
+        use RangeOp::*;
+        let t = match self {
+            Eq => Eq,
+            Neq => Neq,
+            Lte => Gte,
+            Gte => Lte,
+            Gt => Lt,
+            Lt => Gt,
+            _ => return None,
+        };
+        Some(t)
+    }
 }
 
 impl ToString for RangeOp {

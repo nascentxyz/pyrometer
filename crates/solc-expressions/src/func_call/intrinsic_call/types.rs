@@ -22,119 +22,77 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     fn types_call(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        func_name: String,
-        func_idx: NodeIdx,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
         ctx: ContextNode,
+        func_name: &str,
+        inputs: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
-        match &*func_name {
-            "type" => self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx),
+        match func_name {
+            "type" => {
+                let mut inputs = inputs.as_vec();
+                ctx.push_expr(inputs.swap_remove(0), self)
+                    .into_expr_err(loc)
+            }
             "wrap" => {
-                if input_exprs.len() != 2 {
-                    return Err(ExprErr::InvalidFunctionInput(loc, format!("Expected a member type and an input to the wrap function, but got: {:?}", input_exprs)));
-                }
-
-                input_exprs.parse(arena, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "<type>.wrap(..) did not receive an input".to_string(),
-                        ));
-                    };
-
-                    let input = if let Some(ordered_param_names) =
-                        FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer)
-                    {
-                        input_exprs.order(input, ordered_param_names)
-                    } else {
-                        input
-                    };
-
-                    input.expect_length(2).into_expr_err(loc)?;
-                    let ret = input.as_vec();
-                    let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
-                    let var =
-                        ContextVar::new_from_ty(loc, TyNode::from(wrapping_ty), ctx, analyzer)
-                            .into_expr_err(loc)?;
-                    let to_be_wrapped = ret[1].expect_single().into_expr_err(loc)?;
-                    let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
-                    let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
-                    let expr = Elem::Expr(RangeExpr::new(
-                        Elem::from(to_be_wrapped),
-                        RangeOp::Cast,
-                        Elem::from(cvar),
-                    ));
-                    next.set_range_min(analyzer, arena, expr.clone())
-                        .into_expr_err(loc)?;
-                    next.set_range_max(analyzer, arena, expr)
-                        .into_expr_err(loc)?;
-                    ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
-                        .into_expr_err(loc)
-                })
+                inputs.expect_length(2).into_expr_err(loc)?;
+                let ret = inputs.as_vec();
+                let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
+                let var = ContextVar::new_from_ty(loc, TyNode::from(wrapping_ty), ctx, self)
+                    .into_expr_err(loc)?;
+                let to_be_wrapped = ret[1].expect_single().into_expr_err(loc)?;
+                let cvar = ContextVarNode::from(self.add_node(var));
+                let next = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                let expr = Elem::Expr(RangeExpr::new(
+                    Elem::from(to_be_wrapped),
+                    RangeOp::Cast,
+                    Elem::from(cvar),
+                ));
+                next.set_range_min(self, arena, expr.clone())
+                    .into_expr_err(loc)?;
+                next.set_range_max(self, arena, expr).into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Single(cvar.into()), self)
+                    .into_expr_err(loc)
             }
             "unwrap" => {
-                input_exprs.parse(arena, self, ctx, loc)?;
-                self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(input) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "<type>.unwrap(..) did not receive an input".to_string(),
-                        ));
-                    };
-
-                    let input = if let Some(ordered_param_names) =
-                        FunctionNode::from(func_idx).maybe_ordered_param_names(analyzer)
-                    {
-                        input_exprs.order(input, ordered_param_names)
-                    } else {
-                        input
-                    };
-
-                    input.expect_length(2).into_expr_err(loc)?;
-                    let ret = input.as_vec();
-                    let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
-                    let mut var = ContextVar::new_from_builtin(
-                        loc,
-                        BuiltInNode::from(
-                            TyNode::from(wrapping_ty)
-                                .underlying(analyzer)
-                                .into_expr_err(loc)?
-                                .ty,
-                        ),
-                        analyzer,
-                    )
-                    .into_expr_err(loc)?;
-                    let to_be_unwrapped = ret[1].expect_single().into_expr_err(loc)?;
-                    var.display_name = format!(
-                        "{}.unwrap({})",
+                inputs.expect_length(2).into_expr_err(loc)?;
+                let ret = inputs.as_vec();
+                let wrapping_ty = ret[0].expect_single().into_expr_err(loc)?;
+                let mut var = ContextVar::new_from_builtin(
+                    loc,
+                    BuiltInNode::from(
                         TyNode::from(wrapping_ty)
-                            .name(analyzer)
-                            .into_expr_err(loc)?,
-                        ContextVarNode::from(to_be_unwrapped)
-                            .display_name(analyzer)
+                            .underlying(self)
                             .into_expr_err(loc)?
-                    );
+                            .ty,
+                    ),
+                    self,
+                )
+                .into_expr_err(loc)?;
+                let to_be_unwrapped = ret[1].expect_single().into_expr_err(loc)?;
+                var.display_name = format!(
+                    "{}.unwrap({})",
+                    TyNode::from(wrapping_ty).name(self).into_expr_err(loc)?,
+                    ContextVarNode::from(to_be_unwrapped)
+                        .display_name(self)
+                        .into_expr_err(loc)?
+                );
 
-                    let cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
-                    cvar.set_range_min(analyzer, arena, Elem::from(to_be_unwrapped))
-                        .into_expr_err(loc)?;
-                    cvar.set_range_max(analyzer, arena, Elem::from(to_be_unwrapped))
-                        .into_expr_err(loc)?;
-                    let next = analyzer.advance_var_in_ctx(cvar, loc, ctx)?;
-                    let expr = Elem::Expr(RangeExpr::new(
-                        Elem::from(to_be_unwrapped),
-                        RangeOp::Cast,
-                        Elem::from(cvar),
-                    ));
-                    next.set_range_min(analyzer, arena, expr.clone())
-                        .into_expr_err(loc)?;
-                    next.set_range_max(analyzer, arena, expr)
-                        .into_expr_err(loc)?;
-                    ctx.push_expr(ExprRet::Single(cvar.into()), analyzer)
-                        .into_expr_err(loc)
-                })
+                let cvar = ContextVarNode::from(self.add_node(var));
+                cvar.set_range_min(self, arena, Elem::from(to_be_unwrapped))
+                    .into_expr_err(loc)?;
+                cvar.set_range_max(self, arena, Elem::from(to_be_unwrapped))
+                    .into_expr_err(loc)?;
+                let next = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                let expr = Elem::Expr(RangeExpr::new(
+                    Elem::from(to_be_unwrapped),
+                    RangeOp::Cast,
+                    Elem::from(cvar),
+                ));
+                next.set_range_min(self, arena, expr.clone())
+                    .into_expr_err(loc)?;
+                next.set_range_max(self, arena, expr).into_expr_err(loc)?;
+                ctx.push_expr(ExprRet::Single(cvar.into()), self)
+                    .into_expr_err(loc)
             }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

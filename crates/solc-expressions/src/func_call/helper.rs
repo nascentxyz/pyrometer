@@ -55,7 +55,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             None
                         };
 
-                        let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+                        let node = ContextVarNode::from(self.add_node(new_cvar));
 
                         self.add_edge(
                             node,
@@ -106,9 +106,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                         None
                                     };
 
-                                    let field_node = ContextVarNode::from(
-                                        self.add_node(Node::ContextVar(new_field)),
-                                    );
+                                    let field_node = ContextVarNode::from(self.add_node(new_field));
 
                                     self.add_edge(
                                         field_node,
@@ -424,7 +422,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             )
                             .into_expr_err(loc)?
                             .unwrap();
-                            let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
+                            let cvar = ContextVarNode::from(self.add_node(cvar));
                             callee_ctx.add_var(cvar, self).into_expr_err(loc)?;
                             self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
                             callee_ctx

@@ -96,8 +96,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
                 })
@@ -139,8 +137,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Neq,
-                            RangeOp::Neq,
-                            (RangeOp::Eq, RangeOp::Neq),
                         )
                     })
                 })
@@ -183,8 +179,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Lt,
-                            RangeOp::Gt,
-                            (RangeOp::Gt, RangeOp::Lt),
                         )
                     })
                 })
@@ -227,8 +221,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Gt,
-                            RangeOp::Lt,
-                            (RangeOp::Lt, RangeOp::Gt),
                         )
                     })
                 })
@@ -271,8 +263,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Gte,
-                            RangeOp::Lte,
-                            (RangeOp::Lte, RangeOp::Gte),
                         )
                     })
                 })
@@ -315,8 +305,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths.flatten(),
                             &rhs_paths,
                             RangeOp::Lte,
-                            RangeOp::Gte,
-                            (RangeOp::Gte, RangeOp::Lte),
                         )
                     })
                 })
@@ -351,8 +339,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Eq,
-                        (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
             }
@@ -417,8 +403,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                     &ExprRet::Single(tmp.lhs.into()),
                                     &ExprRet::Single(tmp.rhs.unwrap().into()),
                                     op,
-                                    op,
-                                    pair,
                                 )?;
                             }
                         }
@@ -436,8 +420,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                     &ExprRet::Single(tmp.lhs.into()),
                                     &ExprRet::Single(tmp.rhs.unwrap().into()),
                                     op,
-                                    op,
-                                    pair,
                                 )?;
                             }
                         }
@@ -449,8 +431,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &lhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
                         analyzer.handle_require_inner(
@@ -460,8 +440,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &rhs_paths,
                             &tmp_rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
                         )?;
 
                         Ok(())
@@ -570,8 +548,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             &ExprRet::Single(or_var.into()),
                             &rhs_paths,
                             RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
                         )
                     })
                 })
@@ -600,8 +576,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         &lhs_paths,
                         &rhs_paths,
                         RangeOp::Eq,
-                        RangeOp::Eq,
-                        (RangeOp::Neq, RangeOp::Eq),
                     )
                 })
             }
@@ -617,8 +591,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         lhs_paths: &ExprRet,
         rhs_paths: &ExprRet,
         op: RangeOp,
-        rhs_op: RangeOp,
-        recursion_ops: (RangeOp, RangeOp),
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
@@ -627,31 +599,13 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
-                self.handle_require_inner(
-                    arena,
-                    ctx,
-                    loc,
-                    &ExprRet::Single(*lhs),
-                    rhs_paths,
-                    op,
-                    rhs_op,
-                    recursion_ops,
-                )
+                self.handle_require_inner(arena, ctx, loc, &ExprRet::Single(*lhs), rhs_paths, op)
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
-                self.handle_require_inner(
-                    arena,
-                    ctx,
-                    loc,
-                    lhs_paths,
-                    &ExprRet::Single(*rhs),
-                    op,
-                    rhs_op,
-                    recursion_ops,
-                )
+                self.handle_require_inner(arena, ctx, loc, lhs_paths, &ExprRet::Single(*rhs), op)
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 let lhs_cvar =
@@ -661,35 +615,17 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
 
-                self.require(arena, new_lhs, new_rhs, ctx, loc, op, rhs_op, recursion_ops)?;
+                self.require(arena, new_lhs, new_rhs, ctx, loc, op)?;
                 Ok(())
             }
             (l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_), ExprRet::Multi(rhs_sides)) => {
                 rhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(
-                        arena,
-                        ctx,
-                        loc,
-                        l,
-                        expr_ret,
-                        op,
-                        rhs_op,
-                        recursion_ops,
-                    )
+                    self.handle_require_inner(arena, ctx, loc, l, expr_ret, op)
                 })
             }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
                 lhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(
-                        arena,
-                        ctx,
-                        loc,
-                        expr_ret,
-                        r,
-                        op,
-                        rhs_op,
-                        recursion_ops,
-                    )
+                    self.handle_require_inner(arena, ctx, loc, expr_ret, r, op)
                 })
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
@@ -704,23 +640,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                 lhs_expr_ret,
                                 rhs_expr_ret,
                                 op,
-                                rhs_op,
-                                recursion_ops,
                             )
                         },
                     )
                 } else {
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
-                        self.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            lhs_paths,
-                            rhs_expr_ret,
-                            op,
-                            rhs_op,
-                            recursion_ops,
-                        )
+                        self.handle_require_inner(arena, ctx, loc, lhs_paths, rhs_expr_ret, op)
                     })
                 }
             }
@@ -743,8 +668,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         ctx: ContextNode,
         loc: Loc,
         op: RangeOp,
-        rhs_op: RangeOp,
-        _recursion_ops: (RangeOp, RangeOp),
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         tracing::trace!(
             "require: {} {} {}",
@@ -754,6 +677,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         );
         let mut any_unsat = false;
         let mut tmp_cvar = None;
+
+        let rhs_op = op.require_rhs().unwrap();
 
         if let Some(lhs_range) = new_lhs
             .latest_version_or_inherited_in_ctx(ctx, self)
@@ -866,12 +791,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ),
             };
 
-            let conditional_cvar =
-                ContextVarNode::from(self.add_node(Node::ContextVar(conditional_var)));
+            let conditional_cvar = ContextVarNode::from(self.add_node(conditional_var));
             ctx.add_var(conditional_cvar, self).into_expr_err(loc)?;
             self.add_edge(conditional_cvar, ctx, Edge::Context(ContextEdge::Variable));
 
-            let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
+            let cnode = ConcreteNode::from(self.add_node(Concrete::Bool(true)));
             let tmp_true = Node::ContextVar(
                 ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                     .into_expr_err(loc)?,
@@ -922,7 +846,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ),
             };
 
-            let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+            let cvar = ContextVarNode::from(self.add_node(tmp_var));
             ctx.add_var(cvar, self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -1574,13 +1498,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let (needs_inverse, adjusted_gt_rhs) = match tmp_construction.op {
                     RangeOp::Sub(..) => {
                         let concrete = ConcreteNode(
-                            self.add_node(Node::Concrete(Concrete::Int(256, I256::from(-1i32))))
-                                .index(),
+                            self.add_node(Concrete::Int(256, I256::from(-1i32))).index(),
                         );
                         let lhs_cvar = ContextVar::new_from_concrete(loc, ctx, concrete, self)
                             .into_expr_err(loc)?;
-                        let tmp_lhs =
-                            ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
+                        let tmp_lhs = ContextVarNode::from(self.add_node(lhs_cvar));
 
                         // tmp_rhs = rhs_cvar * -1
                         let tmp_rhs = self.op(

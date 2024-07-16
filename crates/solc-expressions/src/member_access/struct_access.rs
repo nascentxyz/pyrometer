@@ -56,7 +56,7 @@ pub trait StructAccess:
                 &cvar,
                 field.underlying(self).unwrap().clone(),
             ) {
-                let fc_node = self.add_node(Node::ContextVar(field_cvar));
+                let fc_node = self.add_node(field_cvar);
                 self.add_edge(
                     fc_node,
                     ContextVarNode::from(member_idx).first_version(self),

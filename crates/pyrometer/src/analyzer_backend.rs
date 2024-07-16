@@ -30,9 +30,9 @@ impl AnalyzerBackend for Analyzer {
         concrete: Concrete,
         loc: Loc,
     ) -> Result<graph::nodes::ContextVarNode, Self::ExprErr> {
-        let cnode = self.add_node(Node::Concrete(concrete));
+        let cnode = self.add_node(concrete);
         let var = ContextVar::new_from_concrete(loc, ctx, cnode.into(), self);
-        let cnode = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
+        let cnode = self.add_node(var.into_expr_err(loc)?);
         Ok(cnode.into())
     }
 }
@@ -436,7 +436,7 @@ impl AnalyzerLike for Analyzer {
                     int
                 };
 
-                self.add_node(Node::Concrete(Concrete::Uint(256, val)))
+                self.add_node(Concrete::Uint(256, val))
             }
             _ => {
                 if let Some(idx) = self.complicated_parse(arena, expr, parent) {

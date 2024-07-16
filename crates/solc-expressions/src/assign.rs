@@ -319,7 +319,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             //         let new_name = format!("{}.{field_name}", lhs_cvar.name(self).unwrap());
             //         new_var.name.clone_from(&new_name);
             //         new_var.display_name = new_name;
-            //         let new_field = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+            //         let new_field = ContextVarNode::from(self.add_node(new_var));
             //         self.add_edge(
             //             new_field,
             //             lhs_cvar.first_version(self),
