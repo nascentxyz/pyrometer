@@ -296,6 +296,12 @@ pub trait Flatten:
                 params.iter().for_each(|(loc, maybe_param)| {
                     if let Some(param) = maybe_param {
                         self.traverse_expression(&param.ty, unchecked);
+                    } else {
+                        self.push_expr(FlatExpr::Null(*loc));
+                    }
+                });
+                params.iter().for_each(|(loc, maybe_param)| {
+                    if let Some(param) = maybe_param {
                         if let Some(name) = &param.name {
                             self.push_expr(FlatExpr::Parameter(
                                 param.loc,
@@ -310,7 +316,7 @@ pub trait Flatten:
                             ));
                         }
                     } else {
-                        self.push_expr(FlatExpr::Null(*loc));
+                        self.push_expr(FlatExpr::Parameter(*loc, None, None));
                     }
                 });
                 self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
@@ -399,9 +405,6 @@ pub trait Flatten:
         while (!ctx.is_ended(self).unwrap() || !ctx.live_edges(self).unwrap().is_empty())
             && ctx.parse_idx(self) < stack.len()
         {
-            // println!("is ended: {}", ctx.is_ended(self).unwrap());
-            // println!("live edges: {:?}", ctx.live_edges(self).unwrap());
-            // println!("remaining parse: {}", ctx.parse_idx(self) < stack.len());
             let res = self.interpret_step(arena, ctx, body_loc, &stack[..]);
             self.add_if_err(res);
         }
@@ -440,8 +443,14 @@ pub trait Flatten:
         }
 
         let parse_idx = ctx.increment_parse_idx(self);
+        let kill_after_exec = parse_idx == stack.len().saturating_sub(1);
         let Some(next) = stack.get(parse_idx) else {
-            return Ok(());
+            let loc = stack
+                .last()
+                .map(|l| l.try_loc())
+                .flatten()
+                .unwrap_or(Loc::Implicit);
+            return ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc);
         };
         let next = *next;
 
@@ -547,10 +556,41 @@ pub trait Flatten:
             ConditionalOperator(_) => todo!(),
 
             This(_) => todo!(),
-            List(_, _) => todo!(),
-            Parameter(_, _, _) => todo!(),
-            Null(_) => Ok(()),
+            List(_, _) => self.interp_list(arena, ctx, stack, next, parse_idx),
+            Parameter(_, _, _) => Ok(()),
+            Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
         }
+    }
+
+    fn interp_list(
+        &mut self,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &[FlatExpr],
+        list: FlatExpr,
+        parse_idx: usize,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::List(loc, n) = list else {
+            unreachable!()
+        };
+
+        let param_names_start = parse_idx.saturating_sub(n);
+        let params = &stack[param_names_start..parse_idx];
+        let mut values = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+        values.reverse();
+        values
+            .into_iter()
+            .zip(params)
+            .try_for_each(|(ret, param)| {
+                let res = self.list_inner(ctx, *param, ret, loc)?;
+                ctx.push_expr(res, self).into_expr_err(loc)
+            })?;
+
+        let new_values = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+        ctx.push_expr(ExprRet::Multi(new_values), self)
+            .into_expr_err(loc)?;
+        ctx.debug_expr_stack(self).unwrap();
+        Ok(())
     }
 
     fn interp_xxcrement(
@@ -989,7 +1029,7 @@ pub trait Flatten:
                     // its a builtin function call
                     todo!("builtin fn")
                 } else {
-                    self.func_call(arena, ctx, loc, &inputs, func.into(), None, None)
+                    self.func_call(arena, ctx, loc, &inputs, s, None, None)
                 }
             }
             VarType::BuiltIn(bn, _) => {

@@ -105,6 +105,84 @@ pub enum FlatExpr {
     ArrayLiteral(Loc),
 }
 
+impl FlatExpr {
+    pub fn try_loc(&self) -> Option<Loc> {
+        use FlatExpr::*;
+        match self {
+            If { loc, .. }
+            | VarDef(loc, ..)
+            | NamedArgument(loc, ..)
+            | Continue(loc, ..)
+            | Break(loc, ..)
+            | Return(loc, ..)
+            | PostIncrement(loc, ..)
+            | PostDecrement(loc, ..)
+            | New(loc, ..)
+            | ArrayTy(loc, ..)
+            | ArrayIndexAccess(loc, ..)
+            | ArraySlice(loc, ..)
+            | Parenthesis(loc, ..)
+            | MemberAccess(loc, ..)
+            | FunctionCall(loc, ..)
+            | FunctionCallBlock(loc, ..)
+            | NamedFunctionCall(loc, ..)
+            | Not(loc, ..)
+            | Negate(loc, ..)
+            | Delete(loc, ..)
+            | PreIncrement(loc, ..)
+            | PreDecrement(loc, ..)
+            | UnaryPlus(loc, ..)
+            | Power(loc, ..)
+            | Multiply(loc, ..)
+            | Divide(loc, ..)
+            | Modulo(loc, ..)
+            | Add(loc, ..)
+            | Subtract(loc, ..)
+            | AssignAdd(loc, ..)
+            | AssignSubtract(loc, ..)
+            | AssignMultiply(loc, ..)
+            | AssignDivide(loc, ..)
+            | AssignModulo(loc, ..)
+            | ShiftLeft(loc, ..)
+            | ShiftRight(loc, ..)
+            | BitwiseAnd(loc, ..)
+            | BitwiseXor(loc, ..)
+            | BitwiseOr(loc, ..)
+            | BitwiseNot(loc, ..)
+            | AssignOr(loc, ..)
+            | AssignAnd(loc, ..)
+            | AssignXor(loc, ..)
+            | AssignShiftLeft(loc, ..)
+            | AssignShiftRight(loc, ..)
+            | Less(loc, ..)
+            | More(loc, ..)
+            | LessEqual(loc, ..)
+            | MoreEqual(loc, ..)
+            | Equal(loc, ..)
+            | NotEqual(loc, ..)
+            | And(loc, ..)
+            | Or(loc, ..)
+            | ConditionalOperator(loc, ..)
+            | Assign(loc, ..)
+            | Type(loc, ..)
+            | This(loc, ..)
+            | List(loc, ..)
+            | Parameter(loc, ..)
+            | Null(loc, ..)
+            | BoolLiteral(loc, ..)
+            | NumberLiteral(loc, ..)
+            | RationalNumberLiteral(loc, ..)
+            | HexNumberLiteral(loc, ..)
+            | StringLiteral(loc, ..)
+            | HexLiteral(loc, ..)
+            | AddressLiteral(loc, ..)
+            | Variable(loc, ..)
+            | ArrayLiteral(loc, ..) => Some(*loc),
+            FunctionCallName(_) => None,
+        }
+    }
+}
+
 pub fn string_to_static(s: impl ToString) -> &'static str {
     Box::leak(s.to_string().into_boxed_str())
 }
