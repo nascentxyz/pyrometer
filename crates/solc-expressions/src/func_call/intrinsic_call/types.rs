@@ -156,61 +156,6 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        // it is a cast
-        fn cast_match(
-            ctx: ContextNode,
-            loc: Loc,
-            analyzer: &mut impl ListAccess,
-            arena: &mut RangeArena<Elem<Concrete>>,
-            ty: &Builtin,
-            ret: ExprRet,
-            func_idx: NodeIdx,
-        ) -> Result<(), ExprErr> {
-            match ret {
-                ExprRet::CtxKilled(kind) => ctx.kill(analyzer, loc, kind).into_expr_err(loc),
-                ExprRet::Null => Ok(()),
-                ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
-                    let cvar = ContextVarNode::from(cvar);
-                    let new_var = cvar
-                        .as_cast_tmp(loc, ctx, ty.clone(), analyzer)
-                        .into_expr_err(loc)?;
-
-                    let v_ty = VarType::try_from_idx(analyzer, func_idx).expect("");
-                    let maybe_new_range =
-                        cvar.cast_exprs(&v_ty, analyzer, arena).into_expr_err(loc)?;
-                    new_var.underlying_mut(analyzer).into_expr_err(loc)?.ty = v_ty;
-
-                    if let Some((new_min, new_max)) = maybe_new_range {
-                        new_var
-                            .set_range_min(analyzer, arena, new_min)
-                            .into_expr_err(loc)?;
-                        new_var
-                            .set_range_max(analyzer, arena, new_max)
-                            .into_expr_err(loc)?;
-                    }
-
-                    if cvar.needs_length(analyzer).into_expr_err(loc)? {
-                        // input is indexable. get the length attribute, create a new length for the casted type
-                        let _ = analyzer.create_length(
-                            arena,
-                            ctx,
-                            loc,
-                            new_var,
-                            new_var.latest_version(analyzer),
-                            false,
-                        )?;
-                    }
-
-                    ctx.push_expr(ExprRet::Single(new_var.into()), analyzer)
-                        .into_expr_err(loc)?;
-                    Ok(())
-                }
-                ExprRet::Multi(inner) => inner
-                    .into_iter()
-                    .try_for_each(|i| cast_match(ctx, loc, analyzer, arena, ty, i, func_idx)),
-            }
-        }
-
         self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
@@ -222,7 +167,60 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 return Ok(());
             }
 
-            cast_match(ctx, loc, analyzer, arena, &ty, ret, func_idx)
+            let var_ty = VarType::try_from_idx(analyzer, func_idx).unwrap();
+            analyzer.cast_inner(arena, ctx, var_ty, &ty, ret, loc)
         })
+    }
+
+    fn cast_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        var_ty: VarType,
+        ty: &Builtin,
+        ret: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        match ret {
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
+            ExprRet::Null => Ok(()),
+            ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
+                let cvar = ContextVarNode::from(cvar);
+                let new_var = cvar
+                    .as_cast_tmp(loc, ctx, ty.clone(), self)
+                    .into_expr_err(loc)?;
+
+                let maybe_new_range = cvar.cast_exprs(&var_ty, self, arena).into_expr_err(loc)?;
+                new_var.underlying_mut(self).into_expr_err(loc)?.ty = var_ty;
+
+                if let Some((new_min, new_max)) = maybe_new_range {
+                    new_var
+                        .set_range_min(self, arena, new_min)
+                        .into_expr_err(loc)?;
+                    new_var
+                        .set_range_max(self, arena, new_max)
+                        .into_expr_err(loc)?;
+                }
+
+                if cvar.needs_length(self).into_expr_err(loc)? {
+                    // input is indexable. get the length attribute, create a new length for the casted type
+                    let _ = self.create_length(
+                        arena,
+                        ctx,
+                        loc,
+                        new_var,
+                        new_var.latest_version(self),
+                        false,
+                    )?;
+                }
+
+                ctx.push_expr(ExprRet::Single(new_var.into()), self)
+                    .into_expr_err(loc)?;
+                Ok(())
+            }
+            ExprRet::Multi(inner) => inner
+                .into_iter()
+                .try_for_each(|i| self.cast_inner(arena, ctx, var_ty.clone(), ty, i, loc)),
+        }
     }
 }

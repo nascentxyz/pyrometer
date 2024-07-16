@@ -278,7 +278,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         return Ok(killed);
                     }
                 }
-                RangeOp::Exp => {
+                RangeOp::Exp(..) => {
                     if let Some(killed) =
                         self.checked_require_exp(arena, lhs_cvar, new_lhs, new_rhs, loc, ctx)?
                     {

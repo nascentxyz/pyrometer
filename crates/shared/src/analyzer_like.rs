@@ -201,7 +201,7 @@ pub trait AnalyzerLike: GraphLike {
     fn expr_stack_mut(&mut self) -> &mut Vec<Self::FlatExpr>;
     fn take_expr_flag(&mut self) -> Option<Self::ExprFlag>;
     fn set_expr_flag(&mut self, flag: Self::ExprFlag);
-    fn peek_flag(&mut self) -> Option<Self::ExprFlag> {
+    fn peek_expr_flag(&mut self) -> Option<Self::ExprFlag> {
         let flag = self.take_expr_flag();
         if let Some(f) = flag {
             self.set_expr_flag(f);

@@ -269,7 +269,8 @@ pub static LIA_OPS: &[RangeOp] = &[
     RangeOp::Div(true),
     RangeOp::Div(false),
     RangeOp::Mod,
-    RangeOp::Exp,
+    RangeOp::Exp(false),
+    RangeOp::Exp(true),
 ];
 
 pub trait Atomize {

@@ -6,7 +6,7 @@ use crate::{
     internal_call::InternalFuncCaller,
     intrinsic_call::IntrinsicFuncCaller,
     namespaced_call::NameSpaceFuncCaller,
-    ContextBuilder, ExpressionParser, StatementParser,
+    ContextBuilder, ExpressionParser, Flatten, StatementParser,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,7 +21,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
-use solang_parser::pt::{Expression, Loc, NamedArgument};
+use solang_parser::pt::{CodeLocation, Expression, Loc, NamedArgument};
 
 use std::collections::BTreeMap;
 
@@ -544,7 +544,8 @@ pub trait FuncCaller:
             });
 
             // parse the function body
-            self.parse_ctx_statement(arena, &body, false, Some(callee_ctx));
+            self.traverse_statement(&body, None);
+            self.interpret(callee_ctx, body.loc(), arena);
             if let Some(mod_state) = &callee_ctx
                 .underlying(self)
                 .into_expr_err(loc)?

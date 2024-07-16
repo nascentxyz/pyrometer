@@ -538,7 +538,7 @@ mod tests {
         fraction: &str,
         exponent: &str,
         negative: bool,
-        unit: Option<Identifier>,
+        unit: Option<&str>,
         expected: Concrete,
     ) -> Result<()> {
         // setup
@@ -553,7 +553,7 @@ mod tests {
 
         // create a rational number literal
         analyzer.rational_number_literal(
-            arena, ctx, loc, integer, fraction, exponent, &unit, negative,
+            arena, ctx, loc, integer, fraction, exponent, unit, negative,
         )?;
 
         // checks
@@ -622,10 +622,7 @@ mod tests {
         let integer = "1";
         let fraction = "5";
         let exponent = "0";
-        let unit = Some(Identifier {
-            name: "ether".into(),
-            loc: Loc::File(0, 0, 0),
-        });
+        let unit = Some("ether");
         let expected = Concrete::Uint(64, U256::from_dec_str("1500000000000000000").unwrap());
         test_rational_number_literal(integer, fraction, exponent, false, unit, expected)
     }
@@ -783,8 +780,15 @@ mod tests {
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
 
+        let mut final_str = "".to_string();
+        let mut loc = hex_literals[0].loc;
+        hex_literals.iter().for_each(|s| {
+            loc.use_end_from(&s.loc);
+            final_str.push_str(&s.hex);
+        });
+
         // create hex literals
-        analyzer.hex_literals(ctx, hex_literals)?;
+        analyzer.hex_literals(ctx, loc, &final_str)?;
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;

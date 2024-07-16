@@ -11,6 +11,7 @@ pub use elem_trait::*;
 pub use expr::*;
 pub use map_or_array::*;
 pub use reference::*;
+use shared::FlatExpr;
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum MinMaxed<T> {
@@ -84,7 +85,7 @@ pub enum RangeOp {
     /// Bitwise Not
     BitNot,
     /// Exponentiation
-    Exp,
+    Exp(bool),
     /// Concatenation
     Concat,
     /// Memcopy
@@ -99,6 +100,39 @@ pub enum RangeOp {
     GetLength,
 }
 
+impl TryFrom<FlatExpr> for RangeOp {
+    type Error = ();
+    fn try_from(flat: FlatExpr) -> Result<Self, ()> {
+        use FlatExpr::*;
+        let res = match flat {
+            Power(_, unchecked) => RangeOp::Exp(unchecked),
+            Multiply(_, unchecked) => RangeOp::Mul(unchecked),
+            Add(_, unchecked) => RangeOp::Add(unchecked),
+            Subtract(_, unchecked) => RangeOp::Sub(unchecked),
+            Divide(_, unchecked) => RangeOp::Div(unchecked),
+            Modulo(_) => RangeOp::Mod,
+            AssignMultiply(_, unchecked) => RangeOp::Mul(unchecked),
+            AssignAdd(_, unchecked) => RangeOp::Add(unchecked),
+            AssignSubtract(_, unchecked) => RangeOp::Sub(unchecked),
+            AssignDivide(_, unchecked) => RangeOp::Div(unchecked),
+            AssignModulo(_) => RangeOp::Mod,
+            ShiftLeft(_) => RangeOp::Shl,
+            ShiftRight(_) => RangeOp::Shr,
+            AssignShiftLeft(_) => RangeOp::Shl,
+            AssignShiftRight(_) => RangeOp::Shr,
+            BitwiseAnd(_) => RangeOp::BitAnd,
+            AssignAnd(_) => RangeOp::BitAnd,
+            BitwiseXor(_) => RangeOp::BitXor,
+            AssignXor(_) => RangeOp::BitXor,
+            BitwiseOr(_) => RangeOp::BitOr,
+            AssignOr(_) => RangeOp::BitOr,
+            BitwiseNot(_) => RangeOp::BitNot,
+            _ => return Err(()),
+        };
+        Ok(res)
+    }
+}
+
 impl RangeOp {
     pub fn commutative(&self) -> bool {
         use RangeOp::*;
@@ -108,7 +142,7 @@ impl RangeOp {
             Sub(_i) => false,
             Div(_i) => false,
             Mod => false,
-            Exp => false,
+            Exp(_i) => false,
             Min => true,
             Max => true,
 
@@ -213,7 +247,7 @@ impl ToString for RangeOp {
             Shl => "<<".to_string(),
             Shr => ">>".to_string(),
             Mod => "%".to_string(),
-            Exp => "**".to_string(),
+            Exp(_) => "**".to_string(),
             Min => "min".to_string(),
             Max => "max".to_string(),
             Lt => "<".to_string(),

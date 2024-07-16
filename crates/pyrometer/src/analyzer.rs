@@ -389,7 +389,8 @@ impl Analyzer {
         };
 
         let full_stmt = solang_parser::pt::Statement::Return(expr.loc(), Some(expr.clone()));
-        self.parse_ctx_statement(arena, &full_stmt, false, Some(ctx));
+        self.traverse_statement(&full_stmt, None);
+        self.interpret(ctx, full_stmt.loc(), arena);
         let edges = self.add_if_err(ctx.successful_edges(self).into_expr_err(expr.loc()))?;
         if edges.len() == 1 {
             let res = edges[0].return_nodes(self).into_expr_err(expr.loc());
@@ -582,12 +583,8 @@ impl Analyzer {
                 if !self.handled_funcs.contains(&func) {
                     if let Some(body) = &func.underlying(self).unwrap().body {
                         let body = body.clone();
-                        self.traverse_statement(&body);
-                        // println!("{:#?}", self.flattened);
-
+                        self.traverse_statement(&body, None);
                         self.interpret(func, body.loc(), arena)
-                        // self.flattened = Default::default();
-                        // self.parse_ctx_statement(arena, body, false, Some(*func));
                     }
                 }
             });

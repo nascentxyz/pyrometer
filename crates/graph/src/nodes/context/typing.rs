@@ -4,8 +4,6 @@ use crate::{
 };
 use shared::GraphError;
 
-use super::underlying;
-
 impl ContextNode {
     /// Checks if its an anonymous function call (i.e. loop)
     pub fn is_anonymous_fn_call(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {

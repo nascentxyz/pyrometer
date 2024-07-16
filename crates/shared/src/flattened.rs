@@ -1,6 +1,6 @@
 use crate::{AnalyzerLike, ExprErr, IntoExprErr, RangeArena, StorageLocation};
-use solang_parser::pt::Identifier;
 use solang_parser::pt::{Expression, Loc, Statement, Type};
+use solang_parser::pt::{Identifier, NamedArgument};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ExprFlag {
@@ -20,6 +20,7 @@ pub enum FlatExpr {
         false_body: usize,
     },
 
+    NamedArgument(Loc, &'static str),
     FunctionCallName(usize),
 
     Continue(Loc),
@@ -33,28 +34,42 @@ pub enum FlatExpr {
     ArrayIndexAccess(Loc),
     ArraySlice(Loc),
     Parenthesis(Loc),
-    MemberAccess(Loc),
+    MemberAccess(Loc, &'static str),
     FunctionCall(Loc, usize),
     FunctionCallBlock(Loc),
-    NamedFunctionCall(Loc),
+    NamedFunctionCall(Loc, usize),
     Not(Loc),
     Negate(Loc),
     Delete(Loc),
     PreIncrement(Loc),
     PreDecrement(Loc),
     UnaryPlus(Loc),
-    Power(Loc),
-    Multiply(Loc),
-    Divide(Loc),
+
+    // binary ops
+    Power(Loc, bool),
+    Multiply(Loc, bool),
+    Divide(Loc, bool),
     Modulo(Loc),
-    Add(Loc),
-    Subtract(Loc),
+    Add(Loc, bool),
+    Subtract(Loc, bool),
+    AssignAdd(Loc, bool),
+    AssignSubtract(Loc, bool),
+    AssignMultiply(Loc, bool),
+    AssignDivide(Loc, bool),
+    AssignModulo(Loc),
     ShiftLeft(Loc),
     ShiftRight(Loc),
     BitwiseAnd(Loc),
     BitwiseXor(Loc),
     BitwiseOr(Loc),
     BitwiseNot(Loc),
+    AssignOr(Loc),
+    AssignAnd(Loc),
+    AssignXor(Loc),
+    AssignShiftLeft(Loc),
+    AssignShiftRight(Loc),
+
+    // cmp ops
     Less(Loc),
     More(Loc),
     LessEqual(Loc),
@@ -63,18 +78,9 @@ pub enum FlatExpr {
     NotEqual(Loc),
     And(Loc),
     Or(Loc),
+
     ConditionalOperator(Loc),
     Assign(Loc),
-    AssignOr(Loc),
-    AssignAnd(Loc),
-    AssignXor(Loc),
-    AssignShiftLeft(Loc),
-    AssignShiftRight(Loc),
-    AssignAdd(Loc),
-    AssignSubtract(Loc),
-    AssignMultiply(Loc),
-    AssignDivide(Loc),
-    AssignModulo(Loc),
     Type(Loc, &'static Type),
     This(Loc),
     List(Loc, usize),
@@ -99,14 +105,21 @@ pub enum FlatExpr {
     ArrayLiteral(Loc),
 }
 
-pub fn string_to_static(s: String) -> &'static str {
-    Box::leak(s.into_boxed_str())
+pub fn string_to_static(s: impl ToString) -> &'static str {
+    Box::leak(s.to_string().into_boxed_str())
 }
 
-impl From<&Expression> for FlatExpr {
-    fn from(expr: &Expression) -> Self {
+impl From<&NamedArgument> for FlatExpr {
+    fn from(arg: &NamedArgument) -> Self {
+        FlatExpr::NamedArgument(arg.loc, string_to_static(arg.name.name.clone()))
+    }
+}
+
+impl TryFrom<&Expression> for FlatExpr {
+    type Error = ();
+    fn try_from(expr: &Expression) -> Result<Self, ()> {
         use Expression::*;
-        match expr {
+        let res = match expr {
             PostIncrement(loc, ..) => FlatExpr::PostIncrement(*loc),
             PostDecrement(loc, ..) => FlatExpr::PostDecrement(*loc),
             New(loc, ..) => FlatExpr::New(*loc),
@@ -114,21 +127,25 @@ impl From<&Expression> for FlatExpr {
             ArraySubscript(loc, _, Some(_)) => FlatExpr::ArrayIndexAccess(*loc),
             ArraySlice(loc, ..) => FlatExpr::ArraySlice(*loc),
             Parenthesis(loc, ..) => FlatExpr::Parenthesis(*loc),
-            MemberAccess(loc, ..) => FlatExpr::MemberAccess(*loc),
+            MemberAccess(loc, _, name) => {
+                FlatExpr::MemberAccess(*loc, string_to_static(name.name.clone()))
+            }
             FunctionCall(loc, _, input_exprs) => FlatExpr::FunctionCall(*loc, input_exprs.len()),
             FunctionCallBlock(loc, _, _) => FlatExpr::FunctionCallBlock(*loc),
-            NamedFunctionCall(loc, ..) => FlatExpr::NamedFunctionCall(*loc),
+            NamedFunctionCall(loc, _, input_exprs) => {
+                FlatExpr::NamedFunctionCall(*loc, input_exprs.len())
+            }
             Not(loc, ..) => FlatExpr::Not(*loc),
             Delete(loc, ..) => FlatExpr::Delete(*loc),
             PreIncrement(loc, ..) => FlatExpr::PreIncrement(*loc),
             PreDecrement(loc, ..) => FlatExpr::PreDecrement(*loc),
             UnaryPlus(loc, ..) => FlatExpr::UnaryPlus(*loc),
-            Power(loc, ..) => FlatExpr::Power(*loc),
-            Multiply(loc, ..) => FlatExpr::Multiply(*loc),
-            Divide(loc, ..) => FlatExpr::Divide(*loc),
-            Modulo(loc, ..) => FlatExpr::Modulo(*loc),
-            Add(loc, ..) => FlatExpr::Add(*loc),
-            Subtract(loc, ..) => FlatExpr::Subtract(*loc),
+            // Power(loc, ..) => FlatExpr::Power(*loc),
+            // Multiply(loc, ..) => FlatExpr::Multiply(*loc),
+            // Divide(loc, ..) => FlatExpr::Divide(*loc),
+            // Modulo(loc, ..) => FlatExpr::Modulo(*loc),
+            // Add(loc, ..) => FlatExpr::Add(*loc),
+            // Subtract(loc, ..) => FlatExpr::Subtract(*loc),
             ShiftLeft(loc, ..) => FlatExpr::ShiftLeft(*loc),
             ShiftRight(loc, ..) => FlatExpr::ShiftRight(*loc),
             BitwiseAnd(loc, ..) => FlatExpr::BitwiseAnd(*loc),
@@ -150,10 +167,10 @@ impl From<&Expression> for FlatExpr {
             AssignXor(loc, ..) => FlatExpr::AssignXor(*loc),
             AssignShiftLeft(loc, ..) => FlatExpr::AssignShiftLeft(*loc),
             AssignShiftRight(loc, ..) => FlatExpr::AssignShiftRight(*loc),
-            AssignAdd(loc, ..) => FlatExpr::AssignAdd(*loc),
-            AssignSubtract(loc, ..) => FlatExpr::AssignSubtract(*loc),
-            AssignMultiply(loc, ..) => FlatExpr::AssignMultiply(*loc),
-            AssignDivide(loc, ..) => FlatExpr::AssignDivide(*loc),
+            // AssignAdd(loc, ..) => FlatExpr::AssignAdd(*loc),
+            // AssignSubtract(loc, ..) => FlatExpr::AssignSubtract(*loc),
+            // AssignMultiply(loc, ..) => FlatExpr::AssignMultiply(*loc),
+            // AssignDivide(loc, ..) => FlatExpr::AssignDivide(*loc),
             AssignModulo(loc, ..) => FlatExpr::AssignModulo(*loc),
             Type(loc, ty) => {
                 let ty_box = Box::new(ty.clone());
@@ -236,6 +253,8 @@ impl From<&Expression> for FlatExpr {
             }
             List(loc, params) => FlatExpr::List(*loc, params.len()),
             This(loc, ..) => FlatExpr::This(*loc),
-        }
+            _ => return Err(()),
+        };
+        Ok(res)
     }
 }

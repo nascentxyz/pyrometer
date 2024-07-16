@@ -261,8 +261,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Mod => exec_mod(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
-            RangeOp::Exp => exec_exp(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
+            RangeOp::Exp(unchecked) => exec_exp(
+                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, unchecked, analyzer, arena,
             ),
             RangeOp::Min => exec_min(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,

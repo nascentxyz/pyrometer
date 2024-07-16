@@ -156,7 +156,7 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(&body);
+                        self.traverse_statement(&body, None);
                         self.interpret(func, body.loc(), arena)
                     }
 
@@ -205,7 +205,7 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(&body);
+                        self.traverse_statement(&body, None);
                         self.interpret(func, body.loc(), arena)
                     }
 
@@ -253,7 +253,7 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(&body);
+                        self.traverse_statement(&body, None);
                         self.interpret(func, body.loc(), arena)
                     }
 

@@ -365,7 +365,8 @@ impl SolcRange {
             RangeOp::Gte => &Self::gte_dyn,
             RangeOp::Eq => &Self::eq_dyn,
             RangeOp::Neq => &Self::neq_dyn,
-            RangeOp::Exp => &Self::exp_dyn,
+            RangeOp::Exp(false) => &Self::exp_dyn,
+            RangeOp::Exp(true) => &Self::wrapping_exp_dyn,
             RangeOp::BitAnd => &Self::bit_and_dyn,
             RangeOp::BitOr => &Self::bit_or_dyn,
             RangeOp::BitXor => &Self::bit_xor_dyn,
@@ -417,6 +418,14 @@ impl SolcRange {
         Self::new(
             self.min.wrapping_mul(Elem::from(other)),
             self.max.wrapping_mul(Elem::from(other)),
+            self.exclusions,
+        )
+    }
+
+    pub fn wrapping_exp_dyn(self, other: ContextVarNode) -> Self {
+        Self::new(
+            self.min.wrapping_exp(Elem::from(other)),
+            self.max.wrapping_exp(Elem::from(other)),
             self.exclusions,
         )
     }

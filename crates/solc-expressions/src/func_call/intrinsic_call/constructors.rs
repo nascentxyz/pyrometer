@@ -169,6 +169,53 @@ pub trait ConstructorCaller:
         })
     }
 
+    fn construct_struct_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        strukt: StructNode,
+        inputs: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        let var = ContextVar::new_from_struct(loc, strukt, ctx, self).into_expr_err(loc)?;
+        let cvar = self.add_node(Node::ContextVar(var));
+        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
+        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        let inputs = inputs.as_vec();
+        // set struct fields
+        strukt
+            .fields(self)
+            .iter()
+            .zip(inputs)
+            .try_for_each(|(field, input)| {
+                let field_cvar = ContextVar::maybe_new_from_field(
+                    self,
+                    loc,
+                    ContextVarNode::from(cvar)
+                        .underlying(self)
+                        .into_expr_err(loc)?,
+                    field.underlying(self).unwrap().clone(),
+                )
+                .expect("Invalid struct field");
+
+                let fc_node = self.add_node(Node::ContextVar(field_cvar));
+                self.add_edge(
+                    fc_node,
+                    cvar,
+                    Edge::Context(ContextEdge::AttrAccess("field")),
+                );
+                self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
+                let field_as_ret = ExprRet::Single(fc_node);
+                self.match_assign_sides(arena, ctx, loc, &field_as_ret, &input)?;
+                let _ = ctx.pop_expr_latest(loc, self).into_expr_err(loc)?;
+                Ok(())
+            })?;
+
+        ctx.push_expr(ExprRet::Single(cvar), self)
+            .into_expr_err(loc)
+    }
+
     /// Construct a struct
     fn construct_struct(
         &mut self,
@@ -178,55 +225,16 @@ pub trait ConstructorCaller:
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        // struct construction
-        let strukt = StructNode::from(func_idx);
-        let var = ContextVar::new_from_struct(loc, strukt, ctx, self).into_expr_err(loc)?;
-        let cvar = self.add_node(Node::ContextVar(var));
-        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
-        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-
         input_exprs.parse(arena, self, ctx, loc)?;
         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
                 return Err(ExprErr::NoRhs(
                     loc,
-                    "Struct Function call failed".to_string(),
+                    "Struct construction call failed".to_string(),
                 ));
             };
 
-            let inputs = inputs.as_vec();
-            // set struct fields
-            strukt
-                .fields(analyzer)
-                .iter()
-                .zip(inputs)
-                .try_for_each(|(field, input)| {
-                    let field_cvar = ContextVar::maybe_new_from_field(
-                        analyzer,
-                        loc,
-                        ContextVarNode::from(cvar)
-                            .underlying(analyzer)
-                            .into_expr_err(loc)?,
-                        field.underlying(analyzer).unwrap().clone(),
-                    )
-                    .expect("Invalid struct field");
-
-                    let fc_node = analyzer.add_node(Node::ContextVar(field_cvar));
-                    analyzer.add_edge(
-                        fc_node,
-                        cvar,
-                        Edge::Context(ContextEdge::AttrAccess("field")),
-                    );
-                    analyzer.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
-                    ctx.add_var(fc_node.into(), analyzer).into_expr_err(loc)?;
-                    let field_as_ret = ExprRet::Single(fc_node);
-                    analyzer.match_assign_sides(arena, ctx, loc, &field_as_ret, &input)?;
-                    let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
-                    Ok(())
-                })?;
-
-            ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                .into_expr_err(loc)
+            analyzer.construct_struct_inner(arena, ctx, StructNode::from(func_idx), inputs, loc)
         })
     }
 }

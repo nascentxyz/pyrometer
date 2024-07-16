@@ -80,6 +80,7 @@ pub fn exec_exp(
     rhs_min: &Elem<Concrete>,
     rhs_max: &Elem<Concrete>,
     maximize: bool,
+    unchecked: bool,
     _analyzer: &impl GraphBackend,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
@@ -185,13 +186,15 @@ mod tests {
         let rhs_min = rc_uint_sized(3).into();
         let rhs_max = rc_uint_sized(200).into();
 
-        let max_result = exec_exp(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
-            .unwrap()
-            .maybe_concrete()
-            .unwrap();
+        let max_result = exec_exp(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, true, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
         assert_eq!(max_result.val, Concrete::Uint(8, U256::from(255)));
         let min_result = exec_exp(
-            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, false, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()

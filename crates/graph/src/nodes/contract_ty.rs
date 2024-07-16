@@ -170,6 +170,14 @@ impl ContractNode {
             .next()
     }
 
+    pub fn ordered_new_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
+        if let Some(constructor) = self.constructor(analyzer) {
+            constructor.ordered_param_names(analyzer)
+        } else {
+            vec![]
+        }
+    }
+
     /// Gets all associated storage vars from the underlying node data for the [`Contract`]
     pub fn direct_storage_vars(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<VarNode> {
         analyzer

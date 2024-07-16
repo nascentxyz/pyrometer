@@ -60,10 +60,10 @@ pub trait IntrinsicFuncCaller:
     fn new_call_inner(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
+        ctx: ContextNode,
         ty_idx: NodeIdx,
         inputs: ExprRet,
-        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match self.node(ty_idx) {
             Node::Builtin(_) => {
@@ -107,20 +107,12 @@ pub trait IntrinsicFuncCaller:
                     } else {
 
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                            let Some(input_paths) =
-                                ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                            else {
-                                return Err(ExprErr::NoRhs(
-                                    loc,
-                                    "No inputs for constructor and expected some".to_string(),
-                                ));
-                            };
                             // call the constructor
                             analyzer.func_call(
                                 arena,
                                 ctx,
                                 loc,
-                                &input_paths,
+                                &inputs,
                                 constructor,
                                 None,
                                 None,

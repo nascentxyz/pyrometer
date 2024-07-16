@@ -53,6 +53,14 @@ impl StructNode {
         fields
     }
 
+    pub fn ordered_new_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
+        let fields = self.fields(analyzer);
+        fields
+            .iter()
+            .map(|field| field.name(analyzer).unwrap())
+            .collect()
+    }
+
     pub fn find_field(
         &self,
         analyzer: &impl GraphBackend,
@@ -200,7 +208,7 @@ impl FieldNode {
             .underlying(analyzer)?
             .name
             .as_ref()
-            .expect("Struct wasn't named")
+            .expect("Struct field wasn't named")
             .to_string())
     }
 }

@@ -1,4 +1,4 @@
-use crate::{variable::Variable, ContextBuilder, StatementParser};
+use crate::{variable::Variable, ContextBuilder, Flatten, StatementParser};
 use graph::ContextEdge;
 use graph::Edge;
 
@@ -9,7 +9,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::pt::{Expression, Loc, Statement};
+use solang_parser::pt::{CodeLocation, Expression, Loc, Statement};
 
 impl<T> Looper for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
@@ -33,17 +33,18 @@ pub trait Looper:
         maybe_body: &Option<Box<Statement>>,
     ) -> Result<(), ExprErr> {
         // TODO: improve this
-        if let Some(initer) = maybe_init {
-            self.parse_ctx_statement(arena, initer, false, Some(ctx));
-        }
+        panic!("for loop");
+        // if let Some(initer) = maybe_init {
+        //     self.parse_ctx_statement(arena, initer, false, Some(ctx));
+        // }
 
-        if let Some(body) = maybe_body {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                analyzer.reset_vars(arena, loc, ctx, body)
-            })
-        } else {
-            Ok(())
-        }
+        // if let Some(body) = maybe_body {
+        //     self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+        //         analyzer.reset_vars(arena, loc, ctx, body)
+        //     })
+        // } else {
+        //     Ok(())
+        // }
     }
 
     /// Resets all variables referenced in the loop because we don't elegantly handle loops
@@ -59,7 +60,9 @@ pub trait Looper:
         let subctx = ContextNode::from(self.add_node(Node::Context(sctx)));
         ctx.set_child_call(subctx, self).into_expr_err(loc)?;
         self.add_edge(subctx, ctx, Edge::Context(ContextEdge::Loop));
-        self.parse_ctx_statement(arena, body, false, Some(subctx));
+
+        self.traverse_statement(&body, None);
+        self.interpret(subctx, body.loc(), arena);
         self.apply_to_edges(subctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let vars = subctx.local_vars(analyzer).clone();
             vars.iter().for_each(|(name, var)| {

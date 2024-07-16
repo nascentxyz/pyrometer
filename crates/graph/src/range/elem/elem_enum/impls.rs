@@ -23,6 +23,12 @@ impl Elem<Concrete> {
         let expr = RangeExpr::new(self, RangeOp::Mul(true), other);
         Self::Expr(expr)
     }
+
+    pub fn wrapping_exp(self, other: Elem<Concrete>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Exp(true), other);
+        Self::Expr(expr)
+    }
+
     pub fn wrapping_div(self, other: Elem<Concrete>) -> Self {
         let expr = RangeExpr::new(self, RangeOp::Div(true), other);
         Self::Expr(expr)
@@ -215,7 +221,7 @@ impl<T: Ord> Elem<T> {
 
     /// Creates a new range element that is one range element to the power of another
     pub fn pow(self, other: Self) -> Self {
-        let expr = RangeExpr::new(self, RangeOp::Exp, other);
+        let expr = RangeExpr::new(self, RangeOp::Exp(false), other);
         Elem::Expr(expr)
     }
 

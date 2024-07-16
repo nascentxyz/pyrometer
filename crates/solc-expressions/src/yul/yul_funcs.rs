@@ -130,7 +130,7 @@ pub trait YulFuncCaller:
                     "mul" => RangeOp::Mul(true),
                     "div" | "sdiv" => RangeOp::Div(true),
                     "mod" | "smod" => RangeOp::Mod,
-                    "exp" => RangeOp::Exp,
+                    "exp" => RangeOp::Exp(true),
                     "and" => RangeOp::BitAnd,
                     "or" => RangeOp::BitOr,
                     "xor" => RangeOp::BitXor,
