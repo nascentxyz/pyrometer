@@ -12,6 +12,292 @@ use shared::GraphError;
 use solang_parser::pt::Loc;
 use std::collections::BTreeSet;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
+pub enum SubContextKind {
+    InternalFnCall {
+        caller_ctx: ContextNode,
+        return_into_ctx: ContextNode,
+        fn_called: FunctionNode,
+    },
+    ExternalFnCall {
+        caller_ctx: ContextNode,
+        return_into_ctx: ContextNode,
+        fn_called: FunctionNode,
+    },
+    Loop {
+        parent_ctx: ContextNode,
+    },
+    Fork {
+        parent_ctx: ContextNode,
+        true_side: bool,
+    },
+    FnReturn {
+        from_fn_call_ctx: ContextNode,
+        continuation_of: ContextNode,
+    },
+    Dummy {
+        parent_ctx: ContextNode,
+    },
+}
+
+impl SubContextKind {
+    pub fn new_fork(parent_ctx: ContextNode, true_side: bool) -> Self {
+        SubContextKind::Fork {
+            parent_ctx,
+            true_side,
+        }
+    }
+
+    pub fn new_fn_ret(from_fn_call_ctx: ContextNode, continuation_of: ContextNode) -> Self {
+        SubContextKind::FnReturn {
+            from_fn_call_ctx,
+            continuation_of,
+        }
+    }
+
+    pub fn new_dummy(parent_ctx: ContextNode) -> Self {
+        SubContextKind::Dummy { parent_ctx }
+    }
+
+    pub fn new_loop(parent_ctx: ContextNode) -> Self {
+        SubContextKind::Loop { parent_ctx }
+    }
+
+    pub fn new_fn_call(
+        caller_ctx: ContextNode,
+        return_into_ctx: Option<ContextNode>,
+        fn_called: FunctionNode,
+        is_ext: bool,
+    ) -> Self {
+        let return_into_ctx = return_into_ctx.unwrap_or(caller_ctx);
+        if is_ext {
+            SubContextKind::ExternalFnCall {
+                caller_ctx,
+                return_into_ctx,
+                fn_called,
+            }
+        } else {
+            SubContextKind::InternalFnCall {
+                caller_ctx,
+                return_into_ctx,
+                fn_called,
+            }
+        }
+    }
+
+    pub fn parent_ctx(&self) -> ContextNode {
+        match self {
+            SubContextKind::InternalFnCall {
+                caller_ctx: parent_ctx,
+                ..
+            }
+            | SubContextKind::ExternalFnCall {
+                caller_ctx: parent_ctx,
+                ..
+            }
+            | SubContextKind::FnReturn {
+                from_fn_call_ctx: parent_ctx,
+                ..
+            }
+            | SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Dummy { parent_ctx }
+            | SubContextKind::Loop { parent_ctx } => *parent_ctx,
+        }
+    }
+
+    pub fn path_ext(&self, analyzer: &impl AnalyzerBackend) -> Result<String, GraphError> {
+        Ok(match self {
+            SubContextKind::ExternalFnCall { fn_called, .. } => {
+                let name = fn_called.name(analyzer)?;
+                format!("{{ {name} }}")
+            }
+            SubContextKind::InternalFnCall { fn_called, .. } => {
+                let name = fn_called.name(analyzer)?;
+                format!("{{ {name} }}")
+            }
+            SubContextKind::Fork { true_side, .. } => format!("fork{{ {true_side} }}"),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => format!(
+                "resume{{ {} }}",
+                continuation_of.associated_fn(analyzer)?.name(analyzer)?
+            ),
+            SubContextKind::Loop { .. } => "loop".to_string(),
+            SubContextKind::Dummy { .. } => "<dummy>".to_string(),
+        })
+    }
+
+    pub fn init_ctx_deps(
+        &self,
+        analyzer: &impl AnalyzerBackend,
+    ) -> Result<BTreeSet<ContextVarNode>, GraphError> {
+        Ok(self.parent_ctx().underlying(analyzer)?.ctx_deps.clone())
+    }
+
+    pub fn init_expr_ret_stack(
+        &self,
+        analyzer: &impl AnalyzerBackend,
+    ) -> Result<Vec<ExprRet>, GraphError> {
+        Ok(match self {
+            SubContextKind::Fork { parent_ctx, .. } | SubContextKind::Loop { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.expr_ret_stack.clone()
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of.underlying(analyzer)?.expr_ret_stack.clone(),
+            _ => vec![],
+        })
+    }
+
+    pub fn fn_call(&self) -> Option<FunctionNode> {
+        match self {
+            SubContextKind::ExternalFnCall { fn_called, .. } => Some(*fn_called),
+            SubContextKind::InternalFnCall { fn_called, .. } => Some(*fn_called),
+            SubContextKind::Fork { .. }
+            | SubContextKind::Loop { .. }
+            | SubContextKind::Dummy { .. }
+            | SubContextKind::FnReturn { .. } => None,
+        }
+    }
+
+    pub fn init_parse_idx(&self, analyzer: &impl AnalyzerBackend) -> usize {
+        match self {
+            SubContextKind::ExternalFnCall { .. } => 0,
+            SubContextKind::InternalFnCall { .. } => 0,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx.parse_idx(analyzer),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of.parse_idx(analyzer),
+        }
+    }
+
+    pub fn init_ctx_cache(
+        &self,
+        analyzer: &impl AnalyzerBackend,
+    ) -> Result<ContextCache, GraphError> {
+        let visible_funcs = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_funcs
+                .clone(),
+        };
+
+        let visible_structs = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx
+                .underlying(analyzer)?
+                .cache
+                .visible_structs
+                .clone(),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_structs
+                .clone(),
+        };
+
+        let first_ancestor = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.cache.first_ancestor
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of.underlying(analyzer)?.cache.first_ancestor,
+        };
+
+        Ok(ContextCache {
+            visible_funcs,
+            visible_structs,
+            first_ancestor,
+            vars: Default::default(),
+            tmp_vars: Default::default(),
+            associated_source: None,
+            associated_contract: None,
+        })
+    }
+
+    pub fn depth(&self, analyzer: &impl AnalyzerBackend) -> Result<usize, GraphError> {
+        Ok((self.parent_ctx().underlying(analyzer)?.depth as isize)
+            .saturating_add(self.self_depth())
+            .max(0) as usize)
+    }
+
+    pub fn self_depth(&self) -> isize {
+        match self {
+            SubContextKind::ExternalFnCall { .. } => 1,
+            SubContextKind::InternalFnCall { .. } => 1,
+            SubContextKind::Fork { .. } => 1,
+            SubContextKind::Loop { .. } => 1,
+            SubContextKind::Dummy { .. } => 1,
+            SubContextKind::FnReturn { .. } => -1,
+        }
+    }
+
+    pub fn width(&self, analyzer: &impl AnalyzerBackend) -> Result<usize, GraphError> {
+        Ok(self
+            .parent_ctx()
+            .underlying(analyzer)?
+            .width
+            .saturating_add(self.self_width()))
+    }
+
+    pub fn self_width(&self) -> usize {
+        match self {
+            SubContextKind::ExternalFnCall { .. } => 0,
+            SubContextKind::InternalFnCall { .. } => 0,
+            SubContextKind::Fork { .. } => 1,
+            SubContextKind::Loop { .. } => 0,
+            SubContextKind::Dummy { .. } => 0,
+            SubContextKind::FnReturn { .. } => 0,
+        }
+    }
+
+    pub fn continuation_of(&self) -> Option<ContextNode> {
+        match self {
+            SubContextKind::ExternalFnCall { .. } | SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => Some(*parent_ctx),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => Some(*continuation_of),
+        }
+    }
+
+    pub fn returning_ctx(&self) -> Option<ContextNode> {
+        match self {
+            SubContextKind::ExternalFnCall {
+                return_into_ctx, ..
+            }
+            | SubContextKind::InternalFnCall {
+                return_into_ctx, ..
+            } => Some(*return_into_ctx),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The current parse index of the stack
@@ -20,10 +306,8 @@ pub struct Context {
     pub parent_fn: FunctionNode,
     /// Whether this function call is actually a modifier call
     pub modifier_state: Option<ModifierState>,
-    /// An optional parent context (i.e. this context is a fork or subcontext of another previous context)
-    pub parent_ctx: Option<ContextNode>,
-    pub returning_ctx: Option<ContextNode>,
-    pub continuation_of: Option<ContextNode>,
+
+    pub subctx_kind: Option<SubContextKind>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
     /// like an if statement
     pub ctx_deps: BTreeSet<ContextVarNode>,
@@ -31,12 +315,6 @@ pub struct Context {
     pub path: String,
     /// Denotes whether this context was killed by an unsatisfiable require, assert, etc. statement
     pub killed: Option<(Loc, KilledKind)>,
-    /// Denotes whether this context is a fork of another context
-    pub is_fork: bool,
-    /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
-    pub fn_call: Option<FunctionNode>,
-    /// Denotes whether this context is the result of a internal function call, and points to the FunctionNode
-    pub ext_fn_call: Option<FunctionNode>,
     /// The child context. This is either of the form `Call(child_context)` or `Fork(world1, world2)`. Once
     /// a child is defined we should *never* evaluate an expression in this context.
     pub child: Option<CallFork>,
@@ -50,12 +328,8 @@ pub struct Context {
     pub depth: usize,
     /// Width tracker
     pub width: usize,
-    /// A temporary stack of ExprRets for this context
-    pub tmp_expr: Vec<Option<ExprRet>>,
     /// The stack of ExprRets for this context
     pub expr_ret_stack: Vec<ExprRet>,
-    /// Whether the context currently uses unchecked math
-    pub unchecked: bool,
     /// The number of live edges
     pub number_of_live_edges: usize,
     /// Caching related things
@@ -72,16 +346,11 @@ impl Context {
         Context {
             parse_idx: 0,
             parent_fn,
-            parent_ctx: None,
-            returning_ctx: None,
-            continuation_of: None,
+            subctx_kind: None,
             path: fn_name,
             tmp_var_ctr: 0,
             killed: None,
             ctx_deps: Default::default(),
-            is_fork: false,
-            fn_call: None,
-            ext_fn_call: None,
             child: None,
             ret: vec![],
             loc,
@@ -89,8 +358,6 @@ impl Context {
             depth: 0,
             width: 0,
             expr_ret_stack: Vec::with_capacity(5),
-            tmp_expr: vec![],
-            unchecked: false,
             number_of_live_edges: 0,
             cache: Default::default(),
             dl_solver: Default::default(),
@@ -100,28 +367,25 @@ impl Context {
 
     /// Creates a new subcontext from an existing context
     pub fn new_subctx(
-        parent_ctx: ContextNode,
-        returning_ctx: Option<ContextNode>,
+        subctx_kind: SubContextKind,
         loc: Loc,
-        fork_expr: Option<&str>,
-        fn_call: Option<FunctionNode>,
-        fn_ext: bool,
         analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
     ) -> Result<Self, GraphError> {
-        let mut depth =
-            parent_ctx.underlying(analyzer)?.depth + if fork_expr.is_some() { 0 } else { 1 };
+        let parse_idx = subctx_kind.init_parse_idx(analyzer);
 
-        let width =
-            parent_ctx.underlying(analyzer)?.width + if fork_expr.is_some() { 1 } else { 0 };
+        let path = format!(
+            "{}.{}",
+            subctx_kind.parent_ctx().path(analyzer),
+            subctx_kind.path_ext(analyzer)?
+        );
+        let ctx_deps = subctx_kind.init_ctx_deps(analyzer)?;
+        let expr_ret_stack = subctx_kind.init_expr_ret_stack(analyzer)?;
+        let cache = subctx_kind.init_ctx_cache(analyzer)?;
 
-        let modifier_state = if let Some(mstate) = modifier_state {
-            Some(mstate)
-        } else if fn_call.is_none() || parent_ctx.associated_fn(analyzer)? == fn_call.unwrap() {
-            parent_ctx.underlying(analyzer)?.modifier_state.clone()
-        } else {
-            None
-        };
+        let depth = subctx_kind.depth(analyzer)?;
+
+        let width = subctx_kind.width(analyzer)?;
 
         if analyzer.max_depth() < depth {
             return Err(GraphError::MaxStackDepthReached(format!(
@@ -130,7 +394,7 @@ impl Context {
             )));
         }
 
-        let tw = parent_ctx.total_width(analyzer)?;
+        let tw = subctx_kind.parent_ctx().total_width(analyzer)?;
         if analyzer.max_width() < tw {
             return Err(GraphError::MaxStackWidthReached(format!(
                 "Stack width limit reached: {}",
@@ -138,113 +402,46 @@ impl Context {
             )));
         }
 
-        let (fn_name, ext_fn_call, fn_call) = if let Some(fn_call) = fn_call {
-            if fn_ext {
-                (fn_call.name(analyzer)?, Some(fn_call), None)
-            } else {
-                (fn_call.name(analyzer)?, None, Some(fn_call))
-            }
-        } else if let Some(returning_ctx) = returning_ctx {
-            let fn_node = returning_ctx.associated_fn(analyzer)?;
-            (fn_node.name(analyzer)?, None, Some(fn_node))
+        let parent_fn = subctx_kind.parent_ctx().associated_fn(analyzer)?;
+
+        let modifier_state = if let Some(mstate) = modifier_state {
+            Some(mstate)
+        } else if subctx_kind.fn_call().is_none() || Some(parent_fn) == subctx_kind.fn_call() {
+            subctx_kind
+                .parent_ctx()
+                .underlying(analyzer)?
+                .modifier_state
+                .clone()
         } else {
-            ("anonymous_fn_call".to_string(), None, None)
+            None
         };
-
-        let path = format!(
-            "{}.{}",
-            parent_ctx.underlying(analyzer)?.path,
-            if let Some(ref fork_expr) = fork_expr {
-                format!("fork{{ {} }}", fork_expr)
-            } else if let Some(returning_ctx) = returning_ctx {
-                depth = depth.saturating_sub(2);
-                format!(
-                    "resume{{ {} }}",
-                    returning_ctx.associated_fn_name(analyzer)?
-                )
-            } else {
-                fn_name
-            }
-        );
-
-        let parent_fn = parent_ctx.associated_fn(analyzer)?;
-
-        parent_ctx.underlying_mut(analyzer)?.number_of_live_edges += 1;
 
         tracing::trace!("new subcontext path: {path}, depth: {depth}");
         Ok(Context {
-            parse_idx: parent_ctx.parse_idx(analyzer),
+            parse_idx,
             parent_fn,
-            parent_ctx: Some(parent_ctx),
-            returning_ctx,
-            continuation_of: None,
+            subctx_kind: Some(subctx_kind),
             path,
-            is_fork: fork_expr.is_some(),
-            fn_call,
-            ext_fn_call,
-            ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),
+            ctx_deps,
+            expr_ret_stack,
+            cache,
+
+            tmp_var_ctr: subctx_kind.parent_ctx().underlying(analyzer)?.tmp_var_ctr,
             killed: None,
             child: None,
-            tmp_var_ctr: parent_ctx.underlying(analyzer)?.tmp_var_ctr,
             ret: vec![],
             loc,
             modifier_state,
             depth,
             width,
-            expr_ret_stack: if fork_expr.is_some() {
-                parent_ctx.underlying(analyzer)?.expr_ret_stack.clone()
-            } else if let Some(ret_ctx) = returning_ctx {
-                ret_ctx.underlying(analyzer)?.expr_ret_stack.clone()
-            } else {
-                vec![]
-            },
-            tmp_expr: if fork_expr.is_some() {
-                parent_ctx.underlying(analyzer)?.tmp_expr.clone()
-            } else if let Some(ret_ctx) = returning_ctx {
-                ret_ctx.underlying(analyzer)?.tmp_expr.clone()
-            } else {
-                vec![]
-            },
-            unchecked: if fork_expr.is_some() {
-                parent_ctx.underlying(analyzer)?.unchecked
-            } else if let Some(ret_ctx) = returning_ctx {
-                ret_ctx.underlying(analyzer)?.unchecked
-            } else {
-                false
-            },
+
             number_of_live_edges: 0,
-            cache: ContextCache {
-                vars: Default::default(),
-                tmp_vars: Default::default(),
-                visible_funcs: if fork_expr.is_some() {
-                    parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
-                } else if let Some(ret_ctx) = returning_ctx {
-                    ret_ctx.underlying(analyzer)?.cache.visible_funcs.clone()
-                } else {
-                    None
-                },
-                visible_structs: if fork_expr.is_some() {
-                    parent_ctx
-                        .underlying(analyzer)?
-                        .cache
-                        .visible_structs
-                        .clone()
-                } else if let Some(ret_ctx) = returning_ctx {
-                    ret_ctx.underlying(analyzer)?.cache.visible_structs.clone()
-                } else {
-                    None
-                },
-                first_ancestor: if fork_expr.is_some() {
-                    parent_ctx.underlying(analyzer)?.cache.first_ancestor
-                } else if let Some(ret_ctx) = returning_ctx {
-                    ret_ctx.underlying(analyzer)?.cache.first_ancestor
-                } else {
-                    None
-                },
-                associated_source: None,
-                associated_contract: None,
-            },
-            dl_solver: parent_ctx.underlying(analyzer)?.dl_solver.clone(),
+
+            dl_solver: subctx_kind
+                .parent_ctx()
+                .underlying(analyzer)?
+                .dl_solver
+                .clone(),
             applies: Default::default(),
         })
     }
@@ -254,63 +451,8 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Self, GraphError> {
-        let depth = parent_ctx.underlying(analyzer)?.depth + 1;
-
-        if analyzer.max_depth() < depth {
-            return Err(GraphError::MaxStackDepthReached(format!(
-                "Stack depth limit reached: {}",
-                depth - 1
-            )));
-        }
-
-        let fn_name = "loop";
-
-        let path = format!("{}.{}", parent_ctx.underlying(analyzer)?.path, fn_name);
-
-        let parent_fn = parent_ctx.associated_fn(analyzer)?;
-
-        parent_ctx.underlying_mut(analyzer)?.number_of_live_edges += 1;
-
-        tracing::trace!("new subcontext path: {path}, depth: {depth}");
-        Ok(Context {
-            parse_idx: parent_ctx.parse_idx(analyzer),
-            parent_fn,
-            parent_ctx: Some(parent_ctx),
-            path,
-            returning_ctx: None,
-            continuation_of: None,
-            is_fork: false,
-            fn_call: None,
-            ext_fn_call: None,
-            ctx_deps: parent_ctx.underlying(analyzer)?.ctx_deps.clone(),
-            killed: None,
-            child: None,
-            tmp_var_ctr: parent_ctx.underlying(analyzer)?.tmp_var_ctr,
-            ret: vec![],
-            loc,
-            modifier_state: None,
-            depth,
-            width: 0,
-            expr_ret_stack: parent_ctx.underlying(analyzer)?.expr_ret_stack.clone(),
-            tmp_expr: parent_ctx.underlying(analyzer)?.tmp_expr.clone(),
-            unchecked: parent_ctx.underlying(analyzer)?.unchecked,
-            number_of_live_edges: 0,
-            cache: ContextCache {
-                vars: parent_ctx.underlying(analyzer)?.cache.vars.clone(),
-                tmp_vars: Default::default(),
-                visible_funcs: parent_ctx.underlying(analyzer)?.cache.visible_funcs.clone(),
-                visible_structs: parent_ctx
-                    .underlying(analyzer)?
-                    .cache
-                    .visible_structs
-                    .clone(),
-                first_ancestor: parent_ctx.underlying(analyzer)?.cache.first_ancestor,
-                associated_source: None,
-                associated_contract: None,
-            },
-            dl_solver: parent_ctx.underlying(analyzer)?.dl_solver.clone(),
-            applies: Default::default(),
-        })
+        let subctx_kind = SubContextKind::Loop { parent_ctx };
+        Context::new_subctx(subctx_kind, loc, analyzer, None)
     }
 
     /// Set the child context to a fork
@@ -339,5 +481,28 @@ impl Context {
 
     pub fn as_string(&mut self) -> String {
         "Context".to_string()
+    }
+
+    pub fn parent_ctx(&self) -> Option<ContextNode> {
+        Some(self.subctx_kind?.parent_ctx())
+    }
+
+    pub fn fn_call(&self) -> Option<FunctionNode> {
+        self.subctx_kind?.fn_call()
+    }
+
+    pub fn continuation_of(&self) -> Option<ContextNode> {
+        self.subctx_kind?.continuation_of()
+    }
+
+    pub fn returning_ctx(&self) -> Option<ContextNode> {
+        self.subctx_kind?.returning_ctx()
+    }
+
+    pub fn is_ext_fn_call(&self) -> bool {
+        matches!(
+            self.subctx_kind,
+            Some(SubContextKind::ExternalFnCall { .. })
+        )
     }
 }

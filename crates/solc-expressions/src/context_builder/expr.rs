@@ -1,22 +1,13 @@
-use crate::{
-    context_builder::ContextBuilder,
-    func_call::{func_caller::FuncCaller, intrinsic_call::IntrinsicFuncCaller},
-    variable::Variable,
-    ExprTyParser,
-};
+use crate::ExprTyParser;
 
 use graph::{
     elem::*,
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    nodes::{Concrete, ContextNode, KilledKind},
+    AnalyzerBackend,
 };
 use shared::{post_to_site, ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
 
-use ethers_core::types::I256;
-use solang_parser::{
-    helpers::CodeLocation,
-    pt::{Expression, Loc},
-};
+use solang_parser::{helpers::CodeLocation, pt::Expression};
 
 impl<T> ExpressionParser for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -79,7 +70,6 @@ pub trait ExpressionParser:
         expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        use Expression::*;
         // tracing::trace!(
         //     "ctx: {}, current stack: {:?}, \nexpr: {:?}\n",
         //     ctx.underlying(self).unwrap().path,

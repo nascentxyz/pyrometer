@@ -1,4 +1,5 @@
-use crate::{variable::Variable, ContextBuilder, Flatten, StatementParser};
+use crate::{variable::Variable, ContextBuilder, Flatten};
+use graph::nodes::SubContextKind;
 use graph::ContextEdge;
 use graph::Edge;
 
@@ -91,9 +92,8 @@ pub trait Looper:
                 }
             });
 
-            let sctx =
-                Context::new_subctx(ctx, Some(og_ctx), loc, None, None, false, analyzer, None)
-                    .into_expr_err(loc)?;
+            let subctx_kind = SubContextKind::new_fn_ret(ctx, og_ctx);
+            let sctx = Context::new_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             let sctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
             ctx.set_child_call(sctx, analyzer).into_expr_err(loc)
         })

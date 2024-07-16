@@ -9,17 +9,13 @@ use graph::{
     elem::{Elem, RangeOp},
     nodes::{
         Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet,
-        FunctionNode, KilledKind, StructNode,
+        FunctionNode, KilledKind, StructNode, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, TypeNode, VarType,
 };
 
-use shared::{
-    string_to_static, AnalyzerLike, ExprErr, ExprFlag, FlatExpr, IntoExprErr, NodeIdx, RangeArena,
-    StorageLocation,
-};
-use solang_parser::pt::Identifier;
-use solang_parser::pt::{CodeLocation, Expression, Loc, Statement, Type};
+use shared::{string_to_static, ExprErr, ExprFlag, FlatExpr, IntoExprErr, NodeIdx, RangeArena};
+use solang_parser::pt::{CodeLocation, Expression, Loc, Statement};
 
 impl<T> Flatten for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -644,19 +640,15 @@ pub trait Flatten:
         else {
             unreachable!()
         };
-        let tctx = Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
-            .into_expr_err(loc)?;
+
+        let true_subctx_kind = SubContextKind::new_fork(ctx, true);
+        let tctx = Context::new_subctx(true_subctx_kind, loc, self, None).into_expr_err(loc)?;
         let true_subctx = ContextNode::from(self.add_node(Node::Context(tctx)));
-        let fctx = Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
-            .into_expr_err(loc)?;
+
+        let false_subctx_kind = SubContextKind::new_fork(ctx, false);
+        let fctx = Context::new_subctx(false_subctx_kind, loc, self, None).into_expr_err(loc)?;
         let false_subctx = ContextNode::from(self.add_node(Node::Context(fctx)));
         ctx.set_child_fork(true_subctx, false_subctx, self)
-            .into_expr_err(loc)?;
-        true_subctx
-            .set_continuation_ctx(self, ctx, "fork_true")
-            .into_expr_err(loc)?;
-        false_subctx
-            .set_continuation_ctx(self, ctx, "fork_false")
             .into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
         self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));

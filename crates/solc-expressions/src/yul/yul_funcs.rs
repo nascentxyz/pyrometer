@@ -13,9 +13,6 @@ use shared::{ExprErr, IntoExprErr, RangeArena, StorageLocation};
 use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc, YulExpression, YulFunctionCall};
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 impl<T> YulFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
@@ -768,45 +765,6 @@ pub trait YulFuncCaller:
         loc: Loc,
         inputs: &[YulExpression],
     ) -> Result<(), ExprErr> {
-        let append = if ctx.underlying(self).into_expr_err(loc)?.tmp_expr.is_empty() {
-            Rc::new(RefCell::new(true))
-        } else {
-            Rc::new(RefCell::new(false))
-        };
-
-        inputs.iter().try_for_each(|input| {
-            self.parse_ctx_yul_expr(arena, input, ctx)?;
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
-                        loc,
-                        "Inputs did not have left hand sides".to_string(),
-                    ));
-                };
-                if matches!(ret, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                if *append.borrow() {
-                    ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
-                } else {
-                    *append.borrow_mut() = true;
-                    ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
-                }
-            })
-        })?;
-        if !inputs.is_empty() {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
-                        loc,
-                        "Inputs did not have left hand sides".to_string(),
-                    ));
-                };
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)
-            })
-        } else {
-            Ok(())
-        }
+        unreachable!("Should not have called this");
     }
 }

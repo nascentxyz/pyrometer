@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract DynTypes {
     uint256[] storeVar;
 
@@ -8,14 +11,14 @@ contract DynTypes {
 
     mapping(address => Strukt) public someMapping;
 
-    function bytes_dyn(bytes calldata x) public {
+    function bytes_dyn(bytes calldata x) public pure {
         bytes memory y = x;
         require(x.length < 10);
         y[8] = 0xff;
         require(y.length == 9);
     }
 
-    function array_dyn(uint256[] memory x) public {
+    function array_dyn(uint256[] memory x) public pure {
         x[0] = 5;
         require(x.length < 10);
         uint256[] memory y = x;
@@ -23,10 +26,7 @@ contract DynTypes {
         require(y.length == 9);
     }
 
-    function nested_bytes_dyn(
-        bytes[] memory x,
-        uint y
-    ) public returns (bytes1) {
+    function nested_bytes_dyn(bytes[] memory x, uint y) public pure {
         bytes memory a = hex"1337";
         x[0] = a;
         require(x[0][0] == hex"13");
@@ -51,11 +51,11 @@ contract DynTypes {
         require(y == x);
     }
 
-    function indexInto() public returns (uint256) {
+    function indexInto() public view returns (uint256) {
         return storeVar[basicFunc()];
     }
 
-    function basicFunc() public returns (uint256) {
+    function basicFunc() public pure returns (uint256) {
         return 1;
     }
 
@@ -69,15 +69,16 @@ contract DynTypes {
 
     address[] t;
 
-    function inLoop(address holder, address[] memory tokens) public {
+    function inLoop(address holder, address[] memory tokens) public pure {
         address[] memory h = new address[](1);
         h[0] = holder;
         inLoop(h, tokens);
     }
 
-    function inLoop(address[] memory holders, address[] memory tokens) public {
+    function inLoop(address[] memory holders, address[] memory) public pure {
         for (uint j = 0; j < holders.length; j++) {
             address holder = holders[j];
+            holder;
         }
     }
 }

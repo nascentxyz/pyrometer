@@ -6,16 +6,14 @@ use crate::{
     internal_call::InternalFuncCaller,
     intrinsic_call::IntrinsicFuncCaller,
     namespaced_call::NameSpaceFuncCaller,
-    ContextBuilder, ExpressionParser, Flatten, StatementParser,
+    ContextBuilder, ExpressionParser, Flatten,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use graph::{
     elem::Elem,
     nodes::{
         Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
-        FunctionParamNode, ModifierState,
+        FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
@@ -74,29 +72,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
         ctx: ContextNode,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => analyzer.parse_inputs(arena, ctx, loc, inner),
-            NamedOrUnnamedArgs::Named(inner) => {
-                let append = Rc::new(RefCell::new(false));
-                inner.iter().try_for_each(|arg| {
-                    analyzer.parse_input(arena, ctx, loc, &arg.expr, &append)?;
-                    Ok(())
-                })?;
-                if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Inputs did not have left hand sides".to_string(),
-                            ));
-                        };
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                    })
-                } else {
-                    Ok(())
-                }
-            }
-        }
+        unreachable!("should not exist");
     }
 
     pub fn parse_n(
@@ -107,47 +83,7 @@ impl<'a> NamedOrUnnamedArgs<'a> {
         ctx: ContextNode,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        let append = Rc::new(RefCell::new(false));
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => {
-                inner.iter().take(n).try_for_each(|arg| {
-                    analyzer.parse_input(arena, ctx, loc, arg, &append)?;
-                    Ok(())
-                })?;
-                if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Inputs did not have left hand sides".to_string(),
-                            ));
-                        };
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                    })
-                } else {
-                    Ok(())
-                }
-            }
-            NamedOrUnnamedArgs::Named(inner) => {
-                inner.iter().take(n).try_for_each(|arg| {
-                    analyzer.parse_input(arena, ctx, loc, &arg.expr, &append)?;
-                    Ok(())
-                })?;
-                if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Inputs did not have left hand sides".to_string(),
-                            ));
-                        };
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                    })
-                } else {
-                    Ok(())
-                }
-            }
-        }
+        unreachable!("should not exist");
     }
 
     pub fn order(&self, inputs: ExprRet, ordered_params: Vec<String>) -> ExprRet {
@@ -563,13 +499,10 @@ pub trait FuncCaller:
                 Ok(())
             }
         } else {
+            let subctx_kind = SubContextKind::new_fn_ret(callee_ctx, caller_ctx);
             let ret_ctx = Context::new_subctx(
-                callee_ctx,
-                Some(caller_ctx),
+                subctx_kind,
                 loc,
-                None,
-                None,
-                false,
                 self,
                 caller_ctx
                     .underlying(self)
@@ -579,9 +512,6 @@ pub trait FuncCaller:
             )
             .unwrap();
             let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
-            ret_subctx
-                .set_continuation_ctx(self, caller_ctx, "execute_call_inner")
-                .into_expr_err(loc)?;
 
             let res = callee_ctx
                 .set_child_call(ret_subctx, self)

@@ -7,7 +7,7 @@ use graph::{
 };
 use shared::{ExprErr, GraphError, IntoExprErr, NodeIdx, RangeArena};
 
-use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation, VariableDeclaration};
+use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation};
 
 impl<T> Variable for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Deals with variable retrieval, parsing, and versioning

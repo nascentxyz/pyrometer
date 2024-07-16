@@ -185,7 +185,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                     rhs_cvar,
                     new_lhs,
                     Edge::Context(ContextEdge::ReturnAssign(
-                        rhs_ctx.underlying(self).unwrap().ext_fn_call.is_some(),
+                        rhs_ctx.underlying(self).unwrap().is_ext_fn_call(),
                     )),
                 );
             } else {

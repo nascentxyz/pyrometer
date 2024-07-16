@@ -75,7 +75,7 @@ pub trait TestCommandRunner:
                 }
             }
             TestCommand::Coverage(CoverageCommand::OnlyPath) => {
-                if let Some(parent) = ctx.underlying(self).unwrap().parent_ctx {
+                if let Some(parent) = ctx.underlying(self).unwrap().parent_ctx() {
                     if parent.underlying(self).unwrap().child.is_some() {
                         self.add_expr_err(ExprErr::TestError(
                             loc,

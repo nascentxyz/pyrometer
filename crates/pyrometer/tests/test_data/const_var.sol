@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract ConstVar {
     uint256 internal constant typeVar = type(uint256).max;
-    uint256 internal constant funcVar = a();
-    uint256 internal constant funcVarInput = aInput(100);
+    uint256 internal immutable funcVar = a();
+    uint256 internal immutable funcVarInput = aInput(100);
     bytes16 private constant bytesString = "0123456789abcdef";
 
     function a() public pure returns (uint256) {
@@ -16,11 +19,11 @@ contract ConstVar {
         }
     }
 
-    function checkA() public pure {
+    function checkA() public view {
         require(funcVar == type(uint256).max);
     }
 
-    function checkAInput() public pure {
+    function checkAInput() public view {
         require(funcVarInput == 110);
     }
 

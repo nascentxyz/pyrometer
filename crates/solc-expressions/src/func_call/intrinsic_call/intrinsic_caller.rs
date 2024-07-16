@@ -11,7 +11,7 @@ use crate::{
 use graph::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet},
-    AnalyzerBackend, Node, TypeNode, VarType,
+    AnalyzerBackend, Node,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 

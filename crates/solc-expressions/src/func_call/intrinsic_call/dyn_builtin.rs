@@ -1,5 +1,5 @@
 use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{variable::Variable, ContextBuilder, ExpressionParser, ListAccess};
+use crate::{variable::Variable, ListAccess};
 
 use graph::{
     elem::{Elem, RangeElem},
@@ -45,41 +45,42 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
         input_exprs: &NamedOrUnnamedArgs,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        input_exprs.unnamed_args().unwrap()[1..]
-            .iter()
-            .try_for_each(|expr| {
-                self.parse_ctx_expr(arena, expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let input = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or(ExprRet::Null);
-                    ctx.append_tmp_expr(input, analyzer).into_expr_err(loc)
-                })
-            })?;
+        todo!("uses tmp expr stack");
+        // input_exprs.unnamed_args().unwrap()[1..]
+        //     .iter()
+        //     .try_for_each(|expr| {
+        //         self.parse_ctx_expr(arena, expr, ctx)?;
+        //         self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
+        //             let input = ctx
+        //                 .pop_expr_latest(loc, analyzer)
+        //                 .into_expr_err(loc)?
+        //                 .unwrap_or(ExprRet::Null);
+        //             ctx.append_tmp_expr(input, analyzer).into_expr_err(loc)
+        //         })
+        //     })?;
 
-        self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(inputs) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()));
-            };
-            if matches!(inputs, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            let inputs = inputs.as_vec();
-            if inputs.is_empty() {
-                ctx.push_expr(ExprRet::Multi(vec![]), analyzer)
-                    .into_expr_err(loc)?;
-                Ok(())
-            } else {
-                let start = &inputs[0];
-                if inputs.len() > 1 {
-                    analyzer.match_concat(arena, ctx, loc, start.clone(), &inputs[1..], false)
-                } else {
-                    analyzer.match_concat(arena, ctx, loc, start.clone(), &[], false)
-                }
-            }
-        })
+        // self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+        //     let Some(inputs) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
+        //         return Err(ExprErr::NoRhs(loc, "Concatenation failed".to_string()));
+        //     };
+        //     if matches!(inputs, ExprRet::CtxKilled(_)) {
+        //         ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+        //         return Ok(());
+        //     }
+        //     let inputs = inputs.as_vec();
+        //     if inputs.is_empty() {
+        //         ctx.push_expr(ExprRet::Multi(vec![]), analyzer)
+        //             .into_expr_err(loc)?;
+        //         Ok(())
+        //     } else {
+        //         let start = &inputs[0];
+        //         if inputs.len() > 1 {
+        //             analyzer.match_concat(arena, ctx, loc, start.clone(), &inputs[1..], false)
+        //         } else {
+        //             analyzer.match_concat(arena, ctx, loc, start.clone(), &[], false)
+        //         }
+        //     }
+        // })
     }
 
     /// Match on the expression returns

@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{ContextNode, FunctionNode},
+    nodes::{context::underlying::SubContextKind, ContextNode, FunctionNode},
     AnalyzerBackend, GraphBackend,
 };
 use shared::GraphError;
@@ -9,7 +9,10 @@ impl ContextNode {
     pub fn is_anonymous_fn_call(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
 
-        Ok(underlying.fn_call.is_none() && underlying.ext_fn_call.is_none() && !underlying.is_fork)
+        Ok(matches!(
+            underlying.subctx_kind,
+            Some(SubContextKind::Loop { .. })
+        ))
     }
 
     pub fn increment_parse_idx(&self, analyzer: &mut impl AnalyzerBackend) -> usize {
@@ -29,7 +32,7 @@ impl ContextNode {
     }
 
     pub fn has_continuation(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.continuation_of.is_some())
+        Ok(self.underlying(analyzer)?.continuation_of().is_some())
     }
 
     /// Returns whether this context is killed or returned
@@ -57,7 +60,7 @@ impl ContextNode {
 
     /// Check if this context is in an external function call
     pub fn is_ext_fn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.ext_fn_call.is_some())
+        Ok(self.underlying(analyzer)?.is_ext_fn_call())
     }
 
     /// Checks whether a function is external to the current context
@@ -84,22 +87,5 @@ impl ContextNode {
                 }
             }
         }
-    }
-
-    /// Returns whether this context *currently* uses unchecked math
-    pub fn unchecked(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.unchecked)
-    }
-
-    /// Sets the context to use unchecked math
-    pub fn set_unchecked(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?.unchecked = true;
-        Ok(())
-    }
-
-    /// Sets the context to use checked math
-    pub fn unset_unchecked(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?.unchecked = false;
-        Ok(())
     }
 }

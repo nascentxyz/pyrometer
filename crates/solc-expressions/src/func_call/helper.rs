@@ -1,17 +1,17 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{member_access::ListAccess, variable::Variable, ContextBuilder, ExpressionParser};
+use crate::{member_access::ListAccess, variable::Variable, ContextBuilder};
 
 use graph::{
     elem::Elem,
     nodes::{
         CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet,
-        FunctionNode, FunctionParamNode, ModifierState,
+        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
-use solang_parser::pt::{CodeLocation, Expression, Loc};
+use solang_parser::pt::{Expression, Loc};
 
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -168,29 +168,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         loc: Loc,
         inputs: &[Expression],
     ) -> Result<(), ExprErr> {
-        let append = if ctx.underlying(self).into_expr_err(loc)?.tmp_expr.is_empty() {
-            Rc::new(RefCell::new(true))
-        } else {
-            Rc::new(RefCell::new(false))
-        };
-
-        inputs
-            .iter()
-            .try_for_each(|input| self.parse_input(arena, ctx, loc, input, &append))?;
-
-        if !inputs.is_empty() {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
-                        loc,
-                        "Inputs did not have left hand sides".to_string(),
-                    ));
-                };
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)
-            })
-        } else {
-            ctx.push_expr(ExprRet::Null, self).into_expr_err(loc)
-        }
+        unreachable!("Should not have called this");
     }
 
     fn parse_input(
@@ -201,25 +179,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         input: &Expression,
         append: &Rc<RefCell<bool>>,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, input, ctx)?;
-        self.apply_to_edges(ctx, input.loc(), arena, &|analyzer, _arena, ctx, loc| {
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "Inputs did not have left hand sides".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            if *append.borrow() {
-                ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
-            } else {
-                *append.borrow_mut() = true;
-                ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
-            }
-        })
+        unreachable!("Should not have called this");
     }
 
     /// Creates a new context for a call
@@ -240,17 +200,9 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .add_gas_cost(self, shared::gas::FUNC_CALL_GAS)
                 .into_expr_err(loc)?;
         }
-        let ctx = Context::new_subctx(
-            curr_ctx,
-            None,
-            loc,
-            None,
-            Some(func_node),
-            fn_ext,
-            self,
-            modifier_state,
-        )
-        .into_expr_err(loc)?;
+
+        let subctx_kind = SubContextKind::new_fn_call(curr_ctx, None, func_node, fn_ext);
+        let ctx = Context::new_subctx(subctx_kind, loc, self, modifier_state).into_expr_err(loc)?;
         let callee_ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
         curr_ctx
             .set_child_call(callee_ctx, self)
@@ -362,7 +314,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             .modifier_state
             .is_some()
         {
-            if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx {
+            if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx() {
                 let ret = ret_ctx.underlying(self).into_expr_err(loc)?.ret.clone();
                 ret.iter().try_for_each(|(loc, ret)| {
                     let cvar = self.advance_var_in_forced_ctx(*ret, *loc, callee_ctx)?;
@@ -408,13 +360,10 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     return Ok(());
                 }
 
+                let subctx_kind = SubContextKind::new_fn_ret(callee_ctx, caller_ctx);
                 let ctx = Context::new_subctx(
-                    callee_ctx,
-                    Some(caller_ctx),
+                    subctx_kind,
                     loc,
-                    None,
-                    None,
-                    false,
                     self,
                     caller_ctx
                         .underlying(self)
@@ -424,10 +373,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 )
                 .into_expr_err(loc)?;
                 let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
-                ret_subctx
-                    .set_continuation_ctx(self, caller_ctx, "ctx_rets")
-                    .into_expr_err(loc)?;
-
                 let res = callee_ctx
                     .set_child_call(ret_subctx, self)
                     .into_expr_err(loc);

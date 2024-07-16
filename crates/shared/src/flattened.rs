@@ -1,6 +1,5 @@
-use crate::{AnalyzerLike, ExprErr, IntoExprErr, RangeArena, StorageLocation};
-use solang_parser::pt::{Expression, Loc, Statement, Type};
-use solang_parser::pt::{Identifier, NamedArgument};
+use crate::StorageLocation;
+use solang_parser::pt::{Expression, Loc, NamedArgument, Type};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ExprFlag {

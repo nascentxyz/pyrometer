@@ -1,59 +1,18 @@
 use crate::nodes::Context;
-use crate::ContextEdge;
-use crate::Edge;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend, Node,
 };
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
 use shared::GraphError;
 
 use solang_parser::pt::Loc;
 
+use super::underlying::SubContextKind;
+
 impl ContextNode {
     /// Query whether this context has a parent
     pub fn has_parent(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.parent_ctx.is_some())
-    }
-
-    /// Sets the continuation context
-    pub fn set_continuation_ctx(
-        &self,
-        analyzer: &mut impl AnalyzerBackend,
-        continuation_of_ctx: ContextNode,
-        ty: &'static str,
-    ) -> Result<(), GraphError> {
-        assert!(
-            self.0 > continuation_of_ctx.0,
-            "{} {}",
-            self.0,
-            continuation_of_ctx.0
-        );
-
-        let parent_list = self.parent_list(analyzer)?;
-        // if `continuation_of` already has a continuation, build off that continuation if it is in the parent list
-        if let Some(cont) = analyzer
-            .graph()
-            .edges_directed(continuation_of_ctx.into(), Direction::Incoming)
-            .find(|edge| {
-                matches!(edge.weight(), Edge::Context(ContextEdge::Continue(_)))
-                    && parent_list.contains(&ContextNode::from(edge.source()))
-            })
-            .map(|edge| ContextNode::from(edge.source()))
-        {
-            self.set_continuation_ctx(analyzer, cont, ty)
-        } else {
-            analyzer.add_edge(
-                *self,
-                continuation_of_ctx,
-                Edge::Context(ContextEdge::Continue(ty)),
-            );
-            self.underlying_mut(analyzer)?.continuation_of = Some(continuation_of_ctx);
-            self.underlying_mut(analyzer)?.cache.vars =
-                continuation_of_ctx.underlying(analyzer)?.cache.vars.clone();
-            Ok(())
-        }
+        Ok(self.underlying(analyzer)?.parent_ctx().is_some())
     }
 
     /// Gets the first ancestor of this context
@@ -63,7 +22,7 @@ impl ContextNode {
     ) -> Result<ContextNode, GraphError> {
         if let Some(first_ancestor) = self.underlying(analyzer)?.cache.first_ancestor {
             Ok(first_ancestor)
-        } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+        } else if let Some(parent) = self.underlying(analyzer)?.parent_ctx() {
             let first = parent.first_ancestor(analyzer)?;
             self.underlying_mut(analyzer)?.cache.first_ancestor = Some(first);
             Ok(first)
@@ -88,13 +47,13 @@ impl ContextNode {
         analyzer: &impl GraphBackend,
         associated_fn: FunctionNode,
     ) -> Result<Option<ContextNode>, GraphError> {
-        if let Some(ret) = self.underlying(analyzer)?.returning_ctx {
+        if let Some(ret) = self.underlying(analyzer)?.returning_ctx() {
             if ret.associated_fn(analyzer)? == associated_fn {
                 return Ok(Some(ret));
             }
         }
 
-        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx() {
             if parent.associated_fn(analyzer)? == associated_fn {
                 Ok(Some(parent))
             } else if let Some(mod_state) = &parent.underlying(analyzer)?.modifier_state {
@@ -364,30 +323,26 @@ impl ContextNode {
             let curr = stack.pop_front().unwrap();
 
             let left_ctx = Context::new_subctx(
-                curr,
-                None,
+                SubContextKind::Fork {
+                    parent_ctx: curr,
+                    true_side: true,
+                },
                 loc,
-                Some("join_left"),
-                None,
-                false,
                 analyzer,
                 None,
             )?;
             let left_subctx = ContextNode::from(analyzer.add_node(Node::Context(left_ctx)));
             let right_ctx = Context::new_subctx(
-                curr,
-                None,
+                SubContextKind::Fork {
+                    parent_ctx: curr,
+                    true_side: false,
+                },
                 loc,
-                Some("join_right"),
-                None,
-                false,
                 analyzer,
                 None,
             )?;
             let right_subctx = ContextNode::from(analyzer.add_node(Node::Context(right_ctx)));
             curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
-            left_subctx.set_continuation_ctx(analyzer, curr, "join_left")?;
-            right_subctx.set_continuation_ctx(analyzer, curr, "join_right")?;
 
             stack.push_back(left_subctx);
             stack.push_back(right_subctx);
@@ -477,7 +432,7 @@ impl ContextNode {
         }
 
         let context = self.underlying_mut(analyzer)?;
-        let parent = context.parent_ctx;
+        let parent = context.parent_ctx();
         if context.killed.is_none() {
             context.killed = Some((kill_loc, kill_kind));
         }
@@ -507,7 +462,7 @@ impl ContextNode {
                 if context.killed.is_none() {
                     context.killed = Some((kill_loc, kill_kind));
                 }
-                if let Some(parent_ctx) = context.parent_ctx {
+                if let Some(parent_ctx) = context.parent_ctx() {
                     parent_ctx.end_if_all_forks_ended(analyzer, kill_loc, kill_kind)?;
                 }
             }
@@ -522,7 +477,7 @@ impl ContextNode {
     ) -> Result<Vec<ContextNode>, GraphError> {
         let context = self.underlying(analyzer)?;
         let mut parents = vec![];
-        if let Some(parent_ctx) = context.parent_ctx {
+        if let Some(parent_ctx) = context.parent_ctx() {
             parents.push(parent_ctx);
             parents.extend(parent_ctx.parent_list(analyzer)?);
         }
@@ -532,7 +487,7 @@ impl ContextNode {
     /// Gets the first context in the lineage
     pub fn genesis(&self, analyzer: &impl GraphBackend) -> Result<ContextNode, GraphError> {
         let context = self.underlying(analyzer)?;
-        if let Some(parent_ctx) = context.parent_ctx {
+        if let Some(parent_ctx) = context.parent_ctx() {
             parent_ctx.genesis(analyzer)
         } else {
             Ok(*self)

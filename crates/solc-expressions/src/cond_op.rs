@@ -1,8 +1,8 @@
-use crate::{require::Require, ContextBuilder, ExpressionParser, StatementParser};
+use crate::{require::Require, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, Context, ContextNode},
+    nodes::{Concrete, Context, ContextNode, SubContextKind},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
@@ -173,21 +173,16 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
     ) -> Result<(), ExprErr> {
         tracing::trace!("conditional operator");
         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+            let true_subctx_kind = SubContextKind::new_fork(ctx, true);
             let tctx =
-                Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
-                    .into_expr_err(loc)?;
+                Context::new_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+
+            let false_subctx_kind = SubContextKind::new_fork(ctx, false);
             let fctx =
-                Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
-                    .into_expr_err(loc)?;
+                Context::new_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
-                .into_expr_err(loc)?;
-            true_subctx
-                .set_continuation_ctx(analyzer, ctx, "fork_true")
-                .into_expr_err(loc)?;
-            false_subctx
-                .set_continuation_ctx(analyzer, ctx, "fork_false")
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);
             analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));

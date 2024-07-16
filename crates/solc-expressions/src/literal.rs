@@ -6,7 +6,7 @@ use graph::{
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
-use solang_parser::pt::{HexLiteral, Identifier, Loc};
+use solang_parser::pt::Loc;
 
 use std::str::FromStr;
 
@@ -376,6 +376,7 @@ mod tests {
     use graph::nodes::Context;
     use graph::nodes::Function;
     use pyrometer::Analyzer;
+    use solang_parser::pt::HexLiteral;
     use solang_parser::pt::Loc;
 
     fn make_context_node_for_analyzer(analyzer: &mut Analyzer) -> ContextNode {
@@ -858,7 +859,7 @@ mod tests {
         bytes[0] = 0x7B;
         bytes[1] = 0xFF;
         let expected = Concrete::Bytes(2, H256::from_slice(&bytes));
-        test_hex_literals(&hex_literals, expected)
+        test_hex_literals(&hex_literals[..], expected)
     }
 
     #[test]

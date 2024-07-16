@@ -1,6 +1,6 @@
 use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{func_call::helper::CallerHelper, ContextBuilder, ExpressionParser};
-use graph::nodes::FunctionNode;
+use graph::nodes::{FunctionNode, SubContextKind};
 
 use graph::{
     elem::Elem,
@@ -84,17 +84,9 @@ pub trait PrecompileCaller:
             "ecrecover" => {
                 input_exprs.parse(arena, self, ctx, loc)?;
                 self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let cctx = Context::new_subctx(
-                        ctx,
-                        None,
-                        loc,
-                        None,
-                        Some(func_idx.into()),
-                        true,
-                        analyzer,
-                        None,
-                    )
-                    .into_expr_err(loc)?;
+                    let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
+                    let cctx =
+                        Context::new_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
                     let call_ctx = analyzer.add_node(Node::Context(cctx));
                     ctx.set_child_call(call_ctx.into(), analyzer)
                         .into_expr_err(loc)?;
@@ -149,25 +141,12 @@ pub trait PrecompileCaller:
                         .add_return_node(loc, cvar.into(), analyzer)
                         .into_expr_err(loc)?;
 
-                    let rctx = Context::new_subctx(
-                        call_ctx.into(),
-                        Some(ctx),
-                        loc,
-                        None,
-                        None,
-                        true,
-                        analyzer,
-                        None,
-                    )
-                    .into_expr_err(loc)?;
+                    let subctx_kind = SubContextKind::new_fn_ret(call_ctx.into(), ctx);
+                    let rctx =
+                        Context::new_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
                     let ret_ctx = analyzer.add_node(Node::Context(rctx));
                     ContextNode::from(call_ctx)
                         .set_child_call(ret_ctx.into(), analyzer)
-                        .into_expr_err(loc)?;
-
-                    // the return is a continuation of the ctx not the ecrecover ctx
-                    ContextNode::from(ret_ctx)
-                        .set_continuation_ctx(analyzer, ctx, "ecrecover")
                         .into_expr_err(loc)?;
 
                     let tmp_ret = ContextVarNode::from(cvar)

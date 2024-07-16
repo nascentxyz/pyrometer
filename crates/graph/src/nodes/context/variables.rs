@@ -34,18 +34,6 @@ impl ContextNode {
         Ok(())
     }
 
-    /// Debug print the temprorary stack
-    pub fn debug_tmp_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
-        let underlying_mut = self.underlying(analyzer)?;
-        underlying_mut
-            .tmp_expr
-            .iter()
-            .enumerate()
-            .filter(|(_i, maybe_elem)| maybe_elem.is_some())
-            .for_each(|(i, elem)| println!("{i}. {}", elem.clone().unwrap().debug_str(analyzer)));
-        Ok(())
-    }
-
     /// Add a variable to this context
     pub fn add_var(
         &self,
@@ -108,7 +96,7 @@ impl ContextNode {
             Ok(Some(var))
         } else if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
             parent.var_by_name_or_recurse(analyzer, name)
-        } else if let Some(parent) = self.underlying(analyzer)?.continuation_of {
+        } else if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
             parent.var_by_name_or_recurse(analyzer, name)
         } else {
             Ok(None)
@@ -289,72 +277,6 @@ impl ContextNode {
         Ok(ret)
     }
 
-    /// Push an expression return into the temporary stack
-    pub fn push_tmp_expr(
-        &self,
-        expr_ret: ExprRet,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<(), GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        underlying_mut.tmp_expr.push(Some(expr_ret));
-        Ok(())
-    }
-
-    /// Append a new expression return to an expression return
-    /// currently in the temporary stack
-    pub fn append_tmp_expr(
-        &self,
-        expr_ret: ExprRet,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<(), GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        match underlying_mut.tmp_expr.pop() {
-            Some(Some(s @ ExprRet::Single(_))) => {
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
-            }
-            Some(Some(s @ ExprRet::SingleLiteral(_))) => {
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
-            }
-            Some(Some(ExprRet::Multi(ref mut inner))) => {
-                inner.push(expr_ret);
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(inner.to_vec())));
-            }
-            Some(Some(s @ ExprRet::Null)) => {
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
-            }
-            Some(Some(ExprRet::CtxKilled(kind))) => {
-                underlying_mut.tmp_expr = vec![Some(ExprRet::CtxKilled(kind))];
-                underlying_mut.expr_ret_stack = vec![ExprRet::CtxKilled(kind)];
-            }
-            _ => {
-                underlying_mut.tmp_expr.push(Some(expr_ret));
-            }
-        }
-        Ok(())
-    }
-
-    /// Pops a from the temporary ExprRet stack
-    pub fn pop_tmp_expr(
-        &self,
-        loc: Loc,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<Option<ExprRet>, GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        if let Some(Some(expr)) = underlying_mut.tmp_expr.pop() {
-            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
-        } else {
-            Ok(None)
-        }
-    }
-
     /// Pushes an ExprRet to the stack
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn push_expr(
@@ -403,7 +325,6 @@ impl ContextNode {
     }
 
     pub fn recursive_move_struct_field(
-        &self,
         parent: ContextVarNode,
         field: ContextVarNode,
         loc: Loc,
@@ -422,7 +343,7 @@ impl ContextNode {
 
         let sub_fields = field.struct_to_fields(analyzer)?;
         sub_fields.iter().try_for_each(|sub_field| {
-            self.recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
+            Self::recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
         })
     }
 
@@ -468,7 +389,7 @@ impl ContextNode {
 
                 let fields = var.struct_to_fields(analyzer)?;
                 fields.iter().try_for_each(|field| {
-                    self.recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
+                    Self::recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
                 })?;
                 Ok(new_cvarnode)
             } else {

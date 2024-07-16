@@ -1,5 +1,3 @@
-use crate::{ContextBuilder, ExpressionParser};
-
 use graph::{
     elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ExprRet},
@@ -20,40 +18,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         loc: Loc,
         params: &ParameterList,
     ) -> Result<(), ExprErr> {
-        params.iter().try_for_each(|(loc, input)| {
-            if let Some(input) = input {
-                self.parse_ctx_expr(arena, &input.ty, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "List did not have left hand sides".to_string(),
-                        ));
-                    };
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    ctx.append_tmp_expr(analyzer.match_input_ty(ctx, &loc, &ret, input)?, analyzer)
-                        .into_expr_err(loc)
-                })
-            } else {
-                // create a dummy var
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
-                    ctx.append_tmp_expr(ExprRet::Null, analyzer)
-                        .into_expr_err(loc)
-                })
-            }
-        })?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-            let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "List did not have left hand sides".to_string(),
-                ));
-            };
-            ctx.push_expr(ret, analyzer).into_expr_err(loc)
-        })
+        unreachable!("Should not have called this");
     }
 
     fn match_input_ty(

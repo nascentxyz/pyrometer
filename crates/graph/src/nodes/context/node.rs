@@ -107,7 +107,7 @@ impl ContextNode {
         let underlying = &mut self.underlying_mut(analyzer)?;
         let curr_live = underlying.number_of_live_edges;
         underlying.number_of_live_edges = 0;
-        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx() {
             let live_edges = &mut parent.underlying_mut(analyzer)?.number_of_live_edges;
             *live_edges = live_edges.saturating_sub(1 + curr_live);
             parent.propogate_end(analyzer)?;
@@ -125,7 +125,7 @@ impl ContextNode {
         if !underlying.applies.contains(&applied) {
             underlying.applies.push(applied);
         }
-        if let Some(parent) = self.underlying(analyzer)?.parent_ctx {
+        if let Some(parent) = self.underlying(analyzer)?.parent_ctx() {
             parent.propogate_applied(applied, analyzer)?;
         }
         Ok(())

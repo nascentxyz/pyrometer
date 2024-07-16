@@ -38,7 +38,7 @@ impl ContextNode {
         let context = self.underlying(analyzer).unwrap();
         if let Some(src) = context.cache.associated_source {
             Some(src.into())
-        } else if let Some(parent_ctx) = context.parent_ctx {
+        } else if let Some(parent_ctx) = context.parent_ctx() {
             let src = parent_ctx.maybe_associated_source(analyzer)?;
             self.underlying_mut(analyzer)
                 .unwrap()
@@ -265,10 +265,8 @@ impl ContextNode {
     /// Gets the associated function for the context
     pub fn associated_fn(&self, analyzer: &impl GraphBackend) -> Result<FunctionNode, GraphError> {
         let underlying = self.underlying(analyzer)?;
-        if let Some(fn_call) = underlying.fn_call {
+        if let Some(fn_call) = underlying.fn_call() {
             Ok(fn_call)
-        } else if let Some(ext_fn_call) = underlying.ext_fn_call {
-            Ok(ext_fn_call)
         } else {
             Ok(underlying.parent_fn)
         }

@@ -1,20 +1,15 @@
 //! Trait and blanket implementation for parsing yul-based statements and expressions
 
-use crate::{yul::YulCondOp, yul::YulFuncCaller, ContextBuilder, ExpressionParser};
+use crate::ExpressionParser;
 
 use graph::{
     elem::Elem,
-    nodes::{
-        BuiltInNode, Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet,
-    },
+    nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::{
-    helpers::CodeLocation,
-    pt::{Expression, Loc, YulExpression, YulFor, YulStatement, YulSwitch},
-};
+use solang_parser::pt::{Expression, Loc, YulExpression, YulStatement};
 
 impl<T> YulBuilder for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
@@ -35,18 +30,18 @@ pub trait YulBuilder:
         Self: Sized,
     {
         panic!("here");
-        if let Some(true) = self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc())) {
-            return;
-        }
-        if let Some(live_edges) = self.add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc())) {
-            if live_edges.is_empty() {
-                self.parse_ctx_yul_stmt_inner(arena, stmt, ctx)
-            } else {
-                live_edges.iter().for_each(|fork_ctx| {
-                    self.parse_ctx_yul_stmt_inner(arena, stmt, *fork_ctx);
-                });
-            }
-        }
+        // if let Some(true) = self.add_if_err(ctx.is_ended(self).into_expr_err(stmt.loc())) {
+        //     return;
+        // }
+        // if let Some(live_edges) = self.add_if_err(ctx.live_edges(self).into_expr_err(stmt.loc())) {
+        //     if live_edges.is_empty() {
+        //         self.parse_ctx_yul_stmt_inner(arena, stmt, ctx)
+        //     } else {
+        //         live_edges.iter().for_each(|fork_ctx| {
+        //             self.parse_ctx_yul_stmt_inner(arena, stmt, *fork_ctx);
+        //         });
+        //     }
+        // }
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -60,217 +55,217 @@ pub trait YulBuilder:
         Self: Sized,
     {
         panic!("here");
-        use YulStatement::*;
+        // use YulStatement::*;
         // println!("ctx: {}, yul stmt: {:?}", ctx.path(self), stmt);
 
-        let res = ctx
-            .pop_expr_latest(stmt.loc(), self)
-            .into_expr_err(stmt.loc());
-        let _ = self.add_if_err(res);
+        // let res = ctx
+        //     .pop_expr_latest(stmt.loc(), self)
+        //     .into_expr_err(stmt.loc());
+        // let _ = self.add_if_err(res);
 
-        if ctx.is_killed(self).unwrap() {
-            return;
-        }
-        let ret = self.apply_to_edges(ctx, stmt.loc(), arena, &|analyzer, arena, ctx, _loc| {
-            match stmt {
-                Assign(loc, yul_exprs, yul_expr) => {
-                    match yul_exprs
-                        .iter()
-                        .try_for_each(|expr| analyzer.parse_ctx_yul_expr(arena, expr, ctx))
-                    {
-                        Ok(()) => analyzer.apply_to_edges(
-                            ctx,
-                            *loc,
-                            arena,
-                            &|analyzer, arena, ctx, loc| {
-                                let Some(lhs_side) =
-                                    ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                                else {
-                                    return Err(ExprErr::NoLhs(
-                                        loc,
-                                        "No left hand side assignments in yul block".to_string(),
-                                    ));
-                                };
-                                if matches!(lhs_side, ExprRet::CtxKilled(_)) {
-                                    ctx.push_expr(lhs_side, analyzer).into_expr_err(loc)?;
-                                    return Ok(());
-                                }
+        // if ctx.is_killed(self).unwrap() {
+        //     return;
+        // }
+        // let ret = self.apply_to_edges(ctx, stmt.loc(), arena, &|analyzer, arena, ctx, _loc| {
+        //     match stmt {
+        //         Assign(loc, yul_exprs, yul_expr) => {
+        //             match yul_exprs
+        //                 .iter()
+        //                 .try_for_each(|expr| analyzer.parse_ctx_yul_expr(arena, expr, ctx))
+        //             {
+        //                 Ok(()) => analyzer.apply_to_edges(
+        //                     ctx,
+        //                     *loc,
+        //                     arena,
+        //                     &|analyzer, arena, ctx, loc| {
+        //                         let Some(lhs_side) =
+        //                             ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+        //                         else {
+        //                             return Err(ExprErr::NoLhs(
+        //                                 loc,
+        //                                 "No left hand side assignments in yul block".to_string(),
+        //                             ));
+        //                         };
+        //                         if matches!(lhs_side, ExprRet::CtxKilled(_)) {
+        //                             ctx.push_expr(lhs_side, analyzer).into_expr_err(loc)?;
+        //                             return Ok(());
+        //                         }
 
-                                analyzer.parse_ctx_yul_expr(arena, yul_expr, ctx)?;
-                                analyzer.apply_to_edges(
-                                    ctx,
-                                    loc,
-                                    arena,
-                                    &|analyzer, arena, ctx, loc| {
-                                        let Some(rhs_side) = ctx
-                                            .pop_expr_latest(loc, analyzer)
-                                            .into_expr_err(loc)?
-                                        else {
-                                            return Err(ExprErr::NoRhs(
-                                                loc,
-                                                "No right hand side assignments in yul block"
-                                                    .to_string(),
-                                            ));
-                                        };
+        //                         analyzer.parse_ctx_yul_expr(arena, yul_expr, ctx)?;
+        //                         analyzer.apply_to_edges(
+        //                             ctx,
+        //                             loc,
+        //                             arena,
+        //                             &|analyzer, arena, ctx, loc| {
+        //                                 let Some(rhs_side) = ctx
+        //                                     .pop_expr_latest(loc, analyzer)
+        //                                     .into_expr_err(loc)?
+        //                                 else {
+        //                                     return Err(ExprErr::NoRhs(
+        //                                         loc,
+        //                                         "No right hand side assignments in yul block"
+        //                                             .to_string(),
+        //                                     ));
+        //                                 };
 
-                                        if matches!(rhs_side, ExprRet::CtxKilled(_)) {
-                                            ctx.push_expr(rhs_side, analyzer).into_expr_err(loc)?;
-                                            return Ok(());
-                                        }
+        //                                 if matches!(rhs_side, ExprRet::CtxKilled(_)) {
+        //                                     ctx.push_expr(rhs_side, analyzer).into_expr_err(loc)?;
+        //                                     return Ok(());
+        //                                 }
 
-                                        analyzer.match_assign_sides(
-                                            arena, ctx, loc, &lhs_side, &rhs_side,
-                                        )
-                                    },
-                                )
-                            },
-                        ),
-                        Err(e) => Err(e),
-                    }
-                }
-                VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
-                    let nodes = yul_idents
-                        .iter()
-                        .map(|ident| {
-                            let b_ty = analyzer.builtin_or_add(Builtin::Uint(256));
-                            let var = ContextVar {
-                                loc: Some(ident.loc),
-                                name: ident.id.name.clone(),
-                                display_name: ident.id.name.clone(),
-                                storage: None,
-                                is_tmp: false,
-                                tmp_of: None,
-                                dep_on: None,
-                                is_symbolic: true,
-                                is_return: false,
-                                ty: VarType::try_from_idx(analyzer, b_ty).unwrap(),
-                            };
-                            let cvar =
-                                ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
-                            ctx.add_var(cvar, analyzer).unwrap();
-                            analyzer.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            analyzer.advance_var_in_ctx(cvar, *loc, ctx).unwrap()
-                        })
-                        .collect::<Vec<_>>();
+        //                                 analyzer.match_assign_sides(
+        //                                     arena, ctx, loc, &lhs_side, &rhs_side,
+        //                                 )
+        //                             },
+        //                         )
+        //                     },
+        //                 ),
+        //                 Err(e) => Err(e),
+        //             }
+        //         }
+        //         VariableDeclaration(loc, yul_idents, maybe_yul_expr) => {
+        //             let nodes = yul_idents
+        //                 .iter()
+        //                 .map(|ident| {
+        //                     let b_ty = analyzer.builtin_or_add(Builtin::Uint(256));
+        //                     let var = ContextVar {
+        //                         loc: Some(ident.loc),
+        //                         name: ident.id.name.clone(),
+        //                         display_name: ident.id.name.clone(),
+        //                         storage: None,
+        //                         is_tmp: false,
+        //                         tmp_of: None,
+        //                         dep_on: None,
+        //                         is_symbolic: true,
+        //                         is_return: false,
+        //                         ty: VarType::try_from_idx(analyzer, b_ty).unwrap(),
+        //                     };
+        //                     let cvar =
+        //                         ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
+        //                     ctx.add_var(cvar, analyzer).unwrap();
+        //                     analyzer.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        //                     analyzer.advance_var_in_ctx(cvar, *loc, ctx).unwrap()
+        //                 })
+        //                 .collect::<Vec<_>>();
 
-                    if let Some(yul_expr) = maybe_yul_expr {
-                        analyzer.parse_ctx_yul_expr(arena, yul_expr, ctx)?;
-                        analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
-                            let Some(ret) =
-                                ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                            else {
-                                return Err(ExprErr::NoRhs(
-                                    loc,
-                                    "No right hand side assignments in yul block".to_string(),
-                                ));
-                            };
+        //             if let Some(yul_expr) = maybe_yul_expr {
+        //                 analyzer.parse_ctx_yul_expr(arena, yul_expr, ctx)?;
+        //                 analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, loc| {
+        //                     let Some(ret) =
+        //                         ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
+        //                     else {
+        //                         return Err(ExprErr::NoRhs(
+        //                             loc,
+        //                             "No right hand side assignments in yul block".to_string(),
+        //                         ));
+        //                     };
 
-                            if matches!(ret, ExprRet::CtxKilled(_)) {
-                                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                                return Ok(());
-                            }
+        //                     if matches!(ret, ExprRet::CtxKilled(_)) {
+        //                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+        //                         return Ok(());
+        //                     }
 
-                            analyzer.match_assign_yul(ctx, loc, &nodes, ret)
-                        })
-                    } else {
-                        Ok(())
-                    }
-                }
-                If(loc, yul_expr, yul_block) => {
-                    analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                        let ret = analyzer.yul_cond_op_stmt(arena, loc, yul_expr, yul_block, ctx);
-                        let _ = analyzer.add_if_err(ret);
-                        Ok(())
-                    })
-                }
-                For(YulFor {
-                    loc,
-                    init_block: _,
-                    condition: _,
-                    post_block: _,
-                    execution_block: _,
-                }) => {
-                    let sctx =
-                        Context::new_subctx(ctx, None, *loc, None, None, false, analyzer, None)
-                            .into_expr_err(*loc)?;
-                    let subctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
-                    ctx.set_child_call(subctx, analyzer).into_expr_err(*loc)?;
-                    analyzer.apply_to_edges(subctx, *loc, arena, &|analyzer, arena, subctx, loc| {
-                        let vars = subctx.local_vars(analyzer).clone();
-                        vars.iter().for_each(|(name, var)| {
-                            // widen to max range
-                            if let Some(inheritor_var) = ctx.var_by_name(analyzer, name) {
-                                let inheritor_var = inheritor_var.latest_version(analyzer);
-                                if let Some(r) = var
-                                    .underlying(analyzer)
-                                    .unwrap()
-                                    .ty
-                                    .default_range(analyzer)
-                                    .unwrap()
-                                {
-                                    let new_inheritor_var = analyzer
-                                        .advance_var_in_ctx(inheritor_var, loc, ctx)
-                                        .unwrap();
-                                    let res = new_inheritor_var
-                                        .set_range_min(analyzer, arena, r.min)
-                                        .into_expr_err(loc);
-                                    let _ = analyzer.add_if_err(res);
-                                    let res = new_inheritor_var
-                                        .set_range_max(analyzer, arena, r.max)
-                                        .into_expr_err(loc);
-                                    let _ = analyzer.add_if_err(res);
-                                }
-                            }
-                        });
-                        Ok(())
-                    })
-                }
-                Switch(YulSwitch {
-                    loc,
-                    condition,
-                    cases,
-                    default,
-                }) => analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    analyzer.yul_switch_stmt(
-                        arena,
-                        loc,
-                        condition.clone(),
-                        cases.to_vec(),
-                        default.clone(),
-                        ctx,
-                    )
-                }),
-                Leave(loc) => Err(ExprErr::Todo(
-                    *loc,
-                    "Yul `leave` statements are not currently supported".to_string(),
-                )),
-                Break(loc) => Err(ExprErr::Todo(
-                    *loc,
-                    "Yul `break` statements are not currently supported".to_string(),
-                )),
-                Continue(loc) => Err(ExprErr::Todo(
-                    *loc,
-                    "Yul `continue` statements are not currently supported".to_string(),
-                )),
-                Block(yul_block) => {
-                    yul_block
-                        .statements
-                        .iter()
-                        .for_each(|stmt| analyzer.parse_ctx_yul_stmt_inner(arena, stmt, ctx));
-                    Ok(())
-                }
-                FunctionDefinition(yul_func_def) => Err(ExprErr::Todo(
-                    yul_func_def.loc(),
-                    "Yul `function` defintions are not currently supported".to_string(),
-                )),
-                FunctionCall(yul_func_call) => analyzer.yul_func_call(arena, yul_func_call, ctx),
-                Error(loc) => Err(ExprErr::ParseError(
-                    *loc,
-                    "Could not parse this yul statement".to_string(),
-                )),
-            }
-        });
-        let _ = self.add_if_err(ret);
+        //                     analyzer.match_assign_yul(ctx, loc, &nodes, ret)
+        //                 })
+        //             } else {
+        //                 Ok(())
+        //             }
+        //         }
+        //         If(loc, yul_expr, yul_block) => {
+        //             analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+        //                 let ret = analyzer.yul_cond_op_stmt(arena, loc, yul_expr, yul_block, ctx);
+        //                 let _ = analyzer.add_if_err(ret);
+        //                 Ok(())
+        //             })
+        //         }
+        //         For(YulFor {
+        //             loc,
+        //             init_block: _,
+        //             condition: _,
+        //             post_block: _,
+        //             execution_block: _,
+        //         }) => {
+        //             let sctx =
+        //                 Context::new_subctx(ctx, None, *loc, None, None, false, analyzer, None)
+        //                     .into_expr_err(*loc)?;
+        //             let subctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
+        //             ctx.set_child_call(subctx, analyzer).into_expr_err(*loc)?;
+        //             analyzer.apply_to_edges(subctx, *loc, arena, &|analyzer, arena, subctx, loc| {
+        //                 let vars = subctx.local_vars(analyzer).clone();
+        //                 vars.iter().for_each(|(name, var)| {
+        //                     // widen to max range
+        //                     if let Some(inheritor_var) = ctx.var_by_name(analyzer, name) {
+        //                         let inheritor_var = inheritor_var.latest_version(analyzer);
+        //                         if let Some(r) = var
+        //                             .underlying(analyzer)
+        //                             .unwrap()
+        //                             .ty
+        //                             .default_range(analyzer)
+        //                             .unwrap()
+        //                         {
+        //                             let new_inheritor_var = analyzer
+        //                                 .advance_var_in_ctx(inheritor_var, loc, ctx)
+        //                                 .unwrap();
+        //                             let res = new_inheritor_var
+        //                                 .set_range_min(analyzer, arena, r.min)
+        //                                 .into_expr_err(loc);
+        //                             let _ = analyzer.add_if_err(res);
+        //                             let res = new_inheritor_var
+        //                                 .set_range_max(analyzer, arena, r.max)
+        //                                 .into_expr_err(loc);
+        //                             let _ = analyzer.add_if_err(res);
+        //                         }
+        //                     }
+        //                 });
+        //                 Ok(())
+        //             })
+        //         }
+        //         Switch(YulSwitch {
+        //             loc,
+        //             condition,
+        //             cases,
+        //             default,
+        //         }) => analyzer.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+        //             analyzer.yul_switch_stmt(
+        //                 arena,
+        //                 loc,
+        //                 condition.clone(),
+        //                 cases.to_vec(),
+        //                 default.clone(),
+        //                 ctx,
+        //             )
+        //         }),
+        //         Leave(loc) => Err(ExprErr::Todo(
+        //             *loc,
+        //             "Yul `leave` statements are not currently supported".to_string(),
+        //         )),
+        //         Break(loc) => Err(ExprErr::Todo(
+        //             *loc,
+        //             "Yul `break` statements are not currently supported".to_string(),
+        //         )),
+        //         Continue(loc) => Err(ExprErr::Todo(
+        //             *loc,
+        //             "Yul `continue` statements are not currently supported".to_string(),
+        //         )),
+        //         Block(yul_block) => {
+        //             yul_block
+        //                 .statements
+        //                 .iter()
+        //                 .for_each(|stmt| analyzer.parse_ctx_yul_stmt_inner(arena, stmt, ctx));
+        //             Ok(())
+        //         }
+        //         FunctionDefinition(yul_func_def) => Err(ExprErr::Todo(
+        //             yul_func_def.loc(),
+        //             "Yul `function` defintions are not currently supported".to_string(),
+        //         )),
+        //         FunctionCall(yul_func_call) => analyzer.yul_func_call(arena, yul_func_call, ctx),
+        //         Error(loc) => Err(ExprErr::ParseError(
+        //             *loc,
+        //             "Could not parse this yul statement".to_string(),
+        //         )),
+        //     }
+        // });
+        // let _ = self.add_if_err(ret);
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -281,17 +276,18 @@ pub trait YulBuilder:
         expr: &YulExpression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        tracing::trace!("Parsing yul expression: {expr:?}");
+        panic!("here");
+        // tracing::trace!("Parsing yul expression: {expr:?}");
 
-        let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
-        if edges.is_empty() {
-            self.parse_ctx_yul_expr_inner(arena, expr, ctx)
-        } else {
-            edges
-                .iter()
-                .try_for_each(|fork_ctx| self.parse_ctx_yul_expr(arena, expr, *fork_ctx))?;
-            Ok(())
-        }
+        // let edges = ctx.live_edges(self).into_expr_err(expr.loc())?;
+        // if edges.is_empty() {
+        //     self.parse_ctx_yul_expr_inner(arena, expr, ctx)
+        // } else {
+        //     edges
+        //         .iter()
+        //         .try_for_each(|fork_ctx| self.parse_ctx_yul_expr(arena, expr, *fork_ctx))?;
+        //     Ok(())
+        // }
     }
 
     /// After performing some setup in `parse_ctx_yul_expr`, actually parse the yul expression

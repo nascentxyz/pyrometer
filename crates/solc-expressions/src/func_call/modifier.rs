@@ -4,7 +4,7 @@ use crate::{func_caller::FuncCaller, helper::CallerHelper, ContextBuilder, Expre
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, Context, ContextNode, ExprRet, FunctionNode, ModifierState},
+    nodes::{Concrete, Context, ContextNode, ExprRet, FunctionNode, ModifierState, SubContextKind},
     AnalyzerBackend, Edge, GraphBackend, Node,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
@@ -112,13 +112,15 @@ pub trait ModifierCaller:
                         .into_expr_err(mstate.loc)?
                         .loc;
 
-                    let pctx = Context::new_subctx(
+                    let subctx_kind = SubContextKind::new_fn_call(
                         ctx,
                         Some(modifier_state.parent_ctx),
-                        loc,
-                        None,
-                        None,
+                        mods[mstate.num],
                         false,
+                    );
+                    let pctx = Context::new_subctx(
+                        subctx_kind,
+                        loc,
                         analyzer,
                         Some(modifier_state.clone()),
                     )
@@ -126,13 +128,6 @@ pub trait ModifierCaller:
                     let new_parent_subctx =
                         ContextNode::from(analyzer.add_node(Node::Context(pctx)));
 
-                    new_parent_subctx
-                        .set_continuation_ctx(
-                            analyzer,
-                            modifier_state.parent_ctx,
-                            "resume_from_modifier_nonfinal",
-                        )
-                        .into_expr_err(loc)?;
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
 
@@ -148,26 +143,17 @@ pub trait ModifierCaller:
                     )?;
                     Ok(())
                 } else {
-                    let pctx = Context::new_subctx(
+                    let subctx_kind = SubContextKind::new_fn_call(
                         ctx,
                         Some(modifier_state.parent_ctx),
-                        modifier_state.loc,
-                        None,
-                        None,
+                        modifier_state.parent_fn,
                         false,
-                        analyzer,
-                        None,
-                    )
-                    .unwrap();
+                    );
+
+                    let pctx = Context::new_subctx(subctx_kind, modifier_state.loc, analyzer, None)
+                        .unwrap();
                     let new_parent_subctx =
                         ContextNode::from(analyzer.add_node(Node::Context(pctx)));
-                    new_parent_subctx
-                        .set_continuation_ctx(
-                            analyzer,
-                            modifier_state.parent_ctx,
-                            "resume_from_modifier_final",
-                        )
-                        .into_expr_err(loc)?;
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
 
@@ -208,17 +194,10 @@ pub trait ModifierCaller:
                         let args_str = args
                             .iter()
                             .map(|expr| {
-                                let mctx = Context::new_subctx(
-                                    ctx,
-                                    None,
-                                    Loc::Implicit,
-                                    None,
-                                    None,
-                                    false,
-                                    self,
-                                    None,
-                                )
-                                .into_expr_err(Loc::Implicit)?;
+                                let subctx_kind = SubContextKind::new_dummy(ctx);
+                                let mctx =
+                                    Context::new_subctx(subctx_kind, Loc::Implicit, self, None)
+                                        .into_expr_err(Loc::Implicit)?;
                                 let callee_ctx =
                                     ContextNode::from(self.add_node(Node::Context(mctx)));
                                 let _res = ctx.set_child_call(callee_ctx, self);
