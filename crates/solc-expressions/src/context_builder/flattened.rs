@@ -10,6 +10,7 @@ use graph::{
     elem::{Elem, RangeOp},
     nodes::{
         Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
+        KilledKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
@@ -324,13 +325,18 @@ pub trait Flatten:
 
         let res = func.add_params_to_ctx(ctx, self).into_expr_err(body_loc);
         self.add_if_err(res);
-        while !ctx.is_ended(self).unwrap() && ctx.parse_idx(self) < stack.len() {
-            let res = self.interpret_inner(arena, ctx, body_loc, &stack[..]);
+        while (!ctx.is_ended(self).unwrap() || !ctx.live_edges(self).unwrap().is_empty())
+            && ctx.parse_idx(self) < stack.len()
+        {
+            println!("is ended: {}", ctx.is_ended(self).unwrap());
+            println!("live edges: {:?}", ctx.live_edges(self).unwrap());
+            println!("remaining parse: {}", ctx.parse_idx(self) < stack.len());
+            let res = self.interpret_step(arena, ctx, body_loc, &stack[..]);
             self.add_if_err(res);
         }
     }
 
-    fn interpret_inner(
+    fn interpret_step(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
@@ -415,78 +421,86 @@ pub trait Flatten:
             Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
             | MoreEqual(loc) => self.interp_cmp(arena, ctx, loc, next),
 
-            If {
-                loc,
-                true_cond,
-                false_cond,
-                true_body,
-                false_body,
-            } => {
-                let tctx =
-                    Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
-                        .into_expr_err(loc)?;
-                let true_subctx = ContextNode::from(self.add_node(Node::Context(tctx)));
-                let fctx =
-                    Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
-                        .into_expr_err(loc)?;
-                let false_subctx = ContextNode::from(self.add_node(Node::Context(fctx)));
-                ctx.set_child_fork(true_subctx, false_subctx, self)
-                    .into_expr_err(loc)?;
-                true_subctx
-                    .set_continuation_ctx(self, ctx, "fork_true")
-                    .into_expr_err(loc)?;
-                false_subctx
-                    .set_continuation_ctx(self, ctx, "fork_false")
-                    .into_expr_err(loc)?;
-                let ctx_fork = self.add_node(Node::ContextFork);
-                self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
-                self.add_edge(
-                    NodeIdx::from(true_subctx.0),
-                    ctx_fork,
-                    Edge::Context(ContextEdge::Subcontext),
-                );
-                self.add_edge(
-                    NodeIdx::from(false_subctx.0),
-                    ctx_fork,
-                    Edge::Context(ContextEdge::Subcontext),
-                );
-
-                // parse the true condition expressions
-                for i in 0..true_cond {
-                    self.interpret_inner(arena, true_subctx, loc, stack)?;
-                }
-                // skip the false condition expressions
-                true_subctx.skip_n_exprs(false_cond, self);
-
-                // skip the true condition expressions
-                false_subctx.skip_n_exprs(true_cond, self);
-                // parse the false condition expressions
-                for i in 0..false_cond {
-                    self.interpret_inner(arena, false_subctx, loc, stack)?;
-                }
-
-                // todo: the kill check
-                for i in 0..true_body {
-                    self.interpret_inner(arena, true_subctx, loc, stack)?;
-                }
-                // skip the false condition expressions
-                true_subctx.skip_n_exprs(false_body, self);
-
-                // skip the true body expressions
-                false_subctx.skip_n_exprs(true_body, self);
-                // parse the false body expressions
-                for i in 0..false_body {
-                    self.interpret_inner(arena, false_subctx, loc, stack)?;
-                }
-
-                Ok(())
-            }
-            IfElse(..) => Ok(()),
+            If { .. } => self.interp_if(arena, ctx, stack, next),
             other => {
                 tracing::trace!("unhandled: {other:?}");
                 Ok(())
             }
         }
+    }
+
+    fn interp_if(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &[FlatExpr],
+        if_expr: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::If {
+            loc,
+            true_cond,
+            false_cond,
+            true_body,
+            false_body,
+        } = if_expr
+        else {
+            unreachable!()
+        };
+        let tctx = Context::new_subctx(ctx, None, loc, Some("true"), None, false, self, None)
+            .into_expr_err(loc)?;
+        let true_subctx = ContextNode::from(self.add_node(Node::Context(tctx)));
+        let fctx = Context::new_subctx(ctx, None, loc, Some("false"), None, false, self, None)
+            .into_expr_err(loc)?;
+        let false_subctx = ContextNode::from(self.add_node(Node::Context(fctx)));
+        ctx.set_child_fork(true_subctx, false_subctx, self)
+            .into_expr_err(loc)?;
+        true_subctx
+            .set_continuation_ctx(self, ctx, "fork_true")
+            .into_expr_err(loc)?;
+        false_subctx
+            .set_continuation_ctx(self, ctx, "fork_false")
+            .into_expr_err(loc)?;
+        let ctx_fork = self.add_node(Node::ContextFork);
+        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+        self.add_edge(
+            NodeIdx::from(true_subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+        self.add_edge(
+            NodeIdx::from(false_subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+
+        // parse the true condition expressions
+        for i in 0..true_cond {
+            self.interpret_step(arena, true_subctx, loc, stack)?;
+        }
+        // skip the false condition expressions
+        true_subctx.skip_n_exprs(false_cond, self);
+
+        // skip the true condition expressions
+        false_subctx.skip_n_exprs(true_cond, self);
+        // parse the false condition expressions
+        for i in 0..false_cond {
+            self.interpret_step(arena, false_subctx, loc, stack)?;
+        }
+
+        // todo: the kill check
+        for i in 0..true_body {
+            self.interpret_step(arena, true_subctx, loc, stack)?;
+        }
+        // skip the false condition expressions
+        true_subctx.skip_n_exprs(false_body, self);
+
+        // skip the true body expressions
+        false_subctx.skip_n_exprs(true_body, self);
+        // parse the false body expressions
+        for i in 0..false_body {
+            self.interpret_step(arena, false_subctx, loc, stack)?;
+        }
+        Ok(())
     }
 
     fn interp_cmp(
@@ -600,12 +614,13 @@ pub trait Flatten:
         let FlatExpr::Return(loc, nonempty) = ret else {
             unreachable!()
         };
-        if !nonempty {
+        if nonempty {
             let ret = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
             self.return_match(arena, ctx, &loc, ret.first().unwrap(), 0);
             Ok(())
         } else {
-            ctx.propogate_end(self).into_expr_err(loc)
+            self.return_match(arena, ctx, &loc, &ExprRet::Null, 0);
+            ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc)
         }
     }
 

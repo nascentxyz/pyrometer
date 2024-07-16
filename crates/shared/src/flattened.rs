@@ -22,7 +22,6 @@ pub enum FlatExpr {
 
     FunctionCallName(usize),
 
-    IfElse(Loc),
     Continue(Loc),
     Break(Loc),
     Return(Loc, bool),

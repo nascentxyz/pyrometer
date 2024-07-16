@@ -2,7 +2,7 @@ use crate::{FunctionVarsBoundAnalysis, LocSpan, LocStrSpan, ReportConfig, VarBou
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode},
+    nodes::{Concrete, ContextNode, KilledKind},
     range_string::ToRangeString,
     GraphBackend, Range, RangeEval, SolcRange,
 };
@@ -13,6 +13,14 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub static MIN_COLOR: Color = Color::Fixed(111);
 pub static MAX_COLOR: Color = Color::Fixed(106);
+
+pub fn killed_kind_color(kind: &KilledKind) -> Color {
+    match kind {
+        KilledKind::Ended => Color::Green,
+        KilledKind::Unreachable => Color::Rgb(255, 121, 0),
+        _ => Color::Red,
+    }
+}
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct AnalysisItem {

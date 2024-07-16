@@ -1,3 +1,4 @@
+use crate::bounds::killed_kind_color;
 use crate::{
     bounds::range_parts, LocStrSpan, ReportConfig, ReportDisplay, ReportKind, VarBoundAnalysis,
     VarBoundAnalyzer,
@@ -231,7 +232,7 @@ impl<'a> FunctionVarsBoundAnalysis {
                                         labels.push(
                                             Label::new(killed_loc.clone())
                                                 .with_message(kind.analysis_str())
-                                                .with_color(Color::Red)
+                                                .with_color(killed_kind_color(kind))
                                                 .with_priority(10),
                                         );
                                     }
@@ -247,8 +248,8 @@ impl<'a> FunctionVarsBoundAnalysis {
                     if !self_handled {
                         labels.push(
                             Label::new(killed_span.clone())
-                                .with_message(kind.analysis_str().fg(Color::Red))
-                                .with_color(Color::Red),
+                                .with_message(kind.analysis_str().fg(killed_kind_color(kind)))
+                                .with_color(killed_kind_color(kind)),
                         );
                     }
                 }
