@@ -48,7 +48,7 @@ pub trait Flatten:
 {
     fn traverse_statement(&mut self, stmt: &Statement, unchecked: Option<bool>) {
         use Statement::*;
-
+        tracing::trace!("traverse statement: {stmt:#?}");
         match stmt {
             Block {
                 loc: _,
@@ -175,6 +175,7 @@ pub trait Flatten:
     fn traverse_expression(&mut self, parent_expr: &Expression, unchecked: Option<bool>) {
         use Expression::*;
 
+        tracing::trace!("traverse expression: {parent_expr:#?}");
         match parent_expr {
             // literals
             NumberLiteral(..)

@@ -15,13 +15,11 @@ impl<T> ContextBuilder for T where
 
 mod expr;
 mod flattened;
-mod fn_calls;
 mod stmt;
 mod test_command_runner;
 
 pub use expr::*;
 pub use flattened::*;
-pub use fn_calls::*;
 pub use stmt::*;
 pub use test_command_runner::*;
 
