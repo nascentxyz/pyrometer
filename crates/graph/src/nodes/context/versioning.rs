@@ -322,7 +322,7 @@ impl ContextNode {
         for _ in 0..end_worlds.len().saturating_sub(1) {
             let curr = stack.pop_front().unwrap();
 
-            let left_ctx = Context::new_subctx(
+            let left_subctx = Context::add_subctx(
                 SubContextKind::Fork {
                     parent_ctx: curr,
                     true_side: true,
@@ -331,8 +331,7 @@ impl ContextNode {
                 analyzer,
                 None,
             )?;
-            let left_subctx = ContextNode::from(analyzer.add_node(Node::Context(left_ctx)));
-            let right_ctx = Context::new_subctx(
+            let right_subctx = Context::add_subctx(
                 SubContextKind::Fork {
                     parent_ctx: curr,
                     true_side: false,
@@ -341,7 +340,6 @@ impl ContextNode {
                 analyzer,
                 None,
             )?;
-            let right_subctx = ContextNode::from(analyzer.add_node(Node::Context(right_ctx)));
             curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
 
             stack.push_back(left_subctx);

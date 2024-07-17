@@ -187,6 +187,7 @@ pub trait InternalFuncCaller:
         ctx: ContextNode,
         name: String,
         num_inputs: usize,
+        maybe_named: Option<Vec<&str>>,
     ) -> Result<Option<FunctionNode>, GraphError> {
         if let Some(contract) = ctx.maybe_associated_contract(self)? {
             let supers = contract.super_contracts(self);
@@ -198,13 +199,28 @@ pub trait InternalFuncCaller:
                         .ok()?
                         .into_iter()
                         .find(|(func_name, func_node)| {
-                            func_name.starts_with(&name)
-                                && func_node.params(self).len() == num_inputs
+                            if !func_name.starts_with(&name) {
+                                return false;
+                            }
+
+                            let params = func_node.params(self);
+
+                            if params.len() != num_inputs {
+                                return false;
+                            }
+
+                            if let Some(ref named) = maybe_named {
+                                params
+                                    .iter()
+                                    .all(|param| named.contains(&&*param.name(self).unwrap()))
+                            } else {
+                                true
+                            }
                         })
                         .map(|(_, node)| node)
                 })
                 .collect();
-            self.find_func_inner(arena, ctx, name, num_inputs, possible_funcs)
+            self.find_func_inner(arena, ctx, name, num_inputs, possible_funcs, maybe_named)
         } else {
             Ok(None)
         }
@@ -216,6 +232,7 @@ pub trait InternalFuncCaller:
         ctx: ContextNode,
         name: String,
         num_inputs: usize,
+        maybe_named: Option<Vec<&str>>,
     ) -> Result<Option<FunctionNode>, GraphError> {
         let funcs = ctx.visible_funcs(self)?;
         let possible_funcs = funcs
@@ -225,9 +242,18 @@ pub trait InternalFuncCaller:
                 // filter by params
                 func.params(self).len() == num_inputs
             })
+            .filter(|func| {
+                if let Some(ref named) = maybe_named {
+                    func.params(self)
+                        .iter()
+                        .all(|param| named.contains(&&*param.name(self).unwrap()))
+                } else {
+                    true
+                }
+            })
             .copied()
             .collect::<Vec<_>>();
-        self.find_func_inner(arena, ctx, name, num_inputs, possible_funcs)
+        self.find_func_inner(arena, ctx, name, num_inputs, possible_funcs, maybe_named)
     }
 
     fn find_func_inner(
@@ -237,6 +263,7 @@ pub trait InternalFuncCaller:
         name: String,
         num_inputs: usize,
         possible_funcs: Vec<FunctionNode>,
+        maybe_named: Option<Vec<&str>>,
     ) -> Result<Option<FunctionNode>, GraphError> {
         match possible_funcs.len() {
             0 => Ok(None),
@@ -275,7 +302,14 @@ pub trait InternalFuncCaller:
                     .collect();
 
                 let inputs = ExprRet::Multi(inputs.to_vec());
-                Ok(self.disambiguate_fn_call(arena, &name, resizeables, &inputs, &possible_funcs))
+                Ok(self.disambiguate_fn_call(
+                    arena,
+                    &name,
+                    resizeables,
+                    &inputs,
+                    &possible_funcs,
+                    maybe_named,
+                ))
             }
         }
     }
@@ -290,138 +324,139 @@ pub trait InternalFuncCaller:
         func_expr: &Expression,
         input_exprs: NamedOrUnnamedArgs,
     ) -> Result<(), ExprErr> {
-        tracing::trace!("function call: {}(..)", ident.name);
-        // It is a function call, check if we have the ident in scope
-        let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
+        unreachable!("Should not have called this");
+        // tracing::trace!("function call: {}(..)", ident.name);
+        // // It is a function call, check if we have the ident in scope
+        // let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
 
-        // filter down all funcs to those that match
-        let possible_funcs = funcs
-            .iter()
-            .filter(|func| {
-                let named_correctly = func
-                    .name(self)
-                    .unwrap()
-                    .starts_with(&format!("{}(", ident.name));
-                if !named_correctly {
-                    false
-                } else {
-                    // filter by params
-                    let params = func.params(self);
-                    if params.len() != input_exprs.len() {
-                        false
-                    } else if matches!(input_exprs, NamedOrUnnamedArgs::Named(_)) {
-                        params.iter().all(|param| {
-                            input_exprs
-                                .named_args()
-                                .unwrap()
-                                .iter()
-                                .any(|input| input.name.name == param.name(self).unwrap())
-                        })
-                    } else {
-                        true
-                    }
-                }
-            })
-            .copied()
-            .collect::<Vec<_>>();
+        // // filter down all funcs to those that match
+        // let possible_funcs = funcs
+        //     .iter()
+        //     .filter(|func| {
+        //         let named_correctly = func
+        //             .name(self)
+        //             .unwrap()
+        //             .starts_with(&format!("{}(", ident.name));
+        //         if !named_correctly {
+        //             false
+        //         } else {
+        //             // filter by params
+        //             let params = func.params(self);
+        //             if params.len() != input_exprs.len() {
+        //                 false
+        //             } else if matches!(input_exprs, NamedOrUnnamedArgs::Named(_)) {
+        //                 params.iter().all(|param| {
+        //                     input_exprs
+        //                         .named_args()
+        //                         .unwrap()
+        //                         .iter()
+        //                         .any(|input| input.name.name == param.name(self).unwrap())
+        //                 })
+        //             } else {
+        //                 true
+        //             }
+        //         }
+        //     })
+        //     .copied()
+        //     .collect::<Vec<_>>();
 
-        match possible_funcs.len() {
-            0 => {
-                // this is a builtin, cast, or unknown function
-                self.parse_ctx_expr(arena, func_expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let ret = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    let ret = ret.flatten();
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    unreachable!()
-                })
-            }
-            1 => {
-                // there is only a single possible function
-                input_exprs.parse(arena, self, ctx, *loc)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let mut inputs = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    inputs = if let Some(ordered_param_names) =
-                        possible_funcs[0].maybe_ordered_param_names(analyzer)
-                    {
-                        input_exprs.order(inputs, ordered_param_names)
-                    } else {
-                        inputs
-                    };
-                    let inputs = inputs.flatten();
-                    if matches!(inputs, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.setup_fn_call(
-                        arena,
-                        &ident.loc,
-                        &inputs,
-                        (possible_funcs[0]).into(),
-                        ctx,
-                        None,
-                    )
-                })
-            }
-            _ => {
-                // this is the annoying case due to function overloading & type inference on number literals
-                input_exprs.parse(arena, self, ctx, *loc)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let inputs = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    let inputs = inputs.flatten();
-                    if matches!(inputs, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    let resizeables: Vec<_> = inputs.as_flat_vec()
-                        .iter()
-                        .map(|idx| {
-                            match VarType::try_from_idx(analyzer, *idx) {
-                                Some(VarType::BuiltIn(bn, _)) => {
-                                    matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
-                                }
-                                Some(VarType::Concrete(c)) => {
-                                    matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
-                                }
-                                _ => false
-                            }
-                        })
-                        .collect();
-                    if let Some(func) = analyzer.disambiguate_fn_call(
-                        arena,
-                        &ident.name,
-                        resizeables,
-                        &inputs,
-                        &possible_funcs,
-                    ) {
-                        analyzer.setup_fn_call(arena, &loc, &inputs, func.into(), ctx, None)
-                    } else {
-                        Err(ExprErr::FunctionNotFound(
-                            loc,
-                            format!(
-                                "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
-                                inputs.try_as_func_input_str(analyzer, arena),
-                                possible_funcs
-                                    .iter()
-                                    .map(|i| i.name(analyzer).unwrap())
-                                    .collect::<Vec<_>>()
-                            ),
-                        ))
-                    }
-                })
-            }
-        }
+        // match possible_funcs.len() {
+        //     0 => {
+        //         // this is a builtin, cast, or unknown function
+        //         self.parse_ctx_expr(arena, func_expr, ctx)?;
+        //         self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+        //             let ret = ctx
+        //                 .pop_expr_latest(loc, analyzer)
+        //                 .into_expr_err(loc)?
+        //                 .unwrap_or_else(|| ExprRet::Multi(vec![]));
+        //             let ret = ret.flatten();
+        //             if matches!(ret, ExprRet::CtxKilled(_)) {
+        //                 ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
+        //                 return Ok(());
+        //             }
+        //             unreachable!()
+        //         })
+        //     }
+        //     1 => {
+        //         // there is only a single possible function
+        //         input_exprs.parse(arena, self, ctx, *loc)?;
+        //         self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+        //             let mut inputs = ctx
+        //                 .pop_expr_latest(loc, analyzer)
+        //                 .into_expr_err(loc)?
+        //                 .unwrap_or_else(|| ExprRet::Multi(vec![]));
+        //             inputs = if let Some(ordered_param_names) =
+        //                 possible_funcs[0].maybe_ordered_param_names(analyzer)
+        //             {
+        //                 input_exprs.order(inputs, ordered_param_names)
+        //             } else {
+        //                 inputs
+        //             };
+        //             let inputs = inputs.flatten();
+        //             if matches!(inputs, ExprRet::CtxKilled(_)) {
+        //                 ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+        //                 return Ok(());
+        //             }
+        //             analyzer.setup_fn_call(
+        //                 arena,
+        //                 &ident.loc,
+        //                 &inputs,
+        //                 (possible_funcs[0]).into(),
+        //                 ctx,
+        //                 None,
+        //             )
+        //         })
+        //     }
+        //     _ => {
+        //         // this is the annoying case due to function overloading & type inference on number literals
+        //         input_exprs.parse(arena, self, ctx, *loc)?;
+        //         self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
+        //             let inputs = ctx
+        //                 .pop_expr_latest(loc, analyzer)
+        //                 .into_expr_err(loc)?
+        //                 .unwrap_or_else(|| ExprRet::Multi(vec![]));
+        //             let inputs = inputs.flatten();
+        //             if matches!(inputs, ExprRet::CtxKilled(_)) {
+        //                 ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
+        //                 return Ok(());
+        //             }
+        //             let resizeables: Vec<_> = inputs.as_flat_vec()
+        //                 .iter()
+        //                 .map(|idx| {
+        //                     match VarType::try_from_idx(analyzer, *idx) {
+        //                         Some(VarType::BuiltIn(bn, _)) => {
+        //                             matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
+        //                         }
+        //                         Some(VarType::Concrete(c)) => {
+        //                             matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
+        //                         }
+        //                         _ => false
+        //                     }
+        //                 })
+        //                 .collect();
+        //             if let Some(func) = analyzer.disambiguate_fn_call(
+        //                 arena,
+        //                 &ident.name,
+        //                 resizeables,
+        //                 &inputs,
+        //                 &possible_funcs,
+        //             ) {
+        //                 analyzer.setup_fn_call(arena, &loc, &inputs, func.into(), ctx, None)
+        //             } else {
+        //                 Err(ExprErr::FunctionNotFound(
+        //                     loc,
+        //                     format!(
+        //                         "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
+        //                         inputs.try_as_func_input_str(analyzer, arena),
+        //                         possible_funcs
+        //                             .iter()
+        //                             .map(|i| i.name(analyzer).unwrap())
+        //                             .collect::<Vec<_>>()
+        //                     ),
+        //                 ))
+        //             }
+        //         })
+        //     }
+        // }
     }
 }

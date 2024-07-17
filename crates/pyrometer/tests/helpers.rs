@@ -2,6 +2,7 @@ use analyzers::FunctionVarsBoundAnalyzer;
 use analyzers::ReportConfig;
 use analyzers::ReportDisplay;
 use ariadne::sources;
+use graph::nodes::KilledKind;
 use graph::{
     elem::Elem,
     nodes::{Concrete, FunctionNode},
@@ -91,20 +92,30 @@ pub fn no_ctx_killed(
     let funcs = analyzer.search_children(entry, &Edge::Func);
     for func in funcs.into_iter() {
         if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
-            if ctx.killed_loc(&analyzer).unwrap().is_some() {
-                analyzer
-                    .bounds_for_all(arena, &file_mapping, ctx, config)
-                    .as_cli_compat(&file_mapping)
-                    .print_reports(&mut source_map, &analyzer, arena);
-                panic!("Killed context in test");
-            }
-            ctx.all_edges(&analyzer).unwrap().iter().for_each(|subctx| {
-                if subctx.killed_loc(&analyzer).unwrap().is_some() {
+            let maybe_killed = ctx.killed_loc(&analyzer).unwrap();
+            match maybe_killed {
+                Some((_, KilledKind::Ended)) => {}
+                Some(..) => {
                     analyzer
-                        .bounds_for_all(arena, &file_mapping, *subctx, config)
+                        .bounds_for_all(arena, &file_mapping, ctx, config)
                         .as_cli_compat(&file_mapping)
                         .print_reports(&mut source_map, &analyzer, arena);
                     panic!("Killed context in test");
+                }
+                _ => {}
+            }
+            ctx.all_edges(&analyzer).unwrap().iter().for_each(|subctx| {
+                let maybe_killed = subctx.killed_loc(&analyzer).unwrap();
+                match maybe_killed {
+                    Some((_, KilledKind::Ended)) => {}
+                    Some(..) => {
+                        analyzer
+                            .bounds_for_all(arena, &file_mapping, ctx, config)
+                            .as_cli_compat(&file_mapping)
+                            .print_reports(&mut source_map, &analyzer, arena);
+                        panic!("Killed context in test");
+                    }
+                    _ => {}
                 }
             });
         }

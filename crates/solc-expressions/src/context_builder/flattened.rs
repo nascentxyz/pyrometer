@@ -14,7 +14,10 @@ use graph::{
     AnalyzerBackend, ContextEdge, Edge, Node, TypeNode, VarType,
 };
 
-use shared::{string_to_static, ExprErr, ExprFlag, FlatExpr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{
+    post_to_site, string_to_static, ExprErr, ExprFlag, FlatExpr, GraphError, GraphLike,
+    IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
+};
 use solang_parser::pt::{CodeLocation, Expression, Identifier, Loc, Statement};
 
 impl<T> Flatten for T where
@@ -345,11 +348,11 @@ pub trait Flatten:
                 self.traverse_expression(func_expr, unchecked);
                 match self.expr_stack_mut().pop().unwrap() {
                     FlatExpr::Super(loc, name) => {
-                        self.push_expr(FlatExpr::FunctionCallName(input_args.len(), true));
+                        self.push_expr(FlatExpr::FunctionCallName(input_args.len(), true, true));
                         self.push_expr(FlatExpr::Variable(loc, name));
                     }
                     other => {
-                        self.push_expr(FlatExpr::FunctionCallName(input_args.len(), false));
+                        self.push_expr(FlatExpr::FunctionCallName(input_args.len(), false, true));
                         self.push_expr(other);
                     }
                 }
@@ -376,11 +379,19 @@ pub trait Flatten:
                     self.traverse_expression(func_expr, unchecked);
                     match self.expr_stack_mut().pop().unwrap() {
                         FlatExpr::Super(loc, name) => {
-                            self.push_expr(FlatExpr::FunctionCallName(input_exprs.len(), true));
+                            self.push_expr(FlatExpr::FunctionCallName(
+                                input_exprs.len(),
+                                true,
+                                false,
+                            ));
                             self.push_expr(FlatExpr::Variable(loc, name));
                         }
                         other => {
-                            self.push_expr(FlatExpr::FunctionCallName(input_exprs.len(), false));
+                            self.push_expr(FlatExpr::FunctionCallName(
+                                input_exprs.len(),
+                                false,
+                                false,
+                            ));
                             self.push_expr(other);
                         }
                     }
@@ -437,6 +448,9 @@ pub trait Flatten:
             && ctx.parse_idx(self) < stack.len()
         {
             let res = self.interpret_step(arena, ctx, body_loc, &stack[..]);
+            if unsafe { USE_DEBUG_SITE } {
+                post_to_site(&*self, arena);
+            }
             self.add_if_err(res);
         }
     }
@@ -486,15 +500,15 @@ pub trait Flatten:
         let next = *next;
 
         tracing::trace!(
-            "parsing {:?} in context {} - flag: {:?}",
+            "parsing (idx: {parse_idx}) {:?} in context {} - flag: {:?}",
             next,
             ctx.path(self),
             self.peek_expr_flag()
         );
         match next {
             // Flag expressions
-            FunctionCallName(n, is_super) => {
-                self.set_expr_flag(ExprFlag::FunctionName(n, is_super));
+            FunctionCallName(n, is_super, named_args) => {
+                self.set_expr_flag(ExprFlag::FunctionName(n, is_super, named_args));
                 Ok(())
             }
             Negate(_) => {
@@ -518,7 +532,7 @@ pub trait Flatten:
             VarDef(..) => self.interp_var_def(arena, ctx, next),
             Type(..) => self.interp_type(arena, ctx, next),
             Return(..) => self.interp_return(arena, ctx, next),
-            Variable(..) => self.interp_var(arena, ctx, next),
+            Variable(..) => self.interp_var(arena, ctx, stack, next, parse_idx),
             Assign(..) => self.interp_assign(arena, ctx, next),
 
             Not(..) => self.interp_not(arena, ctx, next),
@@ -541,7 +555,7 @@ pub trait Flatten:
             | PreDecrement(loc, ..) => self.interp_xxcrement(arena, ctx, next, loc),
 
             ArrayTy(..) => self.interp_array_ty(arena, ctx, next),
-            ArrayIndexAccess(_) => todo!(),
+            ArrayIndexAccess(_) => self.interp_array_idx(arena, ctx, next),
             ArraySlice(_) => todo!(),
             ArrayLiteral(_) => todo!(),
 
@@ -635,10 +649,10 @@ pub trait Flatten:
                 ctx.push_expr(res, self).into_expr_err(loc)
             })?;
 
-        let new_values = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+        let mut new_values = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+        new_values.reverse();
         ctx.push_expr(ExprRet::Multi(new_values), self)
             .into_expr_err(loc)?;
-        ctx.debug_expr_stack(self).unwrap();
         Ok(())
     }
 
@@ -712,12 +726,12 @@ pub trait Flatten:
         };
 
         let true_subctx_kind = SubContextKind::new_fork(ctx, true);
-        let tctx = Context::new_subctx(true_subctx_kind, loc, self, None).into_expr_err(loc)?;
-        let true_subctx = ContextNode::from(self.add_node(Node::Context(tctx)));
+        let true_subctx =
+            Context::add_subctx(true_subctx_kind, loc, self, None).into_expr_err(loc)?;
 
         let false_subctx_kind = SubContextKind::new_fork(ctx, false);
-        let fctx = Context::new_subctx(false_subctx_kind, loc, self, None).into_expr_err(loc)?;
-        let false_subctx = ContextNode::from(self.add_node(Node::Context(fctx)));
+        let false_subctx =
+            Context::add_subctx(false_subctx_kind, loc, self, None).into_expr_err(loc)?;
         ctx.set_child_fork(true_subctx, false_subctx, self)
             .into_expr_err(loc)?;
         let ctx_fork = self.add_node(Node::ContextFork);
@@ -738,24 +752,33 @@ pub trait Flatten:
             self.interpret_step(arena, true_subctx, loc, stack)?;
         }
         // skip the false condition expressions
-        true_subctx.skip_n_exprs(false_cond, self);
+        self.modify_edges(true_subctx, loc, &|analyzer, true_subctx| {
+            true_subctx.skip_n_exprs(false_cond, analyzer);
+            Ok(())
+        })?;
 
         // skip the true condition expressions
         false_subctx.skip_n_exprs(true_cond, self);
         // parse the false condition expressions
-        for i in 0..false_cond {
+        for _ in 0..false_cond {
             self.interpret_step(arena, false_subctx, loc, stack)?;
         }
 
         // todo: the kill check
-        for i in 0..true_body {
+        for _ in 0..true_body {
             self.interpret_step(arena, true_subctx, loc, stack)?;
         }
-        // skip the false condition expressions
-        true_subctx.skip_n_exprs(false_body, self);
+        // skip the false body expressions
+        self.modify_edges(true_subctx, loc, &|analyzer, true_subctx| {
+            true_subctx.skip_n_exprs(false_body, analyzer);
+            Ok(())
+        })?;
 
         // skip the true body expressions
-        false_subctx.skip_n_exprs(true_body, self);
+        self.modify_edges(false_subctx, loc, &|analyzer, false_subctx| {
+            false_subctx.skip_n_exprs(true_body, analyzer);
+            Ok(())
+        })?;
         // parse the false body expressions
         for i in 0..false_body {
             self.interpret_step(arena, false_subctx, loc, stack)?;
@@ -931,20 +954,27 @@ pub trait Flatten:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
+        stack: &[FlatExpr],
         var: FlatExpr,
+        parse_idx: usize,
     ) -> Result<(), ExprErr> {
         let FlatExpr::Variable(loc, name) = var else {
             unreachable!()
         };
 
-        let mut is_req = false;
         match self.take_expr_flag() {
-            Some(ExprFlag::FunctionName(n, super_call)) => {
+            Some(ExprFlag::FunctionName(n, super_call, named_args)) => {
+                let maybe_names = if named_args {
+                    let start = parse_idx + 1;
+                    Some(self.get_named_args(stack, start, n))
+                } else {
+                    None
+                };
                 let maybe_fn = if super_call {
-                    self.find_super_func(arena, ctx, name.to_string(), n)
+                    self.find_super_func(arena, ctx, name.to_string(), n, maybe_names)
                         .into_expr_err(loc)?
                 } else {
-                    self.find_func(arena, ctx, name.to_string(), n)
+                    self.find_func(arena, ctx, name.to_string(), n, maybe_names)
                         .into_expr_err(loc)?
                 };
 
@@ -1004,6 +1034,21 @@ pub trait Flatten:
         self.match_ty(ctx, loc, arr_ty)
     }
 
+    fn interp_array_idx(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        arr_idx: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::ArrayIndexAccess(loc) = arr_idx else {
+            unreachable!()
+        };
+        let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
+        let [arr_ty, arr_idx] = into_sized(res);
+
+        self.index_into_array_inner(arena, ctx, arr_ty.flatten(), arr_idx.flatten(), loc)
+    }
+
     fn interp_named_func_call(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -1017,7 +1062,13 @@ pub trait Flatten:
         };
 
         let names_start = parse_idx.saturating_sub(n);
-        let names = stack[names_start..parse_idx]
+        let names = self.get_named_args(stack, names_start, n);
+
+        self.interp_func_call(arena, ctx, func_call, Some(names))
+    }
+
+    fn get_named_args(&self, stack: &[FlatExpr], start: usize, n: usize) -> Vec<&'static str> {
+        stack[start..start + n]
             .iter()
             .map(|named_arg| {
                 let FlatExpr::NamedArgument(_, name) = named_arg else {
@@ -1025,9 +1076,7 @@ pub trait Flatten:
                 };
                 *name
             })
-            .collect::<Vec<_>>();
-
-        self.interp_func_call(arena, ctx, func_call, Some(names))
+            .collect::<Vec<_>>()
     }
 
     fn interp_func_call(
@@ -1060,10 +1109,6 @@ pub trait Flatten:
             }
             _ => false,
         };
-
-        func_and_inputs[1..].iter().for_each(|i| {
-            println!("here: {}", i.debug_str(self));
-        });
 
         // order the named inputs
         let inputs = if n > 0 {
@@ -1137,13 +1182,13 @@ pub trait Flatten:
             VarType::User(TypeNode::Struct(s), _) => {
                 self.construct_struct_inner(arena, ctx, s, inputs, loc)
             }
-            VarType::User(TypeNode::Contract(s), _) => {
+            VarType::User(TypeNode::Contract(_), _) => {
                 unreachable!("should be unreachable: contract")
             }
             VarType::User(TypeNode::Func(s), _) => {
                 if self.builtin_fn_nodes().iter().any(|(_, v)| *v == func) {
                     // its a builtin function call
-                    self.call_builtin(arena, ctx, &*s.name(self).into_expr_err(loc)?, inputs, loc)
+                    self.call_builtin(arena, ctx, &s.name(self).into_expr_err(loc)?, inputs, loc)
                 } else {
                     self.func_call(arena, ctx, loc, &inputs, s, None, None)
                 }
@@ -1197,6 +1242,36 @@ pub trait Flatten:
                 self.rational_number_literal(arena, ctx, loc, integer, fraction, exp, unit, negate)
             }
             _ => unreachable!(),
+        }
+    }
+
+    fn modify_edges(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        closure: &impl Fn(&mut Self, ContextNode) -> Result<(), GraphError>,
+    ) -> Result<(), ExprErr> {
+        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
+        if !ctx.killed_or_ret(self).into_expr_err(loc)? {
+            if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
+                if live_edges.is_empty() {
+                    Ok(())
+                } else {
+                    live_edges
+                        .iter()
+                        .try_for_each(|ctx| closure(self, *ctx))
+                        .into_expr_err(loc)
+                }
+            } else if live_edges.is_empty() {
+                closure(self, ctx).into_expr_err(loc)
+            } else {
+                live_edges
+                    .iter()
+                    .try_for_each(|ctx| closure(self, *ctx))
+                    .into_expr_err(loc)
+            }
+        } else {
+            Ok(())
         }
     }
 

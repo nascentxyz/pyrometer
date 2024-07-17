@@ -118,15 +118,13 @@ pub trait ModifierCaller:
                         mods[mstate.num],
                         false,
                     );
-                    let pctx = Context::new_subctx(
+                    let new_parent_subctx = Context::add_subctx(
                         subctx_kind,
                         loc,
                         analyzer,
                         Some(modifier_state.clone()),
                     )
                     .unwrap();
-                    let new_parent_subctx =
-                        ContextNode::from(analyzer.add_node(Node::Context(pctx)));
 
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
@@ -150,10 +148,9 @@ pub trait ModifierCaller:
                         false,
                     );
 
-                    let pctx = Context::new_subctx(subctx_kind, modifier_state.loc, analyzer, None)
-                        .unwrap();
                     let new_parent_subctx =
-                        ContextNode::from(analyzer.add_node(Node::Context(pctx)));
+                        Context::add_subctx(subctx_kind, modifier_state.loc, analyzer, None)
+                            .unwrap();
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
 
@@ -195,11 +192,9 @@ pub trait ModifierCaller:
                             .iter()
                             .map(|expr| {
                                 let subctx_kind = SubContextKind::new_dummy(ctx);
-                                let mctx =
-                                    Context::new_subctx(subctx_kind, Loc::Implicit, self, None)
-                                        .into_expr_err(Loc::Implicit)?;
                                 let callee_ctx =
-                                    ContextNode::from(self.add_node(Node::Context(mctx)));
+                                    Context::add_subctx(subctx_kind, Loc::Implicit, self, None)
+                                        .into_expr_err(Loc::Implicit)?;
                                 let _res = ctx.set_child_call(callee_ctx, self);
                                 self.parse_ctx_expr(arena, expr, callee_ctx)?;
                                 let f: Vec<String> = self.take_from_edge(

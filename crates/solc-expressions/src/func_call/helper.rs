@@ -177,8 +177,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         }
 
         let subctx_kind = SubContextKind::new_fn_call(curr_ctx, None, func_node, fn_ext);
-        let ctx = Context::new_subctx(subctx_kind, loc, self, modifier_state).into_expr_err(loc)?;
-        let callee_ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
+        let callee_ctx =
+            Context::add_subctx(subctx_kind, loc, self, modifier_state).into_expr_err(loc)?;
         curr_ctx
             .set_child_call(callee_ctx, self)
             .into_expr_err(loc)?;
@@ -201,18 +201,21 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         literals: Vec<bool>,
         input_paths: &ExprRet,
         funcs: &[FunctionNode],
+        maybe_names: Option<Vec<&str>>,
     ) -> Option<FunctionNode> {
         let input_paths = input_paths.clone().flatten();
         // try to find the function based on naive signature
         // This doesnt do type inference on NumberLiterals (i.e. 100 could be uintX or intX, and there could
         // be a function that takes an int256 but we evaled as uint256)
-        let fn_sig = format!(
-            "{}{}",
-            fn_name,
-            input_paths.try_as_func_input_str(self, arena)
-        );
-        if let Some(func) = funcs.iter().find(|func| func.name(self).unwrap() == fn_sig) {
-            return Some(*func);
+        if maybe_names.is_none() {
+            let fn_sig = format!(
+                "{}{}",
+                fn_name,
+                input_paths.try_as_func_input_str(self, arena)
+            );
+            if let Some(func) = funcs.iter().find(|func| func.name(self).unwrap() == fn_sig) {
+                return Some(*func);
+            }
         }
 
         // filter by input len
@@ -233,16 +236,45 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .iter()
                 .filter(|func| {
                     let params = func.params(self);
+                    let ordered_names = func.ordered_param_names(self);
+
+                    let mut tmp_inputs: Vec<NodeIdx> = vec![];
+                    let mut tmp_literals = vec![];
+                    tmp_literals.resize(literals.len(), false);
+                    tmp_inputs.resize(inputs.len(), 0.into());
+                    if let Some(ref input_names) = maybe_names {
+                        if &ordered_names[..] != input_names {
+                            let mapping = ordered_names
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(i, n)| {
+                                    Some((input_names.iter().position(|k| k == n)?, i))
+                                })
+                                .collect::<BTreeMap<_, _>>();
+                            inputs.iter().enumerate().for_each(|(i, ret)| {
+                                let target_idx = mapping[&i];
+                                tmp_inputs[target_idx] = *ret;
+                                tmp_literals[target_idx] = literals[i];
+                            });
+                        } else {
+                            tmp_inputs = inputs.clone();
+                            tmp_literals = literals.clone();
+                        }
+                    } else {
+                        tmp_inputs = inputs.clone();
+                        tmp_literals = literals.clone();
+                    }
+
                     params
                         .iter()
-                        .zip(&inputs)
+                        .zip(&tmp_inputs)
                         .enumerate()
                         .all(|(i, (param, input))| {
                             let param_ty = VarType::try_from_idx(self, (*param).into()).unwrap();
                             let input_ty = ContextVarNode::from(*input).ty(self).unwrap();
                             if param_ty.ty_eq(input_ty, self).unwrap() {
                                 true
-                            } else if literals[i] {
+                            } else if tmp_literals[i] {
                                 let possibilities = ContextVarNode::from(*input)
                                     .ty(self)
                                     .unwrap()
@@ -336,7 +368,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 }
 
                 let subctx_kind = SubContextKind::new_fn_ret(callee_ctx, caller_ctx);
-                let ctx = Context::new_subctx(
+                let ret_subctx = Context::add_subctx(
                     subctx_kind,
                     loc,
                     self,
@@ -347,7 +379,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         .clone(),
                 )
                 .into_expr_err(loc)?;
-                let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
                 let res = callee_ctx
                     .set_child_call(ret_subctx, self)
                     .into_expr_err(loc);

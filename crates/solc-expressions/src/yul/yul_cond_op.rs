@@ -37,13 +37,11 @@ pub trait YulCondOp:
     ) -> Result<(), ExprErr> {
         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let true_subctx_kind = SubContextKind::new_fork(ctx, true);
-            let tctx =
-                Context::new_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+            let true_subctx =
+                Context::add_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             let false_subctx_kind = SubContextKind::new_fork(ctx, false);
-            let fctx =
-                Context::new_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
+            let false_subctx =
+                Context::add_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);
@@ -119,13 +117,11 @@ pub trait YulCondOp:
     ) -> Result<(), ExprErr> {
         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let true_subctx_kind = SubContextKind::new_fork(ctx, true);
-            let tctx =
-                Context::new_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+            let true_subctx =
+                Context::add_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             let false_subctx_kind = SubContextKind::new_fork(ctx, false);
-            let fctx =
-                Context::new_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
+            let false_subctx =
+                Context::add_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             ctx.set_child_fork(true_subctx, false_subctx, analyzer)
                 .into_expr_err(loc)?;
             let ctx_fork = analyzer.add_node(Node::ContextFork);

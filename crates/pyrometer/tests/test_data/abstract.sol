@@ -12,32 +12,32 @@ abstract contract A {
     function bar() internal view virtual returns (uint);
 }
 
-abstract contract YInterface {
-    function foo() external virtual returns (uint);
-}
+// abstract contract YInterface {
+//     function foo() external virtual returns (uint);
+// }
 
-contract Y is YInterface {
-    function foo() public virtual override returns (uint) {
-        return 1;
-    }
+// contract Y is YInterface {
+//     function foo() public virtual override returns (uint) {
+//         return 1;
+//     }
 
-    function bar(Y y) internal {
-        y.foo();
-    }
-}
+//     function bar(Y y) internal {
+//         y.foo();
+//     }
+// }
 
-abstract contract Base {
-    function foo() public virtual returns (uint) {
-        return 0;
-    }
-}
+// abstract contract Base {
+//     function foo() public virtual returns (uint) {
+//         return 0;
+//     }
+// }
 
-contract Base2 is Base {}
+// contract Base2 is Base {}
 
-contract Base3 is Base2 {}
+// contract Base3 is Base2 {}
 
-contract Test is Base3 {
-    function foo() public override returns (uint) {
-        return super.foo();
-    }
-}
+// contract Test is Base3 {
+//     function foo() public override returns (uint) {
+//         return super.foo();
+//     }
+// }

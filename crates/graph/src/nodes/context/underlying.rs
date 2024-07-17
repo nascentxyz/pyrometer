@@ -4,7 +4,7 @@ use crate::{
         ModifierState,
     },
     solvers::dl::DLSolver,
-    AnalyzerBackend,
+    AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
 use shared::GraphError;
@@ -340,6 +340,12 @@ pub struct Context {
     pub applies: Vec<FunctionNode>,
 }
 
+impl From<Context> for Node {
+    fn from(c: Context) -> Node {
+        Node::Context(c)
+    }
+}
+
 impl Context {
     /// Creates a new context from a function
     pub fn new(parent_fn: FunctionNode, fn_name: String, loc: Loc) -> Self {
@@ -446,13 +452,27 @@ impl Context {
         })
     }
 
+    pub fn add_subctx(
+        subctx_kind: SubContextKind,
+        loc: Loc,
+        analyzer: &mut impl AnalyzerBackend,
+        modifier_state: Option<ModifierState>,
+    ) -> Result<ContextNode, GraphError> {
+        let ctx = Context::new_subctx(subctx_kind, loc, analyzer, modifier_state)?;
+        let ctx_node = ContextNode::from(analyzer.add_node(ctx));
+        if let Some(cont) = ctx_node.underlying(analyzer)?.continuation_of() {
+            analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
+        }
+        Ok(ctx_node)
+    }
+
     pub fn new_loop_subctx(
         parent_ctx: ContextNode,
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<Self, GraphError> {
+    ) -> Result<ContextNode, GraphError> {
         let subctx_kind = SubContextKind::Loop { parent_ctx };
-        Context::new_subctx(subctx_kind, loc, analyzer, None)
+        Context::add_subctx(subctx_kind, loc, analyzer, None)
     }
 
     /// Set the child context to a fork

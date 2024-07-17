@@ -109,9 +109,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 analyzer.index_into_array_inner(
                     arena,
                     ctx,
-                    loc,
                     inner_tys.flatten(),
                     index_tys.clone().flatten(),
+                    loc,
                 )
             })
         })
@@ -122,9 +122,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         inner_paths: ExprRet,
         index_paths: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match (inner_paths, index_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),

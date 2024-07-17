@@ -57,8 +57,7 @@ pub trait Looper:
         body: &Statement,
     ) -> Result<(), ExprErr> {
         let og_ctx = ctx;
-        let sctx = Context::new_loop_subctx(ctx, loc, self).into_expr_err(loc)?;
-        let subctx = ContextNode::from(self.add_node(Node::Context(sctx)));
+        let subctx = Context::new_loop_subctx(ctx, loc, self).into_expr_err(loc)?;
         ctx.set_child_call(subctx, self).into_expr_err(loc)?;
         self.add_edge(subctx, ctx, Edge::Context(ContextEdge::Loop));
 
@@ -93,8 +92,7 @@ pub trait Looper:
             });
 
             let subctx_kind = SubContextKind::new_fn_ret(ctx, og_ctx);
-            let sctx = Context::new_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let sctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
+            let sctx = Context::add_subctx(subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
             ctx.set_child_call(sctx, analyzer).into_expr_err(loc)
         })
     }

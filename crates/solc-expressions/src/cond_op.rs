@@ -28,11 +28,11 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
         panic!("cond op");
         // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
         //     let tctx =
-        //         Context::new_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
+        //         Context::add_subctx(ctx, None, loc, Some("true"), None, false, analyzer, None)
         //             .into_expr_err(loc)?;
         //     let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
         //     let fctx =
-        //         Context::new_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
+        //         Context::add_subctx(ctx, None, loc, Some("false"), None, false, analyzer, None)
         //             .into_expr_err(loc)?;
         //     let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
         //     ctx.set_child_fork(true_subctx, false_subctx, analyzer)
@@ -176,12 +176,12 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
         // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
         //     let true_subctx_kind = SubContextKind::new_fork(ctx, true);
         //     let tctx =
-        //         Context::new_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
+        //         Context::add_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
         //     let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
 
         //     let false_subctx_kind = SubContextKind::new_fork(ctx, false);
         //     let fctx =
-        //         Context::new_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
+        //         Context::add_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
         //     let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
         //     ctx.set_child_fork(true_subctx, false_subctx, analyzer)
         //         .into_expr_err(loc)?;

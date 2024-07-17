@@ -186,7 +186,7 @@ pub trait YulBuilder:
         //             execution_block: _,
         //         }) => {
         //             let sctx =
-        //                 Context::new_subctx(ctx, None, *loc, None, None, false, analyzer, None)
+        //                 Context::add_subctx(ctx, None, *loc, None, None, false, analyzer, None)
         //                     .into_expr_err(*loc)?;
         //             let subctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
         //             ctx.set_child_call(subctx, analyzer).into_expr_err(*loc)?;

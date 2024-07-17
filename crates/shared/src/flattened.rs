@@ -3,7 +3,7 @@ use solang_parser::pt::{Expression, Loc, NamedArgument, Type};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ExprFlag {
-    FunctionName(usize, bool),
+    FunctionName(usize, bool, bool),
     New,
     Negate,
     Requirement,
@@ -21,7 +21,7 @@ pub enum FlatExpr {
     },
 
     NamedArgument(Loc, &'static str),
-    FunctionCallName(usize, bool),
+    FunctionCallName(usize, bool, bool),
     Requirement(Loc),
     Super(Loc, &'static str),
 

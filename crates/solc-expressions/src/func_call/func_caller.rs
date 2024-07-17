@@ -426,7 +426,7 @@ pub trait FuncCaller:
             }
         } else {
             let subctx_kind = SubContextKind::new_fn_ret(callee_ctx, caller_ctx);
-            let ret_ctx = Context::new_subctx(
+            let ret_subctx = Context::add_subctx(
                 subctx_kind,
                 loc,
                 self,
@@ -437,7 +437,6 @@ pub trait FuncCaller:
                     .clone(),
             )
             .unwrap();
-            let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
 
             let res = callee_ctx
                 .set_child_call(ret_subctx, self)

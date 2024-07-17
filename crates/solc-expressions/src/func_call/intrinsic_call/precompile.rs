@@ -58,8 +58,8 @@ pub trait PrecompileCaller:
             "ecrecover" => {
                 let func_idx = *(self.builtin_fn_nodes().get("ecrecover").unwrap());
                 let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
-                let cctx = Context::new_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
-                let call_ctx = self.add_node(Node::Context(cctx));
+                let call_ctx =
+                    Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
                 ctx.set_child_call(call_ctx.into(), self)
                     .into_expr_err(loc)?;
                 let call_node = self.add_node(Node::FunctionCall);
@@ -93,8 +93,8 @@ pub trait PrecompileCaller:
                     .into_expr_err(loc)?;
 
                 let subctx_kind = SubContextKind::new_fn_ret(call_ctx.into(), ctx);
-                let rctx = Context::new_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
-                let ret_ctx = self.add_node(Node::Context(rctx));
+                let ret_ctx =
+                    Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
                 ContextNode::from(call_ctx)
                     .set_child_call(ret_ctx.into(), self)
                     .into_expr_err(loc)?;

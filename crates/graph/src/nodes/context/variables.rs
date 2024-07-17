@@ -93,10 +93,16 @@ impl ContextNode {
         name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         if let Some(var) = self.var_by_name(analyzer, name) {
-            Ok(Some(var))
-        } else if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
-            parent.var_by_name_or_recurse(analyzer, name)
-        } else if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
+            return Ok(Some(var));
+        }
+
+        if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+            if let Some(in_parent) = parent.var_by_name_or_recurse(analyzer, name)? {
+                return Ok(Some(in_parent));
+            }
+        }
+
+        if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
             parent.var_by_name_or_recurse(analyzer, name)
         } else {
             Ok(None)
