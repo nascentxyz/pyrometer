@@ -6,7 +6,7 @@ use graph::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
         TmpConstruction,
     },
-    AnalyzerBackend, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, Range, SolcRange, VarType,
 };
 use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 

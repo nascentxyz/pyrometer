@@ -1,7 +1,7 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
     range::{
-        elem::{Elem, MinMaxed, RangeArenaLike, RangeConcrete, RangeElem},
+        elem::{Elem, MinMaxed, RangeArenaLike, RangeConcrete, RangeElem, RangeOp},
         Range,
     },
     GraphBackend, TypeNode, VarType,
@@ -55,6 +55,14 @@ impl<T> Reference<T> {
 
 impl RangeElem<Concrete> for Reference<Concrete> {
     type GraphError = GraphError;
+
+    fn last_range_op(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Option<RangeOp>, GraphError> {
+        ContextVarNode::from(self.idx).last_range_op(analyzer, arena)
+    }
 
     fn arenaize(
         &mut self,

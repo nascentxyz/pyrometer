@@ -2,7 +2,7 @@ use crate::LibraryAccess;
 
 use graph::{
     nodes::{ContextNode, ContextVar, EnumNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx};
 
@@ -20,19 +20,18 @@ pub trait EnumAccess:
     /// Perform member access on an enum
     fn enum_member_access(
         &mut self,
-        _member_idx: NodeIdx,
-        enum_node: EnumNode,
-        ident: &Identifier,
         ctx: ContextNode,
+        enum_node: EnumNode,
+        name: &str,
         loc: Loc,
     ) -> Result<ExprRet, ExprErr> {
-        tracing::trace!("Enum member access: {}", ident.name);
+        tracing::trace!("Enum member access: {}", name);
 
         if let Some(variant) = enum_node
             .variants(self)
             .into_expr_err(loc)?
             .iter()
-            .find(|variant| **variant == ident.name)
+            .find(|variant| **variant == name)
         {
             let var =
                 ContextVar::new_from_enum_variant(self, ctx, loc, enum_node, variant.to_string())
@@ -41,14 +40,13 @@ pub trait EnumAccess:
             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
             Ok(ExprRet::Single(cvar))
-        } else if let Some(ret) = self.library_func_search(ctx, enum_node.0.into(), ident) {
+        } else if let Some(ret) = self.library_func_search(ctx, enum_node.0.into(), name) {
             Ok(ret)
         } else {
             Err(ExprErr::MemberAccessNotFound(
                 loc,
                 format!(
-                    "Unknown member access \"{}\" on enum \"{}\"",
-                    ident.name,
+                    "Unknown member access \"{name}\" on enum \"{}\"",
                     enum_node.name(self).into_expr_err(loc)?
                 ),
             ))

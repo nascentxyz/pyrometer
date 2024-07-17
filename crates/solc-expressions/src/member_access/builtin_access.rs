@@ -2,7 +2,7 @@ use crate::LibraryAccess;
 
 use graph::{
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr};
 
@@ -21,19 +21,19 @@ pub trait BuiltinAccess:
     /// Perform member access on builtin types
     fn builtin_member_access(
         &mut self,
-        loc: Loc,
         ctx: ContextNode,
         node: BuiltInNode,
+        name: &str,
         is_storage: bool,
-        ident: &Identifier,
+        loc: Loc,
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!("Looking for builtin member function");
-        if let Some(ret) = self.library_func_search(ctx, node.0.into(), ident) {
+        if let Some(ret) = self.library_func_search(ctx, node.0.into(), name) {
             Ok(ret)
         } else {
             match node.underlying(self).into_expr_err(loc)?.clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
-                    match &*ident.name {
+                    match name {
                         "delegatecall"
                         | "call"
                         | "staticcall"
@@ -42,7 +42,7 @@ pub trait BuiltinAccess:
                         | "staticcall(address, bytes)" => {
                             // TODO: check if the address is known to be a certain type and the function signature is known
                             // and call into the function
-                            let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
+                            let builtin_name = name.split('(').collect::<Vec<_>>()[0];
                             let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
                             Ok(ExprRet::Single(func_node))
                         }
@@ -76,7 +76,7 @@ pub trait BuiltinAccess:
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
                         }
-                        _ if ident.name.starts_with("send") => {
+                        _ if name.starts_with("send") => {
                             let bn = self.builtin_or_add(Builtin::Bool);
                             let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
                                 .into_expr_err(loc)?;
@@ -85,12 +85,11 @@ pub trait BuiltinAccess:
                             self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                             Ok(ExprRet::Single(node))
                         }
-                        _ if ident.name.starts_with("transfer") => Ok(ExprRet::Multi(vec![])),
+                        _ if name.starts_with("transfer") => Ok(ExprRet::Multi(vec![])),
                         _ => Err(ExprErr::MemberAccessNotFound(
                             loc,
                             format!(
-                                "Unknown member access on address: {:?}, ctx: {}",
-                                ident.name,
+                                "Unknown member access on address: \"{name}\", ctx: {}",
                                 ctx.path(self)
                             ),
                         )),
@@ -99,12 +98,11 @@ pub trait BuiltinAccess:
                 Builtin::Bool => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unknown member access on bool: {:?}, ctx: {}",
-                        ident.name,
+                        "Unknown member access on bool: \"{name}\", ctx: {}",
                         ctx.path(self)
                     ),
                 )),
-                Builtin::String => match ident.name.split('(').collect::<Vec<_>>()[0] {
+                Builtin::String => match name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
                         let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
                         Ok(ExprRet::Single(fn_node))
@@ -112,25 +110,23 @@ pub trait BuiltinAccess:
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
                         format!(
-                            "Unknown member access on string: {:?}, ctx: {}",
-                            ident.name,
+                            "Unknown member access on string: \"{name}\", ctx: {}",
                             ctx.path(self)
                         ),
                     )),
                 },
                 Builtin::Bytes(size) => Err(ExprErr::MemberAccessNotFound(
                     loc,
-                    format!("Unknown member access on bytes{}: {:?}", size, ident.name),
+                    format!("Unknown member access on bytes{}: {name}", size),
                 )),
                 Builtin::Rational => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unknown member access on rational: {:?}, ctx: {}",
-                        ident.name,
+                        "Unknown member access on rational: \"{name}\", ctx: {}",
                         ctx.path(self)
                     ),
                 )),
-                Builtin::DynamicBytes => match ident.name.split('(').collect::<Vec<_>>()[0] {
+                Builtin::DynamicBytes => match name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
                         let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
                         Ok(ExprRet::Single(fn_node))
@@ -138,14 +134,13 @@ pub trait BuiltinAccess:
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
                         format!(
-                            "Unknown member access on bytes: {:?}, ctx: {}",
-                            ident.name,
+                            "Unknown member access on bytes: \"{name}\", ctx: {}",
                             ctx.path(self)
                         ),
                     )),
                 },
                 Builtin::Array(_) => {
-                    if ident.name.starts_with("push") {
+                    if name.starts_with("push") {
                         if is_storage {
                             let fn_node = self.builtin_fn_or_maybe_add("push").unwrap();
                             Ok(ExprRet::Single(fn_node))
@@ -155,7 +150,7 @@ pub trait BuiltinAccess:
                                 "Trying to push to nonstorage array is not supported".to_string(),
                             ))
                         }
-                    } else if ident.name.starts_with("pop") {
+                    } else if name.starts_with("pop") {
                         if is_storage {
                             let fn_node = self.builtin_fn_or_maybe_add("pop").unwrap();
                             Ok(ExprRet::Single(fn_node))
@@ -169,8 +164,7 @@ pub trait BuiltinAccess:
                         Err(ExprErr::MemberAccessNotFound(
                             loc,
                             format!(
-                                "Unknown member access on array[]: {:?}, ctx: {}",
-                                ident.name,
+                                "Unknown member access on array[]: \"{name}\", ctx: {}",
                                 ctx.path(self)
                             ),
                         ))
@@ -179,24 +173,21 @@ pub trait BuiltinAccess:
                 Builtin::SizedArray(s, _) => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unknown member access on array[{s}]: {:?}, ctx: {}",
-                        ident.name,
+                        "Unknown member access on array[{s}]: \"{name}\", ctx: {}",
                         ctx.path(self)
                     ),
                 )),
                 Builtin::Mapping(_, _) => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unknown member access on mapping: {:?}, ctx: {}",
-                        ident.name,
+                        "Unknown member access on mapping: \"{name}\", ctx: {}",
                         ctx.path(self)
                     ),
                 )),
                 Builtin::Func(_, _) => Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unknown member access on func: {:?}, ctx: {}",
-                        ident.name,
+                        "Unknown member access on func: \"{name}\", ctx: {}",
                         ctx.path(self)
                     ),
                 )),
@@ -206,7 +197,7 @@ pub trait BuiltinAccess:
                     } else {
                         I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1)
                     };
-                    match &*ident.name {
+                    match name {
                         "max" => {
                             let c = Concrete::Int(size, max);
                             let node = self.add_node(c).into();
@@ -245,7 +236,7 @@ pub trait BuiltinAccess:
                         )),
                     }
                 }
-                Builtin::Uint(size) => match &*ident.name {
+                Builtin::Uint(size) => match name {
                     "max" => {
                         let max = if size == 256 {
                             U256::MAX
@@ -281,7 +272,7 @@ pub trait BuiltinAccess:
                         Ok(ExprRet::Single(cvar))
                     }
                     "call" | "delegatecall" | "staticcall" if size == 160 => {
-                        let builtin_name = ident.name.split('(').collect::<Vec<_>>()[0];
+                        let builtin_name = name.split('(').collect::<Vec<_>>()[0];
                         let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
                         Ok(ExprRet::Single(func_node))
                     }

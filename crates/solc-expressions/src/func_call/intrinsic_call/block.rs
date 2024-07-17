@@ -1,7 +1,7 @@
 use graph::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
-    AnalyzerBackend, Node,
+    AnalyzerBackend,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 

@@ -1,14 +1,13 @@
 use crate::func_caller::NamedOrUnnamedArgs;
 use crate::ListAccess;
 use crate::{variable::Variable, ContextBuilder, ExpressionParser};
-use graph::nodes::FunctionNode;
 
 use graph::{
     elem::*,
     nodes::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, TyNode,
     },
-    AnalyzerBackend, Node, VarType,
+    AnalyzerBackend, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
@@ -165,10 +164,10 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     let _ = self.create_length(
                         arena,
                         ctx,
-                        loc,
                         new_var,
                         new_var.latest_version(self),
                         false,
+                        loc,
                     )?;
                 }
 

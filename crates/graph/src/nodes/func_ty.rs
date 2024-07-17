@@ -972,6 +972,7 @@ impl FunctionParamNode {
             let var = ContextVarNode::from(analyzer.add_node(var));
             ctx.add_var(var, analyzer)?;
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
+            analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::CalldataVariable));
             Ok(true)
         } else {
             Ok(false)

@@ -3,7 +3,7 @@ use crate::{ContextBuilder, ExpressionParser, Variable};
 use graph::{
     elem::*,
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Range, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -18,24 +18,11 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     fn length(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        input_expr: &Expression,
         ctx: ContextNode,
+        input: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, input_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "Attempted to perform member access without a left-hand side".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_length(arena, ctx, loc, ret, true)
-        })
+        self.match_length(arena, ctx, input, loc)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -44,9 +31,8 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         elem_path: ExprRet,
-        _update_len_bound: bool,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match elem_path {
             ExprRet::Null => {
@@ -55,7 +41,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             }
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Single(arr) => {
-                self.get_length(arena, ctx, loc, arr.into(), false)?;
+                self.get_length(arena, ctx, arr.into(), false, loc)?;
                 Ok(())
             }
             e => todo!("here: {e:?}"),
@@ -66,9 +52,9 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         array: ContextVarNode,
         return_var: bool,
+        loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         let next_arr = self.advance_var_in_ctx(
             array.latest_version_or_inherited_in_ctx(ctx, self),
@@ -90,7 +76,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 Ok(Some(len_node))
             }
         } else {
-            self.create_length(arena, ctx, loc, array, next_arr, return_var)
+            self.create_length(arena, ctx, array, next_arr, return_var, loc)
         }
     }
 
@@ -98,10 +84,10 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         array: ContextVarNode,
         target_array: ContextVarNode,
         return_var: bool,
+        loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         // no length variable, create one
         let name = format!("{}.length", array.name(self).into_expr_err(loc)?);

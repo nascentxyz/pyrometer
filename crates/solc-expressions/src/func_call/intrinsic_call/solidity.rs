@@ -1,9 +1,10 @@
 use crate::func_call::helper::CallerHelper;
+use crate::require::Require;
 
 use graph::{
-    elem::Elem,
+    elem::{Elem, RangeOp},
     nodes::{Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, Node,
+    AnalyzerBackend,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -28,7 +29,7 @@ pub trait SolidityCaller:
         inputs: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        match &*func_name {
+        match func_name {
             "keccak256" => {
                 let cvar = if let Ok(var) = inputs.expect_single() {
                     ContextVarNode::from(var)
@@ -93,8 +94,10 @@ pub trait SolidityCaller:
                 Ok(())
             }
             "require" | "assert" => {
-                // self.handle_require(arena, input_exprs.unnamed_args().unwrap(), ctx)
-                todo!()
+                Err(ExprErr::ParseError(
+                    loc,
+                    "require(..) and assert(..) should have been handled in the parsing step. This is a bug".to_string(),
+                ))
             }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

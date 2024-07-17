@@ -5,7 +5,7 @@ use graph::{
     nodes::{
         Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind, TmpConstruction,
     },
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -428,7 +428,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::zero()), loc)?;
 
         if self
-            .require(arena, tmp_rhs, zero_node, ctx, loc, RangeOp::Neq)?
+            .require(arena, ctx, tmp_rhs, zero_node, RangeOp::Neq, loc)?
             .is_none()
         {
             return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
@@ -458,11 +458,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
+                ctx,
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 min,
-                ctx,
-                loc,
                 RangeOp::Gte,
+                loc,
             )?
             .is_none()
         {
@@ -487,11 +487,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
+                        ctx,
                         tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         max,
-                        ctx,
-                        loc,
                         RangeOp::Lte,
+                        loc,
                     )?
                     .is_none()
                 {
@@ -523,11 +523,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
+                ctx,
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
-                ctx,
-                loc,
                 RangeOp::Lte,
+                loc,
             )?
             .is_none()
         {
@@ -554,11 +554,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
+                        ctx,
                         new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
-                        ctx,
-                        loc,
                         RangeOp::Gte,
+                        loc,
                     )?
                     .is_none()
                 {
@@ -591,11 +591,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
+                ctx,
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
-                ctx,
-                loc,
                 RangeOp::Lte,
+                loc,
             )?
             .is_none()
         {
@@ -643,11 +643,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
+                        ctx,
                         new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
-                        ctx,
-                        loc,
                         RangeOp::Gte,
+                        loc,
                     )?
                     .is_none()
                 {
@@ -672,7 +672,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let zero = rhs.ty_zero_concrete(self).into_expr_err(loc)?.unwrap();
         let zero = self.add_concrete_var(ctx, zero, loc)?;
         if self
-            .require(arena, rhs, zero, ctx, loc, RangeOp::Gte)?
+            .require(arena, ctx, rhs, zero, RangeOp::Gte, loc)?
             .is_none()
         {
             return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
@@ -690,11 +690,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         if self
             .require(
                 arena,
+                ctx,
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
-                ctx,
-                loc,
                 RangeOp::Lte,
+                loc,
             )?
             .is_none()
         {
@@ -720,11 +720,11 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 if self
                     .require(
                         arena,
+                        ctx,
                         new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
-                        ctx,
-                        loc,
                         RangeOp::Gte,
+                        loc,
                     )?
                     .is_none()
                 {

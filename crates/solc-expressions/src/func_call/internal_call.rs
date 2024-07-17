@@ -175,16 +175,38 @@ pub trait InternalFuncCaller:
                     input.expr.clone()
                 })
                 .collect();
-            self.parse_inputs(arena, ctx, *loc, &inputs[..])?;
-            self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                let inputs = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                analyzer.setup_fn_call(arena, &ident.loc, &inputs, func.into(), ctx, None)
-            })
+            unreachable!()
         } else {
             todo!("Disambiguate named function call");
+        }
+    }
+
+    fn find_super_func(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        name: String,
+        num_inputs: usize,
+    ) -> Result<Option<FunctionNode>, GraphError> {
+        if let Some(contract) = ctx.maybe_associated_contract(self)? {
+            let supers = contract.super_contracts(self);
+            let possible_funcs: Vec<_> = supers
+                .iter()
+                .filter_map(|con_node| {
+                    con_node
+                        .linearized_functions(self)
+                        .ok()?
+                        .into_iter()
+                        .find(|(func_name, func_node)| {
+                            func_name.starts_with(&name)
+                                && func_node.params(self).len() == num_inputs
+                        })
+                        .map(|(_, node)| node)
+                })
+                .collect();
+            self.find_func_inner(arena, ctx, name, num_inputs, possible_funcs)
+        } else {
+            Ok(None)
         }
     }
 
@@ -205,7 +227,17 @@ pub trait InternalFuncCaller:
             })
             .copied()
             .collect::<Vec<_>>();
+        self.find_func_inner(arena, ctx, name, num_inputs, possible_funcs)
+    }
 
+    fn find_func_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        name: String,
+        num_inputs: usize,
+        possible_funcs: Vec<FunctionNode>,
+    ) -> Result<Option<FunctionNode>, GraphError> {
         match possible_funcs.len() {
             0 => Ok(None),
             1 => Ok(Some(possible_funcs[0])),
@@ -307,7 +339,7 @@ pub trait InternalFuncCaller:
                         ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
                         return Ok(());
                     }
-                    analyzer.match_intrinsic_fallback(arena, ctx, &loc, &input_exprs, ret)
+                    unreachable!()
                 })
             }
             1 => {

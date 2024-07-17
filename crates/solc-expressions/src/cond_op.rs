@@ -171,74 +171,75 @@ pub trait CondOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Requir
         false_expr: &Expression,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
-        tracing::trace!("conditional operator");
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let true_subctx_kind = SubContextKind::new_fork(ctx, true);
-            let tctx =
-                Context::new_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
+        unreachable!("Should not have called this")
+        // tracing::trace!("conditional operator");
+        // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+        //     let true_subctx_kind = SubContextKind::new_fork(ctx, true);
+        //     let tctx =
+        //         Context::new_subctx(true_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
+        //     let true_subctx = ContextNode::from(analyzer.add_node(Node::Context(tctx)));
 
-            let false_subctx_kind = SubContextKind::new_fork(ctx, false);
-            let fctx =
-                Context::new_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
-            let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
-            ctx.set_child_fork(true_subctx, false_subctx, analyzer)
-                .into_expr_err(loc)?;
-            let ctx_fork = analyzer.add_node(Node::ContextFork);
-            analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
-            analyzer.add_edge(
-                NodeIdx::from(true_subctx.0),
-                ctx_fork,
-                Edge::Context(ContextEdge::Subcontext),
-            );
-            analyzer.add_edge(
-                NodeIdx::from(false_subctx.0),
-                ctx_fork,
-                Edge::Context(ContextEdge::Subcontext),
-            );
+        //     let false_subctx_kind = SubContextKind::new_fork(ctx, false);
+        //     let fctx =
+        //         Context::new_subctx(false_subctx_kind, loc, analyzer, None).into_expr_err(loc)?;
+        //     let false_subctx = ContextNode::from(analyzer.add_node(Node::Context(fctx)));
+        //     ctx.set_child_fork(true_subctx, false_subctx, analyzer)
+        //         .into_expr_err(loc)?;
+        //     let ctx_fork = analyzer.add_node(Node::ContextFork);
+        //     analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+        //     analyzer.add_edge(
+        //         NodeIdx::from(true_subctx.0),
+        //         ctx_fork,
+        //         Edge::Context(ContextEdge::Subcontext),
+        //     );
+        //     analyzer.add_edge(
+        //         NodeIdx::from(false_subctx.0),
+        //         ctx_fork,
+        //         Edge::Context(ContextEdge::Subcontext),
+        //     );
 
-            analyzer.true_fork_if_cvar(arena, if_expr.clone(), true_subctx)?;
-            analyzer.apply_to_edges(true_subctx, loc, arena, &|analyzer, arena, ctx, _loc| {
-                analyzer.parse_ctx_expr(arena, true_expr, ctx)
-            })?;
+        //     analyzer.true_fork_if_cvar(arena, if_expr.clone(), true_subctx)?;
+        //     analyzer.apply_to_edges(true_subctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+        //         analyzer.parse_ctx_expr(arena, true_expr, ctx)
+        //     })?;
 
-            analyzer.false_fork_if_cvar(arena, if_expr.clone(), false_subctx)?;
-            analyzer.apply_to_edges(false_subctx, loc, arena, &|analyzer, arena, ctx, _loc| {
-                analyzer.parse_ctx_expr(arena, false_expr, ctx)
-            })
-        })
+        //     analyzer.false_fork_if_cvar(arena, if_expr.clone(), false_subctx)?;
+        //     analyzer.apply_to_edges(false_subctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+        //         analyzer.parse_ctx_expr(arena, false_expr, ctx)
+        //     })
+        // })
     }
 
-    /// Creates the true_fork cvar (updates bounds assuming its true)
-    fn true_fork_if_cvar(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        if_expr: Expression,
-        true_fork_ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.apply_to_edges(
-            true_fork_ctx,
-            if_expr.loc(),
-            arena,
-            &|analyzer, arena, ctx, _loc| {
-                analyzer.handle_require(arena, &[if_expr.clone()], ctx)?;
-                Ok(())
-            },
-        )
-    }
+    // /// Creates the true_fork cvar (updates bounds assuming its true)
+    // fn true_fork_if_cvar(
+    //     &mut self,
+    //     arena: &mut RangeArena<Elem<Concrete>>,
+    //     if_expr: Expression,
+    //     true_fork_ctx: ContextNode,
+    // ) -> Result<(), ExprErr> {
+    //     self.apply_to_edges(
+    //         true_fork_ctx,
+    //         if_expr.loc(),
+    //         arena,
+    //         &|analyzer, arena, ctx, _loc| {
+    //             analyzer.handle_require(arena, &[if_expr.clone()], ctx)?;
+    //             Ok(())
+    //         },
+    //     )
+    // }
 
-    /// Creates the false_fork cvar (inverts the expression and sets the bounds assuming its false)
-    fn false_fork_if_cvar(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        if_expr: Expression,
-        false_fork_ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        let loc = if_expr.loc();
-        let inv_if_expr = self.inverse_expr(if_expr);
-        self.apply_to_edges(false_fork_ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
-            analyzer.handle_require(arena, &[inv_if_expr.clone()], ctx)?;
-            Ok(())
-        })
-    }
+    // /// Creates the false_fork cvar (inverts the expression and sets the bounds assuming its false)
+    // fn false_fork_if_cvar(
+    //     &mut self,
+    //     arena: &mut RangeArena<Elem<Concrete>>,
+    //     if_expr: Expression,
+    //     false_fork_ctx: ContextNode,
+    // ) -> Result<(), ExprErr> {
+    //     let loc = if_expr.loc();
+    //     let inv_if_expr = self.inverse_expr(if_expr);
+    //     self.apply_to_edges(false_fork_ctx, loc, arena, &|analyzer, arena, ctx, _loc| {
+    //         analyzer.handle_require(arena, &[inv_if_expr.clone()], ctx)?;
+    //         Ok(())
+    //     })
+    // }
 }

@@ -3,7 +3,7 @@ use crate::{variable::Variable, ListAccess};
 use graph::{
     elem::{Elem, RangeElem},
     nodes::{Builtin, Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 

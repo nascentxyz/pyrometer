@@ -5,7 +5,7 @@ use crate::ExpressionParser;
 use graph::{
     elem::Elem,
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 

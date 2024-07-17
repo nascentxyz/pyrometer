@@ -65,6 +65,24 @@ impl ContextVarNode {
         self.underlying(analyzer)?.ty.ref_range(analyzer)
     }
 
+    pub fn last_range_op(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Option<RangeOp>, GraphError> {
+        if let Some(r) = self.ref_range(analyzer)? {
+            let min_op = r.range_min().last_range_op(analyzer, arena)?;
+            let max_op = r.range_max().last_range_op(analyzer, arena)?;
+            if min_op == max_op {
+                Ok(min_op)
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn range_min(
         &self,
         analyzer: &impl GraphBackend,

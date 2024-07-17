@@ -3,7 +3,7 @@ use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller
 use graph::{
     elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena, StorageLocation};
 
@@ -57,9 +57,9 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn block_access(
         &mut self,
-        loc: Loc,
         ctx: ContextNode,
         ident_name: &str,
+        loc: Loc,
     ) -> Result<ExprRet, ExprErr> {
         let name = format!("block.{}", ident_name);
         tracing::trace!("Block Env member access: {}", name);
@@ -264,9 +264,9 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
     fn msg_access(
         &mut self,
-        loc: Loc,
         ctx: ContextNode,
         ident_name: &str,
+        loc: Loc,
     ) -> Result<ExprRet, ExprErr> {
         let name = format!("msg.{}", ident_name);
         tracing::trace!("Msg Env member access: {}", name);

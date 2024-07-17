@@ -84,7 +84,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                         // get length
                         let len = analyzer
-                            .get_length(arena, ctx, loc, arr, true)?
+                            .get_length(arena, ctx, arr, true, loc)?
                             .unwrap()
                             .latest_version(analyzer);
 
@@ -166,7 +166,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                             // get length
                             let len = analyzer
-                                .get_length(arena, ctx, loc, arr, true)?
+                                .get_length(arena, ctx, arr, true, loc)?
                                 .unwrap()
                                 .latest_version(analyzer);
 
@@ -271,7 +271,7 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                     // get length
                     let len = analyzer
-                        .get_length(arena, ctx, loc, arr, true)?
+                        .get_length(arena, ctx, arr, true, loc)?
                         .unwrap()
                         .latest_version(analyzer);
 

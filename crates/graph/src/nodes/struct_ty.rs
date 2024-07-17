@@ -61,17 +61,13 @@ impl StructNode {
             .collect()
     }
 
-    pub fn find_field(
-        &self,
-        analyzer: &impl GraphBackend,
-        ident: &Identifier,
-    ) -> Option<FieldNode> {
+    pub fn find_field(&self, analyzer: &impl GraphBackend, field_name: &str) -> Option<FieldNode> {
         analyzer
             .graph()
             .edges_directed(self.0.into(), Direction::Incoming)
             .filter(|edge| Edge::Field == *edge.weight())
             .map(|edge| FieldNode::from(edge.source()))
-            .find(|field_node| field_node.name(analyzer).unwrap() == ident.name)
+            .find(|field_node| field_node.name(analyzer).unwrap() == field_name)
     }
 
     pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {

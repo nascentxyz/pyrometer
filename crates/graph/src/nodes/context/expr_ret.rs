@@ -298,4 +298,10 @@ impl ExprRet {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    pub fn into_sized<const N: usize>(&self) -> [Self; N] {
+        self.as_vec().try_into().unwrap_or_else(|v: Vec<Self>| {
+            panic!("Expected a Vec of length {} but it was {}", N, v.len())
+        })
+    }
 }

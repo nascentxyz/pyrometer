@@ -8,14 +8,14 @@ use crate::{
 use graph::{
     elem::{Elem, RangeOp},
     nodes::{
-        Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet,
-        FunctionNode, KilledKind, StructNode, SubContextKind,
+        Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode,
+        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, TypeNode, VarType,
 };
 
 use shared::{string_to_static, ExprErr, ExprFlag, FlatExpr, IntoExprErr, NodeIdx, RangeArena};
-use solang_parser::pt::{CodeLocation, Expression, Loc, Statement};
+use solang_parser::pt::{CodeLocation, Expression, Identifier, Loc, Statement};
 
 impl<T> Flatten for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -342,28 +342,63 @@ pub trait Flatten:
                     self.traverse_expression(&arg.expr, unchecked);
                 });
 
-                self.push_expr(FlatExpr::FunctionCallName(input_args.len()));
                 self.traverse_expression(func_expr, unchecked);
+                match self.expr_stack_mut().pop().unwrap() {
+                    FlatExpr::Super(loc, name) => {
+                        self.push_expr(FlatExpr::FunctionCallName(input_args.len(), true));
+                        self.push_expr(FlatExpr::Variable(loc, name));
+                    }
+                    other => {
+                        self.push_expr(FlatExpr::FunctionCallName(input_args.len(), false));
+                        self.push_expr(other);
+                    }
+                }
+
                 input_args.iter().for_each(|arg| {
                     self.push_expr(FlatExpr::from(arg));
                 });
                 self.push_expr(FlatExpr::NamedFunctionCall(*loc, input_args.len()));
             }
-            FunctionCall(loc, func_expr, input_exprs) => {
-                input_exprs.iter().rev().for_each(|expr| {
-                    self.traverse_expression(expr, unchecked);
-                });
+            FunctionCall(loc, func_expr, input_exprs) => match &**func_expr {
+                Variable(Identifier { name, .. }) if matches!(&**name, "require" | "assert") => {
+                    input_exprs.iter().rev().for_each(|expr| {
+                        self.traverse_expression(expr, unchecked);
+                    });
+                    let cmp = self.expr_stack_mut().pop().unwrap();
+                    self.push_expr(FlatExpr::Requirement(*loc));
+                    self.push_expr(cmp);
+                }
+                _ => {
+                    input_exprs.iter().rev().for_each(|expr| {
+                        self.traverse_expression(expr, unchecked);
+                    });
 
-                self.push_expr(FlatExpr::FunctionCallName(input_exprs.len()));
-                self.traverse_expression(func_expr, unchecked);
-                self.push_expr(FlatExpr::FunctionCall(*loc, input_exprs.len()));
-            }
+                    self.traverse_expression(func_expr, unchecked);
+                    match self.expr_stack_mut().pop().unwrap() {
+                        FlatExpr::Super(loc, name) => {
+                            self.push_expr(FlatExpr::FunctionCallName(input_exprs.len(), true));
+                            self.push_expr(FlatExpr::Variable(loc, name));
+                        }
+                        other => {
+                            self.push_expr(FlatExpr::FunctionCallName(input_exprs.len(), false));
+                            self.push_expr(other);
+                        }
+                    }
+
+                    self.push_expr(FlatExpr::FunctionCall(*loc, input_exprs.len()));
+                }
+            },
             // member
             This(loc) => self.push_expr(FlatExpr::This(*loc)),
-            MemberAccess(loc, member_expr, ident) => {
-                self.traverse_expression(member_expr, unchecked);
-                self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
-            }
+            MemberAccess(loc, member_expr, ident) => match &**member_expr {
+                Variable(Identifier { name, .. }) if name == "super" => {
+                    self.push_expr(FlatExpr::Super(*loc, string_to_static(ident)));
+                }
+                _ => {
+                    self.traverse_expression(member_expr, unchecked);
+                    self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
+                }
+            },
 
             // Misc.
             Type(..) => self.push_expr(FlatExpr::try_from(parent_expr).unwrap()),
@@ -458,8 +493,8 @@ pub trait Flatten:
         );
         match next {
             // Flag expressions
-            FunctionCallName(n) => {
-                self.set_expr_flag(ExprFlag::FunctionName(n));
+            FunctionCallName(n, is_super) => {
+                self.set_expr_flag(ExprFlag::FunctionName(n, is_super));
                 Ok(())
             }
             Negate(_) => {
@@ -490,7 +525,7 @@ pub trait Flatten:
 
             // Comparator
             Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
-            | MoreEqual(loc) => self.interp_cmp(arena, ctx, loc, next),
+            | MoreEqual(loc) | And(loc) | Or(loc) => self.interp_cmp(arena, ctx, loc, next),
 
             If { .. } => self.interp_if(arena, ctx, stack, next),
 
@@ -535,8 +570,13 @@ pub trait Flatten:
             | AssignShiftRight(loc, ..) => self.interp_op(arena, ctx, next, loc, true),
 
             Parenthesis(_) => todo!(),
-            MemberAccess(..) => todo!(),
+            Super(..) => unreachable!(),
+            MemberAccess(..) => self.interp_member_access(arena, ctx, next),
 
+            Requirement(..) => {
+                self.set_expr_flag(ExprFlag::Requirement);
+                Ok(())
+            }
             FunctionCall(..) => self.interp_func_call(arena, ctx, next, None),
             FunctionCallBlock(_) => todo!(),
             NamedArgument(..) => Ok(()),
@@ -547,20 +587,33 @@ pub trait Flatten:
             Delete(_) => todo!(),
             UnaryPlus(_) => todo!(),
 
-            And(_) => todo!(),
-            Or(_) => todo!(),
             ConditionalOperator(_) => todo!(),
 
             This(_) => todo!(),
-            List(_, _) => self.interp_list(arena, ctx, stack, next, parse_idx),
+            List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
             Parameter(_, _, _) => Ok(()),
             Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
+        }?;
+
+        if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement))
+            && !matches!(next, Requirement(..))
+        {
+            let _ = self.take_expr_flag();
+            let loc = next.try_loc().unwrap();
+            let mut lhs = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+            let lhs = lhs.swap_remove(0);
+            let cnode = ConcreteNode::from(self.add_node(Concrete::Bool(true)));
+            let tmp_true = ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
+                .into_expr_err(loc)?;
+            let rhs = ExprRet::Single(self.add_node(tmp_true));
+            self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
+        } else {
+            Ok(())
         }
     }
 
     fn interp_list(
         &mut self,
-        _arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         stack: &[FlatExpr],
         list: FlatExpr,
@@ -587,6 +640,23 @@ pub trait Flatten:
             .into_expr_err(loc)?;
         ctx.debug_expr_stack(self).unwrap();
         Ok(())
+    }
+
+    fn interp_member_access(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::MemberAccess(loc, name) = next else {
+            unreachable!()
+        };
+
+        let member = ctx
+            .pop_n_latest_exprs(1, loc, self)
+            .into_expr_err(loc)?
+            .swap_remove(0);
+        self.member_access(arena, ctx, member, name, loc)
     }
 
     fn interp_xxcrement(
@@ -703,14 +773,53 @@ pub trait Flatten:
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
         let [lhs, rhs] = into_sized::<ExprRet, 2>(res);
 
-        match cmp {
-            FlatExpr::Equal(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Eq, &rhs),
-            FlatExpr::NotEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Neq, &rhs),
-            FlatExpr::Less(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Lt, &rhs),
-            FlatExpr::More(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Gt, &rhs),
-            FlatExpr::LessEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Lte, &rhs),
-            FlatExpr::MoreEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Gte, &rhs),
-            _ => unreachable!(),
+        if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement)) {
+            self.take_expr_flag();
+            match cmp {
+                FlatExpr::Equal(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
+                }
+                FlatExpr::NotEqual(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Neq, loc)
+                }
+                FlatExpr::Less(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Lt, loc)
+                }
+                FlatExpr::More(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gt, loc)
+                }
+                FlatExpr::LessEqual(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Lte, loc)
+                }
+                FlatExpr::MoreEqual(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gte, loc)
+                }
+                FlatExpr::Or(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Or, loc)
+                }
+                FlatExpr::And(..) => {
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::And, loc)
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            match cmp {
+                FlatExpr::Equal(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Eq, &rhs),
+                FlatExpr::NotEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Neq, &rhs),
+                FlatExpr::Less(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Lt, &rhs),
+                FlatExpr::More(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Gt, &rhs),
+                FlatExpr::LessEqual(..) => {
+                    self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Lte, &rhs)
+                }
+                FlatExpr::MoreEqual(..) => {
+                    self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Gte, &rhs)
+                }
+                FlatExpr::LessEqual(..) => {
+                    self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::And, &rhs)
+                }
+                FlatExpr::MoreEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Or, &rhs),
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -828,11 +937,16 @@ pub trait Flatten:
             unreachable!()
         };
 
+        let mut is_req = false;
         match self.take_expr_flag() {
-            Some(ExprFlag::FunctionName(n)) => {
-                let maybe_fn = self
-                    .find_func(arena, ctx, name.to_string(), n)
-                    .into_expr_err(loc)?;
+            Some(ExprFlag::FunctionName(n, super_call)) => {
+                let maybe_fn = if super_call {
+                    self.find_super_func(arena, ctx, name.to_string(), n)
+                        .into_expr_err(loc)?
+                } else {
+                    self.find_func(arena, ctx, name.to_string(), n)
+                        .into_expr_err(loc)?
+                };
 
                 if let Some(fn_node) = maybe_fn {
                     let as_var = ContextVar::maybe_from_user_ty(self, loc, fn_node.into()).unwrap();
@@ -956,10 +1070,20 @@ pub trait Flatten:
             let res = if let Some(input_names) = input_names {
                 let mut ret = Ok(None);
                 let ordered_names = match self.node(func) {
+                    Node::ContextVar(..) => match ContextVarNode::from(func).ty(self).unwrap() {
+                        VarType::User(TypeNode::Func(func), _) => func.ordered_param_names(self),
+                        VarType::User(TypeNode::Struct(strukt), _) => {
+                            strukt.ordered_new_param_names(self)
+                        }
+                        VarType::User(TypeNode::Contract(con), _) => {
+                            con.ordered_new_param_names(self)
+                        }
+                        other => todo!("Unhandled named arguments parent: {other:?}"),
+                    },
                     Node::Function(..) => FunctionNode::from(func).ordered_param_names(self),
                     Node::Struct(..) => StructNode::from(func).ordered_new_param_names(self),
                     Node::Contract(..) => ContractNode::from(func).ordered_new_param_names(self),
-                    _ => todo!(),
+                    other => todo!("Unhandled named arguments parent: {other:?}"),
                 };
 
                 if ordered_names != input_names {
@@ -1031,8 +1155,22 @@ pub trait Flatten:
                 };
                 self.cast_inner(arena, ctx, ty, &builtin, inputs, loc)
             }
-            _ => todo!(),
+            e => todo!("Unhandled ty: {e:?}"),
         }
+    }
+
+    fn interp_super_func_call(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::Super(loc, name) = next else {
+            unreachable!()
+        };
+
+        // self.super_access(arena, ctx, name, loc)
+        todo!()
     }
 
     fn interp_negatable_literal(

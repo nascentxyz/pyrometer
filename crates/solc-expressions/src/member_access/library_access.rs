@@ -18,7 +18,7 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
         &mut self,
         ctx: ContextNode,
         ty: NodeIdx,
-        ident: &Identifier,
+        func_name: &str,
     ) -> Option<ExprRet> {
         self.possible_library_funcs(ctx, ty)
             .iter()
@@ -30,7 +30,7 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
                 }
             })
             .find_map(|(name, func)| {
-                if name == ident.name {
+                if name == func_name {
                     Some(ExprRet::Single((*func).into()))
                 } else {
                     None

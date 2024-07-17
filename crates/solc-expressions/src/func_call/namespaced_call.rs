@@ -4,7 +4,6 @@ use crate::assign::Assign;
 use crate::{
     func_call::func_caller::{FuncCaller, NamedOrUnnamedArgs},
     func_call::helper::CallerHelper,
-    intrinsic_call::IntrinsicFuncCaller,
     member_access::MemberAccess,
     ContextBuilder, ExpressionParser,
 };
@@ -50,7 +49,7 @@ pub trait NameSpaceFuncCaller:
                 let fn_node = self
                     .builtin_fn_or_maybe_add(&func_name)
                     .unwrap_or_else(|| panic!("No builtin function with name {func_name}"));
-                return self.intrinsic_func_call(arena, loc, &input_exprs, fn_node, ctx);
+                unreachable!()
             } else if name == "super" {
                 if let Some(contract) = ctx.maybe_associated_contract(self).into_expr_err(*loc)? {
                     let supers = contract.super_contracts(self);
@@ -425,13 +424,7 @@ pub trait NameSpaceFuncCaller:
                             }
                             let mut modifier_input_exprs = vec![member_expr.clone()];
                             modifier_input_exprs.extend(input_exprs.exprs());
-                            analyzer.match_intrinsic_fallback(
-                                arena,
-                                ctx,
-                                &loc,
-                                &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs),
-                                ret,
-                            )
+                            unreachable!()
                         })
                     } else {
                         // analyzer.match_intrinsic_fallback(ctx, &loc, &modifier_input_exprs, ret)
@@ -470,13 +463,7 @@ pub trait NameSpaceFuncCaller:
                         }
                         let mut modifier_input_exprs = vec![member_expr.clone()];
                         modifier_input_exprs.extend(input_exprs.exprs());
-                        analyzer.match_intrinsic_fallback(
-                            arena,
-                            ctx,
-                            &loc,
-                            &NamedOrUnnamedArgs::Unnamed(&modifier_input_exprs),
-                            ret,
-                        )
+                        unreachable!()
                     })
                 }
             } else if possible_funcs.len() == 1 {

@@ -349,7 +349,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     loc: Some(loc),
                     name: name.to_string(),
                     display_name: name.to_string(),
-                    storage: storage.as_ref().map(|s| s.clone().into()),
+                    storage,
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,

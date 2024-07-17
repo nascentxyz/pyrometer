@@ -160,16 +160,16 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             && parent.is_indexable(self).into_expr_err(loc)?
         {
             let len_var = self
-                .get_length(arena, ctx, loc, parent, true)?
+                .get_length(arena, ctx, parent, true, loc)?
                 .unwrap()
                 .latest_version_or_inherited_in_ctx(ctx, self);
             self.require(
                 arena,
+                ctx,
                 len_var.latest_version_or_inherited_in_ctx(ctx, self),
                 idx.latest_version_or_inherited_in_ctx(ctx, self),
-                ctx,
-                loc,
                 RangeOp::Gt,
+                loc,
             )?;
         }
 
@@ -265,7 +265,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 {
                     // if the index access is also an array, produce a length variable
                     // we specify to return the variable because we dont want it on the stack
-                    let _ = self.get_length(arena, ctx, loc, idx_access_node.into(), true)?;
+                    let _ = self.get_length(arena, ctx, idx_access_node.into(), true, loc)?;
                 }
                 idx_access_cvar
             } else {

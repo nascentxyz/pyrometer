@@ -1,6 +1,6 @@
 use graph::{
     nodes::{Builtin, ContextNode, ContextVar, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr};
 

@@ -10,7 +10,7 @@ use graph::{
         Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FuncVis, FunctionNode,
         FunctionParamNode, KilledKind,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Range, SolcRange, VarType,
 };
 use shared::{AnalyzerLike, ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
@@ -526,7 +526,7 @@ pub trait FuncApplier:
 
                     if let Some(_len_var) = replacement.array_to_len_var(self) {
                         // bring the length variable along as well
-                        self.get_length(arena, apply_ctx, loc, *func_input, false)
+                        self.get_length(arena, apply_ctx, *func_input, false, loc)
                             .unwrap();
                     }
 

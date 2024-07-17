@@ -1,7 +1,7 @@
 use crate::elem::{MinMaxed, RangeArenaLike};
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{collapse, Elem, MaybeCollapsed, RangeElem},
+    range::elem::{collapse, Elem, MaybeCollapsed, RangeElem, RangeOp},
     GraphBackend,
 };
 
@@ -9,6 +9,26 @@ use shared::{GraphError, NodeIdx, RangeArena};
 
 impl RangeElem<Concrete> for Elem<Concrete> {
     type GraphError = GraphError;
+
+    fn last_range_op(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Option<RangeOp>, GraphError> {
+        match self {
+            Self::Reference(d) => d.last_range_op(analyzer, arena),
+            Self::Concrete(c) => c.last_range_op(analyzer, arena),
+            Self::Expr(expr) => expr.last_range_op(analyzer, arena),
+            Self::ConcreteDyn(d) => d.last_range_op(analyzer, arena),
+            Self::Null => Ok(None),
+            Self::Arena(_) => {
+                let (de, idx) = self.dearenaize(arena);
+                let res = de.last_range_op(analyzer, arena)?;
+                self.rearenaize(de, idx, arena);
+                Ok(res)
+            }
+        }
+    }
 
     fn arenaize(
         &mut self,

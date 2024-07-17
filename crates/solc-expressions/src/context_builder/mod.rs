@@ -2,7 +2,7 @@
 use graph::{
     elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 

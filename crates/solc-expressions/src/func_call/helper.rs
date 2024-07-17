@@ -13,7 +13,7 @@ use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
 use solang_parser::pt::{Expression, Loc};
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::collections::BTreeMap;
 
 impl<T> CallerHelper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Helper trait for performing function calls
@@ -72,7 +72,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
                         if let Some(_len_var) = input.array_to_len_var(self) {
                             // bring the length variable along as well
-                            self.get_length(arena, callee_ctx, loc, node, false)
+                            self.get_length(arena, callee_ctx, node, false, loc)
                                 .unwrap();
                         }
 
@@ -155,29 +155,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 }
             })
             .collect::<BTreeMap<_, ContextVarNode>>())
-    }
-
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Parses input expressions into [`ExprRet`]s and adds them to the expr ret stack
-    fn parse_inputs(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        inputs: &[Expression],
-    ) -> Result<(), ExprErr> {
-        unreachable!("Should not have called this");
-    }
-
-    fn parse_input(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        _loc: Loc,
-        input: &Expression,
-        append: &Rc<RefCell<bool>>,
-    ) -> Result<(), ExprErr> {
-        unreachable!("Should not have called this");
     }
 
     /// Creates a new context for a call

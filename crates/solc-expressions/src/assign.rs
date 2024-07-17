@@ -247,8 +247,8 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         if rhs_cvar.is_indexable(self).into_expr_err(loc)? {
             // rhs is indexable. get the length attribute, create a new length for the lhs,
             // and perform assign
-            let rhs_len_cvar = self.get_length(arena, ctx, loc, rhs_cvar, true)?.unwrap();
-            let lhs_len_cvar = self.get_length(arena, ctx, loc, lhs_cvar, true)?.unwrap();
+            let rhs_len_cvar = self.get_length(arena, ctx, rhs_cvar, true, loc)?.unwrap();
+            let lhs_len_cvar = self.get_length(arena, ctx, lhs_cvar, true, loc)?.unwrap();
             self.assign(arena, loc, lhs_len_cvar, rhs_len_cvar, ctx)?;
             // update the range
             self.update_array_if_length_var(

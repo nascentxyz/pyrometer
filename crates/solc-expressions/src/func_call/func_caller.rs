@@ -4,9 +4,8 @@ use crate::{
     func_call::{apply::FuncApplier, modifier::ModifierCaller},
     helper::CallerHelper,
     internal_call::InternalFuncCaller,
-    intrinsic_call::IntrinsicFuncCaller,
     namespaced_call::NameSpaceFuncCaller,
-    ContextBuilder, ExpressionParser, Flatten,
+    ContextBuilder, Flatten,
 };
 
 use graph::{
@@ -147,79 +146,6 @@ pub trait FuncCaller:
                 *loc,
                 format!("Cannot call intrinsic functions with named arguments. Call: {e:?}"),
             )),
-        }
-    }
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Perform a function call
-    fn fn_call_expr(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        func_expr: &Expression,
-        input_exprs: &[Expression],
-    ) -> Result<(), ExprErr> {
-        use solang_parser::pt::Expression::*;
-        match func_expr {
-            MemberAccess(loc, member_expr, ident) => self.call_name_spaced_func(
-                arena,
-                ctx,
-                loc,
-                member_expr,
-                ident,
-                NamedOrUnnamedArgs::Unnamed(input_exprs),
-            ),
-            Variable(ident) => self.call_internal_func(
-                arena,
-                ctx,
-                loc,
-                ident,
-                func_expr,
-                NamedOrUnnamedArgs::Unnamed(input_exprs),
-            ),
-            _ => {
-                self.parse_ctx_expr(arena, func_expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Function call to nonexistent function".to_string(),
-                        ));
-                    };
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.match_intrinsic_fallback(
-                        arena,
-                        ctx,
-                        &loc,
-                        &NamedOrUnnamedArgs::Unnamed(input_exprs),
-                        ret,
-                    )
-                })
-            }
-        }
-    }
-
-    /// Perform an intrinsic function call
-    fn match_intrinsic_fallback(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        input_exprs: &NamedOrUnnamedArgs,
-        ret: ExprRet,
-    ) -> Result<(), ExprErr> {
-        match ret {
-            ExprRet::Single(func_idx) | ExprRet::SingleLiteral(func_idx) => {
-                self.intrinsic_func_call(arena, loc, input_exprs, func_idx, ctx)
-            }
-            ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
-                self.match_intrinsic_fallback(arena, ctx, loc, input_exprs, ret)
-            }),
-            ExprRet::CtxKilled(kind) => ctx.kill(self, *loc, kind).into_expr_err(*loc),
-            ExprRet::Null => Ok(()),
         }
     }
 
