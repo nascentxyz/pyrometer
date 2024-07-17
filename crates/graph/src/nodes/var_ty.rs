@@ -58,18 +58,14 @@ impl VarNode {
                 self.underlying(analyzer)?.name.as_ref().unwrap().name
             );
             let init = analyzer.parse_expr(arena, &expr, Some(parent));
+            let underlying = self.underlying(analyzer)?;
+            let target_ty = VarType::try_from_idx(analyzer, underlying.ty).unwrap();
+            let initer_ty = ContextVarNode::from(init).ty(analyzer)?.clone();
 
-            let underlying = self.underlying(analyzer)?.clone();
             let mut set = false;
-            if let Some(ty) = VarType::try_from_idx(analyzer, underlying.ty) {
-                if let Some(initer) = VarType::try_from_idx(analyzer, init) {
-                    if let Some(initer) = initer.try_cast(&ty, analyzer)? {
-                        if let Some(conc_idx) = initer.builtin_to_concrete_idx(analyzer, arena)? {
-                            set = true;
-                            self.underlying_mut(analyzer)?.initializer = Some(conc_idx);
-                        }
-                    }
-                }
+            if let Some(initer) = initer_ty.try_cast(&target_ty, analyzer)? {
+                set = true;
+                self.underlying_mut(analyzer)?.initializer = Some(initer.ty_idx());
             }
 
             if !set {

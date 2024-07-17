@@ -7,7 +7,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
-use shared::GraphError;
+use shared::{GraphError, NodeIdx};
 
 use solang_parser::pt::Loc;
 use std::collections::BTreeSet;
@@ -408,7 +408,11 @@ impl Context {
             )));
         }
 
-        let parent_fn = subctx_kind.parent_ctx().associated_fn(analyzer)?;
+        let parent_fn = if let Some(cont) = subctx_kind.continuation_of() {
+            cont.associated_fn(analyzer)?
+        } else {
+            subctx_kind.parent_ctx().associated_fn(analyzer)?
+        };
 
         let modifier_state = if let Some(mstate) = modifier_state {
             Some(mstate)
@@ -464,6 +468,37 @@ impl Context {
             analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
         }
         Ok(ctx_node)
+    }
+
+    pub fn add_fork_subctxs(
+        analyzer: &mut impl AnalyzerBackend,
+        parent_ctx: ContextNode,
+        loc: Loc,
+    ) -> Result<(ContextNode, ContextNode), GraphError> {
+        let true_subctx_kind = SubContextKind::new_fork(parent_ctx, true);
+        let true_subctx = Context::add_subctx(true_subctx_kind, loc, analyzer, None)?;
+
+        let false_subctx_kind = SubContextKind::new_fork(parent_ctx, false);
+        let false_subctx = Context::add_subctx(false_subctx_kind, loc, analyzer, None)?;
+
+        parent_ctx.set_child_fork(true_subctx, false_subctx, analyzer)?;
+        let ctx_fork = analyzer.add_node(Node::ContextFork);
+        analyzer.add_edge(
+            ctx_fork,
+            parent_ctx,
+            Edge::Context(ContextEdge::ContextFork),
+        );
+        analyzer.add_edge(
+            NodeIdx::from(true_subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+        analyzer.add_edge(
+            NodeIdx::from(false_subctx.0),
+            ctx_fork,
+            Edge::Context(ContextEdge::Subcontext),
+        );
+        Ok((true_subctx, false_subctx))
     }
 
     pub fn new_loop_subctx(

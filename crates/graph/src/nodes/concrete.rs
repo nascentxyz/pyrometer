@@ -28,7 +28,7 @@ impl ConcreteNode {
     /// Creates a version of this concrete that is max size
     pub fn max_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
-        Ok(analyzer.add_node(Node::Concrete(c)).into())
+        Ok(analyzer.add_node(c).into())
     }
 
     /// Gets the internal type of the dynamic that backs this. Panics if this is not a dynamic concrete

@@ -24,13 +24,22 @@ impl ContextNode {
     }
 
     /// Debug print the stack
-    pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+    pub fn debug_expr_stack_str(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         let underlying_mut = self.underlying(analyzer)?;
-        underlying_mut
-            .expr_ret_stack
-            .iter()
-            .enumerate()
-            .for_each(|(i, elem)| println!("{i}. {}", elem.debug_str(analyzer)));
+        Ok(format!(
+            "[\n\t{}\n]",
+            underlying_mut
+                .expr_ret_stack
+                .iter()
+                .enumerate()
+                .map(|(i, elem)| format!("{i}. {}", elem.debug_str(analyzer)))
+                .collect::<Vec<_>>()
+                .join("\n\t")
+        ))
+    }
+
+    pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+        println!("{}", self.debug_expr_stack_str(analyzer)?);
         Ok(())
     }
 

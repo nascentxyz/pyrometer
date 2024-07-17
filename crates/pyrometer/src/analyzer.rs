@@ -364,7 +364,7 @@ impl Analyzer {
         expr: &Expression,
         parent: Option<NodeIdx>,
     ) -> Option<ExprRet> {
-        tracing::trace!("Parsing required compile-time evaluation");
+        tracing::trace!("Parsing required compile-time evaluation: {expr:?}, {parent:?}");
 
         let ctx = if let Some(parent) = parent {
             let pf = Function {

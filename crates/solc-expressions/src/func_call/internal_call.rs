@@ -271,7 +271,8 @@ pub trait InternalFuncCaller:
             _ => {
                 let stack = &ctx.underlying(self)?.expr_ret_stack;
                 let len = stack.len();
-                let inputs = &stack[len - num_inputs - 1..];
+                let mut inputs = stack[len.saturating_sub(num_inputs)..].to_vec();
+                inputs.reverse();
                 let resizeables: Vec<_> = inputs
                     .iter()
                     .map(|input| input.expect_single().ok())
@@ -301,7 +302,7 @@ pub trait InternalFuncCaller:
                     })
                     .collect();
 
-                let inputs = ExprRet::Multi(inputs.to_vec());
+                let inputs = ExprRet::Multi(inputs);
                 Ok(self.disambiguate_fn_call(
                     arena,
                     &name,

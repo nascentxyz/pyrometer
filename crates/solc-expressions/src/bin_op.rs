@@ -315,7 +315,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
                 return Ok(());
             }
-            analyzer.bit_not_inner(arena, ctx, loc, lhs.flatten())
+            analyzer.bit_not_inner(arena, ctx, lhs.flatten(), loc)
         })
     }
 
@@ -324,8 +324,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         lhs_expr: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match lhs_expr {
             ExprRet::CtxKilled(kind) => {
@@ -339,7 +339,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ContextVarNode::from(lhs)
                     .try_increase_size(self, arena)
                     .into_expr_err(loc)?;
-                self.bit_not_inner(arena, ctx, loc, ExprRet::Single(lhs))?;
+                self.bit_not_inner(arena, ctx, ExprRet::Single(lhs), loc)?;
                 Ok(())
             }
             ExprRet::Single(lhs) => {

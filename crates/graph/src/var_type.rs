@@ -296,7 +296,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.cast(b.clone()) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -306,7 +306,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.cast_from(to_c) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -334,7 +334,7 @@ impl VarType {
                     let Some(conc) = min.val.cast(builtin.clone()) else {
                         return Ok(None);
                     };
-                    let conc_idx = analyzer.add_node(Node::Concrete(conc));
+                    let conc_idx = analyzer.add_node(conc);
                     Ok(Some(conc_idx))
                 } else {
                     Ok(None)
@@ -380,7 +380,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast(b.clone()) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -390,7 +390,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast_from(to_c) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -588,7 +588,7 @@ impl VarType {
     //                         let mut h = H256::default();
     //                         h.0[0] = val.0[idx.low_u32() as usize];
     //                         let ret_val = Concrete::Bytes(1, h);
-    //                         let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                         let node = analyzer.add_node(ret_val);
     //                         return Ok(Some(node));
     //                     }
     //                 }
@@ -616,7 +616,7 @@ impl VarType {
     //                         if let Some(idx) = val.0.node_idx() {
     //                             return Ok(idx.into());
     //                         } else if let Some(c) = val.0.concrete() {
-    //                             let cnode = analyzer.add_node(Node::Concrete(c));
+    //                             let cnode = analyzer.add_node(c);
     //                             return Ok(cnode.into());
     //                         }
     //                     }
@@ -640,7 +640,7 @@ impl VarType {
     //                             let mut h = H256::default();
     //                             h.0[0] = val.0[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             let node = analyzer.add_node(ret_val);
     //                             return Ok(Some(node));
     //                         }
     //                     }
@@ -649,7 +649,7 @@ impl VarType {
     //                             let mut h = H256::default();
     //                             h.0[0] = elems[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             let node = analyzer.add_node(ret_val);
     //                             return Ok(Some(node));
     //                         }
     //                     }
@@ -658,7 +658,7 @@ impl VarType {
     //                             let mut h = H256::default();
     //                             h.0[0] = st.as_bytes()[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             let node = analyzer.add_node(ret_val);
     //                             return Ok(Some(node));
     //                         }
     //                     }

@@ -15,10 +15,12 @@ use graph::{
 };
 
 use shared::{
-    post_to_site, string_to_static, ExprErr, ExprFlag, FlatExpr, GraphError, GraphLike,
-    IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
+    post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
+    GraphError, GraphLike, IfElseChain, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
 };
-use solang_parser::pt::{CodeLocation, Expression, Identifier, Loc, Statement};
+use solang_parser::pt::{
+    CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
+};
 
 impl<T> Flatten for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -48,7 +50,6 @@ pub trait Flatten:
 {
     fn traverse_statement(&mut self, stmt: &Statement, unchecked: Option<bool>) {
         use Statement::*;
-        tracing::trace!("traverse statement: {stmt:#?}");
         match stmt {
             Block {
                 loc: _,
@@ -94,9 +95,17 @@ pub trait Flatten:
                 // based on their size
                 let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr, unchecked);
+                let cmp = self.expr_stack_mut().pop().unwrap();
+                // have it be a require statement
+                self.push_expr(FlatExpr::Requirement(*loc));
+                self.push_expr(cmp);
                 let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+
+                // the false condition is the same as the true, but with the comparator inverted
                 let mut false_cond = true_cond.clone();
-                false_cond.push(FlatExpr::Not(if_expr.loc()));
+                if let Some(last) = false_cond.pop() {
+                    false_cond.push(last.try_inv_cmp().unwrap_or(FlatExpr::Not(*loc)));
+                }
 
                 let true_cond_delta = true_cond.len();
                 let false_cond_delta = false_cond.len();
@@ -156,7 +165,7 @@ pub trait Flatten:
                 dialect: _,
                 flags: _,
                 block: yul_block,
-            } => {}
+            } => self.traverse_yul_statement(&YulStatement::Block(yul_block.clone())),
             Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     self.traverse_expression(ret_expr, unchecked);
@@ -172,10 +181,153 @@ pub trait Flatten:
         }
     }
 
+    fn traverse_yul_statement(&mut self, stmt: &YulStatement) {
+        use YulStatement::*;
+        match stmt {
+            Assign(loc, lhs, rhs) => {}
+            VariableDeclaration(loc, idents, maybe_assignment) => {}
+            If(loc, if_expr, true_stmt) => {
+                let iec = IfElseChain {
+                    if_expr: if_expr.clone(),
+                    true_stmt: YulStatement::Block(true_stmt.clone()),
+                    next: None,
+                };
+                self.traverse_yul_if_else(*loc, iec);
+            }
+            For(yul_for) => {}
+            Switch(solang_parser::pt::YulSwitch {
+                loc,
+                condition,
+                cases,
+                default,
+            }) => {
+                if let Some(iec) = self.add_if_err(IfElseChain::from(
+                    *loc,
+                    (condition.clone(), cases.clone(), default.clone()),
+                )) {
+                    self.traverse_yul_if_else(*loc, iec);
+                }
+            }
+            Leave(loc) => {
+                self.push_expr(FlatExpr::Break(*loc));
+            }
+            Break(loc) => {
+                self.push_expr(FlatExpr::Break(*loc));
+            }
+            Continue(loc) => {
+                self.push_expr(FlatExpr::Continue(*loc));
+            }
+            Block(block) => {
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock));
+                for statement in block.statements.iter() {
+                    self.traverse_yul_statement(&statement);
+                }
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock));
+            }
+            FunctionDefinition(def) => {
+                todo!()
+            }
+            FunctionCall(call) => {
+                self.traverse_yul_expression(&YulExpression::FunctionCall(call.clone()));
+            }
+            Error(loc) => {}
+        }
+    }
+
+    fn traverse_yul_if_else(&mut self, loc: Loc, iec: IfElseChain) {
+        let true_body = &iec.true_stmt;
+        let start_len = self.expr_stack_mut().len();
+        self.traverse_yul_expression(&iec.if_expr);
+        self.push_expr(FlatExpr::NumberLiteral(loc, "0", "", None));
+        // have it be a require statement
+        self.push_expr(FlatExpr::Requirement(loc));
+        self.push_expr(FlatExpr::More(loc));
+        let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+
+        // the false condition is the same as the true, but with the comparator inverted
+        let mut false_cond = true_cond.clone();
+        if let Some(last) = false_cond.pop() {
+            false_cond.push(last.try_inv_cmp().unwrap_or(FlatExpr::Not(loc)));
+        }
+
+        let true_cond_delta = true_cond.len();
+        let false_cond_delta = false_cond.len();
+
+        self.traverse_yul_statement(true_body);
+        let true_body = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+        let true_body_delta = true_body.len();
+
+        let (if_expr, false_body) = if let Some(next) = iec.next {
+            match next {
+                ElseOrDefault::Else(curr) => {
+                    self.traverse_yul_if_else(loc, *curr);
+                }
+                ElseOrDefault::Default(false_body) => self.traverse_yul_statement(&false_body),
+            }
+            let false_body = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+            let false_body_delta = false_body.len();
+            (
+                FlatExpr::If {
+                    loc,
+                    true_cond: true_cond_delta,
+                    false_cond: false_cond_delta,
+                    true_body: true_body_delta,
+                    false_body: false_body_delta,
+                },
+                false_body,
+            )
+        } else {
+            (
+                FlatExpr::If {
+                    loc,
+                    true_cond: true_cond_delta,
+                    false_cond: false_cond_delta,
+                    true_body: true_body_delta,
+                    false_body: 0,
+                },
+                vec![],
+            )
+        };
+
+        self.push_expr(if_expr);
+        let stack = self.expr_stack_mut();
+        stack.extend(true_cond);
+        stack.extend(false_cond);
+        stack.extend(true_body);
+        stack.extend(false_body);
+    }
+
+    fn traverse_yul_expression(&mut self, expr: &YulExpression) {
+        use YulExpression::*;
+        match expr {
+            FunctionCall(func_call) => {
+                func_call.arguments.iter().rev().for_each(|expr| {
+                    self.traverse_yul_expression(expr);
+                });
+
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulFunctionCallName(
+                    func_call.arguments.len(),
+                )));
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulVariable(
+                    func_call.id.loc,
+                    string_to_static(func_call.id.name.clone()),
+                )));
+
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulFuncCall(
+                    expr.loc(),
+                    func_call.arguments.len(),
+                )));
+            }
+            SuffixAccess(_, member, _) => {
+                self.traverse_yul_expression(member);
+                self.push_expr(FlatExpr::try_from(expr).unwrap());
+            }
+            _ => self.push_expr(FlatExpr::try_from(expr).unwrap()),
+        }
+    }
+
     fn traverse_expression(&mut self, parent_expr: &Expression, unchecked: Option<bool>) {
         use Expression::*;
-
-        tracing::trace!("traverse expression: {parent_expr:#?}");
         match parent_expr {
             // literals
             NumberLiteral(..)
@@ -189,12 +341,17 @@ pub trait Flatten:
                 self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
             }
 
-            Negate(_loc, expr)
-            | UnaryPlus(_loc, expr)
+            Negate(_loc, expr) => {
+                self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
+                self.traverse_expression(expr, unchecked);
+            }
+
+            Parenthesis(_loc, expr) => self.traverse_expression(expr, unchecked),
+
+            UnaryPlus(_loc, expr)
             | BitwiseNot(_loc, expr)
             | Not(_loc, expr)
             | Delete(_loc, expr)
-            | Parenthesis(_loc, expr)
             | PreIncrement(_loc, expr)
             | PostIncrement(_loc, expr)
             | PreDecrement(_loc, expr)
@@ -506,6 +663,11 @@ pub trait Flatten:
             ctx.path(self),
             self.peek_expr_flag()
         );
+
+        tracing::trace!(
+            "current expr_ret stack: {}",
+            ctx.debug_expr_stack_str(self).unwrap()
+        );
         match next {
             // Flag expressions
             FunctionCallName(n, is_super, named_args) => {
@@ -542,7 +704,7 @@ pub trait Flatten:
             Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
             | MoreEqual(loc) | And(loc) | Or(loc) => self.interp_cmp(arena, ctx, loc, next),
 
-            If { .. } => self.interp_if(arena, ctx, stack, next),
+            If { .. } => self.interp_if(arena, ctx, stack, next, parse_idx),
 
             Continue(loc) | Break(loc) => Err(ExprErr::Todo(
                 loc,
@@ -570,8 +732,9 @@ pub trait Flatten:
             | ShiftRight(loc, ..)
             | BitwiseAnd(loc, ..)
             | BitwiseXor(loc, ..)
-            | BitwiseOr(loc, ..)
-            | BitwiseNot(loc, ..) => self.interp_op(arena, ctx, next, loc, false),
+            | BitwiseOr(loc, ..) => self.interp_op(arena, ctx, next, loc, false),
+
+            BitwiseNot(loc, ..) => self.interp_bit_not(arena, ctx, next),
 
             AssignAdd(loc, ..)
             | AssignSubtract(loc, ..)
@@ -584,7 +747,6 @@ pub trait Flatten:
             | AssignShiftLeft(loc, ..)
             | AssignShiftRight(loc, ..) => self.interp_op(arena, ctx, next, loc, true),
 
-            Parenthesis(_) => todo!(),
             Super(..) => unreachable!(),
             MemberAccess(..) => self.interp_member_access(arena, ctx, next),
 
@@ -608,6 +770,12 @@ pub trait Flatten:
             List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
             Parameter(_, _, _) => Ok(()),
             Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
+            YulExpr(FlatYulExpr::YulStartBlock) => Ok(()),
+            YulExpr(FlatYulExpr::YulVariable(..)) => Ok(()),
+            YulExpr(FlatYulExpr::YulFunctionCallName(..)) => Ok(()),
+            YulExpr(FlatYulExpr::YulFuncCall(..)) => Ok(()),
+            YulExpr(FlatYulExpr::YulSuffixAccess(..)) => Ok(()),
+            YulExpr(FlatYulExpr::YulEndBlock) => Ok(()),
         }?;
 
         if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement))
@@ -625,6 +793,24 @@ pub trait Flatten:
         } else {
             Ok(())
         }
+    }
+
+    fn interp_bit_not(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::BitwiseNot(loc) = next else {
+            unreachable!()
+        };
+
+        let to_not = ctx
+            .pop_n_latest_exprs(1, loc, self)
+            .into_expr_err(loc)?
+            .swap_remove(0);
+
+        self.bit_not_inner(arena, ctx, to_not, loc)
     }
 
     fn interp_list(
@@ -714,6 +900,7 @@ pub trait Flatten:
         ctx: ContextNode,
         stack: &[FlatExpr],
         if_expr: FlatExpr,
+        parse_idx: usize,
     ) -> Result<(), ExprErr> {
         let FlatExpr::If {
             loc,
@@ -726,63 +913,81 @@ pub trait Flatten:
             unreachable!()
         };
 
-        let true_subctx_kind = SubContextKind::new_fork(ctx, true);
-        let true_subctx =
-            Context::add_subctx(true_subctx_kind, loc, self, None).into_expr_err(loc)?;
+        let (true_subctx, false_subctx) =
+            Context::add_fork_subctxs(self, ctx, loc).into_expr_err(loc)?;
 
-        let false_subctx_kind = SubContextKind::new_fork(ctx, false);
-        let false_subctx =
-            Context::add_subctx(false_subctx_kind, loc, self, None).into_expr_err(loc)?;
-        ctx.set_child_fork(true_subctx, false_subctx, self)
-            .into_expr_err(loc)?;
-        let ctx_fork = self.add_node(Node::ContextFork);
-        self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
-        self.add_edge(
-            NodeIdx::from(true_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-        self.add_edge(
-            NodeIdx::from(false_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-
-        // parse the true condition expressions
-        for i in 0..true_cond {
+        // Parse the true condition expressions then skip the
+        // false condition expressions, thus resulting in the
+        // true_subctx parse_idx being the start of true body
+        for _ in 0..true_cond {
             self.interpret_step(arena, true_subctx, loc, stack)?;
         }
-        // skip the false condition expressions
         self.modify_edges(true_subctx, loc, &|analyzer, true_subctx| {
             true_subctx.skip_n_exprs(false_cond, analyzer);
             Ok(())
         })?;
 
-        // skip the true condition expressions
+        // Skip the true condition expressions then parse the false
+        // condition expressions
         false_subctx.skip_n_exprs(true_cond, self);
-        // parse the false condition expressions
         for _ in 0..false_cond {
             self.interpret_step(arena, false_subctx, loc, stack)?;
         }
 
-        // todo: the kill check
-        for _ in 0..true_body {
-            self.interpret_step(arena, true_subctx, loc, stack)?;
-        }
-        // skip the false body expressions
-        self.modify_edges(true_subctx, loc, &|analyzer, true_subctx| {
-            true_subctx.skip_n_exprs(false_body, analyzer);
-            Ok(())
-        })?;
+        let true_killed = true_subctx.is_killed(self).into_expr_err(loc)?
+            || true_subctx.unreachable(self, arena).into_expr_err(loc)?;
+        let false_killed = false_subctx.is_killed(self).into_expr_err(loc)?
+            || false_subctx.unreachable(self, arena).into_expr_err(loc)?;
 
-        // skip the true body expressions
-        self.modify_edges(false_subctx, loc, &|analyzer, false_subctx| {
-            false_subctx.skip_n_exprs(true_body, analyzer);
-            Ok(())
-        })?;
-        // parse the false body expressions
-        for i in 0..false_body {
-            self.interpret_step(arena, false_subctx, loc, stack)?;
+        match (true_killed, false_killed) {
+            (true, true) => {
+                // both have been killed, delete the child and dont process the bodies
+                ctx.delete_child(self).into_expr_err(loc)?;
+            }
+            (true, false) => {
+                // the true context has been killed, delete child, process the false fork expression
+                // in the parent context and parse the false body
+                ctx.delete_child(self).into_expr_err(loc)?;
+
+                // point the parse index of the parent ctx to the false body
+                ctx.underlying_mut(self).unwrap().parse_idx =
+                    parse_idx + true_cond + false_cond + true_body;
+                for _ in 0..false_body {
+                    self.interpret_step(arena, ctx, loc, stack)?;
+                }
+            }
+            (false, true) => {
+                // the false context has been killed, delete child, process the true fork expression
+                // in the parent context and parse the true body
+                ctx.delete_child(self).into_expr_err(loc)?;
+
+                // point the parse index of the parent ctx to the true body
+                ctx.underlying_mut(self).unwrap().parse_idx = parse_idx + true_cond + false_cond;
+                for _ in 0..true_body {
+                    self.interpret_step(arena, ctx, loc, stack)?;
+                }
+            }
+            (false, false) => {
+                // both branches are reachable. process each body
+                for _ in 0..true_body {
+                    self.interpret_step(arena, true_subctx, loc, stack)?;
+                }
+                // skip the false body expressions
+                self.modify_edges(true_subctx, loc, &|analyzer, true_subctx| {
+                    true_subctx.skip_n_exprs(false_body, analyzer);
+                    Ok(())
+                })?;
+
+                // skip the true body expressions
+                self.modify_edges(false_subctx, loc, &|analyzer, false_subctx| {
+                    false_subctx.skip_n_exprs(true_body, analyzer);
+                    Ok(())
+                })?;
+                // parse the false body expressions
+                for i in 0..false_body {
+                    self.interpret_step(arena, false_subctx, loc, stack)?;
+                }
+            }
         }
         Ok(())
     }

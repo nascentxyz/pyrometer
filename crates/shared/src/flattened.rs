@@ -1,5 +1,5 @@
-use crate::StorageLocation;
-use solang_parser::pt::{Expression, Loc, NamedArgument, Type};
+use crate::{FlatYulExpr, StorageLocation};
+use solang_parser::pt::{Expression, Loc, NamedArgument, Type, YulExpression};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ExprFlag {
@@ -35,7 +35,6 @@ pub enum FlatExpr {
     ArrayTy(Loc),
     ArrayIndexAccess(Loc),
     ArraySlice(Loc),
-    Parenthesis(Loc),
     MemberAccess(Loc, &'static str),
     FunctionCall(Loc, usize),
     FunctionCallBlock(Loc),
@@ -105,9 +104,23 @@ pub enum FlatExpr {
     AddressLiteral(Loc, &'static str),
     Variable(Loc, &'static str),
     ArrayLiteral(Loc),
+
+    YulExpr(FlatYulExpr),
 }
 
 impl FlatExpr {
+    pub fn try_inv_cmp(&self) -> Option<Self> {
+        use FlatExpr::*;
+        Some(match self {
+            Less(loc) => MoreEqual(*loc),
+            More(loc) => LessEqual(*loc),
+            LessEqual(loc) => More(*loc),
+            MoreEqual(loc) => Less(*loc),
+            Equal(loc) => NotEqual(*loc),
+            NotEqual(loc) => Equal(*loc),
+            _ => Not(self.try_loc()?),
+        })
+    }
     pub fn try_loc(&self) -> Option<Loc> {
         use FlatExpr::*;
         match self {
@@ -123,7 +136,6 @@ impl FlatExpr {
             | ArrayTy(loc, ..)
             | ArrayIndexAccess(loc, ..)
             | ArraySlice(loc, ..)
-            | Parenthesis(loc, ..)
             | MemberAccess(loc, ..)
             | FunctionCall(loc, ..)
             | FunctionCallBlock(loc, ..)
@@ -181,8 +193,15 @@ impl FlatExpr {
             | Variable(loc, ..)
             | Requirement(loc, ..)
             | Super(loc, ..)
+            | YulExpr(FlatYulExpr::YulVariable(loc, ..))
+            | YulExpr(FlatYulExpr::YulFuncCall(loc, ..))
+            | YulExpr(FlatYulExpr::YulSuffixAccess(loc, ..))
             | ArrayLiteral(loc, ..) => Some(*loc),
-            FunctionCallName(..) => None,
+
+            FunctionCallName(..)
+            | YulExpr(FlatYulExpr::YulStartBlock)
+            | YulExpr(FlatYulExpr::YulEndBlock)
+            | YulExpr(FlatYulExpr::YulFunctionCallName(..)) => None,
         }
     }
 }
@@ -197,6 +216,37 @@ impl From<&NamedArgument> for FlatExpr {
     }
 }
 
+impl TryFrom<&YulExpression> for FlatExpr {
+    type Error = ();
+    fn try_from(expr: &YulExpression) -> Result<Self, ()> {
+        use YulExpression::*;
+        let res = match expr {
+            BoolLiteral(loc, b, _unimpled_type) => FlatExpr::BoolLiteral(*loc, *b),
+            NumberLiteral(loc, int, exp, _unimpled_type) => FlatExpr::NumberLiteral(
+                *loc,
+                Box::leak(int.clone().into_boxed_str()),
+                Box::leak(exp.clone().into_boxed_str()),
+                None,
+            ),
+            HexNumberLiteral(loc, b, _unimpled_type) => {
+                FlatExpr::HexNumberLiteral(*loc, Box::leak(b.clone().into_boxed_str()), None)
+            }
+            HexStringLiteral(hexes, _unimpled_type) => {
+                let final_str = hexes.hex.clone();
+                let loc = hexes.loc;
+                FlatExpr::HexLiteral(loc, string_to_static(final_str))
+            }
+            StringLiteral(lits, _unimpled_type) => {
+                let final_str = lits.string.clone();
+                let loc = lits.loc;
+                FlatExpr::StringLiteral(loc, string_to_static(final_str))
+            }
+            other => FlatExpr::YulExpr(FlatYulExpr::try_from(other)?),
+        };
+        Ok(res)
+    }
+}
+
 impl TryFrom<&Expression> for FlatExpr {
     type Error = ();
     fn try_from(expr: &Expression) -> Result<Self, ()> {
@@ -208,7 +258,6 @@ impl TryFrom<&Expression> for FlatExpr {
             ArraySubscript(loc, _, None) => FlatExpr::ArrayTy(*loc),
             ArraySubscript(loc, _, Some(_)) => FlatExpr::ArrayIndexAccess(*loc),
             ArraySlice(loc, ..) => FlatExpr::ArraySlice(*loc),
-            Parenthesis(loc, ..) => FlatExpr::Parenthesis(*loc),
             MemberAccess(loc, _, name) => {
                 FlatExpr::MemberAccess(*loc, string_to_static(name.name.clone()))
             }
@@ -222,12 +271,8 @@ impl TryFrom<&Expression> for FlatExpr {
             PreIncrement(loc, ..) => FlatExpr::PreIncrement(*loc),
             PreDecrement(loc, ..) => FlatExpr::PreDecrement(*loc),
             UnaryPlus(loc, ..) => FlatExpr::UnaryPlus(*loc),
-            // Power(loc, ..) => FlatExpr::Power(*loc),
-            // Multiply(loc, ..) => FlatExpr::Multiply(*loc),
-            // Divide(loc, ..) => FlatExpr::Divide(*loc),
-            // Modulo(loc, ..) => FlatExpr::Modulo(*loc),
-            // Add(loc, ..) => FlatExpr::Add(*loc),
-            // Subtract(loc, ..) => FlatExpr::Subtract(*loc),
+            Parenthesis(_, expr) => FlatExpr::try_from(&**expr)?,
+            Modulo(loc, _, _) => FlatExpr::Modulo(*loc),
             ShiftLeft(loc, ..) => FlatExpr::ShiftLeft(*loc),
             ShiftRight(loc, ..) => FlatExpr::ShiftRight(*loc),
             BitwiseAnd(loc, ..) => FlatExpr::BitwiseAnd(*loc),
@@ -249,10 +294,6 @@ impl TryFrom<&Expression> for FlatExpr {
             AssignXor(loc, ..) => FlatExpr::AssignXor(*loc),
             AssignShiftLeft(loc, ..) => FlatExpr::AssignShiftLeft(*loc),
             AssignShiftRight(loc, ..) => FlatExpr::AssignShiftRight(*loc),
-            // AssignAdd(loc, ..) => FlatExpr::AssignAdd(*loc),
-            // AssignSubtract(loc, ..) => FlatExpr::AssignSubtract(*loc),
-            // AssignMultiply(loc, ..) => FlatExpr::AssignMultiply(*loc),
-            // AssignDivide(loc, ..) => FlatExpr::AssignDivide(*loc),
             AssignModulo(loc, ..) => FlatExpr::AssignModulo(*loc),
             Type(loc, ty) => {
                 let ty_box = Box::new(ty.clone());
@@ -335,7 +376,16 @@ impl TryFrom<&Expression> for FlatExpr {
             }
             List(loc, params) => FlatExpr::List(*loc, params.len()),
             This(loc, ..) => FlatExpr::This(*loc),
-            _ => return Err(()),
+
+            Power(_, _, _)
+            | Multiply(_, _, _)
+            | Divide(_, _, _)
+            | Add(_, _, _)
+            | Subtract(_, _, _)
+            | AssignAdd(_, _, _)
+            | AssignSubtract(_, _, _)
+            | AssignMultiply(_, _, _)
+            | AssignDivide(_, _, _) => return Err(()),
         };
         Ok(res)
     }

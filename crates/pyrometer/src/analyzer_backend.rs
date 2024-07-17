@@ -561,7 +561,6 @@ impl AnalyzerLike for Analyzer {
     type ExprFlag = ExprFlag;
 
     fn push_expr(&mut self, flat: FlatExpr) {
-        tracing::trace!("pushing expression: {flat:?}");
         self.flattened.push(flat);
     }
 
