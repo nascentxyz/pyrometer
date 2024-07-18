@@ -1,7 +1,7 @@
 use crate::{
     nodes::{
         Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, SourceUnitNode,
-        SourceUnitPartNode,
+        SourceUnitPartNode, YulFunctionNode,
     },
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
@@ -51,6 +51,23 @@ impl FunctionNode {
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.add_gas_cost(cost);
         Ok(())
+    }
+
+    pub fn yul_funcs(
+        &self,
+        analyzer: &impl GraphBackend,
+        assembly_block_idx: usize,
+    ) -> Vec<YulFunctionNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter_map(|edge| match edge.weight() {
+                Edge::YulFunction(asm_block) if *asm_block == assembly_block_idx => {
+                    Some(edge.source().into())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     }
 
     pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<FunctionTy, GraphError> {

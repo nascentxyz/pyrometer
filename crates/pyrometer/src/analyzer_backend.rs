@@ -564,6 +564,17 @@ impl AnalyzerLike for Analyzer {
         self.flattened.push(flat);
     }
 
+    fn decrement_asm_block(&mut self) {
+        self.current_asm_block -= 1;
+    }
+    fn increment_asm_block(&mut self) {
+        self.current_asm_block += 1;
+    }
+
+    fn current_asm_block(&self) -> usize {
+        self.current_asm_block
+    }
+
     fn expr_stack(&self) -> &[FlatExpr] {
         &self.flattened
     }

@@ -9,7 +9,7 @@ pub enum ExprFlag {
     Requirement,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum FlatExpr {
     VarDef(Loc, Option<&'static str>, Option<StorageLocation>, bool),
     If {
@@ -108,7 +108,176 @@ pub enum FlatExpr {
     YulExpr(FlatYulExpr),
 }
 
+impl std::fmt::Display for FlatExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use FlatExpr::*;
+        match self {
+            VarDef(_, maybe_name, maybe_storage, inited) => {
+                let inited_str = if *inited { " = ..;" } else { ";" };
+                let name_str = if let Some(name) = maybe_name {
+                    name
+                } else {
+                    ""
+                };
+                let storage_str = if let Some(stor) = maybe_storage {
+                    format!("{stor} ")
+                } else {
+                    "".to_string()
+                };
+                write!(f, "{storage_str}{name_str}{inited_str}")
+            }
+            Super(_, name) => write!(f, "super.{name}"),
+            Continue(..) => write!(f, "continue;"),
+            Break(..) => write!(f, "break;"),
+            Return(.., elem) => {
+                if *elem {
+                    write!(f, "return ..;")
+                } else {
+                    write!(f, "return;")
+                }
+            }
+
+            PostIncrement(..) => write!(f, "(..)++"),
+            PostDecrement(..) => write!(f, "(..)--"),
+            PreIncrement(..) => write!(f, "++(..)"),
+            PreDecrement(..) => write!(f, "--(..)"),
+            New(..) => write!(f, "new "),
+            ArrayTy(..) => write!(f, "[]"),
+            ArrayIndexAccess(..) => write!(f, "[(..)]"),
+            MemberAccess(_, field) => write!(f, ".{field}"),
+            FunctionCall(_, n) => write!(f, "({})", "_,".repeat(*n)),
+            NamedFunctionCall(_, _) => write!(f, "(..)"),
+            Not(_) => write!(f, "~"),
+            Negate(_) => write!(f, "-"),
+            Delete(_) => write!(f, "delete "),
+
+            // binary ops
+            Power(..) => write!(f, " ** "),
+            Multiply(..) => write!(f, " * "),
+            Divide(..) => write!(f, " / "),
+            Modulo(_) => write!(f, " % "),
+            Add(..) => write!(f, " + "),
+            Subtract(..) => write!(f, " - "),
+            AssignAdd(..) => write!(f, " += "),
+            AssignSubtract(..) => write!(f, " -= "),
+            AssignMultiply(..) => write!(f, " *= "),
+            AssignDivide(..) => write!(f, " /= "),
+            AssignModulo(_) => write!(f, " %= "),
+            ShiftLeft(_) => write!(f, " << "),
+            ShiftRight(_) => write!(f, " >> "),
+            BitwiseAnd(_) => write!(f, " & "),
+            BitwiseXor(_) => write!(f, " ^ "),
+            BitwiseOr(_) => write!(f, " | "),
+            BitwiseNot(_) => write!(f, "~"),
+            AssignOr(_) => write!(f, " |= "),
+            AssignAnd(_) => write!(f, " &= "),
+            AssignXor(_) => write!(f, " ^= "),
+            AssignShiftLeft(_) => write!(f, " <<= "),
+            AssignShiftRight(_) => write!(f, " >>= "),
+
+            // cmp ops
+            Less(_) => write!(f, " < "),
+            More(_) => write!(f, " > "),
+            LessEqual(_) => write!(f, " <= "),
+            MoreEqual(_) => write!(f, " >= "),
+            Equal(_) => write!(f, " == "),
+            NotEqual(_) => write!(f, " != "),
+            And(_) => write!(f, " && "),
+            Or(_) => write!(f, " || "),
+
+            Assign(_) => write!(f, " = "),
+            This(_) => write!(f, "this"),
+
+            BoolLiteral(_, b) => write!(f, "{b}"),
+            NumberLiteral(_, int, exp, unit) => {
+                let unit_str = if let Some(unit) = unit { unit } else { "" };
+                let e_str = if exp.is_empty() {
+                    "".to_string()
+                } else {
+                    format!("e{exp}")
+                };
+                write!(f, "{int}{e_str} {unit_str}")
+            }
+            RationalNumberLiteral(_, int, frac, exp, unit) => {
+                let unit_str = if let Some(unit) = unit { unit } else { "" };
+                let e_str = if exp.is_empty() {
+                    "".to_string()
+                } else {
+                    format!("e{exp}")
+                };
+                write!(f, "{int}.{frac}{e_str} {unit_str}")
+            }
+            HexNumberLiteral(_, s, _)
+            | StringLiteral(_, s)
+            | HexLiteral(_, s)
+            | AddressLiteral(_, s)
+            | Variable(_, s) => write!(f, "{s}"),
+
+            YulExpr(yul) => write!(f, "{yul}"),
+            _ => write!(f, ""),
+        }
+    }
+}
+
 impl FlatExpr {
+    pub fn if_debug_str(&self, start: usize, stack: &[FlatExpr]) -> String {
+        use FlatExpr::*;
+        let If {
+            true_cond,
+            false_cond,
+            true_body,
+            false_body,
+            ..
+        } = self
+        else {
+            unreachable!("Not if")
+        };
+        let true_range = start..start + true_cond;
+        let true_cond_str = stack[true_range]
+            .iter()
+            .map(|i| format!("{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let false_range = start + true_cond..start + true_cond + false_cond;
+        let false_cond_str = stack[false_range]
+            .iter()
+            .map(|i| format!("{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let true_body_range =
+            start + true_cond + false_cond..start + true_cond + false_cond + true_body;
+        let true_body_str = stack[true_body_range]
+            .iter()
+            .enumerate()
+            .map(|(j, i)| {
+                if matches!(i, If { .. }) {
+                    let new_start = start + true_cond + false_cond + j;
+                    i.if_debug_str(new_start, stack)
+                } else {
+                    format!("{i}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let false_body_range = start + true_cond + false_cond + true_body
+            ..start + true_cond + false_cond + true_body + false_body;
+        let false_body_str = stack[false_body_range]
+            .iter()
+            .enumerate()
+            .map(|(j, i)| {
+                if matches!(i, If { .. }) {
+                    let new_start = start + true_cond + false_cond + true_body + j;
+                    i.if_debug_str(new_start, stack)
+                } else {
+                    format!("{i}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        format!("if ({true_cond_str}) {{\n\t{true_body_str}\n}} else ({false_cond_str}) {{\n\t{false_body_str}\n}}")
+    }
     pub fn try_inv_cmp(&self) -> Option<Self> {
         use FlatExpr::*;
         Some(match self {
@@ -195,13 +364,15 @@ impl FlatExpr {
             | Super(loc, ..)
             | YulExpr(FlatYulExpr::YulVariable(loc, ..))
             | YulExpr(FlatYulExpr::YulFuncCall(loc, ..))
+            | YulExpr(FlatYulExpr::YulAssign(loc, ..))
             | YulExpr(FlatYulExpr::YulSuffixAccess(loc, ..))
+            | YulExpr(FlatYulExpr::YulVarDecl(loc, ..))
+            | YulExpr(FlatYulExpr::YulFuncDef(loc, ..))
             | ArrayLiteral(loc, ..) => Some(*loc),
 
             FunctionCallName(..)
             | YulExpr(FlatYulExpr::YulStartBlock)
-            | YulExpr(FlatYulExpr::YulEndBlock)
-            | YulExpr(FlatYulExpr::YulFunctionCallName(..)) => None,
+            | YulExpr(FlatYulExpr::YulEndBlock) => None,
         }
     }
 }

@@ -42,3 +42,6 @@ pub use source_unit::*;
 
 mod debug_reconstruction;
 pub use debug_reconstruction::*;
+
+mod yul_func;
+pub use yul_func::*;

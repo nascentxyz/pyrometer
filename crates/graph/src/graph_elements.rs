@@ -103,6 +103,8 @@ pub enum Node {
     Msg(Msg),
     /// The `block` global in solidity
     Block(Block),
+    /// A yul-based function
+    YulFunction(YulFunction),
 }
 
 pub fn as_dot_str(
@@ -276,6 +278,8 @@ pub enum Edge {
     BuiltinFunction,
     /// A connection from one contract to another contract
     UsingContract(Loc),
+    /// Yul function
+    YulFunction(usize),
 }
 
 impl Heirarchical for Edge {
@@ -286,8 +290,8 @@ impl Heirarchical for Edge {
             Part | Import => 1,
 
             Contract | Ty | Field | Enum | Struct | Error | Event | Var | InheritedContract
-            | Modifier | FallbackFunc | Constructor | ReceiveFunc | LibraryFunction(_)
-            | BuiltinFunction | Func | UsingContract(_) => 2,
+            | Modifier | FallbackFunc | Constructor | YulFunction(_) | ReceiveFunc
+            | LibraryFunction(_) | BuiltinFunction | Func | UsingContract(_) => 2,
 
             Context(_) | ErrorParam | FunctionParam | FunctionReturn | FuncModifier(_) => 3,
         }

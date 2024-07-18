@@ -1,3 +1,4 @@
+use crate::yul::YulFuncCaller;
 use std::collections::BTreeMap;
 
 use crate::{
@@ -9,7 +10,7 @@ use graph::{
     elem::{Elem, RangeOp},
     nodes::{
         Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode,
-        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, SubContextKind,
+        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, SubContextKind, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, TypeNode, VarType,
 };
@@ -165,7 +166,11 @@ pub trait Flatten:
                 dialect: _,
                 flags: _,
                 block: yul_block,
-            } => self.traverse_yul_statement(&YulStatement::Block(yul_block.clone())),
+            } => {
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock));
+                self.traverse_yul_statement(&YulStatement::Block(yul_block.clone()));
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock));
+            }
             Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
                     self.traverse_expression(ret_expr, unchecked);
@@ -184,8 +189,37 @@ pub trait Flatten:
     fn traverse_yul_statement(&mut self, stmt: &YulStatement) {
         use YulStatement::*;
         match stmt {
-            Assign(loc, lhs, rhs) => {}
-            VariableDeclaration(loc, idents, maybe_assignment) => {}
+            Assign(loc, lhs, rhs) => {
+                self.traverse_yul_expression(rhs);
+                lhs.iter().for_each(|l| {
+                    self.traverse_yul_expression(l);
+                });
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulAssign(*loc, lhs.len())));
+            }
+            VariableDeclaration(loc, idents, maybe_assignment) => {
+                if let Some(rhs) = maybe_assignment {
+                    self.traverse_yul_expression(rhs);
+                }
+                let uint: &'static solang_parser::pt::Type =
+                    Box::leak(Box::new(solang_parser::pt::Type::Uint(256)));
+
+                idents.iter().for_each(|ident| {
+                    // NOTE: for now yul does not support
+                    // user types. but they may in the future
+                    self.push_expr(FlatExpr::Type(ident.loc, uint));
+                    self.push_expr(FlatExpr::VarDef(
+                        *loc,
+                        Some(string_to_static(ident.id.name.clone())),
+                        None,
+                        false,
+                    ));
+                });
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulVarDecl(
+                    *loc,
+                    idents.len(),
+                    maybe_assignment.is_some(),
+                )));
+            }
             If(loc, if_expr, true_stmt) => {
                 let iec = IfElseChain {
                     if_expr: if_expr.clone(),
@@ -218,14 +252,45 @@ pub trait Flatten:
                 self.push_expr(FlatExpr::Continue(*loc));
             }
             Block(block) => {
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock));
                 for statement in block.statements.iter() {
-                    self.traverse_yul_statement(&statement);
+                    self.traverse_yul_statement(statement);
                 }
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock));
             }
             FunctionDefinition(def) => {
-                todo!()
+                let start_len = self.expr_stack().len();
+                let inputs_as_var_decl =
+                    YulStatement::VariableDeclaration(def.loc, def.params.clone(), None);
+                self.traverse_yul_statement(&inputs_as_var_decl);
+
+                def.params.iter().for_each(|param| {
+                    self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulVariable(
+                        param.loc,
+                        string_to_static(param.id.name.clone()),
+                    )))
+                });
+
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulAssign(
+                    def.loc,
+                    def.params.len(),
+                )));
+                let rets_as_var_decl =
+                    YulStatement::VariableDeclaration(def.loc, def.returns.clone(), None);
+                self.traverse_yul_statement(&rets_as_var_decl);
+
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock));
+                for stmt in def.body.statements.iter() {
+                    self.traverse_yul_statement(stmt);
+                }
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock));
+
+                let func = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulFuncDef(
+                    def.loc,
+                    string_to_static(def.id.name.clone()),
+                    func.len(),
+                )));
+                self.expr_stack_mut().extend(func);
             }
             FunctionCall(call) => {
                 self.traverse_yul_expression(&YulExpression::FunctionCall(call.clone()));
@@ -237,18 +302,19 @@ pub trait Flatten:
     fn traverse_yul_if_else(&mut self, loc: Loc, iec: IfElseChain) {
         let true_body = &iec.true_stmt;
         let start_len = self.expr_stack_mut().len();
-        self.traverse_yul_expression(&iec.if_expr);
         self.push_expr(FlatExpr::NumberLiteral(loc, "0", "", None));
+        self.traverse_yul_expression(&iec.if_expr);
+
         // have it be a require statement
         self.push_expr(FlatExpr::Requirement(loc));
         self.push_expr(FlatExpr::More(loc));
+
         let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
 
         // the false condition is the same as the true, but with the comparator inverted
         let mut false_cond = true_cond.clone();
-        if let Some(last) = false_cond.pop() {
-            false_cond.push(last.try_inv_cmp().unwrap_or(FlatExpr::Not(loc)));
-        }
+        let _ = false_cond.pop();
+        false_cond.push(FlatExpr::Equal(loc));
 
         let true_cond_delta = true_cond.len();
         let false_cond_delta = false_cond.len();
@@ -305,16 +371,9 @@ pub trait Flatten:
                     self.traverse_yul_expression(expr);
                 });
 
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulFunctionCallName(
-                    func_call.arguments.len(),
-                )));
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulVariable(
-                    func_call.id.loc,
-                    string_to_static(func_call.id.name.clone()),
-                )));
-
                 self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulFuncCall(
                     expr.loc(),
+                    string_to_static(func_call.id.name.clone()),
                     func_call.arguments.len(),
                 )));
             }
@@ -580,7 +639,7 @@ pub trait Flatten:
         body_loc: Loc,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
-        let stack = std::mem::take(self.expr_stack_mut());
+        let mut stack = std::mem::take(self.expr_stack_mut());
         tracing::trace!("stack: {stack:#?}");
         let foc: FuncOrCtx = func_or_ctx.into();
 
@@ -605,7 +664,7 @@ pub trait Flatten:
         while (!ctx.is_ended(self).unwrap() || !ctx.live_edges(self).unwrap().is_empty())
             && ctx.parse_idx(self) < stack.len()
         {
-            let res = self.interpret_step(arena, ctx, body_loc, &stack[..]);
+            let res = self.interpret_step(arena, ctx, body_loc, &mut stack);
             if unsafe { USE_DEBUG_SITE } {
                 post_to_site(&*self, arena);
             }
@@ -618,7 +677,7 @@ pub trait Flatten:
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         body_loc: Loc,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
     ) -> Result<(), ExprErr> {
         self.flat_apply_to_edges(
             ctx,
@@ -629,7 +688,9 @@ pub trait Flatten:
               arena: &mut RangeArena<Elem<Concrete>>,
               ctx: ContextNode,
               _: Loc,
-              stack: &[FlatExpr]| { analyzer.interpret_expr(arena, ctx, stack) },
+              stack: &mut Vec<FlatExpr>| {
+                analyzer.interpret_expr(arena, ctx, stack)
+            },
         )
     }
 
@@ -637,7 +698,7 @@ pub trait Flatten:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
     ) -> Result<(), ExprErr> {
         use FlatExpr::*;
 
@@ -646,13 +707,15 @@ pub trait Flatten:
         }
 
         let parse_idx = ctx.increment_parse_idx(self);
-        let kill_after_exec = parse_idx == stack.len().saturating_sub(1);
         let Some(next) = stack.get(parse_idx) else {
-            let loc = stack
-                .last()
-                .map(|l| l.try_loc())
-                .flatten()
-                .unwrap_or(Loc::Implicit);
+            let mut loc = None;
+            let mut stack_rev_iter = stack.iter().rev();
+            let mut loccer = stack_rev_iter.next();
+            while loc.is_none() && loccer.is_some() {
+                loc = loccer.unwrap().try_loc();
+                loccer = stack_rev_iter.next();
+            }
+            let loc = loc.unwrap_or(Loc::Implicit);
             return ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc);
         };
         let next = *next;
@@ -664,10 +727,6 @@ pub trait Flatten:
             self.peek_expr_flag()
         );
 
-        tracing::trace!(
-            "current expr_ret stack: {}",
-            ctx.debug_expr_stack_str(self).unwrap()
-        );
         match next {
             // Flag expressions
             FunctionCallName(n, is_super, named_args) => {
@@ -770,12 +829,26 @@ pub trait Flatten:
             List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
             Parameter(_, _, _) => Ok(()),
             Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
-            YulExpr(FlatYulExpr::YulStartBlock) => Ok(()),
-            YulExpr(FlatYulExpr::YulVariable(..)) => Ok(()),
-            YulExpr(FlatYulExpr::YulFunctionCallName(..)) => Ok(()),
-            YulExpr(FlatYulExpr::YulFuncCall(..)) => Ok(()),
+            YulExpr(FlatYulExpr::YulStartBlock) => {
+                self.increment_asm_block();
+                Ok(())
+            }
+            YulExpr(yul @ FlatYulExpr::YulVariable(..)) => self.interp_yul_var(arena, ctx, yul),
+            YulExpr(yul @ FlatYulExpr::YulFuncCall(..)) => {
+                self.interp_yul_func_call(arena, ctx, stack, yul)
+            }
             YulExpr(FlatYulExpr::YulSuffixAccess(..)) => Ok(()),
-            YulExpr(FlatYulExpr::YulEndBlock) => Ok(()),
+            YulExpr(yul @ FlatYulExpr::YulAssign(..)) => self.interp_yul_assign(arena, ctx, yul),
+            YulExpr(yul @ FlatYulExpr::YulFuncDef(..)) => {
+                self.interp_yul_func_def(arena, ctx, stack, yul, parse_idx)
+            }
+            YulExpr(yul @ FlatYulExpr::YulVarDecl(..)) => {
+                self.interp_yul_var_decl(arena, ctx, stack, yul, parse_idx)
+            }
+            YulExpr(FlatYulExpr::YulEndBlock) => {
+                self.decrement_asm_block();
+                Ok(())
+            }
         }?;
 
         if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement))
@@ -816,7 +889,7 @@ pub trait Flatten:
     fn interp_list(
         &mut self,
         ctx: ContextNode,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
         list: FlatExpr,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
@@ -898,7 +971,7 @@ pub trait Flatten:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
         if_expr: FlatExpr,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
@@ -1160,7 +1233,7 @@ pub trait Flatten:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
         var: FlatExpr,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
@@ -1259,7 +1332,7 @@ pub trait Flatten:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
         func_call: FlatExpr,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
@@ -1273,7 +1346,12 @@ pub trait Flatten:
         self.interp_func_call(arena, ctx, func_call, Some(names))
     }
 
-    fn get_named_args(&self, stack: &[FlatExpr], start: usize, n: usize) -> Vec<&'static str> {
+    fn get_named_args(
+        &self,
+        stack: &mut Vec<FlatExpr>,
+        start: usize,
+        n: usize,
+    ) -> Vec<&'static str> {
         stack[start..start + n]
             .iter()
             .map(|named_arg| {
@@ -1410,20 +1488,6 @@ pub trait Flatten:
         }
     }
 
-    fn interp_super_func_call(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        next: FlatExpr,
-    ) -> Result<(), ExprErr> {
-        let FlatExpr::Super(loc, name) = next else {
-            unreachable!()
-        };
-
-        // self.super_access(arena, ctx, name, loc)
-        todo!()
-    }
-
     fn interp_negatable_literal(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -1448,6 +1512,164 @@ pub trait Flatten:
                 self.rational_number_literal(arena, ctx, loc, integer, fraction, exp, unit, negate)
             }
             _ => unreachable!(),
+        }
+    }
+
+    fn interp_yul_func_call(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &mut Vec<FlatExpr>,
+        next: FlatYulExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatYulExpr::YulFuncCall(loc, name, num_inputs) = next else {
+            unreachable!()
+        };
+        let inputs = ExprRet::Multi(
+            ctx.pop_n_latest_exprs(num_inputs, loc, self)
+                .into_expr_err(loc)?,
+        );
+        self.yul_func_call(
+            arena,
+            ctx,
+            stack,
+            name,
+            inputs,
+            self.current_asm_block(),
+            loc,
+        )
+    }
+
+    fn interp_yul_var(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatYulExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatYulExpr::YulVariable(loc, name) = next else {
+            unreachable!()
+        };
+
+        self.variable(
+            arena,
+            &solang_parser::pt::Identifier {
+                loc,
+                name: name.to_string(),
+            },
+            ctx,
+            None,
+            None,
+        )?;
+
+        if let Some(ret) = ctx.pop_expr_latest(loc, self).into_expr_err(loc)? {
+            if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
+                .is_memory(self)
+                .into_expr_err(loc)?
+            {
+                // its a memory based variable, push a uint instead
+                let b = Builtin::Uint(256);
+                let var = ContextVar::new_from_builtin(loc, self.builtin_or_add(b).into(), self)
+                    .into_expr_err(loc)?;
+                let node = self.add_node(var);
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(loc)
+            } else {
+                ctx.push_expr(ret, self).into_expr_err(loc)
+            }
+        } else {
+            Err(ExprErr::Unresolved(
+                loc,
+                format!("Could not find yul variable with name: {name}"),
+            ))
+        }
+    }
+
+    fn interp_yul_func_def(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &mut Vec<FlatExpr>,
+        next: FlatYulExpr,
+        parse_idx: usize,
+    ) -> Result<(), ExprErr> {
+        let FlatYulExpr::YulFuncDef(loc, name, num) = next else {
+            unreachable!()
+        };
+
+        let end = parse_idx + 1 + num;
+        let exprs = (&stack[parse_idx + 1..end]).to_vec();
+        let fn_node = ctx.associated_fn(self).into_expr_err(loc)?;
+        let yul_fn = self.add_node(YulFunction::new(exprs, name, loc));
+        self.add_edge(yul_fn, fn_node, Edge::YulFunction(self.current_asm_block()));
+        ctx.underlying_mut(self).into_expr_err(loc)?.parse_idx = end;
+        Ok(())
+    }
+
+    fn interp_yul_assign(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatYulExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatYulExpr::YulAssign(loc, num) = next else {
+            unreachable!()
+        };
+
+        let to_assign = ctx
+            .pop_n_latest_exprs(num * 2, loc, self)
+            .into_expr_err(loc)?;
+        let (to_assign_to, assignments) = to_assign.split_at(to_assign.len() / 2);
+        assert!(assignments.len() == to_assign_to.len());
+        to_assign_to
+            .iter()
+            .zip(assignments)
+            .try_for_each(|(lhs, rhs)| self.match_assign_sides(arena, ctx, loc, lhs, rhs))
+    }
+
+    fn interp_yul_var_decl(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &mut Vec<FlatExpr>,
+        next: FlatYulExpr,
+        parse_idx: usize,
+    ) -> Result<(), ExprErr> {
+        let FlatYulExpr::YulVarDecl(loc, num, assign) = next else {
+            unreachable!()
+        };
+
+        if assign {
+            let names = stack[parse_idx - num * 2..parse_idx]
+                .iter()
+                .filter_map(|s| match s {
+                    FlatExpr::VarDef(_, Some(name), _, _) => Some(name),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+
+            names.iter().try_for_each(|name| {
+                self.variable(
+                    arena,
+                    &Identifier {
+                        loc,
+                        name: name.to_string(),
+                    },
+                    ctx,
+                    None,
+                    None,
+                )
+            })?;
+            let to_assign = ctx
+                .pop_n_latest_exprs(num * 2, loc, self)
+                .into_expr_err(loc)?;
+            let (to_assign_to, assignments) = to_assign.split_at(to_assign.len() / 2);
+            assert!(assignments.len() == to_assign_to.len());
+            to_assign_to
+                .iter()
+                .zip(assignments)
+                .try_for_each(|(lhs, rhs)| self.match_assign_sides(arena, ctx, loc, lhs, rhs))
+        } else {
+            Ok(())
         }
     }
 
@@ -1489,13 +1711,13 @@ pub trait Flatten:
         ctx: ContextNode,
         loc: Loc,
         arena: &mut RangeArena<Elem<Concrete>>,
-        stack: &[FlatExpr],
+        stack: &mut Vec<FlatExpr>,
         closure: &impl Fn(
             &mut Self,
             &mut RangeArena<Elem<Concrete>>,
             ContextNode,
             Loc,
-            &[FlatExpr],
+            &mut Vec<FlatExpr>,
         ) -> Result<(), ExprErr>,
     ) -> Result<(), ExprErr> {
         let live_edges = ctx.live_edges(self).into_expr_err(loc)?;

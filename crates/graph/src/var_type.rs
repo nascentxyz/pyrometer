@@ -248,7 +248,8 @@ impl VarType {
             | Node::Entry
             | Node::Context(..)
             | Node::Msg(_)
-            | Node::Block(_) => None,
+            | Node::Block(_)
+            | Node::YulFunction(..) => None,
         }
     }
 

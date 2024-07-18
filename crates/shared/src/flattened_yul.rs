@@ -4,14 +4,27 @@ use solang_parser::pt::{
     Identifier, Loc, YulExpression, YulFunctionCall, YulStatement, YulSwitchOptions,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum FlatYulExpr {
     YulStartBlock,
     YulVariable(Loc, &'static str),
-    YulFunctionCallName(usize),
-    YulFuncCall(Loc, usize),
+    YulFuncCall(Loc, &'static str, usize),
     YulSuffixAccess(Loc, &'static str),
+    YulAssign(Loc, usize),
+    YulVarDecl(Loc, usize, bool),
+    YulFuncDef(Loc, &'static str, usize),
     YulEndBlock,
+}
+
+impl std::fmt::Display for FlatYulExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use FlatYulExpr::*;
+        match self {
+            YulFuncCall(_c, s, n) => write!(f, "{s}({})", "_,".repeat(*n)),
+            YulVariable(_, s) | YulSuffixAccess(_, s) => write!(f, "{s}"),
+            _ => write!(f, ""),
+        }
+    }
 }
 
 impl TryFrom<&YulExpression> for FlatYulExpr {
@@ -22,9 +35,11 @@ impl TryFrom<&YulExpression> for FlatYulExpr {
             Variable(ident) => {
                 FlatYulExpr::YulVariable(ident.loc, string_to_static(ident.name.clone()))
             }
-            FunctionCall(yul_func_call) => {
-                FlatYulExpr::YulFuncCall(yul_func_call.loc, yul_func_call.arguments.len())
-            }
+            FunctionCall(yul_func_call) => FlatYulExpr::YulFuncCall(
+                yul_func_call.loc,
+                string_to_static(yul_func_call.id.name.clone()),
+                yul_func_call.arguments.len(),
+            ),
             SuffixAccess(loc, _, ident) => {
                 FlatYulExpr::YulSuffixAccess(*loc, string_to_static(ident.name.clone()))
             }

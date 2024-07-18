@@ -197,6 +197,9 @@ pub trait AnalyzerLike: GraphLike {
     type FlatExpr;
     type ExprFlag: Copy;
     fn push_expr(&mut self, flat: Self::FlatExpr);
+    fn increment_asm_block(&mut self);
+    fn decrement_asm_block(&mut self);
+    fn current_asm_block(&self) -> usize;
     fn expr_stack(&self) -> &[Self::FlatExpr];
     fn expr_stack_mut(&mut self) -> &mut Vec<Self::FlatExpr>;
     fn take_expr_flag(&mut self) -> Option<Self::ExprFlag>;
