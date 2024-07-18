@@ -257,12 +257,12 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 tmp_literals[target_idx] = literals[i];
                             });
                         } else {
-                            tmp_inputs = inputs.clone();
-                            tmp_literals = literals.clone();
+                            tmp_inputs.clone_from(&inputs);
+                            tmp_literals.clone_from(&literals);
                         }
                     } else {
-                        tmp_inputs = inputs.clone();
-                        tmp_literals = literals.clone();
+                        tmp_inputs.clone_from(&inputs);
+                        tmp_literals.clone_from(&literals);
                     }
 
                     params

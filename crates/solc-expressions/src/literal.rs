@@ -842,7 +842,7 @@ mod tests {
 
     #[test]
     fn test_hex_literals_multiple() -> Result<()> {
-        let hex_literals = vec![
+        let hex_literals = [
             HexLiteral {
                 hex: "7B".to_string(), // 123 in decimal
                 loc: Loc::File(0, 0, 0),
