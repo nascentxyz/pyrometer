@@ -10,14 +10,14 @@ use graph::{
     elem::{Elem, RangeOp},
     nodes::{
         Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode,
-        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, SubContextKind, YulFunction,
+        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, TypeNode, VarType,
 };
 
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
-    GraphError, GraphLike, IfElseChain, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
+    GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
 };
 use solang_parser::pt::{
     CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
@@ -83,7 +83,12 @@ pub trait Flatten:
                     ));
                 }
             }
-            Args(_loc, _args) => {}
+            Args(loc, _args) => {
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "Args statements are currently unsupported",
+                ));
+            }
             If(loc, if_expr, true_body, maybe_false_body) => {
                 // 1. Add conditional expressions
                 // 2. Remove added conditional expressions
@@ -149,20 +154,104 @@ pub trait Flatten:
                 stack.extend(true_body);
                 stack.extend(false_body);
             }
-            While(loc, cond, body) => {}
-            For(loc, maybe_for_start, maybe_for_middle, maybe_for_end, maybe_for_body) => {}
-            DoWhile(loc, while_stmt, while_expr) => {}
-            Expression(loc, expr) => {
-                self.traverse_expression(&expr, unchecked);
+            While(loc, if_expr, body) => {
+                let start_len = self.expr_stack_mut().len();
+                self.traverse_expression(if_expr, unchecked);
+                let cmp = self.expr_stack_mut().pop().unwrap();
+                self.push_expr(FlatExpr::Requirement(*loc));
+                self.push_expr(cmp);
+                let cond_exprs = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+                let condition = cond_exprs.len();
+
+                self.traverse_statement(body, unchecked);
+                let body_exprs = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+                let body = body_exprs.len();
+
+                self.push_expr(FlatExpr::While {
+                    loc: *loc,
+                    condition,
+                    body,
+                });
+                let stack = self.expr_stack_mut();
+                stack.extend(cond_exprs);
+                stack.extend(body_exprs);
+            }
+            For(loc, maybe_for_start, maybe_for_cond, maybe_for_after_each, maybe_for_body) => {
+                let start_len = self.expr_stack_mut().len();
+
+                let for_start_exprs = if let Some(start) = maybe_for_start {
+                    self.traverse_statement(start, unchecked);
+                    self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                let start = for_start_exprs.len();
+
+                let for_cond_exprs = if let Some(cond) = maybe_for_cond {
+                    self.traverse_expression(cond, unchecked);
+                    let cmp = self.expr_stack_mut().pop().unwrap();
+                    self.push_expr(FlatExpr::Requirement(*loc));
+                    self.push_expr(cmp);
+                    self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                let condition = for_cond_exprs.len();
+
+                let for_after_each_exprs = if let Some(after_each) = maybe_for_after_each {
+                    self.traverse_statement(after_each, unchecked);
+                    self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                let after_each = for_after_each_exprs.len();
+
+                let for_body_exprs = if let Some(body) = maybe_for_body {
+                    self.traverse_statement(body, unchecked);
+                    self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                let body = for_after_each_exprs.len();
+
+                self.push_expr(FlatExpr::For {
+                    loc: *loc,
+                    start,
+                    condition,
+                    after_each,
+                    body,
+                });
+                let stack = self.expr_stack_mut();
+                stack.extend(for_start_exprs);
+                stack.extend(for_cond_exprs);
+                stack.extend(for_after_each_exprs);
+                stack.extend(for_body_exprs);
+            }
+            DoWhile(loc, _while_stmt, _while_expr) => {
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "Do While statements are currently unsupported",
+                ));
+            }
+            Expression(_, expr) => {
+                self.traverse_expression(expr, unchecked);
             }
             Continue(loc) => {
-                self.push_expr(FlatExpr::Continue(*loc));
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "continue statements are currently unsupported",
+                ));
+                // self.push_expr(FlatExpr::Continue(*loc));
             }
             Break(loc) => {
-                self.push_expr(FlatExpr::Break(*loc));
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "break statements are currently unsupported",
+                ));
+                // self.push_expr(FlatExpr::Break(*loc));
             }
             Assembly {
-                loc,
+                loc: _,
                 dialect: _,
                 flags: _,
                 block: yul_block,
@@ -178,10 +267,28 @@ pub trait Flatten:
 
                 self.push_expr(FlatExpr::Return(*loc, maybe_ret_expr.is_some()));
             }
-            Revert(loc, _maybe_err_path, _exprs) => {}
-            RevertNamedArgs(_loc, _maybe_err_path, _named_args) => {}
-            Emit(_loc, _emit_expr) => {}
-            Try(_loc, _try_expr, _maybe_returns, _clauses) => {}
+            Revert(loc, _maybe_err_path, exprs) => {
+                exprs.iter().rev().for_each(|expr| {
+                    self.traverse_expression(expr, unchecked);
+                });
+                self.push_expr(FlatExpr::Revert(*loc, exprs.len()))
+            }
+            RevertNamedArgs(loc, _maybe_err_path, named_args) => {
+                named_args.iter().rev().for_each(|arg| {
+                    self.traverse_expression(&arg.expr, unchecked);
+                });
+                self.push_expr(FlatExpr::Revert(*loc, named_args.len()));
+            }
+            Emit(loc, emit_expr) => {
+                self.traverse_expression(emit_expr, unchecked);
+                self.push_expr(FlatExpr::Emit(*loc));
+            }
+            Try(loc, _try_expr, _maybe_returns, _clauses) => {
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "Try-Catch statements are currently unsupported",
+                ));
+            }
             Error(_loc) => {}
         }
     }
@@ -228,7 +335,12 @@ pub trait Flatten:
                 };
                 self.traverse_yul_if_else(*loc, iec);
             }
-            For(yul_for) => {}
+            For(yul_for) => {
+                self.push_expr(FlatExpr::Todo(
+                    yul_for.loc,
+                    "Yul for statements are currently unsupported",
+                ));
+            }
             Switch(solang_parser::pt::YulSwitch {
                 loc,
                 condition,
@@ -243,13 +355,25 @@ pub trait Flatten:
                 }
             }
             Leave(loc) => {
-                self.push_expr(FlatExpr::Break(*loc));
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "yul 'leave' statements are currently unsupported",
+                ));
+                // self.push_expr(FlatExpr::Break(*loc));
             }
             Break(loc) => {
-                self.push_expr(FlatExpr::Break(*loc));
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "yul 'break' statements are currently unsupported",
+                ));
+                // self.push_expr(FlatExpr::Break(*loc));
             }
             Continue(loc) => {
-                self.push_expr(FlatExpr::Continue(*loc));
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "yul 'continue' statements are currently unsupported",
+                ));
+                // self.push_expr(FlatExpr::Continue(*loc));
             }
             Block(block) => {
                 for statement in block.statements.iter() {
@@ -295,7 +419,12 @@ pub trait Flatten:
             FunctionCall(call) => {
                 self.traverse_yul_expression(&YulExpression::FunctionCall(call.clone()));
             }
-            Error(loc) => {}
+            Error(loc) => {
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "yul 'error' statements are currently unsupported",
+                ));
+            }
         }
     }
 
@@ -560,8 +689,18 @@ pub trait Flatten:
                 );
                 self.traverse_statement(&as_stmt, unchecked);
             }
-            ArraySlice(loc, lhs_expr, maybe_middle_expr, maybe_rhs) => {}
-            ArrayLiteral(loc, _) => {}
+            ArraySlice(loc, _lhs_expr, _maybe_middle_expr, _maybe_rhs) => {
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "array slice expressions are currently unsupported",
+                ));
+            }
+            ArrayLiteral(loc, _) => {
+                self.push_expr(FlatExpr::Todo(
+                    *loc,
+                    "array literals expressions are currently unsupported",
+                ));
+            }
 
             // Function calls
             FunctionCallBlock(loc, func_expr, call_block) => {
@@ -770,6 +909,7 @@ pub trait Flatten:
         );
 
         match next {
+            Todo(loc, err_str) => Err(ExprErr::Todo(loc, err_str.to_string())),
             // Flag expressions
             FunctionCallName(n, is_super, named_args) => {
                 self.set_expr_flag(ExprFlag::FunctionName(n, is_super, named_args));
@@ -793,36 +933,42 @@ pub trait Flatten:
                 self.interp_negatable_literal(arena, ctx, next)
             }
 
+            // Variable
             VarDef(..) => self.interp_var_def(arena, ctx, next),
             Type(..) => self.interp_type(arena, ctx, next),
-            Return(..) => self.interp_return(arena, ctx, next),
             Variable(..) => self.interp_var(arena, ctx, stack, next, parse_idx),
             Assign(..) => self.interp_assign(arena, ctx, next),
+            List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
 
-            Not(..) => self.interp_not(arena, ctx, next),
-
-            // Comparator
-            Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
-            | MoreEqual(loc) | And(loc) | Or(loc) => self.interp_cmp(arena, ctx, loc, next),
-
+            // Conditional
             If { .. } => self.interp_if(arena, ctx, stack, next, parse_idx),
+            Requirement(..) => {
+                self.set_expr_flag(ExprFlag::Requirement);
+                Ok(())
+            }
 
+            // Looping
+            While { .. } => self.interp_while(arena, ctx, stack, next, parse_idx),
+            For { .. } => self.interp_for(arena, ctx, stack, next, parse_idx),
             Continue(loc) | Break(loc) => Err(ExprErr::Todo(
                 loc,
                 "Control flow expressions like break and continue are not currently supported"
                     .to_string(),
             )),
 
+            // Pre and post increment/decrement
             PostIncrement(loc, ..)
             | PreIncrement(loc, ..)
             | PostDecrement(loc, ..)
             | PreDecrement(loc, ..) => self.interp_xxcrement(arena, ctx, next, loc),
 
-            ArrayTy(..) => self.interp_array_ty(arena, ctx, next),
+            // Array
+            ArrayTy(..) => self.interp_array_ty(ctx, next),
             ArrayIndexAccess(_) => self.interp_array_idx(arena, ctx, next),
             ArraySlice(_) => todo!(),
             ArrayLiteral(_) => todo!(),
 
+            // Binary operators
             Power(loc, ..)
             | Multiply(loc, ..)
             | Divide(loc, ..)
@@ -834,9 +980,7 @@ pub trait Flatten:
             | BitwiseAnd(loc, ..)
             | BitwiseXor(loc, ..)
             | BitwiseOr(loc, ..) => self.interp_op(arena, ctx, next, loc, false),
-
-            BitwiseNot(loc, ..) => self.interp_bit_not(arena, ctx, next),
-
+            BitwiseNot(..) => self.interp_bit_not(arena, ctx, next),
             AssignAdd(loc, ..)
             | AssignSubtract(loc, ..)
             | AssignMultiply(loc, ..)
@@ -847,30 +991,41 @@ pub trait Flatten:
             | AssignXor(loc, ..)
             | AssignShiftLeft(loc, ..)
             | AssignShiftRight(loc, ..) => self.interp_op(arena, ctx, next, loc, true),
+            // Comparator
+            Not(..) => self.interp_not(arena, ctx, next),
+            Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
+            | MoreEqual(loc) | And(loc) | Or(loc) => self.interp_cmp(arena, ctx, loc, next),
 
-            Super(..) => unreachable!(),
+            // Function calling
             MemberAccess(..) => self.interp_member_access(arena, ctx, next),
-
-            Requirement(..) => {
-                self.set_expr_flag(ExprFlag::Requirement);
-                Ok(())
-            }
             FunctionCall(..) => self.interp_func_call(arena, ctx, next, None),
             FunctionCallBlock(_) => todo!(),
             NamedArgument(..) => Ok(()),
             NamedFunctionCall(..) => {
                 self.interp_named_func_call(arena, ctx, stack, next, parse_idx)
             }
+            Return(..) => self.interp_return(arena, ctx, next),
+            Revert(loc, n) => {
+                let _ = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+                ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)
+            }
 
+            // Semi useless
+            Parameter(_, _, _) => Ok(()),
+            Super(..) => unreachable!(),
+            Emit(loc) => {
+                let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                Ok(())
+            }
+            Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
+
+            // Todo
+            This(_) => todo!(),
             Delete(_) => todo!(),
             UnaryPlus(_) => todo!(),
+            Try { .. } => todo!(),
 
-            ConditionalOperator(_) => todo!(),
-
-            This(_) => todo!(),
-            List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
-            Parameter(_, _, _) => Ok(()),
-            Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
+            // Yul
             YulExpr(FlatYulExpr::YulStartBlock) => {
                 self.increment_asm_block();
                 Ok(())
@@ -1027,6 +1182,46 @@ pub trait Flatten:
         self.op_match(arena, ctx, loc, &lhs, &rhs, op, assign)
     }
 
+    fn interp_while(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &mut Vec<FlatExpr>,
+        while_expr: FlatExpr,
+        parse_idx: usize,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::While {
+            loc,
+            condition,
+            body,
+        } = while_expr
+        else {
+            unreachable!()
+        };
+        todo!()
+    }
+
+    fn interp_for(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        stack: &mut Vec<FlatExpr>,
+        for_expr: FlatExpr,
+        parse_idx: usize,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::For {
+            loc,
+            start,
+            condition,
+            after_each,
+            body,
+        } = for_expr
+        else {
+            unreachable!()
+        };
+        todo!()
+    }
+
     fn interp_if(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -1124,7 +1319,7 @@ pub trait Flatten:
                     Ok(())
                 })?;
                 // parse the false body expressions
-                for i in 0..false_body {
+                for _ in 0..false_body {
                     self.interpret_step(arena, false_subctx, loc, stack)?;
                 }
             }
@@ -1183,10 +1378,8 @@ pub trait Flatten:
                 FlatExpr::MoreEqual(..) => {
                     self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Gte, &rhs)
                 }
-                FlatExpr::LessEqual(..) => {
-                    self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::And, &rhs)
-                }
-                FlatExpr::MoreEqual(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Or, &rhs),
+                FlatExpr::And(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::And, &rhs),
+                FlatExpr::Or(..) => self.cmp_inner(arena, ctx, loc, &lhs, RangeOp::Or, &rhs),
                 _ => unreachable!(),
             }
         }
@@ -1366,12 +1559,7 @@ pub trait Flatten:
         self.match_assign_sides(arena, ctx, loc, &lhs, &rhs)
     }
 
-    fn interp_array_ty(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        arr_ty: FlatExpr,
-    ) -> Result<(), ExprErr> {
+    fn interp_array_ty(&mut self, ctx: ContextNode, arr_ty: FlatExpr) -> Result<(), ExprErr> {
         let FlatExpr::ArrayTy(loc) = arr_ty else {
             unreachable!()
         };
@@ -1403,7 +1591,7 @@ pub trait Flatten:
         func_call: FlatExpr,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
-        let FlatExpr::NamedFunctionCall(loc, n) = func_call else {
+        let FlatExpr::NamedFunctionCall(_, n) = func_call else {
             unreachable!()
         };
 
@@ -1664,7 +1852,7 @@ pub trait Flatten:
         };
 
         let end = parse_idx + 1 + num;
-        let exprs = (&stack[parse_idx + 1..end]).to_vec();
+        let exprs = stack[parse_idx + 1..end].to_vec();
         let fn_node = ctx.associated_fn(self).into_expr_err(loc)?;
         let yul_fn = self.add_node(YulFunction::new(exprs, name, loc));
         self.add_edge(yul_fn, fn_node, Edge::YulFunction(self.current_asm_block()));

@@ -20,6 +20,27 @@ pub enum FlatExpr {
         false_body: usize,
     },
 
+    While {
+        loc: Loc,
+        condition: usize,
+        body: usize,
+    },
+    For {
+        loc: Loc,
+        start: usize,
+        condition: usize,
+        after_each: usize,
+        body: usize,
+    },
+    Try {
+        loc: Loc,
+        try_expr: usize,
+    },
+
+    Todo(Loc, &'static str),
+
+    Emit(Loc),
+
     NamedArgument(Loc, &'static str),
     FunctionCallName(usize, bool, bool),
     Requirement(Loc),
@@ -28,6 +49,7 @@ pub enum FlatExpr {
     Continue(Loc),
     Break(Loc),
     Return(Loc, bool),
+    Revert(Loc, usize), //, Option<&'static str>, usize),
 
     PostIncrement(Loc),
     PostDecrement(Loc),
@@ -80,7 +102,6 @@ pub enum FlatExpr {
     And(Loc),
     Or(Loc),
 
-    ConditionalOperator(Loc),
     Assign(Loc),
     Type(Loc, &'static Type),
     This(Loc),
@@ -294,7 +315,12 @@ impl FlatExpr {
         use FlatExpr::*;
         match self {
             If { loc, .. }
+            | While { loc, .. }
+            | For { loc, .. }
+            | Try { loc, .. }
             | VarDef(loc, ..)
+            | Todo(loc, ..)
+            | Emit(loc, ..)
             | NamedArgument(loc, ..)
             | Continue(loc, ..)
             | Break(loc, ..)
@@ -345,7 +371,6 @@ impl FlatExpr {
             | NotEqual(loc, ..)
             | And(loc, ..)
             | Or(loc, ..)
-            | ConditionalOperator(loc, ..)
             | Assign(loc, ..)
             | Type(loc, ..)
             | This(loc, ..)
@@ -362,6 +387,7 @@ impl FlatExpr {
             | Variable(loc, ..)
             | Requirement(loc, ..)
             | Super(loc, ..)
+            | Revert(loc, ..)
             | YulExpr(FlatYulExpr::YulVariable(loc, ..))
             | YulExpr(FlatYulExpr::YulFuncCall(loc, ..))
             | YulExpr(FlatYulExpr::YulAssign(loc, ..))
@@ -458,7 +484,6 @@ impl TryFrom<&Expression> for FlatExpr {
             NotEqual(loc, ..) => FlatExpr::NotEqual(*loc),
             And(loc, ..) => FlatExpr::And(*loc),
             Or(loc, ..) => FlatExpr::Or(*loc),
-            ConditionalOperator(loc, ..) => FlatExpr::ConditionalOperator(*loc),
             Assign(loc, ..) => FlatExpr::Assign(*loc),
             AssignOr(loc, ..) => FlatExpr::AssignOr(*loc),
             AssignAnd(loc, ..) => FlatExpr::AssignAnd(*loc),
@@ -556,6 +581,7 @@ impl TryFrom<&Expression> for FlatExpr {
             | AssignAdd(_, _, _)
             | AssignSubtract(_, _, _)
             | AssignMultiply(_, _, _)
+            | ConditionalOperator(..)
             | AssignDivide(_, _, _) => return Err(()),
         };
         Ok(res)
