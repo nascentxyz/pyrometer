@@ -547,7 +547,19 @@ pub trait Flatten:
                 self.traverse_expression(ty_expr, unchecked);
                 self.push_expr(FlatExpr::ArrayIndexAccess(*loc));
             }
-            ConditionalOperator(loc, if_expr, true_expr, false_expr) => {}
+            ConditionalOperator(loc, if_expr, true_expr, false_expr) => {
+                // convert into statement if
+                let as_stmt: Statement = Statement::If(
+                    *loc,
+                    *if_expr.clone(),
+                    Box::new(Statement::Expression(true_expr.loc(), *true_expr.clone())),
+                    Some(Box::new(Statement::Expression(
+                        false_expr.loc(),
+                        *false_expr.clone(),
+                    ))),
+                );
+                self.traverse_statement(&as_stmt, unchecked);
+            }
             ArraySlice(loc, lhs_expr, maybe_middle_expr, maybe_rhs) => {}
             ArrayLiteral(loc, _) => {}
 
@@ -586,8 +598,26 @@ pub trait Flatten:
                         self.traverse_expression(expr, unchecked);
                     });
                     let cmp = self.expr_stack_mut().pop().unwrap();
-                    self.push_expr(FlatExpr::Requirement(*loc));
-                    self.push_expr(cmp);
+                    match cmp {
+                        FlatExpr::And(..) => {
+                            // Its better to just break up And into its component
+                            // parts now as opposed to trying to do it later
+                            // i.e.:
+                            // require(x && y) ==>
+                            //   require(x);
+                            //   require(y);
+                            let rhs = self.expr_stack_mut().pop().unwrap();
+                            let lhs = self.expr_stack_mut().pop().unwrap();
+                            self.push_expr(FlatExpr::Requirement(*loc));
+                            self.push_expr(rhs);
+                            self.push_expr(FlatExpr::Requirement(*loc));
+                            self.push_expr(lhs);
+                        }
+                        _ => {
+                            self.push_expr(FlatExpr::Requirement(*loc));
+                            self.push_expr(cmp);
+                        }
+                    }
                 }
                 _ => {
                     // func(inputs)
@@ -863,6 +893,12 @@ pub trait Flatten:
             }
         }?;
 
+        if let Some(loc) = next.try_loc() {
+            if ctx.kill_if_ret_killed(self, loc).into_expr_err(loc)? {
+                return Ok(());
+            }
+        }
+
         if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement))
             && !matches!(next, Requirement(..))
         {
@@ -1059,10 +1095,17 @@ pub trait Flatten:
                 ctx.delete_child(self).into_expr_err(loc)?;
 
                 // point the parse index of the parent ctx to the true body
-                ctx.underlying_mut(self).unwrap().parse_idx = parse_idx + true_cond + false_cond;
+                ctx.underlying_mut(self).unwrap().parse_idx =
+                    ctx.parse_idx(self) + true_cond + false_cond;
                 for _ in 0..true_body {
                     self.interpret_step(arena, ctx, loc, stack)?;
                 }
+
+                // skip false body
+                self.modify_edges(ctx, loc, &|analyzer, ctx| {
+                    ctx.skip_n_exprs(false_body, analyzer);
+                    Ok(())
+                })?;
             }
             (false, false) => {
                 // both branches are reachable. process each body

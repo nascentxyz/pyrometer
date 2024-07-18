@@ -244,7 +244,10 @@ impl RangeOp {
             Gte => Lte,
             Gt => Lt,
             Lt => Gt,
-            _ => return None,
+            other => {
+                println!("other:{other:?}");
+                return None;
+            }
         };
         Some(t)
     }

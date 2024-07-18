@@ -292,6 +292,24 @@ impl ContextNode {
         Ok(ret)
     }
 
+    pub fn kill_if_ret_killed(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        loc: Loc,
+    ) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        if let Some(killed_ret) = underlying
+            .expr_ret_stack
+            .iter()
+            .find(|ret| ret.has_killed())
+        {
+            self.kill(analyzer, loc, killed_ret.killed_kind().unwrap())?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Pushes an ExprRet to the stack
     #[tracing::instrument(level = "trace", skip_all)]
     pub fn push_expr(
