@@ -5,7 +5,7 @@ use graph::{
 use shared::{ExprErr, NodeIdx};
 
 use petgraph::{visit::EdgeRef, Direction};
-use solang_parser::pt::{Expression, Identifier};
+use solang_parser::pt::Expression;
 
 use std::collections::BTreeSet;
 

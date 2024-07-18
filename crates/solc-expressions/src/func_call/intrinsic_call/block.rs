@@ -1,9 +1,8 @@
 use graph::{
-    elem::Elem,
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ExprRet},
+    nodes::{Builtin, ContextNode, ContextVar, ExprRet},
     AnalyzerBackend,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{ExprErr, IntoExprErr};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -14,15 +13,14 @@ pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     /// Perform a `block` function call
     fn block_call(
         &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         func_name: &str,
         inputs: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        match &*func_name {
+        match func_name {
             "blockhash" => {
-                let input = inputs.expect_single().into_expr_err(loc)?;
+                let _input = inputs.expect_single().into_expr_err(loc)?;
                 let var = ContextVar::new_from_builtin(
                     loc,
                     self.builtin_or_add(Builtin::Bytes(32)).into(),

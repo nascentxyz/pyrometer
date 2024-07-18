@@ -1,6 +1,5 @@
-use crate::func_caller::NamedOrUnnamedArgs;
+use crate::variable::Variable;
 use crate::ListAccess;
-use crate::{variable::Variable, ContextBuilder, ExpressionParser};
 
 use graph::{
     elem::*,
@@ -9,7 +8,7 @@ use graph::{
     },
     AnalyzerBackend, VarType,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -104,31 +103,6 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     }
 
     /// Perform a cast of a type
-    fn cast(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ty: Builtin,
-        func_idx: NodeIdx,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(loc, "Cast had no target type".to_string()));
-            };
-
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-
-            let var_ty = VarType::try_from_idx(analyzer, func_idx).unwrap();
-            analyzer.cast_inner(arena, ctx, var_ty, &ty, ret, loc)
-        })
-    }
-
     fn cast_inner(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,

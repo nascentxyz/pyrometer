@@ -1,5 +1,3 @@
-use crate::{ContextBuilder, ExpressionParser};
-
 use graph::{
     elem::*,
     nodes::{
@@ -16,31 +14,7 @@ use std::cmp::Ordering;
 impl<T> Cmp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles comparator operations, i.e: `!`
 pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn not(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        lhs_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, lhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "Not operation had no element".to_string(),
-                ));
-            };
-
-            if matches!(lhs, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.not_inner(arena, ctx, loc, lhs.flatten())
-        })
-    }
-
+    /// Perform logical not operation
     #[tracing::instrument(level = "trace", skip_all)]
     fn not_inner(
         &mut self,
@@ -103,52 +77,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn cmp(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        lhs_expr: &Expression,
-        op: RangeOp,
-        rhs_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            analyzer.parse_ctx_expr(arena, rhs_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoRhs(
-                        loc,
-                        "Cmp operation had no right hand side".to_string(),
-                    ));
-                };
-                let rhs_paths = rhs_paths.flatten();
-
-                if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-
-                analyzer.parse_ctx_expr(arena, lhs_expr, ctx)?;
-                analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Cmp operation had no left hand side".to_string(),
-                        ));
-                    };
-
-                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.cmp_inner(arena, ctx, loc, &lhs_paths.flatten(), op, &rhs_paths)
-                })
-            })
-        })
-    }
-
+    /// Performs a comparison operation
     #[tracing::instrument(level = "trace", skip_all)]
     fn cmp_inner(
         &mut self,

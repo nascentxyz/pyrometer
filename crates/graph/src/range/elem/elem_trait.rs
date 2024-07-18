@@ -1,4 +1,4 @@
-use crate::{elem::RangeOp, nodes::ContextVarNode, range::elem::Elem, GraphBackend};
+use crate::{nodes::ContextVarNode, range::elem::Elem, GraphBackend};
 
 use shared::{GraphError, NodeIdx, RangeArena};
 use std::hash::Hash;
@@ -123,10 +123,4 @@ pub trait RangeElem<T: Ord + Hash>: Hash {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<T>>,
     ) -> Result<(), GraphError>;
-
-    fn last_range_op(
-        &self,
-        analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<T>>,
-    ) -> Result<Option<RangeOp>, GraphError>;
 }

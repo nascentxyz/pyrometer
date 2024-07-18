@@ -1,4 +1,4 @@
-use crate::{require::Require, variable::Variable, ContextBuilder, ExpressionParser};
+use crate::{require::Require, variable::Variable};
 
 use graph::{
     elem::*,
@@ -16,45 +16,6 @@ impl<T> BinOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
 /// Handles binary operations (`+`, `-`, `/`, etc.)
 pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Evaluate and execute a binary operation expression
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn op_expr(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        lhs_expr: &Expression,
-        rhs_expr: &Expression,
-        ctx: ContextNode,
-        op: RangeOp,
-        assign: bool,
-    ) -> Result<(), ExprErr> {
-        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
-            .into_expr_err(loc)?;
-        self.parse_ctx_expr(arena, rhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(loc, "Binary operation had no right hand side".to_string()))
-            };
-            if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            let rhs_paths = rhs_paths.flatten();
-            let rhs_ctx = ctx;
-            analyzer.parse_ctx_expr(arena, lhs_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, format!("Binary operation had no left hand side, Expr: {lhs_expr:#?}, rhs ctx: {}, curr ctx: {}", rhs_ctx.path(analyzer), ctx.path(analyzer))))
-                };
-                if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                let lhs_paths = lhs_paths.flatten();
-                analyzer.op_match(arena, ctx, loc, &lhs_paths, &rhs_paths, op, assign)
-            })
-        })
-    }
-
     fn op_match(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -294,31 +255,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ))
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn bit_not(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        lhs_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, lhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(lhs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "Not operation had no element".to_string(),
-                ));
-            };
-
-            if matches!(lhs, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(lhs, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.bit_not_inner(arena, ctx, lhs.flatten(), loc)
-        })
-    }
-
+    /// Perform bitwise not
     #[tracing::instrument(level = "trace", skip_all)]
     fn bit_not_inner(
         &mut self,

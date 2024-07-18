@@ -1,4 +1,4 @@
-use crate::{array::Array, variable::Variable, ContextBuilder, ExpressionParser, ListAccess};
+use crate::variable::Variable;
 
 use graph::{
     elem::{Elem, RangeElem},
@@ -12,55 +12,6 @@ use solang_parser::pt::{Expression, Loc};
 impl<T> Assign for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles assignments
 pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Parse an assignment expression
-    fn assign_exprs(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        lhs_expr: &Expression,
-        rhs_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, lhs_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "Assign operation had no left hand side".to_string(),
-                ));
-            };
-
-            if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-
-            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-            analyzer.parse_ctx_expr(arena, rhs_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoRhs(
-                        loc,
-                        "Assign operation had no right hand side".to_string(),
-                    ));
-                };
-                let lhs_paths = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap()
-                    .flatten();
-
-                if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                analyzer.match_assign_sides(arena, ctx, loc, &lhs_paths, &rhs_paths)?;
-                Ok(())
-            })
-        })
-    }
-
     /// Match on the [`ExprRet`]s of an assignment expression
     fn match_assign_sides(
         &mut self,

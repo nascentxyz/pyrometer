@@ -1,5 +1,4 @@
-use crate::func_caller::NamedOrUnnamedArgs;
-use crate::{assign::Assign, func_call::helper::CallerHelper, ContextBuilder, ExpressionParser};
+use crate::{assign::Assign, func_call::helper::CallerHelper};
 
 use graph::{
     elem::*,
@@ -20,29 +19,6 @@ pub trait ConstructorCaller:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + CallerHelper
 {
     /// Construct an array
-    fn construct_array(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        func_idx: NodeIdx,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        // create a new list
-        self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(len_var) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
-            };
-
-            if matches!(len_var, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(len_var, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.construct_array_inner(arena, func_idx, len_var, loc, ctx)
-        })
-    }
-
     fn construct_array_inner(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -121,54 +97,6 @@ pub trait ConstructorCaller:
     }
 
     /// Construct a contract
-    fn construct_contract(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        func_idx: NodeIdx,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        // construct a new contract
-        if !input_exprs.is_empty() {
-            self.parse_ctx_expr(arena, &input_exprs.unnamed_args().unwrap()[0], ctx)?;
-        }
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-            if !input_exprs.is_empty() {
-                let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoRhs(loc, "Contract creation failed".to_string()));
-                };
-                if matches!(ret, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-            }
-
-            let var = match ContextVar::maybe_from_user_ty(analyzer, loc, func_idx) {
-                Some(v) => v,
-                None => {
-                    return Err(ExprErr::VarBadType(
-                        loc,
-                        format!(
-                            "Could not create context variable from user type: {:?}",
-                            analyzer.node(func_idx)
-                        ),
-                    ))
-                }
-            };
-            // let idx = ret.expect_single().into_expr_err(loc)?;
-            let contract_cvar = ContextVarNode::from(analyzer.add_node(Node::ContextVar(var)));
-            // contract_cvar
-            //     .set_range_min(analyzer, Elem::from(idx))
-            //     .into_expr_err(loc)?;
-            // contract_cvar
-            //     .set_range_max(analyzer, Elem::from(idx))
-            //     .into_expr_err(loc)?;
-            ctx.push_expr(ExprRet::Single(contract_cvar.into()), analyzer)
-                .into_expr_err(loc)
-        })
-    }
-
     fn construct_contract_inner(
         &mut self,
         _arena: &mut RangeArena<Elem<Concrete>>,
@@ -178,7 +106,6 @@ pub trait ConstructorCaller:
         loc: Loc,
     ) -> Result<(), ExprErr> {
         // construct a new contract
-
         let var = match ContextVar::maybe_from_user_ty(self, loc, con_node.0.into()) {
             Some(v) => v,
             None => {
@@ -241,27 +168,5 @@ pub trait ConstructorCaller:
 
         ctx.push_expr(ExprRet::Single(cvar), self)
             .into_expr_err(loc)
-    }
-
-    /// Construct a struct
-    fn construct_struct(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        func_idx: NodeIdx,
-        input_exprs: &NamedOrUnnamedArgs,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        input_exprs.parse(arena, self, ctx, loc)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(inputs) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "Struct construction call failed".to_string(),
-                ));
-            };
-
-            analyzer.construct_struct_inner(arena, ctx, StructNode::from(func_idx), inputs, loc)
-        })
     }
 }

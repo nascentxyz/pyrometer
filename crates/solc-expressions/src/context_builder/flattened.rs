@@ -1037,7 +1037,7 @@ pub trait Flatten:
             YulExpr(FlatYulExpr::YulSuffixAccess(..)) => Ok(()),
             YulExpr(yul @ FlatYulExpr::YulAssign(..)) => self.interp_yul_assign(arena, ctx, yul),
             YulExpr(yul @ FlatYulExpr::YulFuncDef(..)) => {
-                self.interp_yul_func_def(arena, ctx, stack, yul, parse_idx)
+                self.interp_yul_func_def(ctx, stack, yul, parse_idx)
             }
             YulExpr(yul @ FlatYulExpr::YulVarDecl(..)) => {
                 self.interp_yul_var_decl(arena, ctx, stack, yul, parse_idx)
@@ -1198,6 +1198,13 @@ pub trait Flatten:
         else {
             unreachable!()
         };
+        let _ = arena;
+        let _ = loc;
+        let _ = condition;
+        let _ = ctx;
+        let _ = parse_idx;
+        let _ = stack;
+        let _ = body;
         todo!()
     }
 
@@ -1219,6 +1226,15 @@ pub trait Flatten:
         else {
             unreachable!()
         };
+        let _ = arena;
+        let _ = loc;
+        let _ = condition;
+        let _ = ctx;
+        let _ = parse_idx;
+        let _ = stack;
+        let _ = after_each;
+        let _ = start;
+        let _ = body;
         todo!()
     }
 
@@ -1841,7 +1857,6 @@ pub trait Flatten:
 
     fn interp_yul_func_def(
         &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         next: FlatYulExpr,

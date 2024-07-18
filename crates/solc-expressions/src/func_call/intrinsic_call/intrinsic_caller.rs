@@ -1,5 +1,4 @@
 use crate::{
-    context_builder::ExpressionParser,
     func_call::{func_caller::FuncCaller, helper::CallerHelper},
     intrinsic_call::{
         AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
@@ -159,33 +158,6 @@ pub trait IntrinsicFuncCaller:
         }
     }
 
-    fn new_call(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: &Loc,
-        ty_expr: &Expression,
-        inputs: &[Expression],
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, ty_expr, ctx)?;
-        self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(ty) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "No type given for call to `new`".to_string(),
-                ));
-            };
-
-            panic!("here")
-            // let as_cvar =
-            //     ContextVarNode::from(analyzer.add_node(
-            //         ContextVar::maybe_from_user_ty(self, loc, ty.expect_single()?).unwrap(),
-            //     ));
-
-            // self.new_call_inner(arena, loc, as_cvar, inputs, ctx)
-        })
-    }
-
     fn call_builtin(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -196,7 +168,7 @@ pub trait IntrinsicFuncCaller:
     ) -> Result<(), ExprErr> {
         match name {
             // abi
-            _ if name.starts_with("abi.") => self.abi_call_inner(arena, ctx, name, inputs, loc),
+            _ if name.starts_with("abi.") => self.abi_call_inner(ctx, name, inputs, loc),
             // address
             "delegatecall" | "staticcall" | "call" | "code" | "balance" => {
                 self.address_call(ctx, name, loc)
@@ -204,15 +176,13 @@ pub trait IntrinsicFuncCaller:
             // array
             "push" | "pop" => self.array_call_inner(arena, ctx, name, inputs, loc),
             // block
-            "blockhash" => self.block_call(arena, ctx, name, inputs, loc),
+            "blockhash" => self.block_call(ctx, name, inputs, loc),
             // dynamic sized builtins
             "concat" => self.dyn_builtin_call(arena, ctx, name, inputs, loc),
             // msg
             "gasleft" => self.msg_call(ctx, name, loc),
             // precompiles
-            "sha256" | "ripemd160" | "ecrecover" => {
-                self.precompile_call(arena, ctx, name, inputs, loc)
-            }
+            "sha256" | "ripemd160" | "ecrecover" => self.precompile_call(ctx, name, inputs, loc),
             // solidity
             "keccak256" | "addmod" | "mulmod" | "require" | "assert" => {
                 self.solidity_call(arena, ctx, name, inputs, loc)

@@ -1,4 +1,5 @@
 //! Trait and blanket implementation for the core parsing loop
+use crate::variable::Variable;
 use graph::{
     elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
@@ -8,25 +9,16 @@ use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> ContextBuilder for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + StatementParser
-{
-}
+impl<T> ContextBuilder for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 
-mod expr;
 mod flattened;
-mod stmt;
 mod test_command_runner;
 
-pub use expr::*;
 pub use flattened::*;
-pub use stmt::*;
 pub use test_command_runner::*;
 
 /// Dispatcher for building up a context of a function
-pub trait ContextBuilder:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + StatementParser
-{
+pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// TODO: rename this. Sometimes we dont want to kill a context if we hit an error
     fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {

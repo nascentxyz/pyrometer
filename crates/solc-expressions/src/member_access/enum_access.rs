@@ -4,9 +4,9 @@ use graph::{
     nodes::{ContextNode, ContextVar, EnumNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx};
+use shared::{ExprErr, IntoExprErr};
 
-use solang_parser::pt::{Expression, Identifier, Loc};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> EnumAccess for T where
     T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized

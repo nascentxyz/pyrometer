@@ -1,4 +1,4 @@
-use crate::{assign::Assign, variable::Variable, yul::YulBuilder, BinOp, Cmp, ContextBuilder, Env};
+use crate::{assign::Assign, variable::Variable, BinOp, Cmp, Env};
 
 use graph::{
     elem::*,
@@ -11,7 +11,7 @@ use graph::{
 use shared::{ExprErr, FlatExpr, IntoExprErr, RangeArena, StorageLocation};
 
 use ethers_core::types::U256;
-use solang_parser::pt::{Expression, Loc, YulExpression, YulFunctionCall};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> YulFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
@@ -63,7 +63,7 @@ pub trait YulFuncCaller:
             }
             "return" => {
                 let [offset, size] = inputs.into_sized();
-                self.return_yul(ctx, size, loc)?;
+                self.return_yul(ctx, offset, size, loc)?;
                 ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc)?;
                 Ok(())
             }
@@ -524,7 +524,13 @@ pub trait YulFuncCaller:
         }
     }
 
-    fn return_yul(&mut self, ctx: ContextNode, size: ExprRet, loc: Loc) -> Result<(), ExprErr> {
+    fn return_yul(
+        &mut self,
+        ctx: ContextNode,
+        _offset: ExprRet,
+        size: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
         match size {
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Single(size) | ExprRet::SingleLiteral(size) => {
@@ -555,7 +561,7 @@ pub trait YulFuncCaller:
             ExprRet::Multi(sizes) => {
                 sizes
                     .into_iter()
-                    .try_for_each(|size| self.return_yul(ctx, size, loc))?;
+                    .try_for_each(|size| self.return_yul(ctx, _offset.clone(), size, loc))?;
                 Ok(())
             }
             ExprRet::Null => Ok(()),

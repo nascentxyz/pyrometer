@@ -1,6 +1,6 @@
 use crate::{
     nodes::{Concrete, ContextVarNode},
-    range::elem::{Elem, RangeArenaLike, RangeElem, RangeOp},
+    range::elem::{Elem, RangeArenaLike, RangeElem},
     GraphBackend,
 };
 
@@ -84,13 +84,6 @@ impl RangeConcrete<Concrete> {
 
 impl RangeElem<Concrete> for RangeConcrete<Concrete> {
     type GraphError = GraphError;
-    fn last_range_op(
-        &self,
-        analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
-    ) -> Result<Option<RangeOp>, GraphError> {
-        Ok(None)
-    }
     fn arenaize(
         &mut self,
         analyzer: &mut impl GraphBackend,

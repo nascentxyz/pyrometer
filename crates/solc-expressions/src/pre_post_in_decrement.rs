@@ -1,4 +1,4 @@
-use crate::{context_builder::ContextBuilder, variable::Variable, ExpressionParser};
+use crate::variable::Variable;
 
 use graph::{
     elem::*,
@@ -18,107 +18,6 @@ impl<T> PrePostIncDecrement for T where
 pub trait PrePostIncDecrement:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
-    /// Handle a preincrement
-    fn pre_increment(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        expr: &Expression,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            tracing::trace!("PreIncrement variable pop");
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "PreIncrement operation had no right hand side".to_string(),
-                ));
-            };
-
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_in_de_crement(arena, ctx, true, true, loc, &ret)
-        })
-    }
-
-    /// Handle a postincrement
-    fn post_increment(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        expr: &Expression,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            tracing::trace!("PostIncrement variable pop");
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "PostIncrement operation had no right hand side".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_in_de_crement(arena, ctx, false, true, loc, &ret)
-        })
-    }
-
-    /// Handle a predecrement
-    fn pre_decrement(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        expr: &Expression,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            tracing::trace!("PreDecrement variable pop");
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "PreDecrement operation had no right hand side".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_in_de_crement(arena, ctx, true, false, loc, &ret)
-        })
-    }
-
-    /// Handle a postdecrement
-    fn post_decrement(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        expr: &Expression,
-        loc: Loc,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            tracing::trace!("PostDecrement variable pop");
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "PostDecrement operation had no right hand side".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_in_de_crement(arena, ctx, false, false, loc, &ret)
-        })
-    }
-
     /// Match on the [`ExprRet`]s of a pre-or-post in/decrement and performs it
     fn match_in_de_crement(
         &mut self,

@@ -1,13 +1,8 @@
-use crate::{
-    nodes::{Concrete, ContractNode},
-    range::elem::Elem,
-    AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node, VarType,
-};
+use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node};
 
 use shared::{FlatExpr, GraphError, NodeIdx, RangeArena};
 
-use petgraph::visit::EdgeRef;
-use solang_parser::pt::{Expression, Identifier, Loc, TypeDefinition};
+use solang_parser::pt::Loc;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct YulFunctionNode(pub usize);

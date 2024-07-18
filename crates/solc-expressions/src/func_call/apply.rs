@@ -156,7 +156,7 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(&body, None);
+                        self.traverse_statement(body, None);
                         self.interpret(func, body.loc(), arena)
                     }
 
@@ -205,7 +205,7 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(&body, None);
+                        self.traverse_statement(body, None);
                         self.interpret(func, body.loc(), arena)
                     }
 
@@ -253,7 +253,7 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(&body, None);
+                        self.traverse_statement(body, None);
                         self.interpret(func, body.loc(), arena)
                     }
 
@@ -514,7 +514,7 @@ pub trait FuncApplier:
                         target_ctx,
                         Edge::Context(ContextEdge::Variable),
                     );
-                    target_ctx.add_var(replacement, self);
+                    target_ctx.add_var(replacement, self).unwrap();
 
                     if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
                         if !replacement.ty_eq_ty(&param_ty, self).into_expr_err(loc)? {

@@ -7,7 +7,7 @@ use graph::{
 use shared::{ExprErr, IntoExprErr};
 
 use ethers_core::types::{I256, U256};
-use solang_parser::pt::{Expression, Identifier, Loc};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> BuiltinAccess for T where
     T: LibraryAccess + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized

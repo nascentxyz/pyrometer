@@ -6,7 +6,7 @@ use graph::Edge;
 use graph::{
     elem::Elem,
     nodes::{Concrete, Context, ContextNode},
-    AnalyzerBackend, GraphBackend, Node,
+    AnalyzerBackend, GraphBackend,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -21,33 +21,6 @@ impl<T> Looper for T where
 pub trait Looper:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Handles a for loop. Needs improvement
-    fn for_loop(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        ctx: ContextNode,
-        maybe_init: &Option<Box<Statement>>,
-        _maybe_limiter: &Option<Box<Expression>>,
-        _maybe_post: &Option<Box<Statement>>,
-        maybe_body: &Option<Box<Statement>>,
-    ) -> Result<(), ExprErr> {
-        // TODO: improve this
-        panic!("for loop");
-        // if let Some(initer) = maybe_init {
-        //     self.parse_ctx_statement(arena, initer, false, Some(ctx));
-        // }
-
-        // if let Some(body) = maybe_body {
-        //     self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-        //         analyzer.reset_vars(arena, loc, ctx, body)
-        //     })
-        // } else {
-        //     Ok(())
-        // }
-    }
-
     /// Resets all variables referenced in the loop because we don't elegantly handle loops
     fn reset_vars(
         &mut self,
@@ -61,7 +34,7 @@ pub trait Looper:
         ctx.set_child_call(subctx, self).into_expr_err(loc)?;
         self.add_edge(subctx, ctx, Edge::Context(ContextEdge::Loop));
 
-        self.traverse_statement(&body, None);
+        self.traverse_statement(body, None);
         self.interpret(subctx, body.loc(), arena);
         self.apply_to_edges(subctx, loc, arena, &|analyzer, arena, ctx, loc| {
             let vars = subctx.local_vars(analyzer).clone();

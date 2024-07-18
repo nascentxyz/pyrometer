@@ -267,7 +267,7 @@ impl AnalyzerLike for Analyzer {
 
                                     Some(reconstruction_edge)
                                 }
-                                e => None,
+                                _e => None,
                             }
                         }
                         _ => None,

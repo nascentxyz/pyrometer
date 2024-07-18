@@ -2,11 +2,10 @@ use crate::func_call::helper::CallerHelper;
 use graph::nodes::SubContextKind;
 
 use graph::{
-    elem::Elem,
-    nodes::{Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{ExprErr, IntoExprErr};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -22,13 +21,12 @@ pub trait PrecompileCaller:
     /// Perform a precompile's function call, like `ecrecover`
     fn precompile_call(
         &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         func_name: &str,
         inputs: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        match &*func_name {
+        match func_name {
             "sha256" => {
                 // TODO: Compile time calculate the hash if we have concretes.
                 let var = ContextVar::new_from_builtin(
@@ -60,8 +58,7 @@ pub trait PrecompileCaller:
                 let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
                 let call_ctx =
                     Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
-                ctx.set_child_call(call_ctx.into(), self)
-                    .into_expr_err(loc)?;
+                ctx.set_child_call(call_ctx, self).into_expr_err(loc)?;
                 let call_node = self.add_node(Node::FunctionCall);
                 self.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
                 self.add_edge(call_node, ctx, Edge::Context(ContextEdge::Subcontext));
@@ -88,23 +85,17 @@ pub trait PrecompileCaller:
                 ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                 self.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Variable));
                 self.add_edge(cvar, call_ctx, Edge::Context(ContextEdge::Return));
-                ContextNode::from(call_ctx)
+                call_ctx
                     .add_return_node(loc, cvar.into(), self)
                     .into_expr_err(loc)?;
 
-                let subctx_kind = SubContextKind::new_fn_ret(call_ctx.into(), ctx);
+                let subctx_kind = SubContextKind::new_fn_ret(call_ctx, ctx);
                 let ret_ctx =
                     Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
-                ContextNode::from(call_ctx)
-                    .set_child_call(ret_ctx.into(), self)
-                    .into_expr_err(loc)?;
+                call_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;
 
                 let tmp_ret = ContextVarNode::from(cvar)
-                    .as_tmp(
-                        ContextNode::from(call_ctx).underlying(self).unwrap().loc,
-                        ret_ctx.into(),
-                        self,
-                    )
+                    .as_tmp(call_ctx.underlying(self).unwrap().loc, ret_ctx, self)
                     .unwrap();
                 tmp_ret.underlying_mut(self).unwrap().is_return = true;
                 tmp_ret.underlying_mut(self).unwrap().display_name =
@@ -112,7 +103,7 @@ pub trait PrecompileCaller:
                 ctx.add_var(tmp_ret, self).into_expr_err(loc)?;
                 self.add_edge(tmp_ret, ret_ctx, Edge::Context(ContextEdge::Variable));
 
-                ContextNode::from(ret_ctx)
+                ret_ctx
                     .push_expr(ExprRet::Single(tmp_ret.into()), self)
                     .into_expr_err(loc)?;
                 Ok(())

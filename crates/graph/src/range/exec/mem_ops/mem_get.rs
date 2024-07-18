@@ -142,9 +142,8 @@ pub fn exec_get_index(
             }
             Elem::ConcreteDyn(d) => {
                 d.val.iter().for_each(|(k, (v, _op))| {
-                    match k.overlaps(rhs, true, analyzer, arena) {
-                        Ok(Some(true)) => candidates.push(v.clone()),
-                        _ => {}
+                    if let Ok(Some(true)) = k.overlaps(rhs, true, analyzer, arena) {
+                        candidates.push(v.clone())
                     }
                 });
             }

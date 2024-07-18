@@ -1,7 +1,4 @@
-use crate::{
-    BuiltinAccess, ContextBuilder, ContractAccess, EnumAccess, Env, ExpressionParser, ListAccess,
-    StructAccess,
-};
+use crate::{BuiltinAccess, ContractAccess, EnumAccess, Env, ListAccess, StructAccess};
 
 use graph::{
     elem::Elem,
@@ -13,7 +10,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
-use solang_parser::pt::{Expression, Identifier, Loc};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> MemberAccessParts for T where
     T: BuiltinAccess + ContractAccess + EnumAccess + ListAccess + StructAccess

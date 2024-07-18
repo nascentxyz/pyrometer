@@ -1,4 +1,4 @@
-use crate::{require::Require, variable::Variable, ContextBuilder, ExpressionParser, ListAccess};
+use crate::{require::Require, variable::Variable, ListAccess};
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
@@ -7,39 +7,12 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::{
-    helpers::CodeLocation,
-    pt::{Expression, Loc},
-};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> Array for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles arrays
 pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn array_ty(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ty_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, ty_expr, ctx)?;
-        self.apply_to_edges(ctx, ty_expr.loc(), arena, &|analyzer, _arena, ctx, loc| {
-            if let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? {
-                if matches!(ret, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                analyzer.match_ty(ctx, ty_expr.loc(), ret)
-            } else {
-                Err(ExprErr::NoLhs(
-                    loc,
-                    "No array specified for getting array type".to_string(),
-                ))
-            }
-        })
-    }
-
     fn match_ty(&mut self, ctx: ContextNode, loc: Loc, ret: ExprRet) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner_ty) | ExprRet::SingleLiteral(inner_ty) => {
@@ -75,48 +48,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     }
 
     /// Indexes into an array
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn index_into_array(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        ty_expr: &Expression,
-        index_expr: &Expression,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        tracing::trace!("Indexing into array");
-        self.parse_ctx_expr(arena, index_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(index_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoRhs(
-                    loc,
-                    "Could not find the index variable".to_string(),
-                ));
-            };
-            if matches!(index_tys, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(index_tys, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.parse_ctx_expr(arena, ty_expr, ctx)?;
-            analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                let Some(inner_tys) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(loc, "Could not find the array".to_string()));
-                };
-                if matches!(inner_tys, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(inner_tys, analyzer).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                analyzer.index_into_array_inner(
-                    arena,
-                    ctx,
-                    inner_tys.flatten(),
-                    index_tys.clone().flatten(),
-                    loc,
-                )
-            })
-        })
-    }
-
     #[tracing::instrument(level = "trace", skip_all)]
     fn index_into_array_inner(
         &mut self,

@@ -6,7 +6,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
 use shared::{ExprErr, ExprFlag, FlatExpr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
-use solc_expressions::{Flatten, StatementParser};
+use solc_expressions::Flatten;
 use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
@@ -152,7 +152,7 @@ pub struct Analyzer {
     pub current_asm_block: usize,
 }
 
-impl<'a> Default for Analyzer {
+impl Default for Analyzer {
     fn default() -> Self {
         let mut a = Self {
             root: Default::default(),

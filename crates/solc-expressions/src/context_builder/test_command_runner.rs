@@ -1,5 +1,3 @@
-use crate::ExpressionParser;
-
 use graph::{
     elem::{Elem, RangeElem},
     nodes::{Concrete, ContextNode},
@@ -10,14 +8,12 @@ use shared::{ExprErr, IntoExprErr, RangeArena};
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> TestCommandRunner for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
 }
 
 /// Solidity statement parser
-pub trait TestCommandRunner:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
-{
+pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn run_test_command(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,

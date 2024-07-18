@@ -12,7 +12,7 @@ impl<T> MsgCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = Ex
 pub trait MsgCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Perform a msg's builtin function call, like `gasleft()`
     fn msg_call(&mut self, ctx: ContextNode, func_name: &str, loc: Loc) -> Result<(), ExprErr> {
-        match &*func_name {
+        match func_name {
             "gasleft" => {
                 let var = ContextVar::new_from_builtin(
                     loc,

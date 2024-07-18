@@ -230,14 +230,6 @@ impl<T: Ord> RangeExpr<T> {
 impl RangeElem<Concrete> for RangeExpr<Concrete> {
     type GraphError = GraphError;
 
-    fn last_range_op(
-        &self,
-        analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
-    ) -> Result<Option<RangeOp>, GraphError> {
-        Ok(Some(self.op))
-    }
-
     // #[tracing::instrument(level = "trace", skip_all)]
     fn arenaize(
         &mut self,

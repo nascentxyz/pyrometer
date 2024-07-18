@@ -3,8 +3,6 @@
 use crate::{
     func_call::{apply::FuncApplier, modifier::ModifierCaller},
     helper::CallerHelper,
-    internal_call::InternalFuncCaller,
-    namespaced_call::NameSpaceFuncCaller,
     ContextBuilder, Flatten,
 };
 
@@ -18,100 +16,9 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
-use solang_parser::pt::{CodeLocation, Expression, Loc, NamedArgument};
+use solang_parser::pt::{CodeLocation, Expression, Loc};
 
 use std::collections::BTreeMap;
-
-#[derive(Debug)]
-pub enum NamedOrUnnamedArgs<'a> {
-    Named(&'a [NamedArgument]),
-    Unnamed(&'a [Expression]),
-}
-
-impl<'a> NamedOrUnnamedArgs<'a> {
-    pub fn named_args(&self) -> Option<&'a [NamedArgument]> {
-        match self {
-            NamedOrUnnamedArgs::Named(inner) => Some(inner),
-            _ => None,
-        }
-    }
-
-    pub fn unnamed_args(&self) -> Option<&'a [Expression]> {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => Some(inner),
-            _ => None,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => inner.len(),
-            NamedOrUnnamedArgs::Named(inner) => inner.len(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => inner.len() == 0,
-            NamedOrUnnamedArgs::Named(inner) => inner.len() == 0,
-        }
-    }
-
-    pub fn exprs(&self) -> Vec<Expression> {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => inner.to_vec(),
-            NamedOrUnnamedArgs::Named(inner) => inner.iter().map(|i| i.expr.clone()).collect(),
-        }
-    }
-
-    pub fn parse(
-        &self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized),
-        ctx: ContextNode,
-        loc: Loc,
-    ) -> Result<(), ExprErr> {
-        unreachable!("should not exist");
-    }
-
-    pub fn parse_n(
-        &self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        n: usize,
-        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized),
-        ctx: ContextNode,
-        loc: Loc,
-    ) -> Result<(), ExprErr> {
-        unreachable!("should not exist");
-    }
-
-    pub fn order(&self, inputs: ExprRet, ordered_params: Vec<String>) -> ExprRet {
-        if inputs.len() < 2 {
-            inputs
-        } else {
-            match self {
-                NamedOrUnnamedArgs::Unnamed(_inner) => inputs,
-                NamedOrUnnamedArgs::Named(inner) => ExprRet::Multi(
-                    ordered_params
-                        .iter()
-                        .map(|param| {
-                            let index = inner
-                                .iter()
-                                .enumerate()
-                                .find(|(_i, arg)| &arg.name.name == param)
-                                .unwrap()
-                                .0;
-                            match &inputs {
-                                ExprRet::Multi(inner) => inner[index].clone(),
-                                _ => panic!("Mismatched ExprRet type"),
-                            }
-                        })
-                        .collect(),
-                ),
-            }
-        }
-    }
-}
 
 impl<T> FuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
@@ -121,34 +28,6 @@ impl<T> FuncCaller for T where
 pub trait FuncCaller:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Perform a function call with named inputs
-    fn named_fn_call_expr(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        func_expr: &Expression,
-        input_exprs: &[NamedArgument],
-    ) -> Result<(), ExprErr> {
-        use solang_parser::pt::Expression::*;
-        match func_expr {
-            MemberAccess(loc, member_expr, ident) => self.call_name_spaced_func(
-                arena,
-                ctx,
-                loc,
-                member_expr,
-                ident,
-                NamedOrUnnamedArgs::Named(input_exprs),
-            ),
-            Variable(ident) => self.call_internal_named_func(arena, ctx, loc, ident, input_exprs),
-            e => Err(ExprErr::IntrinsicNamedArgs(
-                *loc,
-                format!("Cannot call intrinsic functions with named arguments. Call: {e:?}"),
-            )),
-        }
-    }
-
     /// Setups up storage variables for a function call and calls it
     fn setup_fn_call(
         &mut self,

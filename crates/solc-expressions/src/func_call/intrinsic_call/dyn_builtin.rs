@@ -23,7 +23,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
         inputs: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        match &*func_name {
+        match func_name {
             "concat" => self.concat(arena, ctx, inputs, loc),
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

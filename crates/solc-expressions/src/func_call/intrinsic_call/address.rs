@@ -12,8 +12,8 @@ impl<T> AddressCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr 
 pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Perform an `address.<..>` function call
     fn address_call(&mut self, ctx: ContextNode, func_name: &str, loc: Loc) -> Result<(), ExprErr> {
-        match &*func_name {
-            "delegatecall" | "staticcall" | "call" => self.external_call(ctx, &func_name, loc),
+        match func_name {
+            "delegatecall" | "staticcall" | "call" => self.external_call(ctx, func_name, loc),
             "code" => {
                 // TODO: try to be smarter based on the address input
                 let bn = self.builtin_or_add(Builtin::DynamicBytes);
