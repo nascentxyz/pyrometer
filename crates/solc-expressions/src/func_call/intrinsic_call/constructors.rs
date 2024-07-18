@@ -3,7 +3,7 @@ use crate::{assign::Assign, func_call::helper::CallerHelper, ContextBuilder, Exp
 
 use graph::{
     elem::*,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, StructNode},
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, StructNode},
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
@@ -167,6 +167,33 @@ pub trait ConstructorCaller:
             ctx.push_expr(ExprRet::Single(contract_cvar.into()), analyzer)
                 .into_expr_err(loc)
         })
+    }
+
+    fn construct_contract_inner(
+        &mut self,
+        _arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        con_node: ContractNode,
+        _input: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        // construct a new contract
+
+        let var = match ContextVar::maybe_from_user_ty(self, loc, con_node.0.into()) {
+            Some(v) => v,
+            None => {
+                return Err(ExprErr::VarBadType(
+                    loc,
+                    format!(
+                        "Could not create context variable from user type: {:?}",
+                        self.node(con_node)
+                    ),
+                ))
+            }
+        };
+        let contract_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+        ctx.push_expr(ExprRet::Single(contract_cvar.into()), self)
+            .into_expr_err(loc)
     }
 
     fn construct_struct_inner(

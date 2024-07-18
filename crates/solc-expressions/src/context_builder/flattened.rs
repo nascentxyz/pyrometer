@@ -1466,8 +1466,8 @@ pub trait Flatten:
             VarType::User(TypeNode::Struct(s), _) => {
                 self.construct_struct_inner(arena, ctx, s, inputs, loc)
             }
-            VarType::User(TypeNode::Contract(_), _) => {
-                unreachable!("should be unreachable: contract")
+            VarType::User(TypeNode::Contract(c), _) => {
+                self.construct_contract_inner(arena, ctx, c, inputs, loc)
             }
             VarType::User(TypeNode::Func(s), _) => {
                 if self.builtin_fn_nodes().iter().any(|(_, v)| *v == func) {

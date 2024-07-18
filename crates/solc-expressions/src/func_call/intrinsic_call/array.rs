@@ -1,3 +1,4 @@
+use crate::assign::Assign;
 use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{array::Array, bin_op::BinOp, ContextBuilder, ExpressionParser, ListAccess};
 
@@ -24,17 +25,47 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
         inputs: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        match &*func_name {
+        match func_name {
             "push" => {
                 let inputs_vec = inputs.as_vec();
                 let arr = inputs_vec[0].expect_single().into_expr_err(loc)?;
-                let push_elem = if let Some(push_elem) = inputs_vec.get(1) {
-                    Some(push_elem.expect_single().into_expr_err(loc)?)
-                } else {
-                    None
-                };
+                let arr = ContextVarNode::from(arr).latest_version(self);
 
-                todo!();
+                // get length
+                let len = self
+                    .get_length(arena, ctx, arr, true, loc)?
+                    .unwrap()
+                    .latest_version(self);
+
+                // get the index access for the *previous* length
+                let index_access = self
+                    .index_into_array_raw(arena, ctx, loc, len, arr, false, true)?
+                    .unwrap();
+
+                // create a temporary 1 variable
+                let tmp_one = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+
+                // add 1 to the length
+                let tmp_len = self.op(arena, loc, len, tmp_one, ctx, RangeOp::Add(false), false)?;
+
+                let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
+                tmp_len.underlying_mut(self).unwrap().is_tmp = false;
+
+                // set the new length
+                self.set_var_as_length(arena, ctx, loc, tmp_len, arr.latest_version(self))?;
+
+                if let Some(push_elem) = inputs_vec.get(1) {
+                    self.match_assign_sides(
+                        arena,
+                        ctx,
+                        loc,
+                        &ExprRet::Single(index_access.0.into()),
+                        push_elem,
+                    )
+                } else {
+                    ctx.push_expr(ExprRet::Single(index_access.0.into()), self)
+                        .into_expr_err(loc)
+                }
             }
             "pop" => {
                 todo!();
