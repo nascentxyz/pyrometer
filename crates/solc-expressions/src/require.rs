@@ -1299,8 +1299,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_elem,
                 ));
 
-                let new_new_lhs = self.advance_var_in_curr_ctx(new_lhs, loc)?;
-                let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;
+                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .set_range_min(self, arena, new_min.clone())
@@ -1333,8 +1333,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
-                let new_new_lhs = self.advance_var_in_curr_ctx(new_lhs, loc)?;
-                let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;
+                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .latest_version_or_inherited_in_ctx(ctx, self)
@@ -1429,11 +1429,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
                 tmp.expect_single().into_expr_err(loc)?
             });
-            let new_underlying_lhs = self.advance_var_in_curr_ctx(
+            let new_underlying_lhs = self.advance_var_in_ctx(
                 tmp_construction
                     .lhs
                     .latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
+                ctx,
             )?;
             if let Some(lhs_range) = new_underlying_lhs
                 .underlying(self)
@@ -1656,9 +1657,10 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     e => panic!("here {e:?}"),
                 };
 
-                let new_underlying_rhs = self.advance_var_in_curr_ctx(
+                let new_underlying_rhs = self.advance_var_in_ctx(
                     rhs.latest_version_or_inherited_in_ctx(ctx, self),
                     loc,
+                    ctx,
                 )?;
                 if let Some(lhs_range) = new_underlying_rhs
                     .underlying(self)

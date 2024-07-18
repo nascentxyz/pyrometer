@@ -394,6 +394,18 @@ impl Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match (self, other) {
+            (Elem::Arena(_), _) => {
+                let (elem, idx) = self.dearenaize(arena);
+                let overlaps = elem.overlaps(other, eval, analyzer, arena);
+                self.rearenaize(elem, idx, arena);
+                overlaps
+            }
+            (_, Elem::Arena(_)) => {
+                let (elem, idx) = other.dearenaize(arena);
+                let overlaps = self.overlaps(&elem, eval, analyzer, arena);
+                other.rearenaize(elem, idx, arena);
+                overlaps
+            }
             (Elem::Concrete(s), Elem::Concrete(o)) => Ok(Some(o.val == s.val)),
             (Elem::Reference(s), Elem::Reference(o)) => {
                 if s == o {

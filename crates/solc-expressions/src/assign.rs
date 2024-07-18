@@ -121,6 +121,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     }
 
     /// Perform an assignment
+    #[tracing::instrument(level = "trace", skip_all)]
     fn assign(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -242,91 +243,6 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 .try_set_range_exclusions(self, rhs_range.exclusions.clone())
                 .into_expr_err(loc);
             let _ = self.add_if_err(res);
-        }
-
-        if rhs_cvar.is_indexable(self).into_expr_err(loc)? {
-            // rhs is indexable. get the length attribute, create a new length for the lhs,
-            // and perform assign
-            let rhs_len_cvar = self.get_length(arena, ctx, rhs_cvar, true, loc)?.unwrap();
-            let lhs_len_cvar = self.get_length(arena, ctx, lhs_cvar, true, loc)?.unwrap();
-            self.assign(arena, loc, lhs_len_cvar, rhs_len_cvar, ctx)?;
-            // update the range
-            self.update_array_if_length_var(
-                arena,
-                ctx,
-                loc,
-                lhs_len_cvar.latest_version_or_inherited_in_ctx(ctx, self),
-            )?;
-        }
-
-        self.update_array_if_index_access(arena, ctx, loc, lhs_cvar, rhs_cvar)?;
-
-        // handle struct assignment
-        if let (Ok(lhs_fields), Ok(rhs_fields)) = (
-            lhs_cvar
-                .latest_version_or_inherited_in_ctx(ctx, self)
-                .struct_to_fields(self),
-            rhs_cvar
-                .latest_version_or_inherited_in_ctx(ctx, self)
-                .struct_to_fields(self),
-        ) {
-            // assert_eq!(lhs_fields.len(), rhs_fields.len());
-            lhs_fields.iter().try_for_each(|field| {
-                let full_name = field.name(self).unwrap();
-                let field_name = full_name
-                    .split('.')
-                    .collect::<Vec<_>>()
-                    .last()
-                    .cloned()
-                    .unwrap();
-                if let Some(matching_field) = rhs_fields.iter().find(|r_field| {
-                    let r_full_name = r_field.name(self).unwrap();
-                    let r_field_name = r_full_name
-                        .split('.')
-                        .collect::<Vec<_>>()
-                        .last()
-                        .cloned()
-                        .unwrap();
-                    field_name == r_field_name
-                }) {
-                    let _ = self.assign(
-                        arena,
-                        loc,
-                        field.latest_version_or_inherited_in_ctx(ctx, self),
-                        matching_field.latest_version_or_inherited_in_ctx(ctx, self),
-                        ctx,
-                    )?;
-                    Ok(())
-                } else {
-                    Err(ExprErr::ParseError(
-                        loc,
-                        "Missing fields for struct assignment".to_string(),
-                    ))
-                }
-            })?;
-
-            // if !fields.is_empty() {
-            //     fields.into_iter().for_each(|field| {
-            //         lhs_cvar.struc
-            //         let mut new_var = field.underlying(self).unwrap().clone();
-            //         let field_name = field.name(self).unwrap();
-            //         let field_name = field_name
-            //             .split('.')
-            //             .collect::<Vec<_>>()
-            //             .last()
-            //             .cloned()
-            //             .unwrap();
-            //         let new_name = format!("{}.{field_name}", lhs_cvar.name(self).unwrap());
-            //         new_var.name.clone_from(&new_name);
-            //         new_var.display_name = new_name;
-            //         let new_field = ContextVarNode::from(self.add_node(new_var));
-            //         self.add_edge(
-            //             new_field,
-            //             lhs_cvar.first_version(self),
-            //             Edge::Context(ContextEdge::AttrAccess("field")),
-            //         );
-            //     })
-            // }
         }
 
         // advance the rhs variable to avoid recursion issues

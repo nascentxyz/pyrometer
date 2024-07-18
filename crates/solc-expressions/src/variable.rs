@@ -707,35 +707,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         Ok(ContextVarNode::from(new_cvarnode))
     }
 
-    /// Creates a new version of a variable in it's current context
-    fn advance_var_in_curr_ctx(
-        &mut self,
-        cvar_node: ContextVarNode,
-        loc: Loc,
-    ) -> Result<ContextVarNode, ExprErr> {
-        tracing::trace!(
-            "advancing variable: {}",
-            cvar_node.display_name(self).into_expr_err(loc)?
-        );
-        if let Some(cvar) = cvar_node.next_version(self) {
-            panic!(
-                "Not latest version of: {}",
-                cvar.display_name(self).unwrap()
-            );
-        }
-        let mut new_cvar = cvar_node
-            .latest_version(self)
-            .underlying(self)
-            .into_expr_err(loc)?
-            .clone();
-        new_cvar.loc = Some(loc);
-
-        let new_cvarnode = self.add_node(new_cvar);
-        self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
-
-        Ok(ContextVarNode::from(new_cvarnode))
-    }
-
     /// Clones a variable and adds it to the graph
     fn advance_var_underlying(&mut self, cvar_node: ContextVarNode, loc: Loc) -> &mut ContextVar {
         assert_eq!(None, cvar_node.next_version(self));

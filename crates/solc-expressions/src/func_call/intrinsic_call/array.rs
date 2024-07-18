@@ -17,6 +17,7 @@ impl<T> ArrayCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = 
 /// Trait for calling array-based intrinsic functions
 pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Perform an `array.<..>` function call
+    #[tracing::instrument(level = "trace", skip_all)]
     fn array_call_inner(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
@@ -68,7 +69,56 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                 }
             }
             "pop" => {
-                todo!();
+                if inputs.len() != 1 {
+                    return Err(ExprErr::InvalidFunctionInput(
+                        loc,
+                        format!(
+                            "array[].pop() expected 0 inputs, got: {}",
+                            inputs.len().saturating_sub(1)
+                        ),
+                    ));
+                }
+
+                let [arr] = inputs.into_sized();
+                let arr = ContextVarNode::from(arr.expect_single().into_expr_err(loc)?)
+                    .latest_version(self);
+
+                // get length
+                let len = self
+                    .get_length(arena, ctx, arr, true, loc)?
+                    .unwrap()
+                    .latest_version(self);
+
+                // create a temporary 1 variable
+                let one = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+
+                // subtract 1 from the length
+                let tmp_len = self.op(arena, loc, len, one, ctx, RangeOp::Sub(false), false)?;
+
+                let tmp_len = ContextVarNode::from(tmp_len.expect_single().unwrap());
+                tmp_len.underlying_mut(self).unwrap().is_tmp = false;
+
+                // get the index access
+                let index_access = self
+                    .index_into_array_raw(arena, ctx, loc, tmp_len, arr, false, true)?
+                    .unwrap();
+
+                self.set_var_as_length(arena, ctx, loc, tmp_len, arr.latest_version(self))?;
+                index_access
+                    .set_range_min(self, arena, Elem::Null)
+                    .into_expr_err(loc)?;
+                index_access
+                    .set_range_max(self, arena, Elem::Null)
+                    .into_expr_err(loc)?;
+
+                self.update_array_from_index_access(
+                    arena,
+                    ctx,
+                    loc,
+                    tmp_len,
+                    index_access.latest_version(self),
+                    arr.latest_version(self),
+                )
             }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

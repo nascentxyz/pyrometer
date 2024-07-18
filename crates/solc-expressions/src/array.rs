@@ -128,10 +128,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<(), ExprErr> {
         match (inner_paths, index_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
-            (_, ExprRet::CtxKilled(kind)) => {
-                ctx.kill(self, loc, kind).into_expr_err(loc)
-            }
-            (ExprRet::CtxKilled(kind), _) => {
+            (_, ExprRet::CtxKilled(kind)) | (ExprRet::CtxKilled(kind), _) => {
                 ctx.kill(self, loc, kind).into_expr_err(loc)
             }
             (ExprRet::Single(parent), ExprRet::Single(index)) | (ExprRet::Single(parent), ExprRet::SingleLiteral(index)) => {
@@ -176,7 +173,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let name = format!(
             "{}[{}]",
             parent.name(self).into_expr_err(loc)?,
-            index.name(self).into_expr_err(loc)?
+            index.as_controllable_name(self, arena).into_expr_err(loc)?
         );
         if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
             let index_var = index_var.latest_version_or_inherited_in_ctx(ctx, self);
@@ -245,7 +242,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let max = Elem::from(parent)
                     .get_index(index.into())
                     .min(ContextVarNode::from(idx_access_node).into()); //.range_max(self).unwrap().unwrap());
-
                 let idx_access_cvar =
                     self.advance_var_in_ctx(ContextVarNode::from(idx_access_node), loc, ctx)?;
 
@@ -265,7 +261,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 {
                     // if the index access is also an array, produce a length variable
                     // we specify to return the variable because we dont want it on the stack
-                    let _ = self.get_length(arena, ctx, idx_access_node.into(), true, loc)?;
+                    let _ = self.get_length(arena, ctx, idx_access_cvar, true, loc)?;
                 }
                 idx_access_cvar
             } else {

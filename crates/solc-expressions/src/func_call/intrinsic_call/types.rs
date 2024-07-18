@@ -161,14 +161,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
 
                 if cvar.needs_length(self).into_expr_err(loc)? {
                     // input is indexable. get the length attribute, create a new length for the casted type
-                    let _ = self.create_length(
-                        arena,
-                        ctx,
-                        new_var,
-                        new_var.latest_version(self),
-                        false,
-                        loc,
-                    )?;
+                    let _ = self.get_length(arena, ctx, new_var.latest_version(self), true, loc)?;
                 }
 
                 ctx.push_expr(ExprRet::Single(new_var.into()), self)

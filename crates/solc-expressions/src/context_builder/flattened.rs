@@ -581,6 +581,7 @@ pub trait Flatten:
             }
             FunctionCall(loc, func_expr, input_exprs) => match &**func_expr {
                 Variable(Identifier { name, .. }) if matches!(&**name, "require" | "assert") => {
+                    // require(inputs) | assert(inputs)
                     input_exprs.iter().rev().for_each(|expr| {
                         self.traverse_expression(expr, unchecked);
                     });
@@ -589,31 +590,43 @@ pub trait Flatten:
                     self.push_expr(cmp);
                 }
                 _ => {
+                    // func(inputs)
                     input_exprs.iter().rev().for_each(|expr| {
                         self.traverse_expression(expr, unchecked);
                     });
 
                     self.traverse_expression(func_expr, unchecked);
+
+                    // For clarity we make these variables
+                    let mut is_super = false;
+                    let named_args = false;
+                    let mut num_inputs = input_exprs.len();
                     match self.expr_stack_mut().pop().unwrap() {
                         FlatExpr::Super(loc, name) => {
+                            is_super = true;
                             self.push_expr(FlatExpr::FunctionCallName(
-                                input_exprs.len(),
-                                true,
-                                false,
+                                num_inputs, is_super, named_args,
                             ));
                             self.push_expr(FlatExpr::Variable(loc, name));
                         }
+                        mem @ FlatExpr::MemberAccess(..) => {
+                            // member.name(inputs) -> name(member, inputs) so we need
+                            // to make sure the member is passed as an input
+                            num_inputs += 1;
+                            self.push_expr(FlatExpr::FunctionCallName(
+                                num_inputs, is_super, named_args,
+                            ));
+                            self.push_expr(mem);
+                        }
                         other => {
                             self.push_expr(FlatExpr::FunctionCallName(
-                                input_exprs.len(),
-                                false,
-                                false,
+                                num_inputs, is_super, named_args,
                             ));
                             self.push_expr(other);
                         }
                     }
 
-                    self.push_expr(FlatExpr::FunctionCall(*loc, input_exprs.len()));
+                    self.push_expr(FlatExpr::FunctionCall(*loc, num_inputs));
                 }
             },
             // member
@@ -701,7 +714,6 @@ pub trait Flatten:
         stack: &mut Vec<FlatExpr>,
     ) -> Result<(), ExprErr> {
         use FlatExpr::*;
-
         if ctx.is_killed(self).unwrap() {
             return Ok(());
         }
@@ -926,11 +938,23 @@ pub trait Flatten:
             unreachable!()
         };
 
+        let keep_member_on_stack =
+            matches!(self.peek_expr_flag(), Some(ExprFlag::FunctionName(..)));
+
         let member = ctx
             .pop_n_latest_exprs(1, loc, self)
             .into_expr_err(loc)?
             .swap_remove(0);
-        self.member_access(arena, ctx, member, name, loc)
+
+        if keep_member_on_stack {
+            self.member_access(arena, ctx, member.clone(), name, loc)?;
+            // rearrange member to be in correct location relative to access
+            let access = ctx.pop_expr_latest(loc, self).unwrap().unwrap();
+            ctx.push_expr(member, self).into_expr_err(loc)?;
+            ctx.push_expr(access, self).into_expr_err(loc)
+        } else {
+            self.member_access(arena, ctx, member.clone(), name, loc)
+        }
     }
 
     fn interp_xxcrement(
