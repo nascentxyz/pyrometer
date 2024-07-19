@@ -167,7 +167,6 @@ pub trait ModifierCaller:
                         ctx,
                         new_parent_subctx,
                         modifier_state.parent_fn,
-                        &modifier_state.renamed_inputs,
                         None,
                     )
                 }

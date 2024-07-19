@@ -156,7 +156,9 @@ impl ContextNode {
             match child {
                 CallFork::Call(call) => {
                     let call_edges = call.successful_edges(analyzer)?;
-                    if call_edges.is_empty() && !call.is_killed(analyzer)? {
+                    let is_graceful_ended = call.is_graceful_ended(analyzer)?;
+                    let bad_killed = call.is_killed(analyzer)? && !is_graceful_ended;
+                    if call_edges.is_empty() && !bad_killed {
                         lineage.push(call)
                     } else {
                         lineage.extend(call_edges);
@@ -164,14 +166,20 @@ impl ContextNode {
                 }
                 CallFork::Fork(w1, w2) => {
                     let fork_edges = w1.successful_edges(analyzer)?;
-                    if fork_edges.is_empty() && !w1.is_killed(analyzer)? {
+                    let is_graceful_ended = w1.is_graceful_ended(analyzer)?;
+                    let bad_killed = w1.is_killed(analyzer)? && !is_graceful_ended;
+                    if fork_edges.is_empty() && !bad_killed {
                         lineage.push(w1)
                     } else {
                         lineage.extend(fork_edges);
                     }
 
                     let fork_edges = w2.successful_edges(analyzer)?;
-                    if fork_edges.is_empty() && !w2.is_killed(analyzer)? {
+
+                    let is_graceful_ended = w2.is_graceful_ended(analyzer)?;
+                    let bad_killed = w2.is_killed(analyzer)? && !is_graceful_ended;
+
+                    if fork_edges.is_empty() && !bad_killed {
                         lineage.push(w2)
                     } else {
                         lineage.extend(fork_edges);
@@ -405,7 +413,7 @@ impl ContextNode {
         kill_loc: Loc,
         kill_kind: KilledKind,
     ) -> Result<(), GraphError> {
-        tracing::trace!("killing: {}", self.path(analyzer));
+        tracing::trace!("killing: {}, {kill_kind:?}", self.path(analyzer));
         if let Some(child) = self.underlying(analyzer)?.child {
             match child {
                 CallFork::Call(call) => {

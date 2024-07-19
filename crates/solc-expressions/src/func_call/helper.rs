@@ -1,5 +1,5 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{member_access::ListAccess, variable::Variable, ContextBuilder};
+use crate::{member_access::ListAccess, variable::Variable};
 
 use graph::{
     elem::Elem,
@@ -496,142 +496,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
     }
 
     /// Inherit the input changes from a function call
-    fn inherit_input_changes(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        to_ctx: ContextNode,
-        from_ctx: ContextNode,
-        renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
-    ) -> Result<(), ExprErr> {
-        if to_ctx != from_ctx {
-            self.apply_to_edges(to_ctx, loc, arena, &|analyzer, arena, to_ctx, loc| {
-                renamed_inputs
-                    .iter()
-                    .try_for_each(|(input_var, updated_var)| {
-                        let new_input = analyzer.advance_var_in_ctx(
-                            input_var.latest_version(analyzer),
-                            loc,
-                            to_ctx,
-                        )?;
-                        let latest_updated = updated_var.latest_version(analyzer);
-                        if let Some(updated_var_range) =
-                            latest_updated.range(analyzer).into_expr_err(loc)?
-                        {
-                            let res = new_input
-                                .set_range_min(
-                                    analyzer,
-                                    arena,
-                                    updated_var_range.range_min().into_owned(),
-                                )
-                                .into_expr_err(loc);
-                            let _ = analyzer.add_if_err(res);
-                            let res = new_input
-                                .set_range_max(
-                                    analyzer,
-                                    arena,
-                                    updated_var_range.range_max().into_owned(),
-                                )
-                                .into_expr_err(loc);
-                            let _ = analyzer.add_if_err(res);
-                            let res = new_input
-                                .set_range_exclusions(
-                                    analyzer,
-                                    updated_var_range.exclusions.clone(),
-                                )
-                                .into_expr_err(loc);
-                            let _ = analyzer.add_if_err(res);
-                        }
-                        Ok(())
-                    })
-            })?;
-        }
-        Ok(())
-    }
-
-    /// Inherit the input changes from a function call
     fn modifier_inherit_return(&mut self, mod_ctx: ContextNode, fn_ctx: ContextNode) {
         let ret = fn_ctx.underlying(self).unwrap().ret.clone();
         mod_ctx.underlying_mut(self).unwrap().ret = ret;
-    }
-
-    /// Inherit the storage changes from a function call
-    fn inherit_storage_changes(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        inheritor_ctx: ContextNode,
-        grantor_ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        if inheritor_ctx != grantor_ctx {
-            return self.apply_to_edges(
-                inheritor_ctx,
-                loc,
-                arena,
-                &|analyzer, _arena, inheritor_ctx, loc| {
-                    let vars = grantor_ctx.local_vars(analyzer).clone();
-                    vars.iter().try_for_each(|(name, old_var)| {
-                        let var = old_var.latest_version(analyzer);
-                        let underlying = var.underlying(analyzer).into_expr_err(loc)?;
-                        if var.is_storage(analyzer).into_expr_err(loc)? {
-                            if let Some(inheritor_var) = inheritor_ctx.var_by_name(analyzer, name) {
-                                let inheritor_var = inheritor_var.latest_version(analyzer);
-                                analyzer
-                                    .advance_var_in_ctx(
-                                        inheritor_var,
-                                        underlying.loc.expect("No loc for val change"),
-                                        inheritor_ctx,
-                                    )
-                                    .unwrap();
-                            } else {
-                                let new_in_inheritor =
-                                    analyzer.add_node(Node::ContextVar(underlying.clone()));
-                                inheritor_ctx
-                                    .add_var(new_in_inheritor.into(), analyzer)
-                                    .into_expr_err(loc)?;
-                                analyzer.add_edge(
-                                    new_in_inheritor,
-                                    inheritor_ctx,
-                                    Edge::Context(ContextEdge::Variable),
-                                );
-                                analyzer.add_edge(
-                                    new_in_inheritor,
-                                    var,
-                                    Edge::Context(ContextEdge::InheritedVariable),
-                                );
-                                let from_fields =
-                                    var.struct_to_fields(analyzer).into_expr_err(loc)?;
-                                let mut struct_stack = from_fields
-                                    .into_iter()
-                                    .map(|i| (i, new_in_inheritor))
-                                    .collect::<Vec<_>>();
-                                while let Some((field, parent)) = struct_stack.pop() {
-                                    let underlying =
-                                        field.underlying(analyzer).into_expr_err(loc)?;
-                                    let new_field_in_inheritor =
-                                        analyzer.add_node(Node::ContextVar(underlying.clone()));
-                                    analyzer.add_edge(
-                                        new_field_in_inheritor,
-                                        parent,
-                                        Edge::Context(ContextEdge::AttrAccess("field")),
-                                    );
-
-                                    let sub_fields =
-                                        field.struct_to_fields(analyzer).into_expr_err(loc)?;
-                                    struct_stack.extend(
-                                        sub_fields
-                                            .into_iter()
-                                            .map(|i| (i, new_field_in_inheritor))
-                                            .collect::<Vec<_>>(),
-                                    );
-                                }
-                            }
-                        }
-                        Ok(())
-                    })
-                },
-            );
-        }
-        Ok(())
     }
 }

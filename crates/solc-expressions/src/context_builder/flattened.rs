@@ -1,9 +1,10 @@
-use crate::yul::YulFuncCaller;
 use std::collections::BTreeMap;
 
 use crate::{
-    context_builder::ContextBuilder,
+    context_builder::{test_command_runner::TestCommandRunner, ContextBuilder},
     func_call::{func_caller::FuncCaller, internal_call::InternalFuncCaller, intrinsic_call::*},
+    loops::Looper,
+    yul::YulFuncCaller,
     ExprTyParser,
 };
 use graph::{
@@ -198,6 +199,14 @@ pub trait Flatten:
                 };
                 let condition = for_cond_exprs.len();
 
+                let for_body_exprs = if let Some(body) = maybe_for_body {
+                    self.traverse_statement(body, unchecked);
+                    self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
+                } else {
+                    vec![]
+                };
+                let body = for_body_exprs.len();
+
                 let for_after_each_exprs = if let Some(after_each) = maybe_for_after_each {
                     self.traverse_statement(after_each, unchecked);
                     self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
@@ -205,14 +214,6 @@ pub trait Flatten:
                     vec![]
                 };
                 let after_each = for_after_each_exprs.len();
-
-                let for_body_exprs = if let Some(body) = maybe_for_body {
-                    self.traverse_statement(body, unchecked);
-                    self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
-                } else {
-                    vec![]
-                };
-                let body = for_after_each_exprs.len();
 
                 self.push_expr(FlatExpr::For {
                     loc: *loc,
@@ -224,8 +225,8 @@ pub trait Flatten:
                 let stack = self.expr_stack_mut();
                 stack.extend(for_start_exprs);
                 stack.extend(for_cond_exprs);
-                stack.extend(for_after_each_exprs);
                 stack.extend(for_body_exprs);
+                stack.extend(for_after_each_exprs);
             }
             DoWhile(loc, _while_stmt, _while_expr) => {
                 self.push_expr(FlatExpr::Todo(
@@ -234,6 +235,18 @@ pub trait Flatten:
                 ));
             }
             Expression(_, expr) => {
+                match expr {
+                    solang_parser::pt::Expression::StringLiteral(lits) if lits.len() == 1 => {
+                        if lits[0].string.starts_with("pyro::") {
+                            self.push_expr(FlatExpr::TestCommand(
+                                lits[0].loc,
+                                string_to_static(lits[0].string.clone()),
+                            ));
+                            return;
+                        }
+                    }
+                    _ => {}
+                }
                 self.traverse_expression(expr, unchecked);
             }
             Continue(loc) => {
@@ -897,7 +910,8 @@ pub trait Flatten:
                 loccer = stack_rev_iter.next();
             }
             let loc = loc.unwrap_or(Loc::Implicit);
-            return ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc);
+            self.return_match(arena, ctx, loc, ExprRet::CtxKilled(KilledKind::Ended), 0);
+            return Ok(());
         };
         let next = *next;
 
@@ -905,22 +919,22 @@ pub trait Flatten:
             "parsing (idx: {parse_idx}) {:?} in context {} - flag: {:?}",
             next,
             ctx.path(self),
-            self.peek_expr_flag()
+            ctx.peek_expr_flag(self)
         );
 
         match next {
             Todo(loc, err_str) => Err(ExprErr::Todo(loc, err_str.to_string())),
             // Flag expressions
             FunctionCallName(n, is_super, named_args) => {
-                self.set_expr_flag(ExprFlag::FunctionName(n, is_super, named_args));
+                ctx.set_expr_flag(self, ExprFlag::FunctionName(n, is_super, named_args));
                 Ok(())
             }
             Negate(_) => {
-                self.set_expr_flag(ExprFlag::Negate);
+                ctx.set_expr_flag(self, ExprFlag::Negate);
                 Ok(())
             }
             New(_) => {
-                self.set_expr_flag(ExprFlag::New);
+                ctx.set_expr_flag(self, ExprFlag::New);
                 Ok(())
             }
 
@@ -943,13 +957,15 @@ pub trait Flatten:
             // Conditional
             If { .. } => self.interp_if(arena, ctx, stack, next, parse_idx),
             Requirement(..) => {
-                self.set_expr_flag(ExprFlag::Requirement);
+                ctx.set_expr_flag(self, ExprFlag::Requirement);
                 Ok(())
             }
 
+            TestCommand(..) => self.interp_test_command(arena, ctx, next),
+
             // Looping
-            While { .. } => self.interp_while(arena, ctx, stack, next, parse_idx),
-            For { .. } => self.interp_for(arena, ctx, stack, next, parse_idx),
+            While { .. } => self.interp_while(arena, ctx, stack, next),
+            For { .. } => self.interp_for(arena, ctx, stack, next),
             Continue(loc) | Break(loc) => Err(ExprErr::Todo(
                 loc,
                 "Control flow expressions like break and continue are not currently supported"
@@ -1054,10 +1070,10 @@ pub trait Flatten:
             }
         }
 
-        if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement))
+        if matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Requirement))
             && !matches!(next, Requirement(..))
         {
-            let _ = self.take_expr_flag();
+            let _ = ctx.take_expr_flag(self);
             let loc = next.try_loc().unwrap();
             let mut lhs = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
             let lhs = lhs.swap_remove(0);
@@ -1069,6 +1085,21 @@ pub trait Flatten:
         } else {
             Ok(())
         }
+    }
+
+    fn interp_test_command(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::TestCommand(loc, cmd_str) = next else {
+            unreachable!()
+        };
+        if let Some(cmd) = self.test_string_literal(cmd_str) {
+            self.run_test_command(arena, ctx, cmd, loc);
+        }
+        Ok(())
     }
 
     fn interp_bit_not(
@@ -1130,7 +1161,7 @@ pub trait Flatten:
         };
 
         let keep_member_on_stack =
-            matches!(self.peek_expr_flag(), Some(ExprFlag::FunctionName(..)));
+            matches!(ctx.peek_expr_flag(self), Some(ExprFlag::FunctionName(..)));
 
         let member = ctx
             .pop_n_latest_exprs(1, loc, self)
@@ -1188,7 +1219,6 @@ pub trait Flatten:
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         while_expr: FlatExpr,
-        parse_idx: usize,
     ) -> Result<(), ExprErr> {
         let FlatExpr::While {
             loc,
@@ -1198,14 +1228,43 @@ pub trait Flatten:
         else {
             unreachable!()
         };
-        let _ = arena;
-        let _ = loc;
-        let _ = condition;
-        let _ = ctx;
-        let _ = parse_idx;
-        let _ = stack;
-        let _ = body;
-        todo!()
+
+        let loop_ctx = Context::add_loop_subctx(ctx, loc, self).into_expr_err(loc)?;
+
+        // run the condition
+        if condition > 0 {
+            for _ in 0..condition {
+                self.interpret_step(arena, loop_ctx, loc, stack)?;
+            }
+        }
+
+        // run the body
+        if body > 0 {
+            for _ in 0..body {
+                self.interpret_step(arena, loop_ctx, loc, stack)?;
+            }
+        }
+
+        self.flat_apply_to_edges(
+            loop_ctx,
+            loc,
+            arena,
+            stack,
+            &|analyzer: &mut Self,
+              arena: &mut RangeArena<Elem<Concrete>>,
+              loop_ctx: ContextNode,
+              loc: Loc,
+              _: &mut Vec<FlatExpr>| {
+                analyzer.reset_vars(arena, ctx, loop_ctx, loc)
+            },
+        )?;
+
+        let end = ctx.parse_idx(self) + condition + body;
+
+        self.modify_edges(ctx, loc, &|analyzer, ctx| {
+            ctx.underlying_mut(analyzer).unwrap().parse_idx = end;
+            Ok(())
+        })
     }
 
     fn interp_for(
@@ -1214,7 +1273,6 @@ pub trait Flatten:
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         for_expr: FlatExpr,
-        parse_idx: usize,
     ) -> Result<(), ExprErr> {
         let FlatExpr::For {
             loc,
@@ -1226,16 +1284,63 @@ pub trait Flatten:
         else {
             unreachable!()
         };
-        let _ = arena;
-        let _ = loc;
-        let _ = condition;
-        let _ = ctx;
-        let _ = parse_idx;
-        let _ = stack;
-        let _ = after_each;
-        let _ = start;
-        let _ = body;
-        todo!()
+
+        let loop_ctx = Context::add_loop_subctx(ctx, loc, self).into_expr_err(loc)?;
+
+        // initiate the loop variable
+        if start > 0 {
+            println!("running loop init");
+            for _ in 0..start {
+                self.interpret_step(arena, loop_ctx, loc, stack)?;
+            }
+        }
+
+        // run the condition
+        if condition > 0 {
+            println!("running loop condition");
+            for _ in 0..condition {
+                self.interpret_step(arena, loop_ctx, loc, stack)?;
+            }
+        }
+
+        // run the body
+        if body > 0 {
+            println!("running loop body");
+            for _ in 0..body {
+                self.interpret_step(arena, loop_ctx, loc, stack)?;
+            }
+        }
+
+        // run the after each
+        if after_each > 0 {
+            println!("running loop after-each");
+            for _ in 0..after_each {
+                self.interpret_step(arena, loop_ctx, loc, stack)?;
+            }
+        }
+
+        println!("running loop reset vars");
+        self.flat_apply_to_edges(
+            loop_ctx,
+            loc,
+            arena,
+            stack,
+            &|analyzer: &mut Self,
+              arena: &mut RangeArena<Elem<Concrete>>,
+              loop_ctx: ContextNode,
+              loc: Loc,
+              _: &mut Vec<FlatExpr>| {
+                analyzer.reset_vars(arena, ctx, loop_ctx, loc)
+            },
+        )?;
+
+        let end = ctx.parse_idx(self) + start + condition + body + after_each;
+
+        println!("setting post-loop parse idx");
+        self.modify_edges(ctx, loc, &|analyzer, ctx| {
+            ctx.underlying_mut(analyzer).unwrap().parse_idx = end;
+            Ok(())
+        })
     }
 
     fn interp_if(
@@ -1353,8 +1458,8 @@ pub trait Flatten:
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
         let [lhs, rhs] = into_sized::<ExprRet, 2>(res);
 
-        if matches!(self.peek_expr_flag(), Some(ExprFlag::Requirement)) {
-            self.take_expr_flag();
+        if matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Requirement)) {
+            ctx.take_expr_flag(self);
             match cmp {
                 FlatExpr::Equal(..) => {
                     self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
@@ -1468,8 +1573,8 @@ pub trait Flatten:
             unreachable!()
         };
 
-        if matches!(self.peek_expr_flag(), Some(ExprFlag::FunctionName(..))) {
-            self.take_expr_flag();
+        if matches!(ctx.peek_expr_flag(self), Some(ExprFlag::FunctionName(..))) {
+            ctx.take_expr_flag(self);
         }
 
         if let Some(builtin) = Builtin::try_from_ty(ty.clone(), self, arena) {
@@ -1496,12 +1601,12 @@ pub trait Flatten:
             unreachable!()
         };
         if nonempty {
-            let ret = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
-            self.return_match(arena, ctx, &loc, ret.first().unwrap(), 0);
+            let mut ret = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+            self.return_match(arena, ctx, loc, ret.swap_remove(0), 0);
             Ok(())
         } else {
-            self.return_match(arena, ctx, &loc, &ExprRet::Null, 0);
-            ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc)
+            self.return_match(arena, ctx, loc, ExprRet::CtxKilled(KilledKind::Ended), 0);
+            Ok(())
         }
     }
 
@@ -1517,7 +1622,7 @@ pub trait Flatten:
             unreachable!()
         };
 
-        match self.take_expr_flag() {
+        match ctx.take_expr_flag(self) {
             Some(ExprFlag::FunctionName(n, super_call, named_args)) => {
                 let maybe_names = if named_args {
                     let start = parse_idx + 1;
@@ -1544,7 +1649,7 @@ pub trait Flatten:
                 }
             }
             Some(other) => {
-                self.set_expr_flag(other);
+                ctx.set_expr_flag(self, other);
             }
             _ => {}
         }
@@ -1657,9 +1762,9 @@ pub trait Flatten:
             .expect_single()
             .into_expr_err(loc)?;
 
-        let is_new_call = match self.peek_expr_flag() {
+        let is_new_call = match ctx.peek_expr_flag(self) {
             Some(ExprFlag::New) => {
-                let _ = self.take_expr_flag();
+                let _ = ctx.take_expr_flag(self);
                 true
             }
             _ => false,
@@ -1766,11 +1871,11 @@ pub trait Flatten:
         lit: FlatExpr,
     ) -> Result<(), ExprErr> {
         let mut negate = false;
-        match self.take_expr_flag() {
+        match ctx.take_expr_flag(self) {
             Some(ExprFlag::Negate) => {
                 negate = true;
             }
-            Some(other) => self.set_expr_flag(other),
+            Some(other) => ctx.set_expr_flag(self, other),
             _ => {}
         };
 

@@ -18,8 +18,8 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         test_command: TestCommand,
+        loc: Loc,
     ) -> Option<()> {
         match test_command {
             TestCommand::Variable(var_name, VariableCommand::RangeAssert { min, max }) => {

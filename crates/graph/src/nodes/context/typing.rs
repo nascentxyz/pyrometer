@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{context::underlying::SubContextKind, ContextNode, FunctionNode},
+    nodes::{context::underlying::SubContextKind, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::GraphError;
@@ -42,9 +42,17 @@ impl ContextNode {
             || (!underlying.ret.is_empty() && underlying.modifier_state.is_none()))
     }
 
-    /// Returns whether the context is killed
+    /// Returns whether the context is returned
     pub fn is_returned(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(!self.underlying(analyzer)?.ret.is_empty())
+    }
+
+    /// Returns whether the context is reverted
+    pub fn is_graceful_ended(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(matches!(
+            self.underlying(analyzer)?.killed,
+            Some((_, KilledKind::Ended))
+        ))
     }
 
     /// Returns whether the context is killed

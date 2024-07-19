@@ -4,7 +4,7 @@ use crate::{
     AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
 
-use shared::{GraphError, NodeIdx, RangeArena};
+use shared::{ExprFlag, GraphError, NodeIdx, RangeArena};
 
 use solang_parser::pt::Loc;
 
@@ -29,6 +29,16 @@ impl ContextNode {
         cost: u64,
     ) -> Result<(), GraphError> {
         self.associated_fn(analyzer)?.add_gas_cost(analyzer, cost)
+    }
+
+    pub fn take_expr_flag(&self, analyzer: &mut impl AnalyzerBackend) -> Option<ExprFlag> {
+        self.underlying_mut(analyzer).unwrap().take_expr_flag()
+    }
+    pub fn set_expr_flag(&self, analyzer: &mut impl AnalyzerBackend, flag: ExprFlag) {
+        self.underlying_mut(analyzer).unwrap().set_expr_flag(flag)
+    }
+    pub fn peek_expr_flag(&self, analyzer: &impl AnalyzerBackend) -> Option<ExprFlag> {
+        self.underlying(analyzer).unwrap().peek_expr_flag()
     }
 
     /// Gets the total context width

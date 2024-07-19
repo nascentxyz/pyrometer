@@ -7,7 +7,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 
-use shared::{GraphError, NodeIdx};
+use shared::{ExprFlag, GraphError, NodeIdx};
 
 use solang_parser::pt::Loc;
 use std::collections::BTreeSet;
@@ -170,6 +170,19 @@ impl SubContextKind {
             SubContextKind::FnReturn {
                 continuation_of, ..
             } => continuation_of.parse_idx(analyzer),
+        }
+    }
+
+    pub fn init_expr_flag(&self, analyzer: &impl AnalyzerBackend) -> Option<ExprFlag> {
+        match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx.peek_expr_flag(analyzer),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of.peek_expr_flag(analyzer),
         }
     }
 
@@ -338,6 +351,8 @@ pub struct Context {
     pub dl_solver: DLSolver,
     /// Functions applied (but not reparsed) in this context
     pub applies: Vec<FunctionNode>,
+    /// Current expression flag
+    pub expr_flag: Option<ExprFlag>,
 }
 
 impl From<Context> for Node {
@@ -368,6 +383,7 @@ impl Context {
             cache: Default::default(),
             dl_solver: Default::default(),
             applies: Default::default(),
+            expr_flag: None,
         }
     }
 
@@ -453,6 +469,7 @@ impl Context {
                 .dl_solver
                 .clone(),
             applies: Default::default(),
+            expr_flag: subctx_kind.init_expr_flag(analyzer),
         })
     }
 
@@ -468,6 +485,16 @@ impl Context {
             analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
         }
         Ok(ctx_node)
+    }
+
+    pub fn take_expr_flag(&mut self) -> Option<ExprFlag> {
+        std::mem::take(&mut self.expr_flag)
+    }
+    pub fn set_expr_flag(&mut self, flag: ExprFlag) {
+        self.expr_flag = Some(flag);
+    }
+    pub fn peek_expr_flag(&self) -> Option<ExprFlag> {
+        self.expr_flag
     }
 
     pub fn add_fork_subctxs(
@@ -501,13 +528,16 @@ impl Context {
         Ok((true_subctx, false_subctx))
     }
 
-    pub fn new_loop_subctx(
+    pub fn add_loop_subctx(
         parent_ctx: ContextNode,
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextNode, GraphError> {
         let subctx_kind = SubContextKind::Loop { parent_ctx };
-        Context::add_subctx(subctx_kind, loc, analyzer, None)
+        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None)?;
+        parent_ctx.set_child_call(loop_ctx, analyzer)?;
+        analyzer.add_edge(loop_ctx, parent_ctx, Edge::Context(ContextEdge::Loop));
+        Ok(loop_ctx)
     }
 
     /// Set the child context to a fork

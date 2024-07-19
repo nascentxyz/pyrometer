@@ -49,13 +49,13 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: &Loc,
-        paths: &ExprRet,
+        loc: Loc,
+        paths: ExprRet,
         idx: usize,
     ) {
         match paths {
             ExprRet::CtxKilled(kind) => {
-                let _ = ctx.kill(self, *loc, *kind);
+                let _ = ctx.kill(self, loc, kind);
             }
             ExprRet::Single(expr) | ExprRet::SingleLiteral(expr) => {
                 // construct a variable from the return type
@@ -80,10 +80,10 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                             .and_then(|i| i)
                     })
                     .and_then(|i| i)
-                    .into_expr_err(*loc);
+                    .into_expr_err(loc);
 
                 let latest =
-                    ContextVarNode::from(*expr).latest_version_or_inherited_in_ctx(ctx, self);
+                    ContextVarNode::from(expr).latest_version_or_inherited_in_ctx(ctx, self);
 
                 match target_var {
                     Ok(Some(target_var)) => {
@@ -95,9 +95,9 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                             target_var.ty(self).unwrap(),
                         );
                         let next = self
-                            .advance_var_in_ctx_forcible(latest, *loc, ctx, true)
+                            .advance_var_in_ctx_forcible(latest, loc, ctx, true)
                             .unwrap();
-                        let res = next.cast_from(&target_var, self, arena).into_expr_err(*loc);
+                        let res = next.cast_from(&target_var, self, arena).into_expr_err(loc);
                         self.add_if_err(res);
                     }
                     Ok(None) => {}
@@ -106,7 +106,7 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
 
                 // let ret = self.advance_var_in_ctx(latest, *loc, *ctx);
                 let path = ctx.path(self);
-                let res = latest.underlying_mut(self).into_expr_err(*loc);
+                let res = latest.underlying_mut(self).into_expr_err(loc);
                 match res {
                     Ok(var) => {
                         tracing::trace!("Returning: {}, {}", path, var.display_name);
@@ -114,7 +114,7 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
 
                         self.add_edge(latest, ctx, Edge::Context(ContextEdge::Return));
 
-                        let res = ctx.add_return_node(*loc, latest, self).into_expr_err(*loc);
+                        let res = ctx.add_return_node(loc, latest, self).into_expr_err(loc);
                         // ctx.kill(self, *loc, KilledKind::Ended);
                         let _ = self.add_if_err(res);
                     }
@@ -122,7 +122,7 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                 }
             }
             ExprRet::Multi(rets) => {
-                rets.iter().enumerate().for_each(|(i, expr_ret)| {
+                rets.into_iter().enumerate().for_each(|(i, expr_ret)| {
                     self.return_match(arena, ctx, loc, expr_ret, i);
                 });
             }

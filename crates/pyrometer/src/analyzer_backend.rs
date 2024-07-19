@@ -9,8 +9,8 @@ use graph::{
     AnalyzerBackend, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
 use shared::{
-    AnalyzerLike, ApplyStats, ExprErr, ExprFlag, FlatExpr, GraphError, GraphLike, IntoExprErr,
-    NodeIdx, RangeArena, RepresentationErr,
+    AnalyzerLike, ApplyStats, ExprErr, FlatExpr, GraphError, GraphLike, IntoExprErr, NodeIdx,
+    RangeArena, RepresentationErr,
 };
 
 use ahash::AHashMap;
@@ -558,7 +558,6 @@ impl AnalyzerLike for Analyzer {
     }
 
     type FlatExpr = FlatExpr;
-    type ExprFlag = ExprFlag;
 
     fn push_expr(&mut self, flat: FlatExpr) {
         self.flattened.push(flat);
@@ -581,18 +580,5 @@ impl AnalyzerLike for Analyzer {
 
     fn expr_stack_mut(&mut self) -> &mut Vec<FlatExpr> {
         &mut self.flattened
-    }
-
-    fn set_expr_flag(&mut self, flag: ExprFlag) {
-        debug_assert!(
-            self.expr_flag.is_none(),
-            "overwrote expr_flag: new: {flag:?}, old: {:?}",
-            self.expr_flag
-        );
-        self.expr_flag = Some(flag)
-    }
-
-    fn take_expr_flag(&mut self) -> Option<ExprFlag> {
-        std::mem::take(&mut self.expr_flag)
     }
 }

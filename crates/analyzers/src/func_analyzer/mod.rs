@@ -333,14 +333,14 @@ pub trait FunctionVarsBoundAnalyzer: VarBoundAnalyzer + Search + AnalyzerBackend
                 {
                     return None;
                 }
-                if !report_config.show_reverts
-                    && matches!(
-                        fork.underlying(self).unwrap().killed,
-                        Some((_, KilledKind::Revert))
-                    )
-                {
-                    return None;
-                }
+                // if !report_config.show_reverts
+                //     && matches!(
+                //         fork.underlying(self).unwrap().killed,
+                //         Some((_, KilledKind::Revert))
+                //     )
+                // {
+                //     return None;
+                // }
                 let mut parents = fork.parent_list(self).unwrap();
                 parents.reverse();
                 parents.push(*fork);

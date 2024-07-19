@@ -1,7 +1,7 @@
 use crate::{FlatYulExpr, StorageLocation};
 use solang_parser::pt::{Expression, Loc, NamedArgument, Type, YulExpression};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprFlag {
     FunctionName(usize, bool, bool),
     New,
@@ -40,6 +40,7 @@ pub enum FlatExpr {
     Todo(Loc, &'static str),
 
     Emit(Loc),
+    TestCommand(Loc, &'static str),
 
     NamedArgument(Loc, &'static str),
     FunctionCallName(usize, bool, bool),
@@ -325,6 +326,7 @@ impl FlatExpr {
             | Continue(loc, ..)
             | Break(loc, ..)
             | Return(loc, ..)
+            | TestCommand(loc, ..)
             | PostIncrement(loc, ..)
             | PostDecrement(loc, ..)
             | New(loc, ..)

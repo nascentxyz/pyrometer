@@ -14,11 +14,9 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{CodeLocation, Expression, Loc};
-
-use std::collections::BTreeMap;
 
 impl<T> FuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
@@ -28,39 +26,6 @@ impl<T> FuncCaller for T where
 pub trait FuncCaller:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
-    /// Setups up storage variables for a function call and calls it
-    fn setup_fn_call(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: &Loc,
-        inputs: &ExprRet,
-        func_idx: NodeIdx,
-        ctx: ContextNode,
-        func_call_str: Option<&str>,
-    ) -> Result<(), ExprErr> {
-        // if we have a single match thats our function
-        let var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
-            Some(v) => v,
-            None => panic!(
-                "Could not create context variable from user type: {:?}",
-                self.node(func_idx)
-            ),
-        };
-
-        let new_cvarnode = self.add_node(var);
-        ctx.add_var(new_cvarnode.into(), self).into_expr_err(*loc)?;
-        self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
-        if let Some(func_node) = ContextVarNode::from(new_cvarnode)
-            .ty(self)
-            .into_expr_err(*loc)?
-            .func_node(self)
-        {
-            self.func_call(arena, ctx, *loc, inputs, func_node, func_call_str, None)
-        } else {
-            unreachable!()
-        }
-    }
-
     /// Matches the input kinds and performs the call
     fn func_call(
         &mut self,
@@ -227,7 +192,6 @@ pub trait FuncCaller:
                             ctx,
                             callee_ctx,
                             func_node,
-                            &renamed_inputs,
                             func_call_str,
                         )
                     }
@@ -250,7 +214,6 @@ pub trait FuncCaller:
                         ctx,
                         callee_ctx,
                         func_node,
-                        &renamed_inputs,
                         func_call_str,
                     )
                 }
@@ -267,7 +230,6 @@ pub trait FuncCaller:
         caller_ctx: ContextNode,
         callee_ctx: ContextNode,
         func_node: FunctionNode,
-        _renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
         func_call_str: Option<&str>,
     ) -> Result<(), ExprErr> {
         tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
