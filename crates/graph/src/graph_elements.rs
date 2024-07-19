@@ -104,6 +104,7 @@ pub enum Node {
     Block(Block),
     /// A yul-based function
     YulFunction(YulFunction),
+    // TODO: Handle events
 }
 
 pub fn as_dot_str(

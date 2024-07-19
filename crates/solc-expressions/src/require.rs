@@ -969,7 +969,9 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             RangeOp::Neq => {
                 // check if contains
-                let mut elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
+                let mut elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self))
+                    .minimize(self, arena)
+                    .unwrap();
 
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range

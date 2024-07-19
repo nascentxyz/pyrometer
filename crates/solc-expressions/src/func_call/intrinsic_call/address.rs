@@ -22,8 +22,17 @@ pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
                 ctx.add_var(node.into(), self).into_expr_err(loc)?;
                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                 ctx.push_expr(ExprRet::Single(node), self)
-                    .into_expr_err(loc)?;
-                Ok(())
+                    .into_expr_err(loc)
+            }
+            "codehash" => {
+                // TODO: try to be smarter based on the address input
+                let bn = self.builtin_or_add(Builtin::Bytes(32));
+                let cvar = ContextVar::new_from_builtin(loc, bn.into(), self).into_expr_err(loc)?;
+                let node = self.add_node(cvar);
+                ctx.add_var(node.into(), self).into_expr_err(loc)?;
+                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(loc)
             }
             "balance" => {
                 // TODO: try to be smarter based on the address input
@@ -33,8 +42,16 @@ pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
                 ctx.add_var(node.into(), self).into_expr_err(loc)?;
                 self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                 ctx.push_expr(ExprRet::Single(node), self)
-                    .into_expr_err(loc)?;
-                Ok(())
+                    .into_expr_err(loc)
+            }
+            "send" => {
+                let bn = self.builtin_or_add(Builtin::Bool);
+                let cvar = ContextVar::new_from_builtin(loc, bn.into(), self).into_expr_err(loc)?;
+                let node = self.add_node(cvar);
+                ctx.add_var(node.into(), self).into_expr_err(loc)?;
+                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.push_expr(ExprRet::Single(node), self)
+                    .into_expr_err(loc)
             }
             _ => Err(ExprErr::FunctionNotFound(
                 loc,

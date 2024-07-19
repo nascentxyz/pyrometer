@@ -260,6 +260,55 @@ impl VarType {
         }
     }
 
+    pub fn implicitly_castable_to(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+        from_lit: bool,
+    ) -> Result<bool, GraphError> {
+        if self.ty_idx() == other.ty_idx() {
+            return Ok(true);
+        }
+
+        let res = match (self, other) {
+            (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
+                from_bn.implicitly_castable_to(to_bn, analyzer)
+            }
+            (Self::Concrete(from), Self::BuiltIn(to, _)) => {
+                let from = from.underlying(analyzer)?.as_builtin();
+                let to = to.underlying(analyzer)?;
+                Ok(from.implicitly_castable_to(&to))
+            }
+            (Self::BuiltIn(from, _), Self::Concrete(to)) => {
+                let from = from.underlying(analyzer)?;
+                let to = to.underlying(analyzer)?.as_builtin();
+                Ok(from.implicitly_castable_to(&to))
+            }
+            (Self::Concrete(from), Self::Concrete(to)) => {
+                let from = from.underlying(analyzer)?.as_builtin();
+                let to = to.underlying(analyzer)?.as_builtin();
+                Ok(from.implicitly_castable_to(&to))
+            }
+            _ => Ok(false),
+        };
+
+        let impl_cast = res?;
+        if !impl_cast && from_lit {
+            match (self, other) {
+                (Self::Concrete(from), Self::BuiltIn(to, _)) => {
+                    let froms = from.underlying(analyzer)?.alt_lit_builtins();
+                    let to = to.underlying(analyzer)?;
+
+                    // exact matches only (i.e. uint160 -> address, uint8 -> bytes1, etc)
+                    Ok(froms.iter().any(|from| from == to))
+                }
+                _ => Ok(impl_cast),
+            }
+        } else {
+            Ok(impl_cast)
+        }
+    }
+
     pub fn try_cast(
         self,
         other: &Self,
@@ -287,7 +336,7 @@ impl VarType {
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
-                if from_bn.implicitly_castable_to(to_bn, analyzer)? {
+                if from_bn.castable_to(to_bn, analyzer)? {
                     Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
                     Ok(None)
@@ -371,7 +420,7 @@ impl VarType {
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
-                if from_bn.implicitly_castable_to(to_bn, analyzer)? {
+                if from_bn.castable_to(to_bn, analyzer)? {
                     Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
                     Ok(None)
@@ -401,21 +450,18 @@ impl VarType {
         }
     }
 
-    pub fn implicitly_castable_to(
+    pub fn castable_to(
         &self,
         other: &Self,
         analyzer: &impl GraphBackend,
     ) -> Result<bool, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
-                from_bn.implicitly_castable_to(to_bn, analyzer)
+                from_bn.castable_to(to_bn, analyzer)
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
                 let to = to_bn.underlying(analyzer)?;
-                Ok(from_c
-                    .underlying(analyzer)?
-                    .as_builtin()
-                    .implicitly_castable_to(to))
+                Ok(from_c.underlying(analyzer)?.as_builtin().castable_to(to))
             }
             _ => Ok(false),
         }

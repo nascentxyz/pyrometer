@@ -26,66 +26,22 @@ pub trait BuiltinAccess:
         name: &str,
         is_storage: bool,
         loc: Loc,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         tracing::trace!("Looking for builtin member function");
         if let Some(ret) = self.library_func_search(ctx, node.0.into(), name) {
-            Ok(ret)
+            Ok((ret, true))
         } else {
             match node.underlying(self).into_expr_err(loc)?.clone() {
                 Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                     match name {
-                        "delegatecall"
-                        | "call"
-                        | "staticcall"
-                        | "delegatecall(address, bytes)"
-                        | "call(address, bytes)"
-                        | "staticcall(address, bytes)" => {
+                        "delegatecall" | "call" | "staticcall" | "code" | "codehash"
+                        | "balance" | "send" | "transfer" => {
                             // TODO: check if the address is known to be a certain type and the function signature is known
                             // and call into the function
                             let builtin_name = name.split('(').collect::<Vec<_>>()[0];
                             let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
-                            Ok(ExprRet::Single(func_node))
+                            Ok((ExprRet::Single(func_node), true))
                         }
-                        "code" => {
-                            // TODO: try to be smarter based on the address input
-                            let bn = self.builtin_or_add(Builtin::DynamicBytes);
-                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
-                                .into_expr_err(loc)?;
-                            let node = self.add_node(cvar);
-                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single(node))
-                        }
-                        "codehash" => {
-                            // TODO: try to be smarter based on the address input
-                            let bn = self.builtin_or_add(Builtin::Bytes(32));
-                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
-                                .into_expr_err(loc)?;
-                            let node = self.add_node(cvar);
-                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single(node))
-                        }
-                        "balance" => {
-                            // TODO: try to be smarter based on the address input
-                            let bn = self.builtin_or_add(Builtin::Uint(256));
-                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
-                                .into_expr_err(loc)?;
-                            let node = self.add_node(cvar);
-                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single(node))
-                        }
-                        _ if name.starts_with("send") => {
-                            let bn = self.builtin_or_add(Builtin::Bool);
-                            let cvar = ContextVar::new_from_builtin(loc, bn.into(), self)
-                                .into_expr_err(loc)?;
-                            let node = self.add_node(cvar);
-                            ctx.add_var(node.into(), self).into_expr_err(loc)?;
-                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single(node))
-                        }
-                        _ if name.starts_with("transfer") => Ok(ExprRet::Multi(vec![])),
                         _ => Err(ExprErr::MemberAccessNotFound(
                             loc,
                             format!(
@@ -105,7 +61,7 @@ pub trait BuiltinAccess:
                 Builtin::String => match name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
                         let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
-                        Ok(ExprRet::Single(fn_node))
+                        Ok((ExprRet::Single(fn_node), false))
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
@@ -129,7 +85,7 @@ pub trait BuiltinAccess:
                 Builtin::DynamicBytes => match name.split('(').collect::<Vec<_>>()[0] {
                     "concat" => {
                         let fn_node = self.builtin_fn_or_maybe_add("concat").unwrap();
-                        Ok(ExprRet::Single(fn_node))
+                        Ok((ExprRet::Single(fn_node), false))
                     }
                     _ => Err(ExprErr::MemberAccessNotFound(
                         loc,
@@ -143,7 +99,7 @@ pub trait BuiltinAccess:
                     if name.starts_with("push") {
                         if is_storage {
                             let fn_node = self.builtin_fn_or_maybe_add("push").unwrap();
-                            Ok(ExprRet::Single(fn_node))
+                            Ok((ExprRet::Single(fn_node), true))
                         } else {
                             Err(ExprErr::NonStoragePush(
                                 loc,
@@ -153,7 +109,7 @@ pub trait BuiltinAccess:
                     } else if name.starts_with("pop") {
                         if is_storage {
                             let fn_node = self.builtin_fn_or_maybe_add("pop").unwrap();
-                            Ok(ExprRet::Single(fn_node))
+                            Ok((ExprRet::Single(fn_node), true))
                         } else {
                             Err(ExprErr::NonStoragePush(
                                 loc,
@@ -210,7 +166,7 @@ pub trait BuiltinAccess:
                             let cvar = self.add_node(var);
                             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single(cvar))
+                            Ok((ExprRet::Single(cvar), false))
                         }
                         "min" => {
                             let min = max * I256::from(-1i32) - I256::from(1i32);
@@ -225,7 +181,7 @@ pub trait BuiltinAccess:
                             let cvar = self.add_node(var);
                             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                            Ok(ExprRet::Single(cvar))
+                            Ok((ExprRet::Single(cvar), false))
                         }
                         e => Err(ExprErr::MemberAccessNotFound(
                             loc,
@@ -254,7 +210,7 @@ pub trait BuiltinAccess:
                         let cvar = self.add_node(var);
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                        Ok(ExprRet::Single(cvar))
+                        Ok((ExprRet::Single(cvar), false))
                     }
                     "min" => {
                         let min = U256::zero();
@@ -269,12 +225,7 @@ pub trait BuiltinAccess:
                         let cvar = self.add_node(var);
                         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-                        Ok(ExprRet::Single(cvar))
-                    }
-                    "call" | "delegatecall" | "staticcall" if size == 160 => {
-                        let builtin_name = name.split('(').collect::<Vec<_>>()[0];
-                        let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
-                        Ok(ExprRet::Single(func_node))
+                        Ok((ExprRet::Single(cvar), false))
                     }
                     e => Err(ExprErr::MemberAccessNotFound(
                         loc,

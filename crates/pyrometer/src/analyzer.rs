@@ -1148,7 +1148,7 @@ impl Analyzer {
                                     })
                                     .copied()
                                     .collect();
-
+                                println!("relevant_funcs: {relevant_funcs:#?}");
                                 if matches!(self.node(scope_node), Node::Contract(_)) {
                                     self.add_edge(
                                         scope_node,
@@ -1158,6 +1158,7 @@ impl Analyzer {
                                 }
 
                                 relevant_funcs.iter().for_each(|func| {
+                                    println!("connecting: {:#?}, {:#?}", self.node(ty_idx), func);
                                     self.add_edge(ty_idx, *func, Edge::LibraryFunction(scope_node));
                                 });
                                 break;

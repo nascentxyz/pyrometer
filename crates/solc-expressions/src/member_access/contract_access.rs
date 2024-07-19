@@ -1,3 +1,4 @@
+use crate::member_access::library_access::LibraryAccess;
 use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge,
@@ -18,7 +19,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
         con_node: ContractNode,
         name: &str,
         loc: Loc,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         tracing::trace!(
             "Contract member access: {}.{}",
             con_node
@@ -28,10 +29,11 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
             name
         );
 
-        if let Some(func) = con_node
-            .funcs(self)
+        if let Some((_, func)) = con_node
+            .linearized_functions(self, false)
+            .into_expr_err(loc)?
             .into_iter()
-            .find(|func_node| func_node.name(self).unwrap() == name)
+            .find(|(func_name, func_node)| func_name == name)
         {
             if let Some(func_cvar) = ContextVar::maybe_from_user_ty(self, loc, func.0.into()) {
                 let fn_node = self.add_node(func_cvar);
@@ -39,7 +41,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                 if let Some(parent) = maybe_parent {
                     self.add_edge(fn_node, parent, Edge::Context(ContextEdge::FuncAccess));
                 }
-                Ok(ExprRet::Single(fn_node))
+                Ok((ExprRet::Single(fn_node), false))
             } else {
                 Err(ExprErr::MemberAccessNotFound(
                     loc,
@@ -49,6 +51,8 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     ),
                 ))
             }
+        } else if let Some(ret) = self.library_func_search(ctx, con_node.0.into(), name) {
+            Ok((ret, true))
         } else if let Some(func) = con_node
             .structs(self)
             .into_iter()
@@ -64,7 +68,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                         Edge::Context(ContextEdge::StructAccess),
                     );
                 }
-                return Ok(ExprRet::Single(struct_node));
+                return Ok((ExprRet::Single(struct_node), false));
             } else {
                 return Err(ExprErr::MemberAccessNotFound(
                     loc,
@@ -75,7 +79,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                 ));
             }
         } else {
-            match name {
+            let res = match name {
                 "name" => {
                     let c = Concrete::from(con_node.name(self).unwrap());
                     let cnode = self.add_node(c);
@@ -84,7 +88,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     let node = self.add_node(cvar);
                     ctx.add_var(node.into(), self).into_expr_err(loc)?;
                     self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    return Ok(ExprRet::Single(node));
+                    Ok(ExprRet::Single(node))
                 }
                 "creationCode" | "runtimeCode" => {
                     let bn = self.builtin_or_add(Builtin::DynamicBytes);
@@ -93,7 +97,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     let node = self.add_node(cvar);
                     ctx.add_var(node.into(), self).into_expr_err(loc)?;
                     self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    return Ok(ExprRet::Single(node));
+                    Ok(ExprRet::Single(node))
                 }
                 "interfaceId" => {
                     // TODO: actually calculate this
@@ -103,7 +107,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     let node = self.add_node(cvar);
                     ctx.add_var(node.into(), self).into_expr_err(loc)?;
                     self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    return Ok(ExprRet::Single(node));
+                    Ok(ExprRet::Single(node))
                 }
                 _ => {
                     // try to match just prefix
@@ -137,7 +141,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                             ))
                         }
                     } else {
-                        return Err(ExprErr::ContractFunctionNotFound(
+                        Err(ExprErr::ContractFunctionNotFound(
                             loc,
                             format!(
                             "No function or struct with name \"{name}\" in contract: {:?}. Functions: {:#?}",
@@ -148,10 +152,11 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                                 .map(|func| func.name(self).unwrap())
                                 .collect::<Vec<_>>()
                         ),
-                        ));
+                        ))
                     }
                 }
-            }
+            };
+            Ok((res?, false))
         }
     }
 }

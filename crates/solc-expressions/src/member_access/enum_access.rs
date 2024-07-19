@@ -24,7 +24,7 @@ pub trait EnumAccess:
         enum_node: EnumNode,
         name: &str,
         loc: Loc,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         tracing::trace!("Enum member access: {}", name);
 
         if let Some(variant) = enum_node
@@ -39,9 +39,9 @@ pub trait EnumAccess:
             let cvar = self.add_node(var);
             ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-            Ok(ExprRet::Single(cvar))
+            Ok((ExprRet::Single(cvar), false))
         } else if let Some(ret) = self.library_func_search(ctx, enum_node.0.into(), name) {
-            Ok(ret)
+            Ok((ret, true))
         } else {
             Err(ExprErr::MemberAccessNotFound(
                 loc,

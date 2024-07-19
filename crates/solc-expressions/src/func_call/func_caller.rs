@@ -142,9 +142,9 @@ pub trait FuncCaller:
         modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
         if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
-                return Ok(());
-            }
+            // if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+            //     return Ok(());
+            // }
         }
 
         // pseudocode:

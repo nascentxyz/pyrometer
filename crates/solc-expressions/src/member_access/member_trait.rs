@@ -41,10 +41,11 @@ pub trait MemberAccess:
         member: ExprRet,
         name: &str,
         loc: Loc,
-    ) -> Result<(), ExprErr> {
+    ) -> Result<bool, ExprErr> {
         // TODO: this is wrong as it overwrites a function call of the form elem.length(...) i believe
         if name == "length" {
-            return self.length(arena, ctx, member, loc);
+            self.length(arena, ctx, member, loc)?;
+            return Ok(false);
         }
 
         self.match_member(ctx, member, name, loc)
@@ -57,18 +58,25 @@ pub trait MemberAccess:
         member: ExprRet,
         name: &str,
         loc: Loc,
-    ) -> Result<(), ExprErr> {
+    ) -> Result<bool, ExprErr> {
         match member {
             ExprRet::Single(idx) | ExprRet::SingleLiteral(idx) => {
-                ctx.push_expr(self.member_access_inner(ctx, idx, name, loc)?, self)
-                    .into_expr_err(loc)?;
-                Ok(())
+                let (inner, was_lib_func) = self.member_access_inner(ctx, idx, name, loc)?;
+                ctx.push_expr(inner, self).into_expr_err(loc)?;
+                Ok(was_lib_func)
             }
-            ExprRet::Multi(inner) => inner
-                .into_iter()
-                .try_for_each(|member| self.match_member(ctx, member, name, loc)),
-            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
-            ExprRet::Null => Ok(()),
+            ExprRet::Multi(inner) => {
+                inner.into_iter().try_for_each(|member| {
+                    let _ = self.match_member(ctx, member, name, loc)?;
+                    Ok(())
+                })?;
+                Ok(false)
+            }
+            ExprRet::CtxKilled(kind) => {
+                ctx.kill(self, loc, kind).into_expr_err(loc)?;
+                Ok(false)
+            }
+            ExprRet::Null => Ok(false),
         }
     }
 
@@ -79,7 +87,7 @@ pub trait MemberAccess:
         member_idx: NodeIdx,
         name: &str,
         loc: Loc,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         match self.node(member_idx) {
             Node::ContextVar(_) => {
                 self.member_access_var(ctx, ContextVarNode::from(member_idx), name, loc)
@@ -100,8 +108,14 @@ pub trait MemberAccess:
             }
             Node::Enum(_c) => self.enum_member_access(ctx, EnumNode::from(member_idx), name, loc),
             Node::Ty(_ty) => self.ty_member_access(ctx, TyNode::from(member_idx), name, loc),
-            Node::Msg(_msg) => self.msg_access(ctx, name, loc),
-            Node::Block(_b) => self.block_access(ctx, name, loc),
+            Node::Msg(_msg) => {
+                let res = self.msg_access(ctx, name, loc)?;
+                Ok((res, false))
+            }
+            Node::Block(_b) => {
+                let res = self.block_access(ctx, name, loc)?;
+                Ok((res, false))
+            }
             Node::Builtin(ref _b) => {
                 self.builtin_member_access(ctx, BuiltInNode::from(member_idx), name, false, loc)
             }
@@ -126,57 +140,57 @@ pub trait MemberAccess:
                     cvar.ty
                 );
                 match &cvar.ty {
-                VarType::User(TypeNode::Contract(con_node), _) => {
-                    let cnode = *con_node;
-                    let mut funcs = cnode.linearized_functions(self).into_expr_err(loc)?;
-                    self
-                    .possible_library_funcs(ctx, cnode.0.into())
-                    .into_iter()
-                    .for_each(|func| {
-                        let name = func.name(self).unwrap();
-                        funcs.entry(name).or_insert(func);
-                    });
-                    funcs.values().copied().collect()
-                },
-                VarType::BuiltIn(bn, _) => self
-                    .possible_library_funcs(ctx, bn.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::Concrete(cnode) => {
-                    let b = cnode.underlying(self).unwrap().as_builtin();
-                    let bn = self.builtin_or_add(b);
-                    self.possible_library_funcs(ctx, bn)
+                    VarType::User(TypeNode::Contract(con_node), _) => {
+                        let cnode = *con_node;
+                        let mut funcs = cnode.linearized_functions(self, false).into_expr_err(loc)?;
+                        self
+                        .possible_library_funcs(ctx, cnode.0.into())
                         .into_iter()
-                        .collect::<Vec<_>>()
-                }
-                VarType::User(TypeNode::Struct(sn), _) => self
-                    .possible_library_funcs(ctx, sn.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Enum(en), _) => self
-                    .possible_library_funcs(ctx, en.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Ty(ty), _) => self
-                    .possible_library_funcs(ctx, ty.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Error(err), _) => self
-                    .possible_library_funcs(ctx, err.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Func(func_node), _) => self
-                    .possible_library_funcs(ctx, func_node.0.into())
-                    .into_iter()
-                    .collect::<Vec<_>>(),
-                VarType::User(TypeNode::Unresolved(n), _) => {
-                    match self.node(*n) {
-                        Node::Unresolved(ident) => {
-                            return Err(ExprErr::Unresolved(loc, format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
-                        }
-                        _ => unreachable!()
+                        .for_each(|func| {
+                            let name = func.name(self).unwrap();
+                            funcs.entry(name).or_insert(func);
+                        });
+                        funcs.values().copied().collect()
+                    },
+                    VarType::BuiltIn(bn, _) => self
+                        .possible_library_funcs(ctx, bn.0.into())
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    VarType::Concrete(cnode) => {
+                        let b = cnode.underlying(self).unwrap().as_builtin();
+                        let bn = self.builtin_or_add(b);
+                        self.possible_library_funcs(ctx, bn)
+                            .into_iter()
+                            .collect::<Vec<_>>()
                     }
-                }
+                    VarType::User(TypeNode::Struct(sn), _) => self
+                        .possible_library_funcs(ctx, sn.0.into())
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    VarType::User(TypeNode::Enum(en), _) => self
+                        .possible_library_funcs(ctx, en.0.into())
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    VarType::User(TypeNode::Ty(ty), _) => self
+                        .possible_library_funcs(ctx, ty.0.into())
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    VarType::User(TypeNode::Error(err), _) => self
+                        .possible_library_funcs(ctx, err.0.into())
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    VarType::User(TypeNode::Func(func_node), _) => self
+                        .possible_library_funcs(ctx, func_node.0.into())
+                        .into_iter()
+                        .collect::<Vec<_>>(),
+                    VarType::User(TypeNode::Unresolved(n), _) => {
+                        match self.node(*n) {
+                            Node::Unresolved(ident) => {
+                                return Err(ExprErr::Unresolved(loc, format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
+                            }
+                            _ => unreachable!()
+                        }
+                    }
                 }
             }
             Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
@@ -206,7 +220,7 @@ pub trait MemberAccess:
         cvar: ContextVarNode,
         name: &str,
         loc: Loc,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         match cvar.ty(self).into_expr_err(loc)? {
             VarType::User(TypeNode::Struct(struct_node), _) => {
                 self.struct_var_member_access(ctx, cvar, *struct_node, name, loc)
@@ -215,7 +229,7 @@ pub trait MemberAccess:
                 self.enum_member_access(ctx, *enum_node, name, loc)
             }
             VarType::User(TypeNode::Func(func_node), _) => {
-                self.func_member_access(ctx, *func_node, name, loc)
+                Ok((self.func_member_access(ctx, *func_node, name, loc)?, false))
             }
             VarType::User(TypeNode::Ty(ty_node), _) => {
                 self.ty_member_access(ctx, *ty_node, name, loc)
@@ -255,12 +269,12 @@ pub trait MemberAccess:
         ty_node: TyNode,
         name: &str,
         loc: Loc,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         let name = name.split('(').collect::<Vec<_>>()[0];
         if let Some(func) = self.library_func_search(ctx, ty_node.0.into(), name) {
-            Ok(func)
+            Ok((func, true))
         } else if let Some(func) = self.builtin_fn_or_maybe_add(name) {
-            Ok(ExprRet::Single(func))
+            Ok((ExprRet::Single(func), false))
         } else {
             Err(ExprErr::MemberAccessNotFound(
                 loc,

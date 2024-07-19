@@ -20,9 +20,11 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
         ty: NodeIdx,
         func_name: &str,
     ) -> Option<ExprRet> {
+        println!("searching for {func_name}");
         self.possible_library_funcs(ctx, ty)
             .iter()
             .filter_map(|func| {
+                println!("func: {:?}", func.name(self).unwrap());
                 if let Ok(name) = func.name(self) {
                     Some((name, func))
                 } else {

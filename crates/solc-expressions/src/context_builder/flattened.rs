@@ -21,7 +21,7 @@ use shared::{
     GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
 };
 use solang_parser::pt::{
-    CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
+    CodeLocation, ContractTy, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
 };
 
 impl<T> Flatten for T where
@@ -922,6 +922,8 @@ pub trait Flatten:
             ctx.peek_expr_flag(self)
         );
 
+        // ctx.debug_expr_stack(self);
+
         match next {
             Todo(loc, err_str) => Err(ExprErr::Todo(loc, err_str.to_string())),
             // Flag expressions
@@ -1013,7 +1015,7 @@ pub trait Flatten:
             | MoreEqual(loc) | And(loc) | Or(loc) => self.interp_cmp(arena, ctx, loc, next),
 
             // Function calling
-            MemberAccess(..) => self.interp_member_access(arena, ctx, next),
+            MemberAccess(..) => self.interp_member_access(arena, ctx, stack, next),
             FunctionCall(..) => self.interp_func_call(arena, ctx, next, None),
             FunctionCallBlock(_) => todo!(),
             NamedArgument(..) => Ok(()),
@@ -1154,28 +1156,47 @@ pub trait Flatten:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
+        stack: &mut Vec<FlatExpr>,
         next: FlatExpr,
     ) -> Result<(), ExprErr> {
         let FlatExpr::MemberAccess(loc, name) = next else {
             unreachable!()
         };
 
-        let keep_member_on_stack =
-            matches!(ctx.peek_expr_flag(self), Some(ExprFlag::FunctionName(..)));
-
         let member = ctx
             .pop_n_latest_exprs(1, loc, self)
             .into_expr_err(loc)?
             .swap_remove(0);
 
-        if keep_member_on_stack {
-            self.member_access(arena, ctx, member.clone(), name, loc)?;
-            // rearrange member to be in correct location relative to access
+        // If the member access points to a library function, we need to keep the
+        // member on the stack
+        let was_library_function = self.member_access(arena, ctx, member.clone(), name, loc)?;
+        if !was_library_function {
+            // It was unclear before knowing the node type of the member as to if
+            // the member function call took `self` or not (via a library function)
+            //
+            // Now that we know it was *not* a library function, we know it does not take self
+            // and therefore we *do* need to adjust the function call input length and
+            // *not* keep the member on the stack
+            match stack.get_mut(ctx.parse_idx(self)) {
+                Some(FlatExpr::FunctionCall(_, ref mut n)) => {
+                    *n -= 1;
+                }
+                Some(FlatExpr::NamedFunctionCall(_, ref mut n)) => {
+                    *n -= 1;
+                }
+                Some(_) | None => {
+                    // it wasn't a function call at all, remove the member
+                }
+            }
+            Ok(())
+        } else {
+            // it was a library function that by definition takes self.
+            // Pop off the access (for now), add the member back onto the stack
+            // and readd the access
             let access = ctx.pop_expr_latest(loc, self).unwrap().unwrap();
             ctx.push_expr(member, self).into_expr_err(loc)?;
             ctx.push_expr(access, self).into_expr_err(loc)
-        } else {
-            self.member_access(arena, ctx, member.clone(), name, loc)
         }
     }
 
@@ -1630,15 +1651,28 @@ pub trait Flatten:
                 } else {
                     None
                 };
-                let maybe_fn = if super_call {
-                    self.find_super_func(arena, ctx, name.to_string(), n, maybe_names)
-                        .into_expr_err(loc)?
-                } else {
-                    self.find_func(arena, ctx, name.to_string(), n, maybe_names)
-                        .into_expr_err(loc)?
-                };
 
-                if let Some(fn_node) = maybe_fn {
+                if let Some((fn_node, input_reordering)) = self
+                    .find_func(arena, ctx, name, n, &maybe_names, super_call)
+                    .into_expr_err(loc)?
+                {
+                    // reorder the inputs now that we have the function
+                    let inputs = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+                    let mut tmp_inputs = vec![];
+                    tmp_inputs.resize(n, ExprRet::Null);
+                    inputs.into_iter().enumerate().for_each(|(i, ret)| {
+                        let target_idx = input_reordering[&i];
+                        tmp_inputs[target_idx] = ret;
+                    });
+
+                    // we reverse it because of how they are popped off the stack in the actual
+                    // function call
+                    tmp_inputs
+                        .into_iter()
+                        .rev()
+                        .try_for_each(|i| ctx.push_expr(i, self))
+                        .into_expr_err(loc)?;
+
                     let as_var = ContextVar::maybe_from_user_ty(self, loc, fn_node.into()).unwrap();
                     let fn_var = ContextVarNode::from(self.add_node(as_var));
                     ctx.add_var(fn_var, self).into_expr_err(loc)?;
@@ -1756,6 +1790,11 @@ pub trait Flatten:
             .pop_n_latest_exprs(n + 1, loc, self)
             .into_expr_err(loc)?;
 
+        println!(
+            "function call: {}",
+            ExprRet::Multi(func_and_inputs.clone()).debug_str(self)
+        );
+
         let func = func_and_inputs
             .first()
             .unwrap()
@@ -1826,6 +1865,8 @@ pub trait Flatten:
 
         let inputs = ExprRet::Multi(inputs);
 
+        println!("inputs: {}", inputs.debug_str(self));
+
         if is_new_call {
             return self.new_call_inner(arena, ctx, func, inputs, loc);
         }
@@ -1860,6 +1901,13 @@ pub trait Flatten:
                 };
                 self.cast_inner(arena, ctx, ty, &builtin, inputs, loc)
             }
+            VarType::User(TypeNode::Unresolved(idx), _) => Err(ExprErr::ParseError(
+                loc,
+                format!(
+                    "Could not call function: {:?}. The inputs may be wrong, or the this is a bug.",
+                    self.node(idx)
+                ),
+            )),
             e => todo!("Unhandled ty: {e:?}"),
         }
     }
