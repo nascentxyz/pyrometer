@@ -2,7 +2,11 @@ use std::collections::BTreeMap;
 
 use crate::{
     context_builder::{test_command_runner::TestCommandRunner, ContextBuilder},
-    func_call::{func_caller::FuncCaller, internal_call::InternalFuncCaller, intrinsic_call::*},
+    func_call::{
+        func_caller::FuncCaller,
+        internal_call::{FindFunc, InternalFuncCaller},
+        intrinsic_call::*,
+    },
     loops::Looper,
     yul::YulFuncCaller,
     ExprTyParser,
@@ -21,7 +25,7 @@ use shared::{
     GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
 };
 use solang_parser::pt::{
-    CodeLocation, ContractTy, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
+    CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
 };
 
 impl<T> Flatten for T where
@@ -792,7 +796,7 @@ pub trait Flatten:
                     // For clarity we make these variables
                     let mut is_super = false;
                     let named_args = false;
-                    let mut num_inputs = input_exprs.len();
+                    let num_inputs = input_exprs.len();
                     match self.expr_stack_mut().pop().unwrap() {
                         FlatExpr::Super(loc, name) => {
                             is_super = true;
@@ -801,15 +805,15 @@ pub trait Flatten:
                             ));
                             self.push_expr(FlatExpr::Variable(loc, name));
                         }
-                        mem @ FlatExpr::MemberAccess(..) => {
-                            // member.name(inputs) -> name(member, inputs) so we need
-                            // to make sure the member is passed as an input
-                            num_inputs += 1;
-                            self.push_expr(FlatExpr::FunctionCallName(
-                                num_inputs, is_super, named_args,
-                            ));
-                            self.push_expr(mem);
-                        }
+                        // mem @ FlatExpr::MemberAccess(..) => {
+                        //     // member.name(inputs) -> name(member, inputs) so we need
+                        //     // to make sure the member is passed as an input
+                        //     num_inputs += 1;
+                        //     self.push_expr(FlatExpr::FunctionCallName(
+                        //         num_inputs, is_super, named_args,
+                        //     ));
+                        //     self.push_expr(mem);
+                        // }
                         other => {
                             self.push_expr(FlatExpr::FunctionCallName(
                                 num_inputs, is_super, named_args,
@@ -884,7 +888,7 @@ pub trait Flatten:
         body_loc: Loc,
         stack: &mut Vec<FlatExpr>,
     ) -> Result<(), ExprErr> {
-        self.flat_apply_to_edges(
+        let res = self.flat_apply_to_edges(
             ctx,
             body_loc,
             arena,
@@ -896,7 +900,14 @@ pub trait Flatten:
               stack: &mut Vec<FlatExpr>| {
                 analyzer.interpret_expr(arena, ctx, stack)
             },
-        )
+        );
+
+        if let Err(e) = res {
+            ctx.kill(self, e.loc(), KilledKind::ParseError).unwrap();
+            Err(e)
+        } else {
+            Ok(())
+        }
     }
 
     fn interpret_expr(
@@ -1029,7 +1040,7 @@ pub trait Flatten:
             | MoreEqual(loc) | And(loc) | Or(loc) => self.interp_cmp(arena, ctx, loc, next),
 
             // Function calling
-            MemberAccess(..) => self.interp_member_access(arena, ctx, stack, next),
+            MemberAccess(..) => self.interp_member_access(arena, ctx, stack, next, parse_idx),
             FunctionCall(..) => self.interp_func_call(arena, ctx, next, None),
             FunctionCallBlock(_) => todo!(),
             NamedArgument(..) => Ok(()),
@@ -1224,6 +1235,7 @@ pub trait Flatten:
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         next: FlatExpr,
+        parse_idx: usize,
     ) -> Result<(), ExprErr> {
         let FlatExpr::MemberAccess(loc, name) = next else {
             unreachable!()
@@ -1236,33 +1248,74 @@ pub trait Flatten:
 
         // If the member access points to a library function, we need to keep the
         // member on the stack
-        let was_library_function = self.member_access(arena, ctx, member.clone(), name, loc)?;
-        if !was_library_function {
-            // It was unclear before knowing the node type of the member as to if
-            // the member function call took `self` or not (via a library function)
-            //
-            // Now that we know it was *not* a library function, we know it does not take self
-            // and therefore we *do* need to adjust the function call input length and
-            // *not* keep the member on the stack
-            match stack.get_mut(ctx.parse_idx(self)) {
-                Some(FlatExpr::FunctionCall(_, ref mut n)) => {
-                    *n -= 1;
-                }
-                Some(FlatExpr::NamedFunctionCall(_, ref mut n)) => {
-                    *n -= 1;
-                }
-                Some(_) | None => {
-                    // it wasn't a function call at all, remove the member
+        match ctx.take_expr_flag(self) {
+            Some(ExprFlag::FunctionName(n, super_call, named_args)) => {
+                let maybe_names = if named_args {
+                    let start = parse_idx + 1;
+                    Some(self.get_named_args(stack, start, n))
+                } else {
+                    None
+                };
+                let member_idx = member.expect_single().into_expr_err(loc)?;
+
+                let mut found_funcs = self
+                    .find_func(ctx, name, n, &maybe_names, super_call, Some(member_idx))
+                    .into_expr_err(loc)?;
+                match found_funcs.len() {
+                    0 => Err(ExprErr::FunctionNotFound(
+                        loc,
+                        "Member Function not found".to_string(),
+                    )),
+                    1 => {
+                        let FindFunc {
+                            func,
+                            reordering,
+                            was_lib_func,
+                        } = found_funcs.swap_remove(0);
+
+                        self.order_fn_inputs(ctx, n, reordering, loc)?;
+
+                        if was_lib_func {
+                            ctx.push_expr(member, self).into_expr_err(loc)?;
+                            match stack.get_mut(ctx.parse_idx(self)) {
+                                Some(FlatExpr::FunctionCall(_, ref mut n)) => {
+                                    *n += 1;
+                                }
+                                Some(FlatExpr::NamedFunctionCall(_, ref mut n)) => {
+                                    *n += 1;
+                                }
+                                Some(_) | None => {}
+                            }
+                        }
+
+                        let as_var =
+                            ContextVar::maybe_from_user_ty(self, loc, func.into()).unwrap();
+                        let fn_var = ContextVarNode::from(self.add_node(as_var));
+                        ctx.add_var(fn_var, self).into_expr_err(loc)?;
+                        self.add_edge(fn_var, ctx, Edge::Context(ContextEdge::Variable));
+                        ctx.push_expr(ExprRet::Single(fn_var.into()), self)
+                            .into_expr_err(loc)
+                    }
+                    _ => {
+                        let err_str = format!(
+                            "Unable to disambiguate member function call, possible functions: {:?}",
+                            found_funcs
+                                .iter()
+                                .map(|i| i.func.name(self).unwrap())
+                                .collect::<Vec<_>>()
+                        );
+                        Err(ExprErr::FunctionNotFound(loc, err_str))
+                    }
                 }
             }
-            Ok(())
-        } else {
-            // it was a library function that by definition takes self.
-            // Pop off the access (for now), add the member back onto the stack
-            // and readd the access
-            let access = ctx.pop_expr_latest(loc, self).unwrap().unwrap();
-            ctx.push_expr(member, self).into_expr_err(loc)?;
-            ctx.push_expr(access, self).into_expr_err(loc)
+            _ => {
+                let was_lib_func = self.member_access(arena, ctx, member.clone(), name, loc)?;
+                if was_lib_func {
+                    todo!("Got a library function without a function call?");
+                }
+
+                Ok(())
+            }
         }
     }
 
@@ -1764,34 +1817,39 @@ pub trait Flatten:
                     None
                 };
 
-                if let Some((fn_node, input_reordering)) = self
-                    .find_func(arena, ctx, name, n, &maybe_names, super_call)
-                    .into_expr_err(loc)?
-                {
-                    // reorder the inputs now that we have the function
-                    let inputs = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
-                    let mut tmp_inputs = vec![];
-                    tmp_inputs.resize(n, ExprRet::Null);
-                    inputs.into_iter().enumerate().for_each(|(i, ret)| {
-                        let target_idx = input_reordering[&i];
-                        tmp_inputs[target_idx] = ret;
-                    });
-
-                    // we reverse it because of how they are popped off the stack in the actual
-                    // function call
-                    tmp_inputs
-                        .into_iter()
-                        .rev()
-                        .try_for_each(|i| ctx.push_expr(i, self))
-                        .into_expr_err(loc)?;
-
-                    let as_var = ContextVar::maybe_from_user_ty(self, loc, fn_node.into()).unwrap();
-                    let fn_var = ContextVarNode::from(self.add_node(as_var));
-                    ctx.add_var(fn_var, self).into_expr_err(loc)?;
-                    self.add_edge(fn_var, ctx, Edge::Context(ContextEdge::Variable));
-                    return ctx
-                        .push_expr(ExprRet::Single(fn_var.into()), self)
-                        .into_expr_err(loc);
+                let mut found_funcs = self
+                    .find_func(ctx, name, n, &maybe_names, super_call, None)
+                    .into_expr_err(loc)?;
+                match found_funcs.len() {
+                    0 => {
+                        // try a regular `variable` lookup
+                    }
+                    1 => {
+                        let FindFunc {
+                            func,
+                            reordering,
+                            was_lib_func: _,
+                        } = found_funcs.swap_remove(0);
+                        self.order_fn_inputs(ctx, n, reordering, loc)?;
+                        let as_var =
+                            ContextVar::maybe_from_user_ty(self, loc, func.into()).unwrap();
+                        let fn_var = ContextVarNode::from(self.add_node(as_var));
+                        ctx.add_var(fn_var, self).into_expr_err(loc)?;
+                        self.add_edge(fn_var, ctx, Edge::Context(ContextEdge::Variable));
+                        return ctx
+                            .push_expr(ExprRet::Single(fn_var.into()), self)
+                            .into_expr_err(loc);
+                    }
+                    _ => {
+                        let err_str = format!(
+                            "Unable to disambiguate member function call, possible functions: {:?}",
+                            found_funcs
+                                .iter()
+                                .map(|i| i.func.name(self).unwrap())
+                                .collect::<Vec<_>>()
+                        );
+                        return Err(ExprErr::FunctionNotFound(loc, err_str));
+                    }
                 }
             }
             Some(other) => {
@@ -1809,6 +1867,31 @@ pub trait Flatten:
             None,
             None,
         )
+    }
+
+    fn order_fn_inputs(
+        &mut self,
+        ctx: ContextNode,
+        n: usize,
+        reordering: BTreeMap<usize, usize>,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        // reorder the inputs now that we have the function
+        let inputs = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+        let mut tmp_inputs = vec![];
+        tmp_inputs.resize(n, ExprRet::Null);
+        inputs.into_iter().enumerate().for_each(|(i, ret)| {
+            let target_idx = reordering[&i];
+            tmp_inputs[target_idx] = ret;
+        });
+
+        // we reverse it because of how they are popped off the stack in the actual
+        // function call
+        tmp_inputs
+            .into_iter()
+            .rev()
+            .try_for_each(|i| ctx.push_expr(i, self))
+            .into_expr_err(loc)
     }
 
     fn interp_assign(
@@ -1999,7 +2082,11 @@ pub trait Flatten:
                 self.construct_contract_inner(arena, ctx, c, inputs, loc)
             }
             VarType::User(TypeNode::Func(s), _) => {
-                if self.builtin_fn_nodes().iter().any(|(_, v)| *v == func) {
+                if self
+                    .builtin_fn_nodes()
+                    .iter()
+                    .any(|(_, v)| *v == s.0.into())
+                {
                     // its a builtin function call
                     self.call_builtin(arena, ctx, &s.name(self).into_expr_err(loc)?, inputs, loc)
                 } else {

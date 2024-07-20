@@ -485,6 +485,11 @@ impl AnalyzerLike for Analyzer {
 
             self.add_edge(func_node, self.entry(), Edge::Func);
 
+            let underlying_mut = FunctionNode::from(func_node).underlying_mut(self).unwrap();
+            let name = underlying_mut.name.as_mut().unwrap();
+            let full_name = format!("{}({})", name, params_strs.join(", "));
+            name.name = full_name.clone();
+
             self.builtin_fn_nodes_mut()
                 .insert(builtin_name.to_string(), func_node);
             Some(func_node)

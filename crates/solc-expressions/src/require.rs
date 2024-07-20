@@ -12,10 +12,7 @@ use graph::{
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::I256;
-use solang_parser::{
-    helpers::CodeLocation,
-    pt::{Expression, Loc},
-};
+use solang_parser::pt::Loc;
 
 use std::cmp::Ordering;
 

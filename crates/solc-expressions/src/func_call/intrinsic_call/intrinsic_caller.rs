@@ -166,6 +166,7 @@ pub trait IntrinsicFuncCaller:
         inputs: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
+        let name = name.split('(').collect::<Vec<_>>()[0];
         match name {
             // abi
             _ if name.starts_with("abi.") => self.abi_call_inner(ctx, name, inputs, loc),

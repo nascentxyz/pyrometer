@@ -707,28 +707,34 @@ impl Concrete {
 
     pub fn alt_lit_builtins(&self) -> Vec<Builtin> {
         let mut alts = vec![];
-        if let Concrete::Uint(size, val) = self {
-            // literal(u160) -> address
-            if *size == 160 {
-                alts.push(Builtin::Address);
-            }
+        match self {
+            Concrete::Uint(size, val) => {
+                // literal(u160) -> address
+                if *size == 160 {
+                    alts.push(Builtin::Address);
+                }
 
-            // uint -> int, all size steps between
-            let mut new_size = *size;
-            let imax = U256::from(2).pow((*size - 1).into());
-            // we may have to bump size by 8 bits
-            if val > &imax {
-                new_size += 8;
-            }
-            // if a valid
-            while new_size <= 256 {
-                alts.push(Builtin::Int(new_size));
-                new_size += 8;
-            }
+                // uint -> int, all size steps between
+                let mut new_size = *size;
+                let imax = U256::from(2).pow((*size - 1).into());
+                // we may have to bump size by 8 bits
+                if val > &imax {
+                    new_size += 8;
+                }
+                // if a valid
+                while new_size <= 256 {
+                    alts.push(Builtin::Int(new_size));
+                    new_size += 8;
+                }
 
-            // exact bytesX
-            let bytes_size = size / 8;
-            alts.push(Builtin::Bytes(bytes_size as u8));
+                // exact bytesX
+                let bytes_size = size / 8;
+                alts.push(Builtin::Bytes(bytes_size as u8));
+            }
+            Concrete::String(_) => {
+                alts.push(Builtin::DynamicBytes);
+            }
+            _ => {}
         }
         alts
     }

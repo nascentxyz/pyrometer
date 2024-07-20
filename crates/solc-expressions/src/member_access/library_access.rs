@@ -41,9 +41,9 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
     }
 
     /// Get all possible library functions
-    fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> BTreeSet<FunctionNode> {
+    fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> Vec<FunctionNode> {
         tracing::trace!("looking for library functions of type: {:?}", self.node(ty));
-        let mut funcs: BTreeSet<FunctionNode> = BTreeSet::new();
+        let mut funcs: Vec<FunctionNode> = Vec::new();
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {
             // search for contract scoped `using` statements
             funcs.extend(
@@ -62,6 +62,8 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
             );
         }
 
+        funcs.sort();
+        funcs.dedup();
         funcs
     }
 }

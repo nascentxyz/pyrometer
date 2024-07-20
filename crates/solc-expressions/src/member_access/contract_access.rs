@@ -33,7 +33,7 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
             .linearized_functions(self, false)
             .into_expr_err(loc)?
             .into_iter()
-            .find(|(func_name, func_node)| func_name == name)
+            .find(|(func_name, _)| func_name == name)
         {
             if let Some(func_cvar) = ContextVar::maybe_from_user_ty(self, loc, func.0.into()) {
                 let fn_node = self.add_node(func_cvar);
