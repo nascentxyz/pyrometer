@@ -112,7 +112,7 @@ pub fn exec_exp(
 mod tests {
     use super::*;
     use crate::DummyGraph;
-    use ethers_core::types::{I256, U256};
+    use ethers_core::types::I256;
     use solang_parser::pt::Loc;
 
     #[test]

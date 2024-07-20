@@ -202,9 +202,7 @@ pub fn exec_get_index(
 mod tests {
     use super::*;
     use crate::DummyGraph;
-    use ethers_core::types::U256;
     use pretty_assertions::assert_eq;
-    use solang_parser::pt::Loc;
 
     #[test]
     fn concrete_len() {
