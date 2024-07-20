@@ -269,9 +269,14 @@ pub trait Flatten:
                 flags: _,
                 block: yul_block,
             } => {
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock));
+                self.increment_asm_block();
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock(
+                    self.current_asm_block(),
+                )));
                 self.traverse_yul_statement(&YulStatement::Block(yul_block.clone()));
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock));
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock(
+                    self.current_asm_block(),
+                )));
             }
             Return(loc, maybe_ret_expr) => {
                 if let Some(ret_expr) = maybe_ret_expr {
@@ -414,11 +419,16 @@ pub trait Flatten:
                     YulStatement::VariableDeclaration(def.loc, def.returns.clone(), None);
                 self.traverse_yul_statement(&rets_as_var_decl);
 
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock));
+                self.increment_asm_block();
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulStartBlock(
+                    self.current_asm_block(),
+                )));
                 for stmt in def.body.statements.iter() {
                     self.traverse_yul_statement(stmt);
                 }
-                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock));
+                self.push_expr(FlatExpr::YulExpr(FlatYulExpr::YulEndBlock(
+                    self.current_asm_block(),
+                )));
 
                 let func = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
 
@@ -1046,8 +1056,10 @@ pub trait Flatten:
             Try { .. } => todo!(),
 
             // Yul
-            YulExpr(FlatYulExpr::YulStartBlock) => {
-                self.increment_asm_block();
+            YulExpr(FlatYulExpr::YulStartBlock(s)) => {
+                if self.current_asm_block() < s {
+                    self.increment_asm_block();
+                }
                 Ok(())
             }
             YulExpr(yul @ FlatYulExpr::YulVariable(..)) => self.interp_yul_var(arena, ctx, yul),
@@ -1062,8 +1074,10 @@ pub trait Flatten:
             YulExpr(yul @ FlatYulExpr::YulVarDecl(..)) => {
                 self.interp_yul_var_decl(arena, ctx, stack, yul, parse_idx)
             }
-            YulExpr(FlatYulExpr::YulEndBlock) => {
-                self.decrement_asm_block();
+            YulExpr(FlatYulExpr::YulEndBlock(s)) => {
+                if self.current_asm_block() > s {
+                    self.decrement_asm_block();
+                }
                 Ok(())
             }
         }?;

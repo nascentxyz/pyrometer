@@ -399,8 +399,8 @@ impl FlatExpr {
             | ArrayLiteral(loc, ..) => Some(*loc),
 
             FunctionCallName(..)
-            | YulExpr(FlatYulExpr::YulStartBlock)
-            | YulExpr(FlatYulExpr::YulEndBlock) => None,
+            | YulExpr(FlatYulExpr::YulStartBlock(_))
+            | YulExpr(FlatYulExpr::YulEndBlock(_)) => None,
         }
     }
 }

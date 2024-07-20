@@ -6,14 +6,14 @@ use solang_parser::pt::{
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum FlatYulExpr {
-    YulStartBlock,
+    YulStartBlock(usize),
     YulVariable(Loc, &'static str),
     YulFuncCall(Loc, &'static str, usize),
     YulSuffixAccess(Loc, &'static str),
     YulAssign(Loc, usize),
     YulVarDecl(Loc, usize, bool),
     YulFuncDef(Loc, &'static str, usize),
-    YulEndBlock,
+    YulEndBlock(usize),
 }
 
 impl std::fmt::Display for FlatYulExpr {
