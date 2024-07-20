@@ -9,20 +9,57 @@ contract RequireWithKilled {
     function requireLt(uint x) public {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
+        "pyro::variable::storeRange::range::[6, 99]";
         // set tighter bounds for x
         require(6 < x && x < 99);
+        "pyro::variable::x::range::[7, 98]";
         // make x less than storeRange
         require(x < storeRange);
     }
 
-    function requireLtLocal(uint x) public {
-        uint y = 50;
+    function requireLte(uint x) public {
         // set bounds for storeRange
-        require(5 < y && y < 100);
+        require(5 < storeRange && storeRange < 100);
         // set tighter bounds for x
         require(6 < x && x < 99);
-        // make x less than storeRange
-        require(x < y);
+        // make x less than or equal to storeRange
+        require(x <= storeRange);
+    }
+
+    function requireGt(uint x) public {
+        // set bounds for storeRange
+        require(5 < storeRange && storeRange < 100);
+        // set tighter bounds for x
+        require(6 < x && x < 99);
+        // make x greater than storeRange
+        require(x > storeRange);
+    }
+
+    function requireGte(uint x) public {
+        // set bounds for storeRange
+        require(5 < storeRange && storeRange < 100);
+        // set tighter bounds for x
+        require(6 < x && x < 99);
+        // make x greater than or equal to storeRange
+        require(x >= storeRange);
+    }
+
+    function requireEq(uint x) public {
+        // set bounds for storeRange
+        require(5 < storeRange && storeRange < 100);
+        // set tighter bounds for x
+        require(6 < x && x < 99);
+        // make x equal to storeRange
+        require(x == storeRange);
+    }
+
+    function requireNeq(uint x) public {
+        // set bounds for storeRange
+        require(5 < storeRange && storeRange < 100);
+        // set tighter bounds for x
+        require(6 < x && x < 99);
+        // make x not equal to storeRange
+        require(x != storeRange);
     }
 
     function setCount() public {
