@@ -110,6 +110,9 @@ struct Args {
 
     #[clap(long)]
     pub minimize_debug: Option<String>,
+
+    #[clap(long, default_value = "false")]
+    pub debug_stack: bool,
 }
 
 pub fn subscriber() {
@@ -243,6 +246,7 @@ fn main() {
         root: Root::RemappingsDirectory(env::current_dir().unwrap()),
         debug_panic: args.debug_panic || args.minimize_debug.is_some(),
         minimize_debug: args.minimize_debug,
+        debug_stack: args.debug_stack,
         ..Default::default()
     };
 

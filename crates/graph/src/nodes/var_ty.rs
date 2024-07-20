@@ -60,7 +60,7 @@ impl VarNode {
             let init = analyzer.parse_expr(arena, &expr, Some(parent));
             let underlying = self.underlying(analyzer)?;
             let target_ty = VarType::try_from_idx(analyzer, underlying.ty).unwrap();
-            let initer_ty = ContextVarNode::from(init).ty(analyzer)?.clone();
+            let initer_ty = VarType::try_from_idx(analyzer, init).unwrap();
 
             let mut set = false;
             if let Some(initer) = initer_ty.try_cast(&target_ty, analyzer)? {

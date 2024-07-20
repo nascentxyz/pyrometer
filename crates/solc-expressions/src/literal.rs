@@ -286,6 +286,10 @@ pub trait Literal: AnalyzerBackend + Sized {
                             let range = split
                                 .get(4)
                                 .copied()?
+                                .chars()
+                                .filter(|c| !c.is_whitespace())
+                                .collect::<String>();
+                            let range = range
                                 .trim_start_matches('[')
                                 .trim_end_matches(']')
                                 .split(',')

@@ -150,6 +150,7 @@ pub struct Analyzer {
     pub flattened: Vec<FlatExpr>,
     pub expr_flag: Option<ExprFlag>,
     pub current_asm_block: usize,
+    pub debug_stack: bool,
 }
 
 impl Default for Analyzer {
@@ -191,6 +192,7 @@ impl Default for Analyzer {
             flattened: vec![],
             expr_flag: None,
             current_asm_block: 0,
+            debug_stack: false,
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 

@@ -581,4 +581,8 @@ impl AnalyzerLike for Analyzer {
     fn expr_stack_mut(&mut self) -> &mut Vec<FlatExpr> {
         &mut self.flattened
     }
+
+    fn debug_stack(&self) -> bool {
+        self.debug_stack
+    }
 }

@@ -126,7 +126,7 @@ contract C is S1, S2 {
         return 0;
     }
 
-    function a(uint256 x) internal pure override(A, B) returns (uint) {
+    function a(uint256 x) internal pure override(S1, S2) returns (uint) {
         return 50;
     }
 }
@@ -144,7 +144,7 @@ contract D is S2, S1 {
         return 0;
     }
 
-    function a(uint256 x) internal pure override(A, B) returns (uint) {
+    function a(uint256 x) internal pure override(S1, S2) returns (uint) {
         return 50;
     }
 }

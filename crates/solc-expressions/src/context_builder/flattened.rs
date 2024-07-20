@@ -8,12 +8,12 @@ use crate::{
     ExprTyParser,
 };
 use graph::{
-    elem::{Elem, RangeOp},
+    elem::{Elem, RangeExpr, RangeOp},
     nodes::{
         Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode,
-        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, YulFunction,
+        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, TmpConstruction, YulFunction,
     },
-    AnalyzerBackend, ContextEdge, Edge, Node, TypeNode, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, TypeNode, VarType,
 };
 
 use shared::{
@@ -922,7 +922,9 @@ pub trait Flatten:
             ctx.peek_expr_flag(self)
         );
 
-        // ctx.debug_expr_stack(self);
+        if self.debug_stack() {
+            let _ = ctx.debug_expr_stack(self);
+        }
 
         match next {
             Todo(loc, err_str) => Err(ExprErr::Todo(loc, err_str.to_string())),
@@ -955,9 +957,11 @@ pub trait Flatten:
             Variable(..) => self.interp_var(arena, ctx, stack, next, parse_idx),
             Assign(..) => self.interp_assign(arena, ctx, next),
             List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
+            This(_) => self.interp_this(ctx, next),
+            Delete(_) => self.interp_delete(ctx, next),
 
             // Conditional
-            If { .. } => self.interp_if(arena, ctx, stack, next, parse_idx),
+            If { .. } => self.interp_if(arena, ctx, stack, next),
             Requirement(..) => {
                 ctx.set_expr_flag(self, ExprFlag::Requirement);
                 Ok(())
@@ -998,7 +1002,6 @@ pub trait Flatten:
             | BitwiseAnd(loc, ..)
             | BitwiseXor(loc, ..)
             | BitwiseOr(loc, ..) => self.interp_op(arena, ctx, next, loc, false),
-            BitwiseNot(..) => self.interp_bit_not(arena, ctx, next),
             AssignAdd(loc, ..)
             | AssignSubtract(loc, ..)
             | AssignMultiply(loc, ..)
@@ -1009,6 +1012,7 @@ pub trait Flatten:
             | AssignXor(loc, ..)
             | AssignShiftLeft(loc, ..)
             | AssignShiftRight(loc, ..) => self.interp_op(arena, ctx, next, loc, true),
+            BitwiseNot(..) => self.interp_bit_not(arena, ctx, next),
             // Comparator
             Not(..) => self.interp_not(arena, ctx, next),
             Equal(loc) | NotEqual(loc) | Less(loc) | More(loc) | LessEqual(loc)
@@ -1029,8 +1033,8 @@ pub trait Flatten:
             }
 
             // Semi useless
-            Parameter(_, _, _) => Ok(()),
             Super(..) => unreachable!(),
+            Parameter(_, _, _) => Ok(()),
             Emit(loc) => {
                 let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
                 Ok(())
@@ -1038,8 +1042,6 @@ pub trait Flatten:
             Null(loc) => ctx.push_expr(ExprRet::Null, self).into_expr_err(loc),
 
             // Todo
-            This(_) => todo!(),
-            Delete(_) => todo!(),
             UnaryPlus(_) => todo!(),
             Try { .. } => todo!(),
 
@@ -1087,6 +1089,56 @@ pub trait Flatten:
         } else {
             Ok(())
         }
+    }
+
+    fn interp_delete(&mut self, ctx: ContextNode, next: FlatExpr) -> Result<(), ExprErr> {
+        let FlatExpr::Delete(loc) = next else {
+            unreachable!()
+        };
+
+        let to_delete = ctx
+            .pop_n_latest_exprs(1, loc, self)
+            .into_expr_err(loc)?
+            .swap_remove(0);
+
+        self.delete_match(ctx, to_delete, loc)
+    }
+
+    fn delete_match(
+        &mut self,
+        ctx: ContextNode,
+        to_delete: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        match to_delete {
+            ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
+            ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
+                let mut new_var = self.advance_var_in_ctx(cvar.into(), loc, ctx).unwrap();
+                new_var.sol_delete_range(self).into_expr_err(loc)
+            }
+            ExprRet::Multi(inner) => inner
+                .into_iter()
+                .try_for_each(|i| self.delete_match(ctx, i, loc)),
+            ExprRet::Null => Ok(()),
+        }
+    }
+
+    fn interp_this(&mut self, ctx: ContextNode, next: FlatExpr) -> Result<(), ExprErr> {
+        let FlatExpr::This(loc) = next else {
+            unreachable!()
+        };
+
+        let var = ContextVar::new_from_contract(
+            loc,
+            ctx.associated_contract(self).into_expr_err(loc)?,
+            self,
+        )
+        .into_expr_err(loc)?;
+        let cvar = self.add_node(Node::ContextVar(var));
+        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
+        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        ctx.push_expr(ExprRet::Single(cvar), self)
+            .into_expr_err(loc)
     }
 
     fn interp_test_command(
@@ -1370,7 +1422,6 @@ pub trait Flatten:
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         if_expr: FlatExpr,
-        parse_idx: usize,
     ) -> Result<(), ExprErr> {
         let FlatExpr::If {
             loc,
@@ -1409,6 +1460,7 @@ pub trait Flatten:
         let false_killed = false_subctx.is_killed(self).into_expr_err(loc)?
             || false_subctx.unreachable(self, arena).into_expr_err(loc)?;
 
+        println!("true killed: {true_killed}, false_killed: {false_killed}");
         match (true_killed, false_killed) {
             (true, true) => {
                 // both have been killed, delete the child and dont process the bodies
@@ -1421,7 +1473,7 @@ pub trait Flatten:
 
                 // point the parse index of the parent ctx to the false body
                 ctx.underlying_mut(self).unwrap().parse_idx =
-                    parse_idx + true_cond + false_cond + true_body;
+                    ctx.parse_idx(self) + true_cond + false_cond + true_body;
                 for _ in 0..false_body {
                     self.interpret_step(arena, ctx, loc, stack)?;
                 }
@@ -1501,7 +1553,53 @@ pub trait Flatten:
                     self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gte, loc)
                 }
                 FlatExpr::Or(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Or, loc)
+                    let lhs = ContextVarNode::from(lhs.expect_single().into_expr_err(loc)?);
+                    let rhs = ContextVarNode::from(rhs.expect_single().into_expr_err(loc)?);
+                    let elem = Elem::Expr(RangeExpr::new(lhs.into(), RangeOp::Or, rhs.into()));
+                    let range = SolcRange::new(elem.clone(), elem, vec![]);
+                    let new_lhs_underlying = ContextVar {
+                        loc: Some(loc),
+                        name: format!(
+                            "tmp{}({} {} {})",
+                            ctx.new_tmp(self).into_expr_err(loc)?,
+                            lhs.name(self).into_expr_err(loc)?,
+                            RangeOp::Or.to_string(),
+                            rhs.name(self).into_expr_err(loc)?
+                        ),
+                        display_name: format!(
+                            "({} {} {})",
+                            lhs.display_name(self).into_expr_err(loc)?,
+                            RangeOp::Or.to_string(),
+                            rhs.display_name(self).into_expr_err(loc)?
+                        ),
+                        storage: None,
+                        is_tmp: true,
+                        is_symbolic: lhs.is_symbolic(self).into_expr_err(loc)?
+                            || rhs.is_symbolic(self).into_expr_err(loc)?,
+                        is_return: false,
+                        tmp_of: Some(TmpConstruction::new(lhs, RangeOp::Or, Some(rhs))),
+                        dep_on: {
+                            let mut deps = lhs.dependent_on(self, true).into_expr_err(loc)?;
+                            deps.extend(rhs.dependent_on(self, true).into_expr_err(loc)?);
+                            Some(deps)
+                        },
+                        ty: VarType::BuiltIn(
+                            self.builtin_or_add(Builtin::Bool).into(),
+                            Some(range),
+                        ),
+                    };
+                    let or_var = ContextVarNode::from(self.add_node(new_lhs_underlying));
+                    let node = self.add_concrete_var(ctx, Concrete::Bool(true), loc)?;
+                    ctx.add_var(node, self).into_expr_err(loc)?;
+                    self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                    self.handle_require_inner(
+                        arena,
+                        ctx,
+                        &ExprRet::Single(or_var.into()),
+                        &ExprRet::Single(node.into()),
+                        RangeOp::Eq,
+                        loc,
+                    )
                 }
                 FlatExpr::And(..) => {
                     self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::And, loc)

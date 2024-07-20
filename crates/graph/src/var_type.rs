@@ -277,7 +277,7 @@ impl VarType {
             (Self::Concrete(from), Self::BuiltIn(to, _)) => {
                 let from = from.underlying(analyzer)?.as_builtin();
                 let to = to.underlying(analyzer)?;
-                Ok(from.implicitly_castable_to(&to))
+                Ok(from.implicitly_castable_to(to))
             }
             (Self::BuiltIn(from, _), Self::Concrete(to)) => {
                 let from = from.underlying(analyzer)?;

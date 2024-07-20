@@ -201,4 +201,5 @@ pub trait AnalyzerLike: GraphLike {
     fn current_asm_block(&self) -> usize;
     fn expr_stack(&self) -> &[Self::FlatExpr];
     fn expr_stack_mut(&mut self) -> &mut Vec<Self::FlatExpr>;
+    fn debug_stack(&self) -> bool;
 }

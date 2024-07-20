@@ -170,7 +170,7 @@ pub trait IntrinsicFuncCaller:
             // abi
             _ if name.starts_with("abi.") => self.abi_call_inner(ctx, name, inputs, loc),
             // address
-            "delegatecall" | "staticcall" | "call" | "code" | "balance" => {
+            "delegatecall" | "staticcall" | "call" | "send" | "transfer" => {
                 self.address_call(ctx, name, loc)
             }
             // array
