@@ -39,7 +39,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
                             format!(
                                 "{} {} {}",
                                 fmt(&expr.lhs, analyzer),
-                                expr.op.to_string(),
+                                expr.op,
                                 fmt(&expr.rhs, analyzer)
                             )
                         }

@@ -122,9 +122,8 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 tracing::trace!(
-                    "cmp: {} {} {}",
+                    "cmp: {} {op} {}",
                     lhs_cvar.display_name(self).unwrap(),
-                    op.to_string(),
                     rhs_cvar.display_name(self).unwrap()
                 );
                 let range = {
@@ -149,13 +148,12 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         "tmp{}({} {} {})",
                         ctx.new_tmp(self).into_expr_err(loc)?,
                         lhs_cvar.name(self).into_expr_err(loc)?,
-                        op.to_string(),
+                        op,
                         rhs_cvar.name(self).into_expr_err(loc)?,
                     ),
                     display_name: format!(
-                        "{} {} {}",
+                        "{} {op} {}",
                         lhs_cvar.display_name(self).into_expr_err(loc)?,
-                        op.to_string(),
                         rhs_cvar.display_name(self).into_expr_err(loc)?,
                     ),
                     storage: None,

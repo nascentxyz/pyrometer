@@ -1624,13 +1624,13 @@ pub trait Flatten:
                             "tmp{}({} {} {})",
                             ctx.new_tmp(self).into_expr_err(loc)?,
                             lhs.name(self).into_expr_err(loc)?,
-                            RangeOp::Or.to_string(),
+                            RangeOp::Or,
                             rhs.name(self).into_expr_err(loc)?
                         ),
                         display_name: format!(
                             "({} {} {})",
                             lhs.display_name(self).into_expr_err(loc)?,
-                            RangeOp::Or.to_string(),
+                            RangeOp::Or,
                             rhs.display_name(self).into_expr_err(loc)?
                         ),
                         storage: None,

@@ -13,6 +13,8 @@ pub use map_or_array::*;
 pub use reference::*;
 use shared::FlatExpr;
 
+use std::fmt;
+
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum MinMaxed<T> {
     Minimized(Box<Elem<T>>),
@@ -253,40 +255,40 @@ impl RangeOp {
     }
 }
 
-impl ToString for RangeOp {
-    fn to_string(&self) -> String {
+impl fmt::Display for RangeOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use RangeOp::*;
         match self {
-            Add(..) => "+".to_string(),
-            Mul(..) => "*".to_string(),
-            Sub(..) => "-".to_string(),
-            Div(..) => "/".to_string(),
-            Shl => "<<".to_string(),
-            Shr => ">>".to_string(),
-            Mod => "%".to_string(),
-            Exp(_) => "**".to_string(),
-            Min => "min".to_string(),
-            Max => "max".to_string(),
-            Lt => "<".to_string(),
-            Gt => ">".to_string(),
-            Lte => "<=".to_string(),
-            Gte => ">=".to_string(),
-            Eq => "==".to_string(),
-            Neq => "!=".to_string(),
-            Not => "!".to_string(),
-            And => "&&".to_string(),
-            Or => "||".to_string(),
-            Cast => "cast".to_string(),
-            BitAnd => "&".to_string(),
-            BitOr => "|".to_string(),
-            BitXor => "^".to_string(),
-            BitNot => "~".to_string(),
-            Concat => "concat".to_string(),
-            Memcopy => "memcopy".to_string(),
-            SetIndices => "set_indices".to_string(),
-            GetIndex => "get_index".to_string(),
-            GetLength => "get_length".to_string(),
-            SetLength => "set_length".to_string(),
+            Add(..) => write!(f, "+"),
+            Mul(..) => write!(f, "*"),
+            Sub(..) => write!(f, "-"),
+            Div(..) => write!(f, "/"),
+            Shl => write!(f, "<<"),
+            Shr => write!(f, ">>"),
+            Mod => write!(f, "%"),
+            Exp(_) => write!(f, "**"),
+            Min => write!(f, "min"),
+            Max => write!(f, "max"),
+            Lt => write!(f, "<"),
+            Gt => write!(f, ">"),
+            Lte => write!(f, "<="),
+            Gte => write!(f, ">="),
+            Eq => write!(f, "=="),
+            Neq => write!(f, "!="),
+            Not => write!(f, "!"),
+            And => write!(f, "&&"),
+            Or => write!(f, "||"),
+            Cast => write!(f, "cast"),
+            BitAnd => write!(f, "&"),
+            BitOr => write!(f, "|"),
+            BitXor => write!(f, "^"),
+            BitNot => write!(f, "~"),
+            Concat => write!(f, "concat"),
+            Memcopy => write!(f, "memcopy"),
+            SetIndices => write!(f, "set_indices"),
+            GetIndex => write!(f, "get_index"),
+            GetLength => write!(f, "get_length"),
+            SetLength => write!(f, "set_length"),
         }
     }
 }

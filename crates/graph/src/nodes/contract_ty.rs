@@ -381,7 +381,7 @@ pub struct Contract {
     pub ty: ContractTy,
     /// An optional name in the form of an identifier (`(Loc, String)`)
     pub name: Option<Identifier>,
-    ///
+    /// Raw inherited strings, ordered by least base to most base
     pub raw_inherits: Vec<String>,
     /// A list of contracts that this contract inherits (TODO: inheritance linearization)
     pub inherits: Vec<ContractNode>,

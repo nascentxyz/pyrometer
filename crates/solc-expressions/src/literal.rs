@@ -379,7 +379,6 @@ mod tests {
     use graph::nodes::Function;
     use pyrometer::Analyzer;
     use solang_parser::pt::HexLiteral;
-    use solang_parser::pt::Loc;
 
     fn make_context_node_for_analyzer(analyzer: &mut Analyzer) -> ContextNode {
         // need to make a function, then provide the function to the new Context

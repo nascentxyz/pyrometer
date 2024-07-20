@@ -76,16 +76,14 @@ impl ContextVar {
         Ok(ContextVar {
             loc: Some(loc),
             name: format!(
-                "tmp{}({} {} {})",
+                "tmp{}({} {op} {})",
                 ctx.new_tmp(analyzer)?,
                 lhs_cvar.name(analyzer)?,
-                op.to_string(),
                 rhs_cvar.name(analyzer)?
             ),
             display_name: format!(
-                "({} {} {})",
+                "({} {op} {})",
                 lhs_cvar.display_name(analyzer)?,
-                op.to_string(),
                 rhs_cvar.display_name(analyzer)?
             ),
             storage: None,

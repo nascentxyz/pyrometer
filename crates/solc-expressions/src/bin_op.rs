@@ -131,9 +131,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         assign: bool,
     ) -> Result<ExprRet, ExprErr> {
         tracing::trace!(
-            "binary op: {} {} {}, assign: {}",
+            "binary op: {} {op} {}, assign: {}",
             lhs_cvar.display_name(self).into_expr_err(loc)?,
-            op.to_string(),
             rhs_cvar.display_name(self).into_expr_err(loc)?,
             assign
         );

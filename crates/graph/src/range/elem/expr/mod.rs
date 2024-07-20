@@ -33,24 +33,24 @@ impl std::fmt::Display for RangeExpr<Concrete> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.op {
             RangeOp::Min | RangeOp::Max => {
-                write!(f, "{}{{{}, {}}}", self.op.to_string(), self.lhs, self.rhs)
+                write!(f, "{}{{{}, {}}}", self.op, self.lhs, self.rhs)
             }
             RangeOp::Cast => match &*self.rhs {
                 Elem::Concrete(RangeConcrete { val, .. }) => {
                     write!(
                         f,
                         "{}({}, {})",
-                        self.op.to_string(),
+                        self.op,
                         self.lhs,
                         val.as_builtin().basic_as_string()
                     )
                 }
-                _ => write!(f, "{}({}, {})", self.op.to_string(), self.lhs, self.rhs),
+                _ => write!(f, "{}({}, {})", self.op, self.lhs, self.rhs),
             },
             RangeOp::BitNot => {
                 write!(f, "~{}", self.lhs)
             }
-            _ => write!(f, "({} {} {})", self.lhs, self.op.to_string(), self.rhs),
+            _ => write!(f, "({} {} {})", self.lhs, self.op, self.rhs),
         }
     }
 }
@@ -150,9 +150,7 @@ impl RangeExpr<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<MinMaxed<Concrete>> {
         if let Some(idx) = self.arena_idx(arena) {
-            let Some(ref mut t) = arena.ranges.get_mut(idx) else {
-                return None;
-            };
+            let t = arena.ranges.get_mut(idx)?;
             let Elem::Expr(ref mut arenaized) = *t else {
                 return None;
             };
@@ -171,9 +169,7 @@ impl RangeExpr<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Option<Box<Elem<Concrete>>> {
         if let Some(idx) = self.arena_idx(arena) {
-            let Some(ref mut t) = arena.ranges.get_mut(idx) else {
-                return None;
-            };
+            let t = arena.ranges.get_mut(idx)?;
             let Elem::Expr(ref mut arenaized) = *t else {
                 return None;
             };

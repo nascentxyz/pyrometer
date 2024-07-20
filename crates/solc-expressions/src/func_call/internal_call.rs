@@ -267,9 +267,7 @@ pub trait InternalFuncCaller:
             .filter_map(|(func, lib_func)| {
                 let ordered_pos_to_input_pos: BTreeMap<_, _> =
                     if let Some(input_names) = &maybe_named {
-                        let Some(mut ordered_names) = self.ordered_fn_inputs(func.0.into()) else {
-                            return None;
-                        };
+                        let mut ordered_names = self.ordered_fn_inputs(func.0.into())?;
                         ordered_names = if *lib_func {
                             // remove the first input for a lib function
                             ordered_names.remove(0);

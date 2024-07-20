@@ -17,7 +17,6 @@ use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
 use petgraph::{dot::Dot, graph::EdgeIndex, visit::EdgeRef, Directed, Direction, Graph};
-use std::convert::TryFrom;
 use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex},

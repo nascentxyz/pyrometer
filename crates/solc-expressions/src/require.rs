@@ -108,9 +108,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         tracing::trace!(
-            "require: {} {} {}",
+            "require: {} {op} {}",
             new_lhs.display_name(self).into_expr_err(loc)?,
-            op.to_string(),
             new_rhs.display_name(self).into_expr_err(loc)?
         );
         let mut any_unsat = false;
@@ -186,9 +185,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 (new_lhs.display_name(self).into_expr_err(loc)?).to_string()
             } else {
                 format!(
-                    "({} {} {rhs_display_name})",
+                    "({} {op} {rhs_display_name})",
                     new_lhs.display_name(self).into_expr_err(loc)?,
-                    op.to_string(),
                 )
             };
 
@@ -206,7 +204,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     "tmp{}({} {} {})",
                     ctx.new_tmp(self).into_expr_err(loc)?,
                     new_lhs.name(self).into_expr_err(loc)?,
-                    op.to_string(),
+                    op,
                     new_rhs.name(self).into_expr_err(loc)?,
                 ),
                 display_name: display_name.clone(),
@@ -249,7 +247,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     "tmp{}(({} {} {}) == true)",
                     ctx.new_tmp(self).into_expr_err(loc)?,
                     new_lhs.name(self).into_expr_err(loc)?,
-                    op.to_string(),
+                    op,
                     new_rhs.name(self).into_expr_err(loc)?,
                 ),
                 display_name: format!("{display_name} == true"),
@@ -484,7 +482,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         nonconst_var.display_name(self).unwrap(),
                         nonconst_range.max,
                         nonconst_var.display_name(self).unwrap(),
-                        op.to_string(),
+                        op,
                         const_var.display_name(self).unwrap(),
                         const_var.evaled_range_min(self, arena).unwrap().unwrap()
                     )));

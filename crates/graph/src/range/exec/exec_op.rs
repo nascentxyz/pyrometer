@@ -111,7 +111,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         tracing::trace!(
             "simplifying op: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
             self.lhs,
-            self.op.to_string(),
+            self.op,
             self.rhs,
             lhs_min,
             lhs_max,
@@ -227,7 +227,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             "executing {}: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
             if maximize { "maximum" } else { "minimum" },
             self.lhs,
-            self.op.to_string(),
+            self.op,
             self.rhs,
             lhs_min,
             lhs_max,

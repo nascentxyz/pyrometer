@@ -9,7 +9,10 @@ use graph::{
 use shared::{RangeArena, StorageLocation};
 
 use ariadne::{Color, Fmt, Label, Span};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 
 pub static MIN_COLOR: Color = Color::Fixed(111);
 pub static MAX_COLOR: Color = Color::Fixed(106);
@@ -167,9 +170,9 @@ impl RangePart {
 
     pub fn to_normal_string(&self) -> String {
         match self {
-            e @ RangePart::Equal(_) => format!(" == {}", e.to_string()),
-            e @ RangePart::Inclusion(..) => format!(" ∈ {}", e.to_string()),
-            e @ RangePart::Exclusion(_) => format!("&& ∉ {{{}}}", e.to_string()),
+            e @ RangePart::Equal(_) => format!(" == {}", e),
+            e @ RangePart::Inclusion(..) => format!(" ∈ {}", e),
+            e @ RangePart::Exclusion(_) => format!("&& ∉ {{{}}}", e),
         }
     }
 }
@@ -222,16 +225,11 @@ impl From<AnalysisItem> for Label<LocStrSpan> {
     }
 }
 
-impl ToString for StrippedAnalysisItem {
-    fn to_string(&self) -> String {
-        format!(
+impl fmt::Display for StrippedAnalysisItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
             "{}{}{}",
-            // match self.storage {
-            //     Some(StorageLocation::Memory(..)) => "Memory var ",
-            //     Some(StorageLocation::Storage(..)) => "Storage var ",
-            //     Some(StorageLocation::Calldata(..)) => "Calldata var ",
-            //     None => "",
-            // },
             self.name,
             self.parts
                 .iter()
@@ -247,12 +245,13 @@ impl ToString for StrippedAnalysisItem {
     }
 }
 
-impl ToString for RangePart {
-    fn to_string(&self) -> String {
+impl fmt::Display for RangePart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RangePart::Equal(inner) => inner.to_string(),
-            RangePart::Inclusion(min, max) => format!("[ {}, {} ]", min, max),
-            RangePart::Exclusion(inner) => format!(
+            RangePart::Equal(inner) => write!(f, "{}", inner),
+            RangePart::Inclusion(min, max) => write!(f, "[ {}, {} ]", min, max),
+            RangePart::Exclusion(inner) => write!(
+                f,
                 "{{{}}}",
                 inner
                     .iter()
