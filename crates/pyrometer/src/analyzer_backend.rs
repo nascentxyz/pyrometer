@@ -488,7 +488,7 @@ impl AnalyzerLike for Analyzer {
             let underlying_mut = FunctionNode::from(func_node).underlying_mut(self).unwrap();
             let name = underlying_mut.name.as_mut().unwrap();
             let full_name = format!("{}({})", name, params_strs.join(", "));
-            name.name = full_name.clone();
+            name.name.clone_from(&full_name);
 
             self.builtin_fn_nodes_mut()
                 .insert(builtin_name.to_string(), func_node);

@@ -82,7 +82,7 @@ pub trait BuiltinAccess:
                                 storage: None,
                                 name: None,
                             };
-                            let mut inputs = (0..num_inputs)
+                            let inputs = (0..num_inputs)
                                 .map(|_| base_input.clone())
                                 .collect::<Vec<_>>();
                             let outputs = vec![FunctionReturn {
@@ -120,7 +120,7 @@ pub trait BuiltinAccess:
                                 storage: None,
                                 name: None,
                             };
-                            let mut inputs = (0..num_inputs)
+                            let inputs = (0..num_inputs)
                                 .map(|_| base_input.clone())
                                 .collect::<Vec<_>>();
                             let outputs = vec![FunctionReturn {
@@ -257,7 +257,7 @@ pub trait BuiltinAccess:
         let underlying_mut = func_node.underlying_mut(self)?;
         let name = underlying_mut.name.as_mut().unwrap();
         let full_name = format!("{}({})", name, params_strs.join(", "));
-        name.name = full_name.clone();
+        name.name.clone_from(&full_name);
 
         self.add_edge(func_node, self.entry(), Edge::Func);
 
