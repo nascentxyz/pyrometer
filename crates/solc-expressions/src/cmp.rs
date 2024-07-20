@@ -165,12 +165,14 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
+                // ie: 5 == x
                 ContextVarNode::from(*lhs)
                     .literal_cast_from(&ContextVarNode::from(*rhs), self)
                     .into_expr_err(loc)?;
                 self.cmp_inner(arena, ctx, loc, &ExprRet::Single(*rhs), op, rhs_paths)
             }
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: 5 == 5
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let rhs_cvar =
@@ -187,12 +189,14 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 )
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: x == 5
                 ContextVarNode::from(*rhs)
                     .literal_cast_from(&ContextVarNode::from(*lhs), self)
                     .into_expr_err(loc)?;
                 self.cmp_inner(arena, ctx, loc, lhs_paths, op, &ExprRet::Single(*rhs))
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
+                // ie: x == y
                 let lhs_cvar = ContextVarNode::from(*lhs);
                 let rhs_cvar = ContextVarNode::from(*rhs);
                 tracing::trace!(
@@ -260,12 +264,14 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .into_expr_err(loc)
             }
             (l @ ExprRet::Single(_lhs), ExprRet::Multi(rhs_sides)) => {
+                // ie: x == [y, z] (not possible?)
                 rhs_sides
                     .iter()
                     .try_for_each(|expr_ret| self.cmp_inner(arena, ctx, loc, l, op, expr_ret))?;
                 Ok(())
             }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_)) => {
+                // ie: (x, y) == z (not possible?)
                 lhs_sides
                     .iter()
                     .try_for_each(|expr_ret| self.cmp_inner(arena, ctx, loc, expr_ret, op, r))?;
@@ -273,7 +279,10 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
+                // ie: (x, y) == (a, b) (not possible?)
+                // ie: (x, y, z) == (a, b) (not possible?)
                 if lhs_sides.len() == rhs_sides.len() {
+                    // ie: (x, y) == (a, b) (not possible?)
                     lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
                             self.cmp_inner(arena, ctx, loc, lhs_expr_ret, op, rhs_expr_ret)
@@ -281,6 +290,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     )?;
                     Ok(())
                 } else {
+                    // ie: (x, y, z) == (a, b) (not possible?)
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
                         self.cmp_inner(arena, ctx, loc, lhs_paths, op, rhs_expr_ret)
                     })?;
@@ -291,202 +301,6 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 loc,
                 format!("Unhandled combination in `cmp`: {e:?} {f:?}"),
             )),
-        }
-    }
-
-    // fn not_eval(
-    //     &mut self,
-    //     _ctx: ContextNode,
-    //     loc: Loc,
-    //     lhs_cvar: ContextVarNode,
-    // ) -> Result<SolcRange, ExprErr> {
-    //     if let Some(lhs_range) = lhs_cvar.ref_range(self).into_expr_err(loc)? {
-    //         let lhs_min = lhs_range.evaled_range_min(self, arena).into_expr_err(loc)?;
-
-    //         // invert
-    //         if lhs_min.range_eq(&lhs_range.minimize(self, arena).into_expr_err(loc)?, self) {
-    //             let val = Elem::Expr(RangeExpr::new(
-    //                 lhs_range.range_min().into_owned(),
-    //                 RangeOp::Not,
-    //                 Elem::Null,
-    //             ));
-
-    //             return Ok(SolcRange::new(val.clone(), val, lhs_range.exclusions.clone()));
-    //         }
-    //     }
-
-    //     let min = Elem::Concrete(RangeConcrete {
-    //         val: Concrete::Bool(false),
-    //         loc,
-    //     }).arenaize(self);
-
-    //     let max = Elem::Concrete(RangeConcrete {
-    //         val: Concrete::Bool(true),
-    //         loc,
-    //     }).arenaize(self);
-    //     Ok(SolcRange::new(
-    //         min,
-    //         max,
-    //         vec![],
-    //     ))
-    // }
-
-    fn range_eval(
-        &self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        _ctx: ContextNode,
-        lhs_cvar: ContextVarNode,
-        rhs_cvar: ContextVarNode,
-        op: RangeOp,
-    ) -> Result<SolcRange, GraphError> {
-        if let Some(lhs_range) = lhs_cvar.ref_range(self)? {
-            if let Some(rhs_range) = rhs_cvar.ref_range(self)? {
-                match op {
-                    RangeOp::Lt => {
-                        // if lhs_max < rhs_min, we know this cmp will evaluate to
-                        // true
-
-                        let lhs_max = lhs_range.evaled_range_max(self, arena)?;
-                        let rhs_min = rhs_range.evaled_range_min(self, arena)?;
-                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min, arena) {
-                            return Ok(true.into());
-                        }
-
-                        // Similarly if lhs_min >= rhs_max, we know this cmp will evaluate to
-                        // false
-                        let lhs_min = lhs_range.evaled_range_min(self, arena)?;
-                        let rhs_max = rhs_range.evaled_range_max(self, arena)?;
-                        match lhs_min.range_ord(&rhs_max, arena) {
-                            Some(Ordering::Greater) => {
-                                return Ok(false.into());
-                            }
-                            Some(Ordering::Equal) => {
-                                return Ok(false.into());
-                            }
-                            _ => {}
-                        }
-                    }
-                    RangeOp::Gt => {
-                        // if lhs_min > rhs_max, we know this cmp will evaluate to
-                        // true
-                        let lhs_min = lhs_range.evaled_range_min(self, arena)?;
-                        let rhs_max = rhs_range.evaled_range_max(self, arena)?;
-                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max, arena) {
-                            return Ok(true.into());
-                        }
-
-                        // if lhs_max <= rhs_min, we know this cmp will evaluate to
-                        // false
-                        let lhs_max = lhs_range.evaled_range_max(self, arena)?;
-                        let rhs_min = rhs_range.evaled_range_min(self, arena)?;
-                        match lhs_max.range_ord(&rhs_min, arena) {
-                            Some(Ordering::Less) => {
-                                return Ok(false.into());
-                            }
-                            Some(Ordering::Equal) => {
-                                return Ok(false.into());
-                            }
-                            _ => {}
-                        }
-                    }
-                    RangeOp::Lte => {
-                        // if lhs_max <= rhs_min, we know this cmp will evaluate to
-                        // true
-                        let lhs_max = lhs_range.evaled_range_max(self, arena)?;
-                        let rhs_min = rhs_range.evaled_range_min(self, arena)?;
-                        match lhs_max.range_ord(&rhs_min, arena) {
-                            Some(Ordering::Less) => {
-                                return Ok(true.into());
-                            }
-                            Some(Ordering::Equal) => {
-                                return Ok(true.into());
-                            }
-                            _ => {}
-                        }
-
-                        // Similarly if lhs_min > rhs_max, we know this cmp will evaluate to
-                        // false
-                        let lhs_min = lhs_range.evaled_range_min(self, arena)?;
-                        let rhs_max = rhs_range.evaled_range_max(self, arena)?;
-                        if let Some(Ordering::Greater) = lhs_min.range_ord(&rhs_max, arena) {
-                            return Ok(false.into());
-                        }
-                    }
-                    RangeOp::Gte => {
-                        // if lhs_min >= rhs_max, we know this cmp will evaluate to
-                        // true
-                        let lhs_min = lhs_range.evaled_range_min(self, arena)?;
-                        let rhs_max = rhs_range.evaled_range_max(self, arena)?;
-                        match lhs_min.range_ord(&rhs_max, arena) {
-                            Some(Ordering::Greater) => {
-                                return Ok(true.into());
-                            }
-                            Some(Ordering::Equal) => {
-                                return Ok(true.into());
-                            }
-                            _ => {}
-                        }
-
-                        // if lhs_max < rhs_min, we know this cmp will evaluate to
-                        // false
-                        let lhs_max = lhs_range.evaled_range_max(self, arena)?;
-                        let rhs_min = rhs_range.evaled_range_min(self, arena)?;
-                        if let Some(Ordering::Less) = lhs_max.range_ord(&rhs_min, arena) {
-                            return Ok(false.into());
-                        }
-                    }
-                    RangeOp::Eq => {
-                        // if all elems are equal we know its true
-                        // we dont know anything else
-                        let lhs_min = lhs_range.evaled_range_min(self, arena)?;
-                        let lhs_max = lhs_range.evaled_range_max(self, arena)?;
-                        let rhs_min = rhs_range.evaled_range_min(self, arena)?;
-                        let rhs_max = rhs_range.evaled_range_max(self, arena)?;
-                        if let (
-                            Some(Ordering::Equal),
-                            Some(Ordering::Equal),
-                            Some(Ordering::Equal),
-                        ) = (
-                            // check lhs_min == lhs_max, ensures lhs is const
-                            lhs_min.range_ord(&lhs_max, arena),
-                            // check lhs_min == rhs_min, checks if lhs == rhs
-                            lhs_min.range_ord(&rhs_min, arena),
-                            // check rhs_min == rhs_max, ensures rhs is const
-                            rhs_min.range_ord(&rhs_max, arena),
-                        ) {
-                            return Ok(true.into());
-                        }
-                    }
-                    RangeOp::Neq => {
-                        // if all elems are equal we know its true
-                        // we dont know anything else
-                        let lhs_min = lhs_range.evaled_range_min(self, arena)?;
-                        let lhs_max = lhs_range.evaled_range_max(self, arena)?;
-                        let rhs_min = rhs_range.evaled_range_min(self, arena)?;
-                        let rhs_max = rhs_range.evaled_range_max(self, arena)?;
-                        if let (
-                            Some(Ordering::Equal),
-                            Some(Ordering::Equal),
-                            Some(Ordering::Equal),
-                        ) = (
-                            // check lhs_min == lhs_max, ensures lhs is const
-                            lhs_min.range_ord(&lhs_max, arena),
-                            // check lhs_min == rhs_min, checks if lhs == rhs
-                            lhs_min.range_ord(&rhs_min, arena),
-                            // check rhs_min == rhs_max, ensures rhs is const
-                            rhs_min.range_ord(&rhs_max, arena),
-                        ) {
-                            return Ok(false.into());
-                        }
-                    }
-                    e => unreachable!("Cmp with strange op: {:?}", e),
-                }
-                Ok(SolcRange::default_bool())
-            } else {
-                Ok(SolcRange::default_bool())
-            }
-        } else {
-            Ok(SolcRange::default_bool())
         }
     }
 }

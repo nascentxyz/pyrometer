@@ -77,6 +77,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: uint x = 5;
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let rhs_cvar =
@@ -86,6 +87,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
+                // ie: uint x = y;
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let rhs_cvar =
@@ -94,23 +96,31 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                     .into_expr_err(loc)?;
                 Ok(())
             }
-            (l @ ExprRet::Single(_), ExprRet::Multi(rhs_sides)) => rhs_sides
-                .iter()
-                .try_for_each(|expr_ret| self.match_assign_sides(arena, ctx, loc, l, expr_ret)),
+            (l @ ExprRet::Single(_), ExprRet::Multi(rhs_sides)) => {
+                // ie: uint x = (a, b), not possible?
+                rhs_sides
+                    .iter()
+                    .try_for_each(|expr_ret| self.match_assign_sides(arena, ctx, loc, l, expr_ret))
+            }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
+                // ie: (uint x, uint y) = a, not possible?
                 lhs_sides
                     .iter()
                     .try_for_each(|expr_ret| self.match_assign_sides(arena, ctx, loc, expr_ret, r))
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
                 // try to zip sides if they are the same length
+                // (x, y) = (a, b)
+                // ie: (x, y) = (a, b, c), not possible?
                 if lhs_sides.len() == rhs_sides.len() {
+                    // (x, y) = (a, b)
                     lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
                             self.match_assign_sides(arena, ctx, loc, lhs_expr_ret, rhs_expr_ret)
                         },
                     )
                 } else {
+                    // ie: (x, y) = (a, b, c), not possible?
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
                         self.match_assign_sides(arena, ctx, loc, lhs_paths, rhs_expr_ret)
                     })
@@ -203,6 +213,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         }
 
         if !lhs_cvar.ty_eq(&rhs_cvar, self).into_expr_err(loc)? {
+            // lhs type doesnt match rhs type (not possible? have never reached this)
             let cast_to_min = match lhs_cvar.range_min(self).into_expr_err(loc)? {
                 Some(v) => v,
                 None => {

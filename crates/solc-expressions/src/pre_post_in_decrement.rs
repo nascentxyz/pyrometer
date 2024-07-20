@@ -135,12 +135,14 @@ pub trait PrePostIncDecrement:
                 Ok(())
             }
             ExprRet::SingleLiteral(var) => {
+                // ie: 5++; (not valid syntax)
                 ContextVarNode::from(*var)
                     .try_increase_size(self, arena)
                     .into_expr_err(loc)?;
                 self.match_in_de_crement(arena, ctx, pre, increment, loc, &ExprRet::Single(*var))
             }
             ExprRet::Single(var) => {
+                // ie: a++;
                 let cvar = ContextVarNode::from(*var).latest_version_or_inherited_in_ctx(ctx, self);
                 let elem = Elem::from(cvar);
                 let one = Elem::from(Concrete::from(U256::from(1))).cast(elem.clone());
@@ -228,9 +230,12 @@ pub trait PrePostIncDecrement:
                     Ok(())
                 }
             }
-            ExprRet::Multi(inner) => inner.iter().try_for_each(|expr| {
-                self.match_in_de_crement(arena, ctx, pre, increment, loc, expr)
-            }),
+            ExprRet::Multi(inner) => {
+                // ie: (5, 5)++; (invalid syntax)
+                inner.iter().try_for_each(|expr| {
+                    self.match_in_de_crement(arena, ctx, pre, increment, loc, expr)
+                })
+            }
             ExprRet::Null => Ok(()),
         }
     }
