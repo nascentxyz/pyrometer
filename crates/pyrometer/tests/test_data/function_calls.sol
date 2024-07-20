@@ -83,3 +83,55 @@ contract ExternalFuncCalls {
 
 //     function foo(address by, address from, address to, uint256 id) internal {}
 // }
+
+contract S1 {
+    function a(uint x) internal pure virtual returns (uint) {
+        return 100;
+    }
+}
+
+contract S2 {
+    function a(uint x) internal pure virtual returns (uint) {
+        return 10;
+    }
+
+    function b(uint x) internal pure virtual returns (uint) {
+        return 10;
+    }
+}
+
+contract C is S1, S2 {
+    function supers(uint128 x) public pure returns (uint) {
+        uint local_a = a(1);
+        uint super_a = super.a(1);
+        require(local_a == 50);
+        require(super_a == 10);
+
+        uint local_super_b = b(x);
+        uint super_b = super.b(x);
+        require(local_super_b == super_b);
+        return 0;
+    }
+
+    function a(uint256 x) internal pure override(S1, S2) returns (uint) {
+        return 50;
+    }
+}
+
+contract D is S2, S1 {
+    function supers(uint128 x) public pure returns (uint) {
+        uint local_a = a(1);
+        uint super_a = super.a(1);
+        require(local_a == 50);
+        require(super_a == 100);
+
+        uint local_super_b = b(x);
+        uint super_b = super.b(x);
+        require(local_super_b == super_b);
+        return 0;
+    }
+
+    function a(uint256 x) internal pure override(S1, S2) returns (uint) {
+        return 50;
+    }
+}

@@ -3,10 +3,26 @@ mod helpers;
 use helpers::*;
 
 #[test]
+fn test_assign() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/assign.sol");
+    let sol = include_str!("./test_data/assign.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
 fn test_bitwise() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/bitwise.sol");
     let sol = include_str!("./test_data/bitwise.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+fn test_binop() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/bin_op.sol");
+    let sol = include_str!("./test_data/bin_op.sol");
     assert_no_ctx_killed(path_str, sol);
 }
 
@@ -16,6 +32,13 @@ fn test_cast() {
     let path_str = format!("{manifest_dir}/tests/test_data/cast.sol");
     let sol = include_str!("./test_data/cast.sol");
     assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+fn test_condop() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/cond_op.sol");
+    assert_no_parse_errors(path_str);
 }
 
 #[test]
@@ -39,6 +62,14 @@ fn test_function_calls() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/function_calls.sol");
     let sol = include_str!("./test_data/function_calls.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+fn test_literals() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/literals.sol");
+    let sol = include_str!("./test_data/literals.sol");
     assert_no_ctx_killed(path_str, sol);
 }
 
@@ -80,6 +111,13 @@ fn test_require() {
     let path_str = format!("{manifest_dir}/tests/test_data/require.sol");
     let sol = include_str!("./test_data/require.sol");
     assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+fn test_require_with_killed() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/require_with_killed.sol");
+    assert_no_parse_errors(path_str);
 }
 
 #[test]

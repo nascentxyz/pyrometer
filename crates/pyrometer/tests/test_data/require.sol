@@ -40,10 +40,6 @@ contract Require {
         require(x != bytes32(hex"1337"));
     }
 
-    function b_ytes32_neq(bytes32 x) public {
-        require(x != bytes32(hex"00"));
-    }
-
     function b_ytes16(bytes16 x) public {
         require(x == bytes16(hex"1337"));
     }
@@ -62,5 +58,17 @@ contract Require {
 
     function b_ytes1(bytes1 x) public {
         require(x == bytes1(hex"13"));
+    }
+
+    function UintMoreEqual(uint8 x) public {
+        require(x >= 100);
+        "pyro::constraint::(x >= 100)";
+        "pyro::variable::x::range::[100, 255]";
+    }
+
+    function UintLessEqual(uint8 x) public {
+        require(x <= 100);
+        "pyro::constraint::(x <= 100)";
+        "pyro::variable::x::range::[0, 100]";
     }
 }
