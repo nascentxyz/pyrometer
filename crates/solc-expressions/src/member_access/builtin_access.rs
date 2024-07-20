@@ -45,17 +45,12 @@ pub trait BuiltinAccess:
         num_inputs: usize,
         is_storage: bool,
     ) -> Result<Option<(FunctionNode, bool)>, GraphError> {
-        println!(
-            "builtin builtin: {:?}, {name}",
-            node.underlying(self).unwrap()
-        );
         match node.underlying(self)?.clone() {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 match name {
                     "delegatecall" | "call" | "staticcall" | "send" | "transfer" => {
                         // TODO: check if the address is known to be a certain type and the function signature is known
                         // and call into the function
-                        println!("here: {name}");
                         let builtin_name = name.split('(').collect::<Vec<_>>()[0];
                         let func_node =
                             FunctionNode::from(self.builtin_fn_or_maybe_add(builtin_name).unwrap());
@@ -173,14 +168,14 @@ pub trait BuiltinAccess:
                                     vec![
                                         FunctionParam {
                                             loc: Loc::Builtin,
-                                            ty: self_ty.ty_idx(),
+                                            ty: inner.ty_idx(),
                                             order: 0,
                                             storage: None,
                                             name: None,
                                         },
                                         FunctionParam {
                                             loc: Loc::Builtin,
-                                            ty: inner.ty_idx(),
+                                            ty: self_ty.ty_idx(),
                                             order: 0,
                                             storage: None,
                                             name: None,

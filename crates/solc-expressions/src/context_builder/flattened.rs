@@ -1429,7 +1429,6 @@ pub trait Flatten:
 
         // initiate the loop variable
         if start > 0 {
-            println!("running loop init");
             for _ in 0..start {
                 self.interpret_step(arena, loop_ctx, loc, stack)?;
             }
@@ -1437,7 +1436,6 @@ pub trait Flatten:
 
         // run the condition
         if condition > 0 {
-            println!("running loop condition");
             for _ in 0..condition {
                 self.interpret_step(arena, loop_ctx, loc, stack)?;
             }
@@ -1445,7 +1443,6 @@ pub trait Flatten:
 
         // run the body
         if body > 0 {
-            println!("running loop body");
             for _ in 0..body {
                 self.interpret_step(arena, loop_ctx, loc, stack)?;
             }
@@ -1453,13 +1450,11 @@ pub trait Flatten:
 
         // run the after each
         if after_each > 0 {
-            println!("running loop after-each");
             for _ in 0..after_each {
                 self.interpret_step(arena, loop_ctx, loc, stack)?;
             }
         }
 
-        println!("running loop reset vars");
         self.flat_apply_to_edges(
             loop_ctx,
             loc,
@@ -1476,7 +1471,6 @@ pub trait Flatten:
 
         let end = ctx.parse_idx(self) + start + condition + body + after_each;
 
-        println!("setting post-loop parse idx");
         self.modify_edges(ctx, loc, &|analyzer, ctx| {
             ctx.underlying_mut(analyzer).unwrap().parse_idx = end;
             Ok(())
@@ -1985,11 +1979,6 @@ pub trait Flatten:
             .pop_n_latest_exprs(n + 1, loc, self)
             .into_expr_err(loc)?;
 
-        println!(
-            "function call: {}",
-            ExprRet::Multi(func_and_inputs.clone()).debug_str(self)
-        );
-
         let func = func_and_inputs
             .first()
             .unwrap()
@@ -2060,7 +2049,9 @@ pub trait Flatten:
 
         let inputs = ExprRet::Multi(inputs);
 
-        println!("inputs: {}", inputs.debug_str(self));
+        if self.debug_stack() {
+            println!("inputs: {}", inputs.debug_str(self));
+        }
 
         if is_new_call {
             return self.new_call_inner(arena, ctx, func, inputs, loc);

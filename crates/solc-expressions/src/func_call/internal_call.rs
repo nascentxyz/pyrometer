@@ -6,7 +6,9 @@ use crate::{
 };
 
 use graph::{
-    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
+    nodes::{
+        BuiltInNode, ContextNode, ContextVarNode, ContractNode, ExprRet, FunctionNode, StructNode,
+    },
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
 use shared::{ExprErr, GraphError, NodeIdx};
@@ -81,14 +83,6 @@ pub trait InternalFuncCaller:
                 }
             }
         }
-
-        println!(
-            "funcs: {:?}",
-            funcs
-                .iter()
-                .map(|i| i.name(self).unwrap())
-                .collect::<Vec<_>>()
-        );
 
         let mut possible_funcs = funcs
             .iter()
@@ -168,14 +162,6 @@ pub trait InternalFuncCaller:
         } else {
             ctx.visible_funcs(self)?
         };
-
-        println!(
-            "funcs: {:?}",
-            funcs
-                .iter()
-                .map(|i| i.name(self).unwrap())
-                .collect::<Vec<_>>()
-        );
 
         let mut possible_funcs = funcs
             .iter()
@@ -272,14 +258,6 @@ pub trait InternalFuncCaller:
                 funcs
             }
         };
-
-        println!(
-            "potential funcs: {:?}",
-            possible_funcs
-                .iter()
-                .map(|(i, _)| format!("{}", i.name(self).unwrap()))
-                .collect::<Vec<_>>()
-        );
 
         let stack = &ctx.underlying(self)?.expr_ret_stack;
         let len = stack.len();

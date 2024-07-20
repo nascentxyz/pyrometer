@@ -441,7 +441,7 @@ impl Builtin {
     pub fn implicitly_castable_to(&self, other: &Self) -> bool {
         use Builtin::*;
 
-        let res = match (self, other) {
+        match (self, other) {
             (Address, Address) => true,
             (AddressPayable, Address) => true,
             (AddressPayable, Payable) => true,
@@ -457,10 +457,7 @@ impl Builtin {
             (Int(from_size), Int(to_size)) => from_size <= to_size,
             (Bytes(from_size), Bytes(to_size)) => from_size <= to_size,
             _ => false,
-        };
-
-        println!("{self:?} implicitly castable to {other:?}, res: {res:?}");
-        res
+        }
     }
 
     /// Returns the max size version of this builtin
