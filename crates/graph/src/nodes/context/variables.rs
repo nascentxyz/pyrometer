@@ -466,7 +466,7 @@ impl ContextNode {
             if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
                 res.push(elem);
             } else {
-                return Err(GraphError::StackLengthMismatch(panic!(
+                return Err(GraphError::StackLengthMismatch(format!(
                     "Expected {n} ExprRets on stack, but had fewer"
                 )));
             }

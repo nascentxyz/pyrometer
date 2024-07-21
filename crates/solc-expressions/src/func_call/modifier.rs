@@ -1,7 +1,7 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
 use crate::{
-    context_builder::Flatten, func_call::internal_call::InternalFuncCaller,
+    func_call::internal_call::InternalFuncCaller,
     func_caller::FuncCaller, helper::CallerHelper, ContextBuilder,
 };
 
@@ -12,7 +12,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::pt::{Expression, FunctionTy, Loc};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> ModifierCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
