@@ -52,28 +52,20 @@ pub trait ModifierCaller:
             .into_expr_err(loc)?;
 
         self.apply_to_edges(func_ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            // We need to get the inputs for the modifier call, but
-            // the expressions are not part of the function body so
-            // we need to reset the parse index in the function context
-            // after we parse the inputs
-            // let curr_parse_idx = ctx.parse_idx(analyzer);
-            // input_exprs
-            //     .iter()
-            //     .for_each(|expr| analyzer.traverse_expression(expr, Some(false)));
-            // analyzer.interpret(ctx, loc, arena);
-            // ctx.underlying_mut(analyzer).unwrap().parse_idx = curr_parse_idx;
-
             if analyzer.debug_stack() {
                 tracing::trace!(
-                    "stack for getting modifier inputs: {}, ctx: {}",
-                    ctx.debug_expr_stack_str(analyzer).into_expr_err(loc)?,
-                    ctx.path(analyzer)
+                    "stack for getting modifier inputs: {}, ctx: {},",
+                    mod_state
+                        .parent_ctx
+                        .debug_expr_stack_str(analyzer)
+                        .into_expr_err(loc)?,
+                    mod_state.parent_ctx.path(analyzer)
                 );
             }
 
             let inputs = ExprRet::Multi(
                 mod_state
-                    .parent_caller_ctx
+                    .parent_ctx
                     .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
                     .into_expr_err(loc)?,
             );

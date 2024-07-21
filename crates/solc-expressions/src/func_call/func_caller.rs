@@ -183,14 +183,18 @@ pub trait FuncCaller:
             .cloned()
             .collect::<Vec<_>>();
         modifiers_as_base.iter().rev().for_each(|modifier| {
+            // We need to get the inputs for the modifier call, but
+            // the expressions are not part of the function body so
+            // we need to reset the parse index in the function context
+            // after we parse the inputs
             let Some(args) = &modifier.args else {
                 return;
             };
-            let curr_parse_idx = ctx.parse_idx(self);
+            let curr_parse_idx = callee_ctx.parse_idx(self);
             args.iter()
                 .for_each(|expr| self.traverse_expression(expr, Some(false)));
-            self.interpret(ctx, loc, arena);
-            ctx.underlying_mut(self).unwrap().parse_idx = curr_parse_idx;
+            self.interpret(callee_ctx, loc, arena);
+            callee_ctx.underlying_mut(self).unwrap().parse_idx = curr_parse_idx;
         });
         let is_constructor = func_node.is_constructor(self).into_expr_err(loc)?;
         self.apply_to_edges(
@@ -298,12 +302,7 @@ pub trait FuncCaller:
             });
 
             // parse the function body
-            println!("traversing func call body");
             self.traverse_statement(&body, None);
-            println!(
-                "interpretting func call body: {}",
-                callee_ctx.parse_idx(self)
-            );
             self.interpret(callee_ctx, body.loc(), arena);
             if let Some(mod_state) = &callee_ctx
                 .underlying(self)
