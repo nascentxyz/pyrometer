@@ -1,8 +1,8 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
 use crate::{
-    func_call::internal_call::InternalFuncCaller,
-    func_caller::FuncCaller, helper::CallerHelper, ContextBuilder,
+    func_call::internal_call::InternalFuncCaller, func_caller::FuncCaller, helper::CallerHelper,
+    ContextBuilder,
 };
 
 use graph::{

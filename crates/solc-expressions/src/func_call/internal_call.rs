@@ -244,7 +244,7 @@ pub trait InternalFuncCaller:
                 .filter(|func| {
                     let res = matches!(func.ty(self), Ok(FunctionTy::Constructor));
                     let contract = func.maybe_associated_contract(self).unwrap();
-                    res && contract.name(self).unwrap().starts_with(&format!("{name}"))
+                    res && contract.name(self).unwrap().starts_with(&name.to_string())
                 })
                 .collect::<Vec<_>>()
         } else {
