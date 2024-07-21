@@ -435,7 +435,10 @@ fn main() {
     // } else {
     let _t1 = std::time::Instant::now();
     if args.contracts.is_empty() {
-        let funcs = analyzer.search_children(entry, &Edge::Func);
+        let mut funcs = analyzer.search_children(entry, &Edge::Func);
+        funcs.extend(analyzer.search_children(entry, &Edge::FallbackFunc));
+        funcs.extend(analyzer.search_children(entry, &Edge::Constructor));
+        funcs.extend(analyzer.search_children(entry, &Edge::ReceiveFunc));
         for func in funcs.into_iter() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {

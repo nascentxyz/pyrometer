@@ -27,14 +27,14 @@ impl ContextNode {
     pub fn debug_expr_stack_str(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         let underlying_mut = self.underlying(analyzer)?;
         Ok(format!(
-            "[\n\t{}\n]",
+            "{:#?}",
             underlying_mut
                 .expr_ret_stack
                 .iter()
+                .rev()
                 .enumerate()
                 .map(|(i, elem)| format!("{i}. {}", elem.debug_str(analyzer)))
                 .collect::<Vec<_>>()
-                .join("\n\t")
         ))
     }
 
@@ -466,7 +466,7 @@ impl ContextNode {
             if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
                 res.push(elem);
             } else {
-                return Err(GraphError::StackLengthMismatch(format!(
+                return Err(GraphError::StackLengthMismatch(panic!(
                     "Expected {n} ExprRets on stack, but had fewer"
                 )));
             }

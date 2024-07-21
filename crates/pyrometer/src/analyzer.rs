@@ -584,12 +584,10 @@ impl Analyzer {
 
         elems.into_iter().for_each(|final_pass_item| {
             final_pass_item.funcs.into_iter().for_each(|func| {
-                if !self.handled_funcs.contains(&func) {
-                    if let Some(body) = &func.underlying(self).unwrap().body {
-                        let body = body.clone();
-                        self.traverse_statement(&body, None);
-                        self.interpret(func, body.loc(), arena)
-                    }
+                if !self.handled_funcs.contains(&func)
+                    && func.underlying(self).unwrap().body.is_some()
+                {
+                    self.interpret_entry_func(func, arena);
                 }
             });
         });

@@ -990,6 +990,10 @@ impl FunctionParamNode {
             ctx.add_var(var, analyzer)?;
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::CalldataVariable));
+            if let Some(strukt) = var.maybe_struct(analyzer)? {
+                strukt.add_fields_to_cvar(analyzer, var.loc(analyzer).unwrap(), var)?;
+            }
+
             Ok(true)
         } else {
             Ok(false)

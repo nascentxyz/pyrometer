@@ -167,6 +167,21 @@ impl ContextNode {
         }
     }
 
+    pub fn visible_constructors(
+        &self,
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
+    ) -> Result<Vec<FunctionNode>, GraphError> {
+        if let Some(src) = self.maybe_associated_source(analyzer) {
+            let contracts = src.visible_contracts(analyzer)?;
+            Ok(contracts
+                .iter()
+                .filter_map(|contract| contract.constructor(analyzer))
+                .collect())
+        } else {
+            Ok(vec![])
+        }
+    }
+
     /// Gets visible functions
     pub fn visible_funcs(
         &self,

@@ -842,6 +842,36 @@ pub trait Flatten:
         }
     }
 
+    fn interpret_entry_func(&mut self, func: FunctionNode, arena: &mut RangeArena<Elem<Concrete>>) {
+        let loc = func
+            .body_loc(self)
+            .unwrap()
+            .unwrap_or_else(|| func.definition_loc(self).unwrap());
+        let raw_ctx = Context::new(
+            func,
+            self.add_if_err(func.name(self).into_expr_err(loc)).unwrap(),
+            loc,
+        );
+        let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
+        self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
+
+        let res = func.add_params_to_ctx(ctx, self).into_expr_err(loc);
+        self.add_if_err(res);
+
+        let res = self.func_call_inner(
+            arena,
+            true, // entry_call
+            ctx,
+            func,
+            func.definition_loc(self).unwrap(),
+            &[],
+            &[],
+            None,  // alt function name
+            &None, // mod state
+        );
+        let _ = self.add_if_err(res);
+    }
+
     fn interpret(
         &mut self,
         func_or_ctx: impl Into<FuncOrCtx>,
@@ -865,6 +895,7 @@ pub trait Flatten:
 
                 let res = func.add_params_to_ctx(ctx, self).into_expr_err(body_loc);
                 self.add_if_err(res);
+
                 ctx
             }
             FuncOrCtx::Ctx(ctx) => ctx,
@@ -921,6 +952,7 @@ pub trait Flatten:
             return Ok(());
         }
 
+        tracing::trace!("getting parse idx: {}", ctx.path(self));
         let parse_idx = ctx.increment_parse_idx(self);
         let Some(next) = stack.get(parse_idx) else {
             let mut loc = None;
@@ -944,7 +976,7 @@ pub trait Flatten:
         );
 
         if self.debug_stack() {
-            let _ = ctx.debug_expr_stack(self);
+            tracing::trace!("return stack: {}", ctx.debug_expr_stack_str(self).unwrap());
         }
 
         match next {
@@ -2050,7 +2082,7 @@ pub trait Flatten:
         let inputs = ExprRet::Multi(inputs);
 
         if self.debug_stack() {
-            println!("inputs: {}", inputs.debug_str(self));
+            tracing::trace!("inputs: {}", inputs.debug_str(self));
         }
 
         if is_new_call {

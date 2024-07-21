@@ -11,7 +11,7 @@ use graph::{
 };
 use shared::{ExprErr, GraphError, NodeIdx};
 
-use solang_parser::pt::Expression;
+use solang_parser::pt::{Expression, FunctionTy};
 
 use std::collections::BTreeMap;
 
@@ -229,6 +229,38 @@ pub trait InternalFuncCaller:
             Ok(possible_funcs.into_iter().map(|f| (f, false)).collect())
         } else {
             Ok(vec![])
+        }
+    }
+
+    fn find_modifier(
+        &mut self,
+        ctx: ContextNode,
+        name: &str,
+        constructor: bool,
+    ) -> Result<Vec<FunctionNode>, GraphError> {
+        let mut potential_mods = if constructor {
+            let cons = ctx.visible_constructors(self)?;
+            cons.into_iter()
+                .filter(|func| {
+                    let res = matches!(func.ty(self), Ok(FunctionTy::Constructor));
+                    let contract = func.maybe_associated_contract(self).unwrap();
+                    res && contract.name(self).unwrap().starts_with(&format!("{name}"))
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let mods = ctx.visible_modifiers(self)?;
+            mods.into_iter()
+                .filter(|func| matches!(func.ty(self), Ok(FunctionTy::Modifier)))
+                .filter(|func| func.name(self).unwrap().starts_with(&format!("{name}(")))
+                .collect::<Vec<_>>()
+        };
+
+        potential_mods.sort();
+        potential_mods.dedup();
+        if potential_mods.len() == 1 {
+            Ok(vec![potential_mods.swap_remove(0)])
+        } else {
+            Ok(potential_mods)
         }
     }
 

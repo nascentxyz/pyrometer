@@ -1,15 +1,18 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
-use crate::{func_caller::FuncCaller, helper::CallerHelper, ContextBuilder};
+use crate::{
+    context_builder::Flatten, func_call::internal_call::InternalFuncCaller,
+    func_caller::FuncCaller, helper::CallerHelper, ContextBuilder,
+};
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, Context, ContextNode, FunctionNode, ModifierState, SubContextKind},
+    nodes::{Concrete, Context, ContextNode, ExprRet, FunctionNode, ModifierState, SubContextKind},
     AnalyzerBackend, Edge, GraphBackend,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::pt::{Expression, Loc};
+use solang_parser::pt::{Expression, FunctionTy, Loc};
 
 impl<T> ModifierCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
@@ -37,55 +40,57 @@ pub trait ModifierCaller:
         func_node: FunctionNode,
         mod_state: ModifierState,
     ) -> Result<(), ExprErr> {
-        let _ = arena;
-        let _ = loc;
-        let _ = func_ctx;
-        let _ = func_node;
-        let _ = mod_state;
-        todo!()
-        // let mod_node = func_node.modifiers(self)[mod_state.num];
-        // tracing::trace!(
-        //     "calling modifier {} for func {}",
-        //     mod_node.name(self).into_expr_err(loc)?,
-        //     func_node.name(self).into_expr_err(loc)?
-        // );
+        let mod_node = func_node.modifiers(self)[mod_state.num];
+        tracing::trace!(
+            "calling modifier {} for func {}",
+            mod_node.name(self).into_expr_err(loc)?,
+            func_node.name(self).into_expr_err(loc)?
+        );
 
-        // let input_exprs = func_node
-        //     .modifier_input_vars(mod_state.num, self)
-        //     .into_expr_err(loc)?;
+        let input_exprs = func_node
+            .modifier_input_vars(mod_state.num, self)
+            .into_expr_err(loc)?;
 
-        // input_exprs
-        //     .iter()
-        //     .try_for_each(|expr| self.parse_ctx_expr(arena, expr, func_ctx))?;
-        // self.apply_to_edges(func_ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-        //     let input_paths = if input_exprs.is_empty() {
-        //         ExprRet::Multi(vec![])
-        //     } else {
-        //         let Some(input_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-        //         else {
-        //             return Err(ExprErr::NoRhs(
-        //                 loc,
-        //                 format!("No inputs to modifier, expected: {}", input_exprs.len()),
-        //             ));
-        //         };
+        self.apply_to_edges(func_ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+            // We need to get the inputs for the modifier call, but
+            // the expressions are not part of the function body so
+            // we need to reset the parse index in the function context
+            // after we parse the inputs
+            // let curr_parse_idx = ctx.parse_idx(analyzer);
+            // input_exprs
+            //     .iter()
+            //     .for_each(|expr| analyzer.traverse_expression(expr, Some(false)));
+            // analyzer.interpret(ctx, loc, arena);
+            // ctx.underlying_mut(analyzer).unwrap().parse_idx = curr_parse_idx;
 
-        //         if matches!(input_paths, ExprRet::CtxKilled(_)) {
-        //             ctx.push_expr(input_paths, analyzer).into_expr_err(loc)?;
-        //             return Ok(());
-        //         }
-        //         input_paths
-        //     };
+            if analyzer.debug_stack() {
+                tracing::trace!(
+                    "stack for getting modifier inputs: {}, ctx: {}",
+                    ctx.debug_expr_stack_str(analyzer).into_expr_err(loc)?,
+                    ctx.path(analyzer)
+                );
+            }
 
-        //     analyzer.func_call(
-        //         arena,
-        //         ctx,
-        //         loc,
-        //         &input_paths,
-        //         mod_node,
-        //         None,
-        //         Some(mod_state.clone()),
-        //     )
-        // })
+            let inputs = ExprRet::Multi(
+                mod_state
+                    .parent_caller_ctx
+                    .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
+                    .into_expr_err(loc)?,
+            );
+
+            if analyzer.debug_stack() {
+                tracing::trace!("modifier inputs: {}", inputs.debug_str(analyzer));
+            }
+            analyzer.func_call(
+                arena,
+                ctx,
+                loc,
+                &inputs,
+                mod_node,
+                None,
+                Some(mod_state.clone()),
+            )
+        })
     }
 
     /// Resumes the parent function of a modifier
@@ -176,82 +181,40 @@ pub trait ModifierCaller:
 
     fn modifiers(
         &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         func: FunctionNode,
     ) -> Result<Vec<FunctionNode>, ExprErr> {
         // use std::fmt::Write;
         let binding = func.underlying(self).unwrap().clone();
+
         let modifiers = binding.modifiers_as_base();
         if modifiers.is_empty() {
             Ok(vec![])
         } else {
-            let _ = arena;
-            let _ = ctx;
-            todo!()
-            // let res = modifiers
-            //     .iter()
-            //     .map(|modifier| {
-            //         assert_eq!(modifier.name.identifiers.len(), 1);
-            //         // construct arg string for function selector
-            //         let mut mod_name = format!("{}", modifier.name.identifiers[0]);
-            //         if let Some(args) = &modifier.args {
-            //             let args_str = args
-            //                 .iter()
-            //                 .map(|expr| {
-            //                     let subctx_kind = SubContextKind::new_dummy(ctx);
-            //                     let callee_ctx =
-            //                         Context::add_subctx(subctx_kind, Loc::Implicit, self, None)
-            //                             .into_expr_err(Loc::Implicit)?;
-            //                     let _res = ctx.set_child_call(callee_ctx, self);
-            //                     self.parse_ctx_expr(arena, expr, callee_ctx)?;
-            //                     let f: Vec<String> = self.take_from_edge(
-            //                         ctx,
-            //                         expr.loc(),
-            //                         arena,
-            //                         &|analyzer, arena, ctx, loc| {
-            //                             let ret = ctx
-            //                                 .pop_expr_latest(loc, analyzer)
-            //                                 .into_expr_err(loc)?
-            //                                 .unwrap();
-            //                             Ok(ret.try_as_func_input_str(analyzer, arena))
-            //                         },
-            //                     )?;
-
-            //                     ctx.delete_child(self).into_expr_err(expr.loc())?;
-            //                     Ok(f.first().unwrap().clone())
-            //                 })
-            //                 .collect::<Result<Vec<_>, ExprErr>>()?
-            //                 .join(", ");
-            //             let _ = write!(mod_name, "{args_str}");
-            //         } else {
-            //             let _ = write!(mod_name, "()");
-            //         }
-            //         let _ = write!(mod_name, "");
-            //         let found: Option<FunctionNode> = ctx
-            //             .visible_modifiers(self)
-            //             .unwrap()
-            //             .iter()
-            //             .find(|modifier| modifier.name(self).unwrap() == mod_name)
-            //             .copied();
-            //         Ok(found)
-            //     })
-            //     .collect::<Result<Vec<Option<_>>, ExprErr>>()?
-            //     .into_iter()
-            //     .flatten()
-            //     .collect::<Vec<_>>();
-            // Ok(res)
+            let mut mods = vec![];
+            modifiers.iter().try_for_each(|modifier| {
+                assert_eq!(modifier.name.identifiers.len(), 1);
+                // // construct arg string for function selector
+                let mod_name = format!("{}", modifier.name.identifiers[0]);
+                let mod_loc = modifier.name.identifiers[0].loc;
+                let is_constructor = func.is_constructor(self).into_expr_err(mod_loc)?;
+                let mut found_mods = self.find_modifier(ctx, &mod_name, is_constructor).into_expr_err(mod_loc)?;
+                match found_mods.len() {
+                    0 => Err(ExprErr::FunctionNotFound(mod_loc, format!("Could not find modifier: {mod_name}"))),
+                    1 => {
+                        mods.push(found_mods.swap_remove(0));
+                        Ok(())
+                    }
+                    n => Err(ExprErr::FunctionNotFound(mod_loc, format!("Could not find unique modifier: {mod_name}, found {n} modifiers with the same name"))),
+                }
+            })?;
+            Ok(mods)
         }
     }
 
     /// Sets the modifiers for a function
-    fn set_modifiers(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        func: FunctionNode,
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        let modifiers = self.modifiers(arena, ctx, func)?;
+    fn set_modifiers(&mut self, func: FunctionNode, ctx: ContextNode) -> Result<(), ExprErr> {
+        let modifiers = self.modifiers(ctx, func)?;
         modifiers
             .iter()
             .enumerate()

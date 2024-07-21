@@ -141,6 +141,11 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
+        tracing::trace!(
+            "Calling function: {} in context: {}",
+            func_node.name(self).unwrap(),
+            ctx.path(self)
+        );
         if !entry_call {
             if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
                 return Ok(());
@@ -165,17 +170,63 @@ pub trait FuncCaller:
 
         // begin modifier handling by making sure modifiers were set
         if !func_node.modifiers_set(self).into_expr_err(loc)? {
-            self.set_modifiers(arena, func_node, ctx)?;
+            self.set_modifiers(func_node, ctx)?;
         }
 
         // get modifiers
         let mods = func_node.modifiers(self);
+        let modifiers_as_base = func_node
+            .underlying(self)
+            .into_expr_err(loc)?
+            .modifiers_as_base()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        modifiers_as_base.iter().rev().for_each(|modifier| {
+            let Some(args) = &modifier.args else {
+                return;
+            };
+            let curr_parse_idx = ctx.parse_idx(self);
+            args.iter()
+                .for_each(|expr| self.traverse_expression(expr, Some(false)));
+            self.interpret(ctx, loc, arena);
+            ctx.underlying_mut(self).unwrap().parse_idx = curr_parse_idx;
+        });
+        let is_constructor = func_node.is_constructor(self).into_expr_err(loc)?;
         self.apply_to_edges(
             callee_ctx,
             loc,
             arena,
             &|analyzer, arena, callee_ctx, loc| {
-                if let Some(mod_state) =
+                if is_constructor {
+                    let mut state = ModifierState::new(
+                        0,
+                        loc,
+                        func_node,
+                        callee_ctx,
+                        ctx,
+                        renamed_inputs.clone(),
+                    );
+                    for _ in 0..mods.len() {
+                        analyzer.call_modifier_for_fn(
+                            arena,
+                            loc,
+                            callee_ctx,
+                            func_node,
+                            state.clone(),
+                        )?;
+                        state.num += 1;
+                    }
+
+                    analyzer.execute_call_inner(
+                        arena,
+                        loc,
+                        ctx,
+                        callee_ctx,
+                        func_node,
+                        func_call_str,
+                    )
+                } else if let Some(mod_state) =
                     &ctx.underlying(analyzer).into_expr_err(loc)?.modifier_state
                 {
                     // we are iterating through modifiers
@@ -247,7 +298,12 @@ pub trait FuncCaller:
             });
 
             // parse the function body
+            println!("traversing func call body");
             self.traverse_statement(&body, None);
+            println!(
+                "interpretting func call body: {}",
+                callee_ctx.parse_idx(self)
+            );
             self.interpret(callee_ctx, body.loc(), arena);
             if let Some(mod_state) = &callee_ctx
                 .underlying(self)
