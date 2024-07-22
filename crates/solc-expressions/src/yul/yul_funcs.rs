@@ -49,7 +49,7 @@ pub trait YulFuncCaller:
             }
             "pop" => Ok(()),
             "hash" | "basefee" | "chainid" | "coinbase" | "difficulty" | "gaslimit" | "number"
-            | "prevrandao" | "timestamp" => {
+            | "prevrandao" | "timestamp" | "blobhash" | "blobbasefee" => {
                 let t = self.block_access(ctx, name, loc)?;
                 ctx.push_expr(t, self).into_expr_err(loc)
             }

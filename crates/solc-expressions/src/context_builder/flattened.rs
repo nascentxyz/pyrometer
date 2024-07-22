@@ -605,8 +605,40 @@ pub trait Flatten:
                 }
             }
             // Binary ops
-            Power(_, lhs, rhs)
-            | Add(_, lhs, rhs)
+            Power(loc, lhs, rhs) => {
+                self.traverse_expression(rhs, unchecked);
+                let rhs = self.expr_stack_mut().pop().unwrap();
+                let zero_exp = match rhs {
+                    FlatExpr::NumberLiteral(loc, int, exp, unit)
+                        if int == "0" && unit.is_none() && exp.is_empty() =>
+                    {
+                        self.push_expr(FlatExpr::NumberLiteral(loc, "1", "", None));
+                        true
+                    }
+                    FlatExpr::HexNumberLiteral(loc, int, unit) => {
+                        let all_zero = int
+                            .strip_prefix("0x")
+                            .unwrap_or(int)
+                            .chars()
+                            .all(|char| char == '0');
+                        if all_zero {
+                            self.push_expr(FlatExpr::NumberLiteral(loc, "1", "", None));
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                };
+
+                if !zero_exp {
+                    self.push_expr(rhs);
+                    self.traverse_expression(lhs, unchecked);
+                    self.push_expr(FlatExpr::Power(*loc, unchecked.unwrap_or(false)));
+                }
+            }
+
+            Add(_, lhs, rhs)
             | AssignAdd(_, lhs, rhs)
             | Subtract(_, lhs, rhs)
             | AssignSubtract(_, lhs, rhs)

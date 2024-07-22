@@ -33,6 +33,15 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (_, ExprRet::CtxKilled(..)) | (ExprRet::CtxKilled(..), _) => Ok(()),
+            (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => self
+                .handle_require_inner(
+                    arena,
+                    ctx,
+                    &ExprRet::Single(*lhs),
+                    &ExprRet::Single(*rhs),
+                    op,
+                    loc,
+                ),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
                 // ie: require(5 == a);
                 ContextVarNode::from(*lhs)

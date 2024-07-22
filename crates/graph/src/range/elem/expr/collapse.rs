@@ -60,7 +60,7 @@ pub fn collapse(
     tracing::trace!("collapsing: {l} {op} {r}");
 
     let l = if let Elem::Expr(e) = l {
-        println!("collapsing lhs");
+        //println!("collapsing lhs");
         match collapse(*e.lhs, e.op, *e.rhs, arena) {
             MaybeCollapsed::Not(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
             MaybeCollapsed::Concretes(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
@@ -71,7 +71,7 @@ pub fn collapse(
     };
 
     let r = if let Elem::Expr(e) = r {
-        println!("collapsing rhs");
+        //println!("collapsing rhs");
         match collapse(*e.lhs, e.op, *e.rhs, arena) {
             MaybeCollapsed::Not(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
             MaybeCollapsed::Concretes(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),

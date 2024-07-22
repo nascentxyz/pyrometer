@@ -66,8 +66,6 @@ pub enum RangeOp {
     Eq,
     /// Not Equal
     Neq,
-    /// Logical Not
-    Not,
     /// Bitwise shift left
     Shl,
     /// Bitwise shift right
@@ -156,7 +154,6 @@ impl RangeOp {
             Gte => false,
             And => true,
             Or => true,
-            Not => false,
 
             BitNot => false,
             BitAnd => false,
@@ -275,7 +272,6 @@ impl fmt::Display for RangeOp {
             Gte => write!(f, ">="),
             Eq => write!(f, "=="),
             Neq => write!(f, "!="),
-            Not => write!(f, "!"),
             And => write!(f, "&&"),
             Or => write!(f, "||"),
             Cast => write!(f, "cast"),
