@@ -6,9 +6,7 @@ use crate::{
 };
 
 use graph::{
-    nodes::{
-        BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode, TyNode,
-    },
+    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
 use shared::{ExprErr, GraphError, NodeIdx};

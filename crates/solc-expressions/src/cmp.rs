@@ -6,10 +6,9 @@ use graph::{
     },
     AnalyzerBackend, Range, SolcRange, VarType,
 };
-use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
-use std::cmp::Ordering;
 
 impl<T> Cmp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles comparator operations, i.e: `!`

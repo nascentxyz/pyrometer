@@ -41,7 +41,6 @@ fn test_condop() {
     assert_no_parse_errors(path_str);
 }
 
-
 #[test]
 fn test_delete() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();

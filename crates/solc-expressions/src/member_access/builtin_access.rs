@@ -3,7 +3,7 @@ use crate::LibraryAccess;
 use graph::{
     nodes::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ExprRet, Function, FunctionNode,
-        FunctionParam, FunctionParamNode, FunctionReturn, TyNode,
+        FunctionParam, FunctionReturn, TyNode,
     },
     AnalyzerBackend, ContextEdge, Edge, VarType,
 };
