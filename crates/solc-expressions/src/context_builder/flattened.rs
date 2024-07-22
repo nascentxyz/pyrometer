@@ -106,16 +106,35 @@ pub trait Flatten:
                 // based on their size
                 let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr, unchecked);
+                let mut false_cond = self.expr_stack()[start_len..].to_vec();
                 let cmp = self.expr_stack_mut().pop().unwrap();
                 // have it be a require statement
-                self.push_expr(FlatExpr::Requirement(*loc));
-                self.push_expr(cmp);
+                self.traverse_requirement(cmp, if_expr.loc());
                 let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
 
                 // the false condition is the same as the true, but with the comparator inverted
-                let mut false_cond = true_cond.clone();
                 if let Some(last) = false_cond.pop() {
-                    false_cond.push(last.try_inv_cmp().unwrap_or(FlatExpr::Not(*loc)));
+                    match last {
+                        FlatExpr::And(loc, ..) => {
+                            let lhs = false_cond.pop().unwrap();
+                            let rhs = false_cond.pop().unwrap();
+                            false_cond.push(lhs);
+                            false_cond.push(FlatExpr::Not(loc));
+                            false_cond.push(rhs);
+                            false_cond.push(FlatExpr::Not(loc));
+                            false_cond.push(FlatExpr::Requirement(loc));
+                            false_cond.push(FlatExpr::Or(loc));
+                        }
+                        _ => {
+                            if let Some(inv) = last.try_inv_cmp() {
+                                false_cond.push(inv)
+                            } else {
+                                false_cond.push(last);
+                                false_cond.push(FlatExpr::Requirement(*loc));
+                                false_cond.push(FlatExpr::Not(*loc));
+                            }
+                        }
+                    }
                 }
 
                 let true_cond_delta = true_cond.len();
@@ -163,8 +182,7 @@ pub trait Flatten:
                 let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr, unchecked);
                 let cmp = self.expr_stack_mut().pop().unwrap();
-                self.push_expr(FlatExpr::Requirement(*loc));
-                self.push_expr(cmp);
+                self.traverse_requirement(cmp, if_expr.loc());
                 let cond_exprs = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 let condition = cond_exprs.len();
 
@@ -195,8 +213,7 @@ pub trait Flatten:
                 let for_cond_exprs = if let Some(cond) = maybe_for_cond {
                     self.traverse_expression(cond, unchecked);
                     let cmp = self.expr_stack_mut().pop().unwrap();
-                    self.push_expr(FlatExpr::Requirement(*loc));
-                    self.push_expr(cmp);
+                    self.traverse_requirement(cmp, cond.loc());
                     self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
                 } else {
                     vec![]
@@ -312,6 +329,29 @@ pub trait Flatten:
                 ));
             }
             Error(_loc) => {}
+        }
+    }
+
+    fn traverse_requirement(&mut self, cmp: FlatExpr, loc: Loc) {
+        match cmp {
+            FlatExpr::And(..) => {
+                // Its better to just break up And into its component
+                // parts now as opposed to trying to do it later
+                // i.e.:
+                // require(x && y) ==>
+                //   require(x);
+                //   require(y);
+                let rhs = self.expr_stack_mut().pop().unwrap();
+                let lhs = self.expr_stack_mut().pop().unwrap();
+                self.push_expr(FlatExpr::Requirement(loc));
+                self.push_expr(rhs);
+                self.push_expr(FlatExpr::Requirement(loc));
+                self.push_expr(lhs);
+            }
+            _ => {
+                self.push_expr(FlatExpr::Requirement(loc));
+                self.push_expr(cmp);
+            }
         }
     }
 
@@ -801,26 +841,7 @@ pub trait Flatten:
                         self.traverse_expression(expr, unchecked);
                     });
                     let cmp = self.expr_stack_mut().pop().unwrap();
-                    match cmp {
-                        FlatExpr::And(..) => {
-                            // Its better to just break up And into its component
-                            // parts now as opposed to trying to do it later
-                            // i.e.:
-                            // require(x && y) ==>
-                            //   require(x);
-                            //   require(y);
-                            let rhs = self.expr_stack_mut().pop().unwrap();
-                            let lhs = self.expr_stack_mut().pop().unwrap();
-                            self.push_expr(FlatExpr::Requirement(*loc));
-                            self.push_expr(rhs);
-                            self.push_expr(FlatExpr::Requirement(*loc));
-                            self.push_expr(lhs);
-                        }
-                        _ => {
-                            self.push_expr(FlatExpr::Requirement(*loc));
-                            self.push_expr(cmp);
-                        }
-                    }
+                    self.traverse_requirement(cmp, *loc);
                 }
                 _ => {
                     // func(inputs)

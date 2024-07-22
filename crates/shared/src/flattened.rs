@@ -302,15 +302,15 @@ impl FlatExpr {
     }
     pub fn try_inv_cmp(&self) -> Option<Self> {
         use FlatExpr::*;
-        Some(match self {
-            Less(loc) => MoreEqual(*loc),
-            More(loc) => LessEqual(*loc),
-            LessEqual(loc) => More(*loc),
-            MoreEqual(loc) => Less(*loc),
-            Equal(loc) => NotEqual(*loc),
-            NotEqual(loc) => Equal(*loc),
-            _ => Not(self.try_loc()?),
-        })
+        match self {
+            Less(loc) => Some(MoreEqual(*loc)),
+            More(loc) => Some(LessEqual(*loc)),
+            LessEqual(loc) => Some(More(*loc)),
+            MoreEqual(loc) => Some(Less(*loc)),
+            Equal(loc) => Some(NotEqual(*loc)),
+            NotEqual(loc) => Some(Equal(*loc)),
+            _ => None,
+        }
     }
     pub fn try_loc(&self) -> Option<Loc> {
         use FlatExpr::*;

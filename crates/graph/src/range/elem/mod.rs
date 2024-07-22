@@ -244,6 +244,7 @@ impl RangeOp {
             Gt => Lt,
             Lt => Gt,
             other => {
+                tracing::trace!("Require rhs other: {other:?}");
                 return None;
             }
         };
