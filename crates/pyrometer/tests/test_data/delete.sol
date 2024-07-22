@@ -150,12 +150,23 @@ contract UseComplexDelete {
         t.addUserAddress(2, "789 Oak St", "Chicago", "USA", 60601);
 
         // Add employment history
-        t.addEmploymentHistory(1, "TechCorp", "Developer", 1609459200, 1640995200);
+        t.addEmploymentHistory(
+            1,
+            "TechCorp",
+            "Developer",
+            1609459200,
+            1640995200
+        );
         t.addEmploymentHistory(1, "WebSoft", "Senior Developer", 1641081600, 0);
         t.addEmploymentHistory(2, "DataFirm", "Analyst", 1577836800, 0);
 
         // Add education history
-        t.addEducationHistory(1, "Tech University", "BSc Computer Science", 2020);
+        t.addEducationHistory(
+            1,
+            "Tech University",
+            "BSc Computer Science",
+            2020
+        );
         t.addEducationHistory(2, "Data College", "MSc Data Science", 2019);
 
         // Set preferences

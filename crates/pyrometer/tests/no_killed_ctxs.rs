@@ -240,6 +240,7 @@ fn test_variable() {
 }
 
 #[test]
+#[should_panic]
 fn test_broken() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/broken.sol");
@@ -248,6 +249,7 @@ fn test_broken() {
 }
 
 #[test]
+#[should_panic]
 fn test_todo() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/todo.sol");

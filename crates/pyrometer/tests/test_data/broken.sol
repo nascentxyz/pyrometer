@@ -1,7 +1,5 @@
 pragma solidity ^0.8.0;
 
-
-
 /////// This block of code will live in variable.sol when fixed ///////////
 contract B {
     struct A {
@@ -18,12 +16,8 @@ contract A is B {
         return a;
     }
 }
+
 //////////////////////////////////////////////////////////////
-
-
-
-
-
 
 ///////// This whole contract will live in require_with_killed.sol when fixed ///////////
 // Note: I've added broken@brock comments to the issues i know of
@@ -94,6 +88,7 @@ contract RequireWithKilled {
     function setCount() public {
         count = 0;
     }
+
     function andShortCircuit() public {
         count = 0;
         // ( bump(false) && bump(true) ) || true , this will test that the second bump is not evaluated since the `and` short circuits
@@ -192,8 +187,8 @@ contract RequireWithKilled {
         return returnValue;
     }
 }
-/////////////////////////////////////////////////////////////////
 
+/////////////////////////////////////////////////////////////////
 
 ////// This contract's functions will be merged into delete.sol when fixed ///////////
 contract ComplexDelete {
@@ -273,5 +268,3 @@ contract ComplexDelete {
     }
 }
 /////////////////////////////////////////////////////////////////
-
-

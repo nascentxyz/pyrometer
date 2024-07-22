@@ -111,7 +111,7 @@ contract DynTypes {
     function multiDimensionalArray() public returns (bool z) {
         uint256[][] memory multiArray = new uint256[][](2);
         uint256[] memory indices = new uint256[](2);
-        
+
         indices[0] = 0;
         indices[1] = 1;
 
@@ -124,5 +124,4 @@ contract DynTypes {
 
         z = true;
     }
-
 }

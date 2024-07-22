@@ -1,6 +1,5 @@
 contract Literals {
-
-	function foo() public returns (string memory) {
+    function foo() public returns (string memory) {
         uint a = 115792089237316195423570985008687907853269984665640564039457584007913129639935; // ok
         // uint b = 115792089237316195423570985008687907853269984665640564039457584007913129639936; // too big
         // uint c = 115792089237316195423570985008687907853269984665640564039457584007913129639935 ** 2; // too big
@@ -9,6 +8,7 @@ contract Literals {
         uint f = 1.0 ** 2; // ok
         // uint g = 1.5 ** 2; // not uint
         uint h = 1.5 ** 0; // ok
+        h = 1.5 ** 0x0; // ok
         "pyro::variable::h::range::[1,1]";
         uint256 i = 123 ** 10; // 792594609605189126649
         address w = address(0xdCad3a6d3569DF655070DEd06cb7A1b2Ccd1D3AF);
@@ -32,8 +32,10 @@ contract Literals {
         "pyro::variable::k::range::[-84,-84]";
         string memory s = unicode"🔥🔫"; // TODO unicode string values is not correct yet
 
-        bytes memory r = hex"11111111111111111111111111111111111111111111111111111111111111111111111111111111";
-        r = hex"1111111111111111111111111111111111111111" hex"111111111111111111111111111111111111111111111111";
+        bytes
+            memory r = hex"11111111111111111111111111111111111111111111111111111111111111111111111111111111";
+        r = hex"1111111111111111111111111111111111111111"
+        hex"111111111111111111111111111111111111111111111111";
         return s;
     }
 }
