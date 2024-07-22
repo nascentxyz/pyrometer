@@ -238,3 +238,21 @@ fn test_variable() {
     let sol = include_str!("./test_data/variable.sol");
     assert_no_ctx_killed(path_str, sol);
 }
+
+#[test]
+#[should_panic]
+fn test_broken() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/broken.sol");
+    let sol = include_str!("./test_data/broken.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
+#[should_panic]
+fn test_todo() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/todo.sol");
+    let sol = include_str!("./test_data/todo.sol");
+    assert_no_ctx_killed(path_str, sol);
+}

@@ -32,9 +32,7 @@ contract Env {
         tx.origin (address): sender of the transaction (full call chain)
         */
         bytes32 a = blockhash(1);
-        bytes32 b = blobhash(1);
         uint c = block.basefee;
-        uint d = block.blobbasefee;
         uint e = block.chainid;
         address payable f = block.coinbase;
         uint g = block.difficulty;

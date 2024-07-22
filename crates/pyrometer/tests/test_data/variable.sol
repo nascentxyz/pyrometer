@@ -17,25 +17,9 @@ contract Variable {
         return a_user_type.aUserType;
     }
 
-    // function a_user_type_storage() public returns (uint) {
-    //     aUserType storage a_user_type = a_user_type;
-    //     return a_user_type.aUserType;
-    // }
-}
-
-contract B {
-    struct A {
-        address a;
-    }
-}
-
-contract A is B {
-    A a; // contract A
-
-    function return_struct() external returns (A memory) {
-        // a is of type B.A, *not* Contract::A
-        a = A(address(this));
-        return a;
+    function a_user_type_storage() public returns (uint) {
+        aUserType storage a_user_type = a_user_type;
+        return a_user_type.aUserType;
     }
 }
 
