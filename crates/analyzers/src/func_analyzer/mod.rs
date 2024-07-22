@@ -61,19 +61,6 @@ impl<'a> FunctionVarsBoundAnalysis {
                     .iter()
                     .map(|var| (var.as_controllable_name(analyzer, arena).unwrap(), var))
                     .collect::<BTreeMap<_, _>>();
-                // create the bound strings
-                // let atoms = ctx.dep_atoms(analyzer).unwrap();
-                // println!("had {} atoms", atoms.len());
-                // let mut handled_atom = vec![];
-                // let mut bounds_string: Vec<String> = vec![];
-                // atoms.iter().enumerate().for_each(|(i, atom)| {
-                //     let atom_str = atom.to_range_string(true, analyzer, arena).s;
-                //     if !handled_atom.contains(&atom_str) {
-                //         handled_atom.push(atom_str.clone());
-                //         bounds_string.push(format!("{}. {}", i + 1, atom_str))
-                //     }
-                // });
-                // let bounds_string = bounds_string.into_iter().collect::<Vec<_>>().join("\n");
 
                 let bounds_string = deps
                     .iter()

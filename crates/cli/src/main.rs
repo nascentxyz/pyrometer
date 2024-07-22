@@ -304,7 +304,6 @@ fn main() {
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
-    // println!("Arena: {:#?}", analyzer.range_arena);
     if unsafe { USE_DEBUG_SITE } {
         use pyrometer::graph_backend::mermaid_str;
         use pyrometer::graph_backend::post_to_site_arena;
@@ -328,7 +327,6 @@ fn main() {
     if args.stats {
         println!("{}", analyzer.stats(t_end, arena));
     }
-    // println!("Arena: {:#?}", analyzer.range_arena);
 
     // use self.sources to fill a BTreeMap with the file_no and SourcePath.path_to_solidity_file
     let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
@@ -370,20 +368,10 @@ fn main() {
         analyzer.open_mermaid(arena);
     }
 
-    // println!("{}", analyzer.range_arena.ranges.iter().map(|i| {
-    //     let j = i.borrow();
-    //     let (min_cached, max_cached) = j.is_min_max_cached(&analyzer);
-    //     format!("\t{j}, is cached: {min_cached}, {max_cached}\n")
-    // }).collect::<Vec<_>>().join(""));
-    // println!("{}", analyzer.range_arena.map.iter().map(|(k, v)| {
-    //     format!("\t{}: {}\n", k, v)
-    // }).collect::<Vec<_>>().join(""));
-
     if args.debug {
         return;
     }
 
-    // println!("getting contracts");
     let all_contracts = analyzer
         .search_children(entry, &Edge::Contract)
         .into_iter()

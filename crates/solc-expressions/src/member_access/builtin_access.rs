@@ -115,7 +115,6 @@ pub trait BuiltinAccess:
         num_inputs: usize,
         is_storage: bool,
     ) -> Result<Option<(FunctionNode, bool)>, GraphError> {
-        println!("name: {name}");
         match node.underlying(self)?.clone() {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 match name {
@@ -123,10 +122,8 @@ pub trait BuiltinAccess:
                         // TODO: check if the address is known to be a certain type and the function signature is known
                         // and call into the function
                         let builtin_name = name.split('(').collect::<Vec<_>>()[0];
-                        println!("here");
                         let func_node =
                             FunctionNode::from(self.builtin_fn_or_maybe_add(builtin_name).unwrap());
-                        println!("func name: {}", func_node.name(self).unwrap());
                         Ok(Some((func_node, true)))
                     }
                     _ => Ok(None),
@@ -333,7 +330,6 @@ pub trait BuiltinAccess:
         let underlying_mut = func_node.underlying_mut(self)?;
         let name = underlying_mut.name.as_mut().unwrap();
         let full_name = format!("{}({})", name, params_strs.join(", "));
-        println!("full name: {full_name}");
         name.name.clone_from(&full_name);
 
         self.add_edge(func_node, self.entry(), Edge::Func);
@@ -352,7 +348,6 @@ pub trait BuiltinAccess:
         is_storage: bool,
         loc: Loc,
     ) -> Result<(ExprRet, bool), ExprErr> {
-        println!("name: {name}");
         match node.underlying(self).into_expr_err(loc)?.clone() {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 match name {
@@ -361,10 +356,6 @@ pub trait BuiltinAccess:
                         // and call into the function
                         let builtin_name = name.split('(').collect::<Vec<_>>()[0];
                         let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
-                        println!(
-                            "added address lib func: {}",
-                            FunctionNode::from(func_node).name(self).unwrap()
-                        );
                         Ok((ExprRet::Single(func_node), true))
                     }
                     "codehash" => {

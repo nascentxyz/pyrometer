@@ -98,12 +98,6 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             lhs_cvar.display_name(self).unwrap(),
         );
 
-        println!(
-            "{:?} = {:?}",
-            lhs_cvar.ty(self).unwrap(),
-            rhs_cvar.ty(self).unwrap()
-        );
-
         if lhs_cvar.is_struct(self).into_expr_err(loc)?
             && rhs_cvar.is_struct(self).into_expr_err(loc)?
         {

@@ -82,14 +82,6 @@ impl AnalyzerLike for Analyzer {
         needed_functions.sort_by(|a, b| a.0.cmp(&b.0));
         needed_functions.dedup();
 
-        println!(
-            "needed functions: {:#?}",
-            needed_functions
-                .iter()
-                .map(|i| i.name(self).unwrap())
-                .collect::<Vec<_>>()
-        );
-
         fn recurse_find(
             contract: ContractNode,
             target_contract: ContractNode,
@@ -123,7 +115,6 @@ impl AnalyzerLike for Analyzer {
         let mut structs = vec![];
         let mut errs = vec![];
         needed_functions.into_iter().for_each(|func| {
-            println!("iterating with func: {}", func.name(self).unwrap());
             let maybe_func_contract = func.maybe_associated_contract(self);
             let reqs = func.reconstruction_requirements(self);
             reqs.usertypes.iter().for_each(|var| {
@@ -173,8 +164,6 @@ impl AnalyzerLike for Analyzer {
             let entry = contract_to_funcs.entry(maybe_func_contract).or_default();
             entry.push((func, reqs));
         });
-
-        // println!("{:#?}", contract_to_funcs);
 
         let contracts = contract_to_funcs.keys().collect::<Vec<_>>();
         let contract_str = contracts
@@ -251,7 +240,6 @@ impl AnalyzerLike for Analyzer {
                         Node::Context(context) if context.killed.is_some() => {
                             match context.killed.unwrap() {
                                 (_, KilledKind::ParseError) => {
-                                    // println!("found context: {}", context.path);
                                     let edges = graph::nodes::ContextNode::from(node)
                                         .all_edges(self)
                                         .unwrap();
@@ -272,7 +260,6 @@ impl AnalyzerLike for Analyzer {
                     .unwrap();
 
                 let min_str = self.minimize_err(reconstruction_edge);
-                // println!("reconstructed source:\n{} placed in {}", min_str, path);
 
                 let mut file = std::fs::OpenOptions::new()
                     .write(true)
@@ -356,7 +343,6 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             Variable(ident) => {
-                // println!("variable ident: {}", ident.name);
                 if let Some(idxs) = self.user_types.get(&ident.name) {
                     if idxs.len() == 1 {
                         idxs[0]

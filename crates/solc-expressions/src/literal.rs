@@ -999,7 +999,6 @@ mod tests {
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
-        println!("{min}");
         let conc_value = min.maybe_concrete().unwrap().val;
         assert!(
             conc_value == expected,

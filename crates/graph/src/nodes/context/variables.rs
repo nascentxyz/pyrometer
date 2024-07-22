@@ -212,7 +212,6 @@ impl ContextNode {
     }
 
     pub fn contract_vars_referenced_global(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {
-        println!("getting storage vars for: {}", self.path(analyzer));
         let mut reffed_storage = self.contract_vars_referenced(analyzer);
         analyzer
             .graph()

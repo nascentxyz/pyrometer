@@ -244,7 +244,6 @@ impl RangeOp {
             Gt => Lt,
             Lt => Gt,
             other => {
-                println!("other:{other:?}");
                 return None;
             }
         };

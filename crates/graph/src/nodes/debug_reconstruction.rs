@@ -502,10 +502,6 @@ impl FunctionNode {
         &self,
         analyzer: &mut impl AnalyzerBackend,
     ) -> FuncReconstructionReqs {
-        println!(
-            "reconstruction requirements for: {}",
-            self.name(analyzer).unwrap()
-        );
         FuncReconstructionReqs {
             storage: self.maybe_used_storage(analyzer).unwrap_or_default(),
             usertypes: self.maybe_used_usertypes(analyzer).unwrap_or_default(),

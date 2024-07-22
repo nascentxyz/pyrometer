@@ -472,13 +472,10 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .all(|e| *e))
                 }
             }
-            (e, f) => {
-                println!("{e:?}, {f:?}");
-                Err(ExprErr::Todo(
-                    loc,
-                    "Unhandled ExprRet combination in `match_var_def`".to_string(),
-                ))
-            }
+            (e, f) => Err(ExprErr::Todo(
+                loc,
+                "Unhandled ExprRet combination in `match_var_def`".to_string(),
+            )),
         }
     }
 

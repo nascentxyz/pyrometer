@@ -326,7 +326,6 @@ impl Atomize for Elem<Concrete> {
                     expr.rhs.atoms_or_part(Some(self), analyzer, arena),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
-                        // println!("part part");
                         match (l, r) {
                             (_, Elem::Arena(_)) => todo!(),
                             (Elem::Arena(_), _) => todo!(),
@@ -385,16 +384,12 @@ impl Atomize for Elem<Concrete> {
                         }
                     }
                     (AtomOrPart::Atom(l_atom), r @ AtomOrPart::Part(_)) => {
-                        // println!("atom part");
-
                         AtomOrPart::Atom(l_atom.add_rhs(expr.op, r))
                     }
                     (l @ AtomOrPart::Part(_), AtomOrPart::Atom(r_atom)) => {
-                        // println!("part atom");
                         AtomOrPart::Atom(r_atom.add_lhs(expr.op, l))
                     }
                     (AtomOrPart::Atom(l_atoms), AtomOrPart::Atom(r_atoms)) => {
-                        // println!("atom atom");
                         AtomOrPart::Atom(r_atoms.add_lhs(expr.op, AtomOrPart::Atom(l_atoms)))
                     }
                 }
@@ -412,14 +407,12 @@ impl Atomize for Elem<Concrete> {
         use Elem::*;
         tracing::trace!("atomize: {}", self);
         match self {
-            Reference(_) => None,   //{ println!("was dyn"); None},
-            Null => None,           //{ println!("was null"); None},
-            Concrete(_c) => None,   //{ println!("was conc: {}", _c.val.as_human_string()); None },
-            ConcreteDyn(_) => None, //{ println!("was concDyn"); None},
+            Reference(_) => None,
+            Null => None,
+            Concrete(_c) => None,
+            ConcreteDyn(_) => None,
             Expr(_) => {
-                // println!("atomized: was expr");
                 let AtomOrPart::Atom(mut a) = self.atoms_or_part(None, analyzer, arena) else {
-                    // println!("returning none");
                     return None;
                 };
                 a.update_max_ty();
