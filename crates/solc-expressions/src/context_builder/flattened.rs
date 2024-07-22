@@ -615,7 +615,7 @@ pub trait Flatten:
                         self.push_expr(FlatExpr::NumberLiteral(loc, "1", "", None));
                         true
                     }
-                    FlatExpr::HexNumberLiteral(loc, int, unit) => {
+                    FlatExpr::HexNumberLiteral(loc, int, _) => {
                         let all_zero = int
                             .strip_prefix("0x")
                             .unwrap_or(int)

@@ -4,7 +4,7 @@ use graph::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
         TmpConstruction,
     },
-    AnalyzerBackend, Range, SolcRange, VarType,
+    AnalyzerBackend, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 

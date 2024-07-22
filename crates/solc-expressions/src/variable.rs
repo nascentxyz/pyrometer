@@ -97,7 +97,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 } else {
                     vec![]
                 };
-                if let Some(idx) = self.disambiguate(ctx, ident.loc, idxs, in_scope, location) {
+                if let Some(idx) = self.disambiguate(ctx, idxs, in_scope, location) {
                     idx
                 } else {
                     return Err(ExprErr::ParseError(
@@ -203,13 +203,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
     fn disambiguate(
         &mut self,
         ctx: ContextNode,
-        loc: Loc,
         mut idxs: Vec<NodeIdx>,
         inscope_storage: Vec<NodeIdx>,
         location: Option<StorageLocation>,
     ) -> Option<NodeIdx> {
         // disambiguate based on left hand side if it exists
-        if let Some(maybe_lhs) = ctx.underlying(self).ok()?.expr_ret_stack.get(0) {
+        if let Some(maybe_lhs) = ctx.underlying(self).ok()?.expr_ret_stack.first() {
             tracing::trace!("Disambiguate based on lhs: {}", maybe_lhs.debug_str(self));
             if let ExprRet::Single(lhs_idx) = maybe_lhs {
                 if let Some(var_ty) = VarType::try_from_idx(self, *lhs_idx) {

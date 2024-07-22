@@ -17,7 +17,7 @@ contract Variable {
         return a_user_type.aUserType;
     }
 
-    function a_user_type_storage() public returns (uint) {
+    function a_user_type_storage() public view returns (uint) {
         aUserType storage a_user_type = a_user_type;
         return a_user_type.aUserType;
     }

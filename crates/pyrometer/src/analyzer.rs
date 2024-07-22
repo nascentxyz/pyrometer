@@ -198,8 +198,8 @@ impl Default for Analyzer {
 
         let msg = Msg::default();
         let block = Block::default();
-        let msg = a.graph.add_node(Node::Msg(msg)).into();
-        let block = a.graph.add_node(Node::Block(block)).into();
+        let msg = a.graph.add_node(Node::Msg(Box::new(msg))).into();
+        let block = a.graph.add_node(Node::Block(Box::new(block))).into();
         a.msg = msg;
         a.block = block;
         a.entry = a.add_node(Node::Entry);

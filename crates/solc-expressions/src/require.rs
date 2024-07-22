@@ -105,10 +105,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     })
                 }
             }
-            (e, f) => Err(ExprErr::UnhandledCombo(
-                loc,
-                format!("Unhandled combination in require: {:?} {:?}", e, f),
-            )),
         }
     }
 

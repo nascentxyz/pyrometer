@@ -433,26 +433,6 @@ impl ContextNode {
         }
     }
 
-    // /// Pop the latest expression return off the stack
-    // #[tracing::instrument(level = "trace", skip_all)]
-    // pub fn pop_expr_latest(
-    //     &self,
-    //     loc: Loc,
-    //     analyzer: &mut impl AnalyzerBackend,
-    // ) -> Result<Option<ExprRet>, GraphError> {
-    //     let underlying_mut = self.underlying_mut(analyzer)?;
-    //     if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
-    //         tracing::trace!(
-    //             "popping var {} from: {}",
-    //             elem.debug_str(analyzer),
-    //             self.path(analyzer)
-    //         );
-    //         Ok(Some(self.maybe_move_expr(elem, loc, analyzer)?))
-    //     } else {
-    //         Ok(None)
-    //     }
-    // }
-
     pub fn pop_n_latest_exprs(
         &self,
         n: usize,

@@ -99,9 +99,9 @@ pub enum Node {
     /// A concrete value (i.e. '1' or '0x111')
     Concrete(Concrete),
     /// The `msg` global in solidity
-    Msg(Msg),
+    Msg(Box<Msg>),
     /// The `block` global in solidity
-    Block(Block),
+    Block(Box<Block>),
     /// A yul-based function
     YulFunction(YulFunction),
     // TODO: Handle events

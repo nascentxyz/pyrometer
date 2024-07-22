@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT or APACHE2
 pragma solidity ^0.8.0;
 
 contract Todo {
@@ -5,12 +6,16 @@ contract Todo {
     function env() public view {
         bytes32 b = blobhash(1);
         uint d = block.blobbasefee;
+        b;
+        d;
     }
 
     // will live in assign.sol when added
     function array_literals() public pure {
         uint[2] memory a = [uint(1), uint(2)];
         uint[2] memory b = [uint(3), uint(4)];
+        a;
+        b;
     }
 
     // will live in assign.sol when added

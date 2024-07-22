@@ -82,7 +82,6 @@ pub fn collapse(
     };
 
     if let Some(e) = ident_rules(&l, op, &r, arena) {
-        println!("ident rules return");
         return MaybeCollapsed::Collapsed(e);
     }
 

@@ -30,6 +30,15 @@ pub fn assert_no_parse_errors(path_str: String) {
     );
 }
 
+pub fn assert_has_parse_or_panic_errors(path_str: String) {
+    let panics = std::panic::catch_unwind(|| assert_no_parse_errors(path_str.clone())).is_err();
+    assert!(
+        panics,
+        "Supposedly broken file did not encounter parse errors or panic in {}",
+        path_str
+    );
+}
+
 pub fn assert_no_ctx_killed(path_str: String, sol: &str) {
     let mut analyzer = Analyzer::default();
     let mut arena_base = Default::default();

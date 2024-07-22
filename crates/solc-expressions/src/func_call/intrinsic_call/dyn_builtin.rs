@@ -76,7 +76,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                     let accum_node = ctx
                         .pop_n_latest_exprs(1, loc, self)
                         .into_expr_err(loc)?
-                        .get(0)
+                        .first()
                         .unwrap()
                         .expect_single()
                         .unwrap();
