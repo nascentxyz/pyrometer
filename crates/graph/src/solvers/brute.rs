@@ -784,8 +784,6 @@ impl SolcSolver for BruteBinSearchSolver {
                 if new_range.unsat(analyzer, arena) {
                     // figure out *where* we need to increase or decrease
                     // work on the unreplace range for now
-                    let min_is_dependent = !range.min.dependent_on(analyzer, arena).is_empty();
-                    let max_is_dependent = !range.max.dependent_on(analyzer, arena).is_empty();
 
                     // compare new range to prev range to see if they moved down or up
 
