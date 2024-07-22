@@ -16,6 +16,8 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn match_ty(&mut self, ctx: ContextNode, loc: Loc, ret: ExprRet) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner_ty) | ExprRet::SingleLiteral(inner_ty) => {
+                // ie: uint[]
+                // ie: uint[][]
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
                     let dyn_b = Builtin::Array(var_type);
                     if let Some(idx) = self.builtins().get(&dyn_b) {
@@ -33,6 +35,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 }
             }
             ExprRet::Multi(inner) => {
+                // ie: unsure of syntax needed to get here. (not possible?)
                 inner
                     .into_iter()
                     .map(|i| self.match_ty(ctx, loc, i))
@@ -100,7 +103,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 loc,
             )?;
         }
-
         let name = format!(
             "{}[{}]",
             parent.name(self).into_expr_err(loc)?,
@@ -388,53 +390,5 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         } else {
             Ok(())
         }
-    }
-
-    fn update_array_min_if_length(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        maybe_length: ContextVarNode,
-    ) -> Result<(), ExprErr> {
-        if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(
-                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
-                loc,
-                ctx,
-            )?;
-            let new_len = Elem::from(backing_arr)
-                .get_length()
-                .max(maybe_length.into());
-            let min = Elem::from(backing_arr).set_length(new_len);
-            next_arr
-                .set_range_min(self, arena, min)
-                .into_expr_err(loc)?;
-        }
-        Ok(())
-    }
-
-    fn update_array_max_if_length(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        maybe_length: ContextVarNode,
-    ) -> Result<(), ExprErr> {
-        if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(
-                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
-                loc,
-                ctx,
-            )?;
-            let new_len = Elem::from(backing_arr)
-                .get_length()
-                .min(maybe_length.into());
-            let max = Elem::from(backing_arr).set_length(new_len);
-            next_arr
-                .set_range_max(self, arena, max)
-                .into_expr_err(loc)?;
-        }
-        Ok(())
     }
 }

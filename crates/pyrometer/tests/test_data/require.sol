@@ -66,4 +66,16 @@ contract Require {
     function b_ytes1(bytes1 x) public pure {
         require(x == bytes1(hex"13"));
     }
+
+    function UintMoreEqual(uint8 x) public {
+        require(x >= 100);
+        "pyro::constraint::(x >= 100)";
+        "pyro::variable::x::range::[100, 255]";
+    }
+
+    function UintLessEqual(uint8 x) public {
+        require(x <= 100);
+        "pyro::constraint::(x <= 100)";
+        "pyro::variable::x::range::[0, 100]";
+    }
 }

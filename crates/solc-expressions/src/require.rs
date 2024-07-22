@@ -34,18 +34,21 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (_, ExprRet::CtxKilled(..)) | (ExprRet::CtxKilled(..), _) => Ok(()),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
+                // ie: require(5 == a);
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
                 self.handle_require_inner(arena, ctx, &ExprRet::Single(*lhs), rhs_paths, op, loc)
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: require(a == 5);
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
                 self.handle_require_inner(arena, ctx, lhs_paths, &ExprRet::Single(*rhs), op, loc)
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
+                // ie: require(a == b);
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
@@ -57,18 +60,23 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 Ok(())
             }
             (l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_), ExprRet::Multi(rhs_sides)) => {
+                // ie: require(a == (b, c)); (not possible)
                 rhs_sides.iter().try_for_each(|expr_ret| {
                     self.handle_require_inner(arena, ctx, l, expr_ret, op, loc)
                 })
             }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
+                // ie: require((a, b) == c); (not possible)
                 lhs_sides.iter().try_for_each(|expr_ret| {
                     self.handle_require_inner(arena, ctx, expr_ret, r, op, loc)
                 })
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
+                // ie: require((a, b) == (c, d)); (not possible)
+                // ie: require((a, b) == (c, d, e)); (not possible)
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
+                    // ie: require((a, b) == (c, d)); (not possible)
                     lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
                             self.handle_require_inner(
@@ -82,6 +90,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         },
                     )
                 } else {
+                    // ie: require((a, b) == (c, d, e)); (not possible)
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
                         self.handle_require_inner(arena, ctx, lhs_paths, rhs_expr_ret, op, loc)
                     })

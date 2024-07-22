@@ -246,7 +246,8 @@ pub trait Literal: AnalyzerBackend + Sized {
             });
             ConcreteNode::from(self.add_node(Concrete::Bytes(max, target)))
         } else {
-            ConcreteNode::from(self.add_node(Concrete::DynBytes(h)))
+            // hex""
+            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::DynBytes(h))))
         };
 
         let ccvar = Node::ContextVar(

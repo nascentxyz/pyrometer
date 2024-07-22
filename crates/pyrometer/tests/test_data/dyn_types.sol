@@ -10,6 +10,7 @@ contract DynTypes {
     }
 
     mapping(address => Strukt) public someMapping;
+    mapping(address => Strukt[]) public someMapping2;
 
     function bytes_dyn(bytes calldata x) public pure {
         bytes memory y = x;
@@ -81,4 +82,47 @@ contract DynTypes {
             holder;
         }
     }
+
+    struct DontUseMoreThanOnce {
+        uint256 a;
+        uint256 b;
+    }
+
+    function dynUserType() public {
+        DontUseMoreThanOnce[] memory dont = new DontUseMoreThanOnce[](1);
+        dont[0].a = 100;
+        dont[0].b = 100;
+        require(dont[0].a == 100);
+    }
+
+    function getReturnedUserType() public pure {
+        // Strukt[] memory strukt = returnUserType()[0];
+        Strukt memory strukt = returnUserType()[0];
+        require(strukt.a == 100);
+    }
+
+    function returnUserType() public pure returns (Strukt[] memory) {
+        Strukt[] memory strukt = new Strukt[](1);
+        strukt[0].a = 100;
+        strukt[0].b = 100;
+        return strukt;
+    }
+
+    function multiDimensionalArray() public returns (bool z) {
+        uint256[][] memory multiArray = new uint256[][](2);
+        uint256[] memory indices = new uint256[](2);
+        
+        indices[0] = 0;
+        indices[1] = 1;
+
+        for (uint i = 0; i < multiArray.length; i++) {
+            multiArray[i] = new uint256[](2);
+            for (uint j = 0; j < multiArray[i].length; j++) {
+                multiArray[i][j] = 1;
+            }
+        }
+
+        z = true;
+    }
+
 }

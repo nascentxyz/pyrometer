@@ -36,6 +36,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 "No right hand side provided for binary operation".to_string(),
             )),
             (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: 5 + 5
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let rhs_cvar =
@@ -50,6 +51,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
+                // ie: 5 + x
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
@@ -65,6 +67,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: x + 5
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
@@ -80,6 +83,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
+                // ie: x + y
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let rhs_cvar =
@@ -92,6 +96,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => {
+                // ie: x + (y, z), (not possible?)
                 rhs_sides
                     .iter()
                     .map(|expr_ret| self.op_match(arena, ctx, loc, lhs, expr_ret, op, assign))
@@ -99,6 +104,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => {
+                // ie: (x, y) + z, (not possible?)
                 lhs_sides
                     .iter()
                     .map(|expr_ret| self.op_match(arena, ctx, loc, expr_ret, rhs, op, assign))
@@ -108,6 +114,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             (_, ExprRet::CtxKilled(kind)) => ctx.kill(self, loc, *kind).into_expr_err(loc),
             (ExprRet::CtxKilled(kind), _) => ctx.kill(self, loc, *kind).into_expr_err(loc),
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => Err(ExprErr::UnhandledCombo(
+                // ie: (x, y) + (a, b), (not possible?)
                 loc,
                 format!("Unhandled combination in binop: {lhs_sides:?} {rhs_sides:?}"),
             )),
