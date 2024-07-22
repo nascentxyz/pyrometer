@@ -222,3 +222,11 @@ fn test_repros() {
         assert_no_parse_errors(path_str);
     }
 }
+
+#[test]
+fn test_variable() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/variable.sol");
+    let sol = include_str!("./test_data/variable.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
