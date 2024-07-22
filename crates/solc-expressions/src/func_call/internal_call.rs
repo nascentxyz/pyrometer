@@ -6,7 +6,9 @@ use crate::{
 };
 
 use graph::{
-    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
+    nodes::{
+        BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode, TyNode,
+    },
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
 use shared::{ExprErr, GraphError, NodeIdx};
@@ -69,17 +71,25 @@ pub trait InternalFuncCaller:
         };
 
         let mut funcs = self.possible_library_funcs(ctx, var_ty.ty_idx());
-        if matches!(var_ty, VarType::BuiltIn(_, _)) {
-            if let Some((ret, is_lib)) = self.builtin_builtin_fn(
-                BuiltInNode::from(var_ty.ty_idx()),
-                name,
-                num_inputs,
-                is_storage,
-            )? {
-                if is_lib {
-                    funcs.push(ret);
+        match var_ty {
+            VarType::BuiltIn(_, _) => {
+                if let Some((ret, is_lib)) = self.builtin_builtin_fn(
+                    BuiltInNode::from(var_ty.ty_idx()),
+                    name,
+                    num_inputs,
+                    is_storage,
+                )? {
+                    if is_lib {
+                        funcs.push(ret);
+                    }
                 }
             }
+            VarType::User(TypeNode::Ty(ty), _) => {
+                if let Some(func) = self.specialize_ty_fn(ty, name)? {
+                    funcs.push(func)
+                }
+            }
+            _ => {}
         }
 
         let mut possible_funcs = funcs
@@ -131,7 +141,6 @@ pub trait InternalFuncCaller:
                 if let Some((ret, lib)) =
                     self.builtin_builtin_fn(BuiltInNode::from(member), name, num_inputs, false)?
                 {
-                    println!("ret: {}, lib: {lib}", ret.name(self).unwrap());
                     if !lib {
                         return Ok((vec![ret], true));
                     }

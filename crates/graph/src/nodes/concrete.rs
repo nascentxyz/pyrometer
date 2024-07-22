@@ -734,6 +734,9 @@ impl Concrete {
             Concrete::String(_) => {
                 alts.push(Builtin::DynamicBytes);
             }
+            Concrete::Bytes(_, _) => {
+                alts.push(Builtin::DynamicBytes);
+            }
             _ => {}
         }
         alts

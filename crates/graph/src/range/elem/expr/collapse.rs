@@ -3,7 +3,7 @@ use crate::elem::expr::simplify::*;
 use crate::{
     nodes::Concrete,
     range::{
-        elem::{Elem, RangeConcrete, RangeElem, RangeExpr, RangeOp},
+        elem::{Elem, RangeElem, RangeExpr, RangeOp},
         exec_traits::*,
     },
 };
@@ -46,9 +46,9 @@ pub static FLIP_INEQ_OPS: &[RangeOp] = &[RangeOp::Lt, RangeOp::Lte, RangeOp::Gt,
 
 #[derive(Debug)]
 pub enum MaybeCollapsed {
-    Concretes(Elem<Concrete>, Elem<Concrete>),
+    Concretes(Elem<Concrete>, RangeOp, Elem<Concrete>),
     Collapsed(Elem<Concrete>),
-    Not(Elem<Concrete>, Elem<Concrete>),
+    Not(Elem<Concrete>, RangeOp, Elem<Concrete>),
 }
 
 pub fn collapse(
@@ -57,10 +57,13 @@ pub fn collapse(
     r: Elem<Concrete>,
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> MaybeCollapsed {
+    tracing::trace!("collapsing: {l} {op} {r}");
+
     let l = if let Elem::Expr(e) = l {
+        println!("collapsing lhs");
         match collapse(*e.lhs, e.op, *e.rhs, arena) {
-            MaybeCollapsed::Not(l, r) => Elem::Expr(RangeExpr::new(l, e.op, r)),
-            MaybeCollapsed::Concretes(l, r) => Elem::Expr(RangeExpr::new(l, e.op, r)),
+            MaybeCollapsed::Not(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
+            MaybeCollapsed::Concretes(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
             MaybeCollapsed::Collapsed(e) => e,
         }
     } else {
@@ -68,9 +71,10 @@ pub fn collapse(
     };
 
     let r = if let Elem::Expr(e) = r {
+        println!("collapsing rhs");
         match collapse(*e.lhs, e.op, *e.rhs, arena) {
-            MaybeCollapsed::Not(l, r) => Elem::Expr(RangeExpr::new(l, e.op, r)),
-            MaybeCollapsed::Concretes(l, r) => Elem::Expr(RangeExpr::new(l, e.op, r)),
+            MaybeCollapsed::Not(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
+            MaybeCollapsed::Concretes(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),
             MaybeCollapsed::Collapsed(e) => e,
         }
     } else {
@@ -78,6 +82,7 @@ pub fn collapse(
     };
 
     if let Some(e) = ident_rules(&l, op, &r, arena) {
+        println!("ident rules return");
         return MaybeCollapsed::Collapsed(e);
     }
 
@@ -85,20 +90,20 @@ pub fn collapse(
         (l @ Elem::Arena(_), r) => {
             let t = l.dearenaize_clone(arena);
             match collapse(t, op, r, arena) {
-                MaybeCollapsed::Not(l, r) => MaybeCollapsed::Not(l, r),
-                MaybeCollapsed::Concretes(l, r) => MaybeCollapsed::Not(l, r),
+                MaybeCollapsed::Not(l, op, r) => MaybeCollapsed::Not(l, op, r),
+                MaybeCollapsed::Concretes(l, op, r) => MaybeCollapsed::Not(l, op, r),
                 MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
             }
         }
         (l, r @ Elem::Arena(_)) => {
             let t = r.dearenaize_clone(arena);
             match collapse(l, op, t, arena) {
-                MaybeCollapsed::Not(l, r) => MaybeCollapsed::Not(l, r),
-                MaybeCollapsed::Concretes(l, r) => MaybeCollapsed::Not(l, r),
+                MaybeCollapsed::Not(l, op, r) => MaybeCollapsed::Not(l, op, r),
+                MaybeCollapsed::Concretes(l, op, r) => MaybeCollapsed::Not(l, op, r),
                 MaybeCollapsed::Collapsed(e) => MaybeCollapsed::Collapsed(e),
             }
         }
-        (l @ Elem::Concrete(_), r @ Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, r),
+        (l @ Elem::Concrete(_), r @ Elem::Concrete(_)) => MaybeCollapsed::Concretes(l, op, r),
         (Elem::Expr(expr), d @ Elem::Reference(_)) => {
             // try to collapse the expression
             let x = &*expr.lhs;
@@ -112,7 +117,7 @@ pub fn collapse(
                     if let Some(res) = sub_ord_rules(x, y, op, &z, ords) {
                         MaybeCollapsed::Collapsed(res)
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Div(_), RangeOp::Eq) => {
@@ -120,7 +125,7 @@ pub fn collapse(
                         // (x -|/ y) == x ==> false
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Add(_), RangeOp::Eq) => {
@@ -129,7 +134,7 @@ pub fn collapse(
                         // (x +|* k) == x ==> false
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Mul(_), RangeOp::Eq) => {
@@ -137,7 +142,7 @@ pub fn collapse(
                         // (x +|* k) == x ==> false
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(false)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Max, RangeOp::Gte) => {
@@ -145,7 +150,7 @@ pub fn collapse(
                         // max{ x, y } >= <x|y>
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(true)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Min, RangeOp::Lte) => {
@@ -153,10 +158,10 @@ pub fn collapse(
                         // min{ x, y } <= <x|y>
                         MaybeCollapsed::Collapsed(Elem::from(Concrete::from(true)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
-                _ => MaybeCollapsed::Not(Elem::Expr(expr), z),
+                _ => MaybeCollapsed::Not(Elem::Expr(expr), op, z),
             }
         }
         // if we have an expression, it fundamentally must have a dynamic in it
@@ -173,14 +178,14 @@ pub fn collapse(
                     if let Some(res) = sub_ord_rules(x, y, op, &z, ords) {
                         MaybeCollapsed::Collapsed(res)
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Add(false), _) if ORD_OPS.contains(&op) => {
                     if let Some(res) = add_ord_rules(x, y, op, &z, ords) {
                         MaybeCollapsed::Collapsed(res)
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Eq, RangeOp::Eq) => {
@@ -189,9 +194,10 @@ pub fn collapse(
                     if (ords.x_eq_z() || ords.y_eq_z())
                         || z.range_eq(&Elem::from(Concrete::from(true)), arena)
                     {
+                        println!("collapsed == true");
                         MaybeCollapsed::Collapsed(Elem::Expr(expr))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Add(l_op), RangeOp::Add(r_op)) => {
@@ -208,7 +214,7 @@ pub fn collapse(
                     } else if let Some(new) = op_fn(y, &z) {
                         MaybeCollapsed::Collapsed(Elem::Expr(RangeExpr::new(x.clone(), op, new)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Add(l_op), RangeOp::Sub(r_op)) => {
@@ -229,7 +235,7 @@ pub fn collapse(
                                         Elem::Expr(RangeExpr::new(x.clone(), expr.op, new));
                                     MaybeCollapsed::Collapsed(new_expr)
                                 } else {
-                                    MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                    MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                 }
                             }
                             Some(std::cmp::Ordering::Less) => {
@@ -248,7 +254,7 @@ pub fn collapse(
                                         new,
                                     )))
                                 } else {
-                                    MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                    MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                 }
                             }
                             None => {
@@ -271,7 +277,7 @@ pub fn collapse(
                                                 new,
                                             )))
                                         } else {
-                                            MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                            MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                         }
                                     }
                                     Some(std::cmp::Ordering::Less) => {
@@ -290,15 +296,15 @@ pub fn collapse(
                                                 new,
                                             )))
                                         } else {
-                                            MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                            MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                         }
                                     }
-                                    None => MaybeCollapsed::Not(Elem::Expr(expr), z),
+                                    None => MaybeCollapsed::Not(Elem::Expr(expr), op, z),
                                 }
                             }
                         }
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Sub(l_op), RangeOp::Add(r_op)) => {
@@ -321,7 +327,7 @@ pub fn collapse(
                                         new,
                                     )))
                                 } else {
-                                    MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                    MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                 }
                             }
                             Some(std::cmp::Ordering::Less) => {
@@ -340,7 +346,7 @@ pub fn collapse(
                                         new,
                                     )))
                                 } else {
-                                    MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                    MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                 }
                             }
                             None => {
@@ -359,12 +365,12 @@ pub fn collapse(
                                         y.clone(),
                                     )))
                                 } else {
-                                    MaybeCollapsed::Not(Elem::Expr(expr), z)
+                                    MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                                 }
                             }
                         }
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Mul(l_op), RangeOp::Mul(r_op)) => {
@@ -390,10 +396,10 @@ pub fn collapse(
                                 new,
                             )))
                         } else {
-                            MaybeCollapsed::Not(Elem::Expr(expr), z)
+                            MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                         }
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Add(wrapping), op) if EQ_OPS.contains(&op) => {
@@ -410,7 +416,7 @@ pub fn collapse(
                     } else if let Some(new) = const_op(&z, x) {
                         MaybeCollapsed::Collapsed(Elem::Expr(RangeExpr::new(x.clone(), op, new)))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Sub(wrapping), op) if EQ_OPS.contains(&op) => {
@@ -433,7 +439,7 @@ pub fn collapse(
                         let new_expr = RangeExpr::new(y.clone(), op, new);
                         MaybeCollapsed::Collapsed(Elem::Expr(new_expr))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Mul(wrapping), op) if EQ_OPS.contains(&op) => {
@@ -467,7 +473,7 @@ pub fn collapse(
                             new,
                         )))
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (RangeOp::Div(wrapping), op) if EQ_OPS.contains(&op) => {
@@ -507,15 +513,16 @@ pub fn collapse(
                                 new,
                             )))
                         } else {
-                            MaybeCollapsed::Not(Elem::Expr(expr), z)
+                            MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                         }
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (_, RangeOp::Eq) => {
                     // (x _ y) == z ==> (x _ y if z == true)
                     if z.range_eq(&Elem::from(Concrete::from(true)), arena) {
+                        println!("true collapse");
                         MaybeCollapsed::Collapsed(Elem::Expr(expr))
                     } else if z.range_eq(&Elem::from(Concrete::from(false)), arena) {
                         // (!x && !y)
@@ -527,10 +534,10 @@ pub fn collapse(
                             (Some(new_x), Some(new_y), Some(new_op)) => MaybeCollapsed::Collapsed(
                                 Elem::Expr(RangeExpr::new(new_x, new_op, new_y)),
                             ),
-                            _ => MaybeCollapsed::Not(Elem::Expr(expr), z),
+                            _ => MaybeCollapsed::Not(Elem::Expr(expr), op, z),
                         }
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
                 (_, RangeOp::Neq) => {
@@ -548,30 +555,30 @@ pub fn collapse(
                             (Some(new_x), Some(new_y), Some(new_op)) => MaybeCollapsed::Collapsed(
                                 Elem::Expr(RangeExpr::new(new_x, new_op, new_y)),
                             ),
-                            _ => MaybeCollapsed::Not(Elem::Expr(expr), z),
+                            _ => MaybeCollapsed::Not(Elem::Expr(expr), op, z),
                         }
                     } else {
-                        MaybeCollapsed::Not(Elem::Expr(expr), z)
+                        MaybeCollapsed::Not(Elem::Expr(expr), op, z)
                     }
                 }
-                _ => MaybeCollapsed::Not(Elem::Expr(expr), z),
+                _ => MaybeCollapsed::Not(Elem::Expr(expr), op, z),
             }
         }
         (l @ Elem::Concrete(_), r @ Elem::Expr(_)) => {
             if op.commutative() {
                 match collapse(r, op, l, arena) {
                     MaybeCollapsed::Collapsed(inner) => MaybeCollapsed::Collapsed(inner.clone()),
-                    MaybeCollapsed::Not(r, l) => MaybeCollapsed::Not(l, r),
-                    MaybeCollapsed::Concretes(r, l) => MaybeCollapsed::Concretes(l, r),
+                    MaybeCollapsed::Not(r, op, l) => MaybeCollapsed::Not(l, op, r),
+                    MaybeCollapsed::Concretes(r, op, l) => MaybeCollapsed::Concretes(l, op, r),
                 }
             } else if let Some(inv) = op.non_commutative_logical_inverse() {
                 match collapse(r, inv, l, arena) {
                     MaybeCollapsed::Collapsed(inner) => MaybeCollapsed::Collapsed(inner.clone()),
-                    MaybeCollapsed::Not(r, l) => MaybeCollapsed::Not(l, r),
-                    MaybeCollapsed::Concretes(r, l) => MaybeCollapsed::Concretes(l, r),
+                    MaybeCollapsed::Not(r, op, l) => MaybeCollapsed::Not(l, op, r),
+                    MaybeCollapsed::Concretes(r, op, l) => MaybeCollapsed::Concretes(l, op, r),
                 }
             } else {
-                MaybeCollapsed::Not(l, r)
+                MaybeCollapsed::Not(l, op, r)
             }
         }
         (le @ Elem::Reference(_), c @ Elem::Concrete(_)) => {
@@ -582,49 +589,37 @@ pub fn collapse(
                     if matches!(c.range_ord(&zero, arena), Some(std::cmp::Ordering::Equal)) {
                         MaybeCollapsed::Collapsed(le.clone())
                     } else {
-                        MaybeCollapsed::Not(le, c)
+                        MaybeCollapsed::Not(le, op, c)
                     }
                 }
                 RangeOp::Mul(_) | RangeOp::Div(_) => {
                     if matches!(c.range_ord(&one, arena), Some(std::cmp::Ordering::Equal)) {
                         MaybeCollapsed::Collapsed(le.clone())
                     } else {
-                        MaybeCollapsed::Not(le, c)
+                        MaybeCollapsed::Not(le, op, c)
                     }
                 }
-                _ => MaybeCollapsed::Not(le, c),
+                _ => MaybeCollapsed::Not(le, op, c),
             }
         }
         (Elem::Null, real) => match op {
             RangeOp::Max | RangeOp::Min => MaybeCollapsed::Collapsed(real.clone()),
-            RangeOp::Not => match real {
-                Elem::Concrete(RangeConcrete {
-                    val: Concrete::Bool(c),
-                    loc,
-                }) => MaybeCollapsed::Collapsed(Elem::Concrete(RangeConcrete::new(
-                    Concrete::from(!c),
-                    loc,
-                ))),
-                _ => MaybeCollapsed::Not(Elem::Null, real),
-            },
-            _ => MaybeCollapsed::Not(Elem::Null, real),
+            _ => MaybeCollapsed::Not(Elem::Null, op, real),
         },
         (real, Elem::Null) => match op {
             RangeOp::Max | RangeOp::Min => MaybeCollapsed::Collapsed(real.clone()),
-            RangeOp::Not => match real {
-                Elem::Concrete(RangeConcrete {
-                    val: Concrete::Bool(c),
-                    loc,
-                }) => MaybeCollapsed::Collapsed(Elem::Concrete(RangeConcrete::new(
-                    Concrete::from(!c),
-                    loc,
-                ))),
-                _ => MaybeCollapsed::Not(real, Elem::Null),
-            },
-            _ => MaybeCollapsed::Not(real, Elem::Null),
+            _ => MaybeCollapsed::Not(real, op, Elem::Null),
         },
-        (l, r) => return MaybeCollapsed::Not(l, r),
+        (l, r) => return MaybeCollapsed::Not(l, op, r),
     };
+
+    match res {
+        MaybeCollapsed::Not(ref l, op, ref r) => tracing::trace!("not result: {l} {op} {r}"),
+        MaybeCollapsed::Concretes(ref l, op, ref r) => {
+            tracing::trace!("concrete result: {l} {op} {r}")
+        }
+        MaybeCollapsed::Collapsed(ref l) => tracing::trace!("collapsed result: {l}"),
+    }
 
     match res {
         MaybeCollapsed::Collapsed(Elem::Expr(e)) => collapse(*e.lhs, e.op, *e.rhs, arena),

@@ -45,6 +45,10 @@ impl TyNode {
             .next()
             .map(ContractNode::from)
     }
+
+    pub fn underlying_ty(&self, analyzer: &impl GraphBackend) -> Result<NodeIdx, GraphError> {
+        Ok(self.underlying(analyzer)?.ty)
+    }
 }
 
 impl From<TyNode> for NodeIdx {

@@ -243,9 +243,7 @@ impl AnalyzerLike for Analyzer {
 
     fn add_expr_err(&mut self, err: ExprErr) {
         if self.debug_panic() {
-            println!("here1");
             if let Some(path) = self.minimize_debug().clone() {
-                println!("here2");
                 let reconstruction_edge: ContextNode = self
                     .graph
                     .node_indices()
@@ -253,7 +251,6 @@ impl AnalyzerLike for Analyzer {
                         Node::Context(context) if context.killed.is_some() => {
                             match context.killed.unwrap() {
                                 (_, KilledKind::ParseError) => {
-                                    println!("here3");
                                     // println!("found context: {}", context.path);
                                     let edges = graph::nodes::ContextNode::from(node)
                                         .all_edges(self)
@@ -273,10 +270,8 @@ impl AnalyzerLike for Analyzer {
                         _ => None,
                     })
                     .unwrap();
-                println!("here5");
 
                 let min_str = self.minimize_err(reconstruction_edge);
-                println!("here6: {min_str}");
                 // println!("reconstructed source:\n{} placed in {}", min_str, path);
 
                 let mut file = std::fs::OpenOptions::new()

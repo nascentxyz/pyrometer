@@ -237,7 +237,7 @@ pub trait Literal: AnalyzerBackend + Sized {
 
         let concrete_node = if h.len() <= 32 {
             let mut target = H256::default();
-            let mut max = 1;
+            let mut max = 0;
             h.iter().enumerate().for_each(|(i, hex_byte)| {
                 if *hex_byte != 0x00u8 {
                     max = i as u8 + 1;
@@ -869,7 +869,7 @@ mod tests {
             hex: "".to_string(),
             loc: Loc::File(0, 0, 0),
         };
-        let expected = Concrete::Bytes(1, H256::default());
+        let expected = Concrete::Bytes(0, H256::default());
         test_hex_literals(&[hex_literal], expected)
     }
 

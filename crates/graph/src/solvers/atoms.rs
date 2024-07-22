@@ -308,10 +308,11 @@ impl Atomize for Elem<Concrete> {
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             _e @ Elem::Expr(expr) => {
-                // println!("collapsing: {e}");
                 match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
-                    MaybeCollapsed::Concretes(_l, _r) => {
-                        let exec_res = expr.exec_op(true, analyzer, arena).unwrap();
+                    MaybeCollapsed::Concretes(l, op, r) => {
+                        let exec_res = RangeExpr::new(l, op, r)
+                            .exec_op(true, analyzer, arena)
+                            .unwrap();
                         return exec_res.atoms_or_part(Some(self), analyzer, arena);
                     }
                     MaybeCollapsed::Collapsed(elem) => {

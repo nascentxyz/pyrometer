@@ -3,7 +3,7 @@ use crate::LibraryAccess;
 use graph::{
     nodes::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ExprRet, Function, FunctionNode,
-        FunctionParam, FunctionParamNode, FunctionReturn,
+        FunctionParam, FunctionParamNode, FunctionReturn, TyNode,
     },
     AnalyzerBackend, ContextEdge, Edge, VarType,
 };
@@ -38,6 +38,76 @@ pub trait BuiltinAccess:
         }
     }
 
+    fn specialize_ty_fn(
+        &mut self,
+        node: TyNode,
+        name: &str,
+    ) -> Result<Option<FunctionNode>, GraphError> {
+        match name {
+            "unwrap" => {
+                let func = self.builtin_fns().get("unwrap").unwrap().clone();
+                let inputs = vec![
+                    FunctionParam {
+                        loc: Loc::Builtin,
+                        ty: node.0.into(),
+                        order: 0,
+                        storage: None,
+                        name: None,
+                    },
+                    FunctionParam {
+                        loc: Loc::Builtin,
+                        ty: node.0.into(),
+                        order: 0,
+                        storage: None,
+                        name: None,
+                    },
+                ];
+                let outputs = vec![FunctionReturn {
+                    loc: Loc::Builtin,
+                    ty: node.underlying_ty(self)?,
+                    storage: None,
+                    name: None,
+                }];
+                Ok(Some(self.construct_specialized_fn(
+                    func.clone(),
+                    inputs,
+                    outputs,
+                )?))
+            }
+            "wrap" => {
+                let func = self.builtin_fns().get("wrap").unwrap().clone();
+                let inputs = vec![
+                    FunctionParam {
+                        loc: Loc::Builtin,
+                        ty: node.0.into(),
+                        order: 0,
+                        storage: None,
+                        name: None,
+                    },
+                    FunctionParam {
+                        loc: Loc::Builtin,
+                        ty: node.underlying_ty(self)?,
+                        order: 0,
+                        storage: None,
+                        name: None,
+                    },
+                ];
+                let outputs = vec![FunctionReturn {
+                    loc: Loc::Builtin,
+                    ty: node.0.into(),
+                    storage: None,
+                    name: None,
+                }];
+                Ok(Some(self.construct_specialized_fn(
+                    func.clone(),
+                    inputs,
+                    outputs,
+                )?))
+            }
+            _ => Ok(None),
+        }
+    }
+
     fn builtin_builtin_fn(
         &mut self,
         node: BuiltInNode,
@@ -45,6 +115,7 @@ pub trait BuiltinAccess:
         num_inputs: usize,
         is_storage: bool,
     ) -> Result<Option<(FunctionNode, bool)>, GraphError> {
+        println!("name: {name}");
         match node.underlying(self)?.clone() {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 match name {
@@ -52,8 +123,10 @@ pub trait BuiltinAccess:
                         // TODO: check if the address is known to be a certain type and the function signature is known
                         // and call into the function
                         let builtin_name = name.split('(').collect::<Vec<_>>()[0];
+                        println!("here");
                         let func_node =
                             FunctionNode::from(self.builtin_fn_or_maybe_add(builtin_name).unwrap());
+                        println!("func name: {}", func_node.name(self).unwrap());
                         Ok(Some((func_node, true)))
                     }
                     _ => Ok(None),
@@ -91,7 +164,7 @@ pub trait BuiltinAccess:
                                 storage: None,
                                 name: None,
                             }];
-                            self.construct_specialized_builtin(func.clone(), inputs, outputs)?
+                            self.construct_specialized_fn(func.clone(), inputs, outputs)?
                         };
 
                     Ok(Some((specialized, false)))
@@ -129,7 +202,7 @@ pub trait BuiltinAccess:
                                 storage: None,
                                 name: None,
                             }];
-                            self.construct_specialized_builtin(func.clone(), inputs, outputs)?
+                            self.construct_specialized_fn(func.clone(), inputs, outputs)?
                         };
 
                     Ok(Some((specialized, false)))
@@ -168,14 +241,14 @@ pub trait BuiltinAccess:
                                     vec![
                                         FunctionParam {
                                             loc: Loc::Builtin,
-                                            ty: inner.ty_idx(),
+                                            ty: self_ty.ty_idx(),
                                             order: 0,
                                             storage: None,
                                             name: None,
                                         },
                                         FunctionParam {
                                             loc: Loc::Builtin,
-                                            ty: self_ty.ty_idx(),
+                                            ty: inner.ty_idx(),
                                             order: 0,
                                             storage: None,
                                             name: None,
@@ -192,7 +265,7 @@ pub trait BuiltinAccess:
                                 } else {
                                     vec![]
                                 };
-                                self.construct_specialized_builtin(func.clone(), inputs, outputs)?
+                                self.construct_specialized_fn(func.clone(), inputs, outputs)?
                             };
 
                         Ok(Some((specialized, true)))
@@ -222,7 +295,7 @@ pub trait BuiltinAccess:
                                     storage: None,
                                     name: None,
                                 }];
-                                self.construct_specialized_builtin(func.clone(), inputs, outputs)?
+                                self.construct_specialized_fn(func.clone(), inputs, outputs)?
                             };
                         Ok(Some((specialized, true)))
                     } else {
@@ -236,17 +309,15 @@ pub trait BuiltinAccess:
         }
     }
 
-    fn construct_specialized_builtin(
+    fn construct_specialized_fn(
         &mut self,
         func: Function,
         inputs: Vec<FunctionParam>,
         outputs: Vec<FunctionReturn>,
     ) -> Result<FunctionNode, GraphError> {
         let func_node = FunctionNode::from(self.add_node(func));
-        let mut params_strs = vec![];
-        inputs.into_iter().for_each(|input| {
+        inputs.into_iter().rev().for_each(|input| {
             let input_node = self.add_node(input);
-            params_strs.push(FunctionParamNode::from(input_node).ty_str(self).unwrap());
             self.add_edge(input_node, func_node, Edge::FunctionParam);
         });
         outputs.into_iter().for_each(|output| {
@@ -254,9 +325,15 @@ pub trait BuiltinAccess:
             self.add_edge(output_node, func_node, Edge::FunctionReturn);
         });
 
+        let params = func_node.params(self);
+        let params_strs = params
+            .iter()
+            .map(|param| param.ty_str(self).unwrap())
+            .collect::<Vec<String>>();
         let underlying_mut = func_node.underlying_mut(self)?;
         let name = underlying_mut.name.as_mut().unwrap();
         let full_name = format!("{}({})", name, params_strs.join(", "));
+        println!("full name: {full_name}");
         name.name.clone_from(&full_name);
 
         self.add_edge(func_node, self.entry(), Edge::Func);
@@ -275,6 +352,7 @@ pub trait BuiltinAccess:
         is_storage: bool,
         loc: Loc,
     ) -> Result<(ExprRet, bool), ExprErr> {
+        println!("name: {name}");
         match node.underlying(self).into_expr_err(loc)?.clone() {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 match name {
@@ -283,6 +361,10 @@ pub trait BuiltinAccess:
                         // and call into the function
                         let builtin_name = name.split('(').collect::<Vec<_>>()[0];
                         let func_node = self.builtin_fn_or_maybe_add(builtin_name).unwrap();
+                        println!(
+                            "added address lib func: {}",
+                            FunctionNode::from(func_node).name(self).unwrap()
+                        );
                         Ok((ExprRet::Single(func_node), true))
                     }
                     "codehash" => {

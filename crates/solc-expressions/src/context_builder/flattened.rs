@@ -1553,7 +1553,6 @@ pub trait Flatten:
         let false_killed = false_subctx.is_killed(self).into_expr_err(loc)?
             || false_subctx.unreachable(self, arena).into_expr_err(loc)?;
 
-        println!("true killed: {true_killed}, false_killed: {false_killed}");
         match (true_killed, false_killed) {
             (true, true) => {
                 // both have been killed, delete the child and dont process the bodies

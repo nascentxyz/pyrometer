@@ -137,7 +137,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         if let Some(_idx) = self.arena_idx(arena) {
             self.set_arenaized_flattened(maximize, ret.clone()?, arena);
         }
-        ret
+
+        let ret = ret?;
+
+        tracing::trace!("result: {ret}");
+        Ok(ret)
     }
 
     fn spread(
@@ -284,9 +288,6 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
             RangeOp::Or => exec_or(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::Not => exec_not(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
             RangeOp::BitAnd => {

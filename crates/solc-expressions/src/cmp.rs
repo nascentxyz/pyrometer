@@ -30,18 +30,20 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Ok(())
             }
             ExprRet::Single(lhs) | ExprRet::SingleLiteral(lhs) => {
-                let lhs_cvar = ContextVarNode::from(lhs);
+                let lhs_cvar =
+                    ContextVarNode::from(lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 tracing::trace!("not: {}", lhs_cvar.display_name(self).into_expr_err(loc)?);
 
-                let mut elem = Elem::Expr(RangeExpr::new(
+                let elem = Elem::Expr(RangeExpr::new(
                     Elem::from(lhs_cvar),
-                    RangeOp::Not,
-                    Elem::Null,
+                    RangeOp::Eq,
+                    Elem::from(false),
                 ));
-                let _ = elem.arenaize(self, arena);
-                let mut range = SolcRange::new(elem.clone(), elem, vec![]);
 
-                range.cache_eval(self, arena).into_expr_err(loc)?;
+                let bool_idx = self.builtin_or_add(Builtin::Bool);
+                let ty = VarType::try_from_idx(self, bool_idx).unwrap();
+
+                let false_node = self.add_concrete_var(ctx, Concrete::from(false), loc)?;
                 let out_var = ContextVar {
                     loc: Some(loc),
                     name: format!(
@@ -52,17 +54,23 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     display_name: format!("!{}", lhs_cvar.display_name(self).into_expr_err(loc)?,),
                     storage: None,
                     is_tmp: true,
-                    tmp_of: Some(TmpConstruction::new(lhs_cvar, RangeOp::Not, None)),
+                    tmp_of: Some(TmpConstruction::new(
+                        lhs_cvar,
+                        RangeOp::Eq,
+                        Some(false_node),
+                    )),
                     dep_on: Some(lhs_cvar.dependent_on(self, true).into_expr_err(loc)?),
                     is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
                     is_return: false,
-                    ty: VarType::BuiltIn(
-                        BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
-                        Some(range),
-                    ),
+                    ty,
                 };
+                let cvar = ContextVarNode::from(self.add_node(out_var));
+                cvar.set_range_min(self, arena, elem.clone())
+                    .into_expr_err(loc)?;
+                cvar.set_range_max(self, arena, elem.clone())
+                    .into_expr_err(loc)?;
 
-                ctx.push_expr(ExprRet::Single(self.add_node(out_var)), self)
+                ctx.push_expr(ExprRet::Single(cvar.0.into()), self)
                     .into_expr_err(loc)?;
                 Ok(())
             }

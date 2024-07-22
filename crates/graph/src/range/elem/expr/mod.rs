@@ -434,19 +434,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
         let r = self.rhs.simplify_maximize(analyzer, arena)?;
         let collapsed = collapse(l, self.op, r, arena);
         let res = match collapsed {
-            MaybeCollapsed::Concretes(l, r) => {
-                RangeExpr::new(l, self.op, r).exec_op(true, analyzer, arena)
+            MaybeCollapsed::Concretes(l, op, r) => {
+                RangeExpr::new(l, op, r).exec_op(true, analyzer, arena)
             }
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-            MaybeCollapsed::Not(l, r) => {
-                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(true, analyzer, arena)?;
+            MaybeCollapsed::Not(l, op, r) => {
+                let res = RangeExpr::new(l, op, r).simplify_exec_op(true, analyzer, arena)?;
                 match res {
                     Elem::Expr(expr) => match collapse(*expr.lhs, expr.op, *expr.rhs, arena) {
-                        MaybeCollapsed::Concretes(l, r) => {
-                            RangeExpr::new(l, expr.op, r).exec_op(true, analyzer, arena)
+                        MaybeCollapsed::Concretes(l, op, r) => {
+                            RangeExpr::new(l, op, r).exec_op(true, analyzer, arena)
                         }
                         MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-                        MaybeCollapsed::Not(l, r) => Ok(Elem::Expr(RangeExpr::new(l, expr.op, r))),
+                        MaybeCollapsed::Not(l, op, r) => Ok(Elem::Expr(RangeExpr::new(l, op, r))),
                     },
                     other => Ok(other),
                 }
@@ -477,19 +477,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
         let collapsed = collapse(l, self.op, r, arena);
         let res = match collapsed {
-            MaybeCollapsed::Concretes(l, r) => {
-                RangeExpr::new(l, self.op, r).exec_op(false, analyzer, arena)
+            MaybeCollapsed::Concretes(l, op, r) => {
+                RangeExpr::new(l, op, r).exec_op(false, analyzer, arena)
             }
             MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-            MaybeCollapsed::Not(l, r) => {
-                let res = RangeExpr::new(l, self.op, r).simplify_exec_op(false, analyzer, arena)?;
+            MaybeCollapsed::Not(l, op, r) => {
+                let res = RangeExpr::new(l, op, r).simplify_exec_op(false, analyzer, arena)?;
                 match res {
                     Elem::Expr(expr) => match collapse(*expr.lhs, expr.op, *expr.rhs, arena) {
-                        MaybeCollapsed::Concretes(l, r) => {
-                            return RangeExpr::new(l, self.op, r).exec_op(false, analyzer, arena)
+                        MaybeCollapsed::Concretes(l, op, r) => {
+                            return RangeExpr::new(l, op, r).exec_op(false, analyzer, arena)
                         }
                         MaybeCollapsed::Collapsed(collapsed) => return Ok(collapsed),
-                        MaybeCollapsed::Not(l, r) => Ok(Elem::Expr(RangeExpr::new(l, expr.op, r))),
+                        MaybeCollapsed::Not(l, op, r) => Ok(Elem::Expr(RangeExpr::new(l, op, r))),
                     },
                     other => Ok(other),
                 }
@@ -534,20 +534,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             let r = simp_minimize(&mut this.rhs, analyzer, arena)?;
             let collapsed = collapse(l, this.op, r, arena);
             let res = match collapsed {
-                MaybeCollapsed::Concretes(l, r) => {
-                    RangeExpr::new(l, this.op, r).exec_op(false, analyzer, arena)
+                MaybeCollapsed::Concretes(l, op, r) => {
+                    RangeExpr::new(l, op, r).exec_op(false, analyzer, arena)
                 }
                 MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-                MaybeCollapsed::Not(l, r) => {
-                    let res =
-                        RangeExpr::new(l, this.op, r).simplify_exec_op(false, analyzer, arena)?;
+                MaybeCollapsed::Not(l, op, r) => {
+                    let res = RangeExpr::new(l, op, r).simplify_exec_op(false, analyzer, arena)?;
 
                     let idx = arena.idx_or_upsert(res.clone(), analyzer);
                     match res {
                         Elem::Expr(expr) => match collapse(*expr.lhs, expr.op, *expr.rhs, arena) {
-                            MaybeCollapsed::Concretes(l, r) => {
-                                let exec_res = RangeExpr::new(l, expr.op, r)
-                                    .exec_op(false, analyzer, arena)?;
+                            MaybeCollapsed::Concretes(l, op, r) => {
+                                let exec_res =
+                                    RangeExpr::new(l, op, r).exec_op(false, analyzer, arena)?;
                                 Elem::Arena(idx).set_arenaized_flattened(false, &exec_res, arena);
                                 Ok(exec_res)
                             }
@@ -555,8 +554,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                                 Elem::Arena(idx).set_arenaized_flattened(false, &collapsed, arena);
                                 Ok(collapsed)
                             }
-                            MaybeCollapsed::Not(l, r) => {
-                                Ok(Elem::Expr(RangeExpr::new(l, expr.op, r)))
+                            MaybeCollapsed::Not(l, op, r) => {
+                                Ok(Elem::Expr(RangeExpr::new(l, op, r)))
                             }
                         },
                         other => Ok(other),
@@ -594,20 +593,19 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             let r = simp_maximize(&mut this.rhs, analyzer, arena)?;
             let collapsed = collapse(l, this.op, r, arena);
             let res = match collapsed {
-                MaybeCollapsed::Concretes(l, r) => {
-                    RangeExpr::new(l, this.op, r).exec_op(true, analyzer, arena)
+                MaybeCollapsed::Concretes(l, op, r) => {
+                    RangeExpr::new(l, op, r).exec_op(true, analyzer, arena)
                 }
                 MaybeCollapsed::Collapsed(collapsed) => Ok(collapsed),
-                MaybeCollapsed::Not(l, r) => {
-                    let res =
-                        RangeExpr::new(l, this.op, r).simplify_exec_op(true, analyzer, arena)?;
+                MaybeCollapsed::Not(l, op, r) => {
+                    let res = RangeExpr::new(l, op, r).simplify_exec_op(true, analyzer, arena)?;
 
                     let idx = arena.idx_or_upsert(res.clone(), analyzer);
                     match res {
                         Elem::Expr(expr) => match collapse(*expr.lhs, expr.op, *expr.rhs, arena) {
-                            MaybeCollapsed::Concretes(l, r) => {
+                            MaybeCollapsed::Concretes(l, op, r) => {
                                 let exec_res =
-                                    RangeExpr::new(l, expr.op, r).exec_op(true, analyzer, arena)?;
+                                    RangeExpr::new(l, op, r).exec_op(true, analyzer, arena)?;
                                 Elem::Arena(idx).set_arenaized_flattened(true, &exec_res, arena);
                                 Ok(exec_res)
                             }
@@ -615,8 +613,8 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                                 Elem::Arena(idx).set_arenaized_flattened(true, &collapsed, arena);
                                 Ok(collapsed)
                             }
-                            MaybeCollapsed::Not(l, r) => {
-                                Ok(Elem::Expr(RangeExpr::new(l, expr.op, r)))
+                            MaybeCollapsed::Not(l, op, r) => {
+                                Ok(Elem::Expr(RangeExpr::new(l, op, r)))
                             }
                         },
                         other => Ok(other),

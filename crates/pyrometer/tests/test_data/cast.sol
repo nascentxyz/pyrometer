@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT or APACHE2
 pragma solidity ^0.8.0;
 
-// type ShortString is bytes32;
-// type MyUint is uint256;
-// type MyInt is int256;
+type ShortString is bytes32;
+type MyUint is uint256;
+type MyInt is int256;
 
 contract Cast {
     function u_int(uint256 x) public pure {

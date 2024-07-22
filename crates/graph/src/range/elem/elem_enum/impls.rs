@@ -557,13 +557,13 @@ impl Elem<Concrete> {
         match self {
             Self::Reference(Reference { idx: _, .. }) => Some(Elem::Expr(RangeExpr::new(
                 self.clone(),
-                RangeOp::Not,
-                Elem::Null,
+                RangeOp::Eq,
+                Elem::from(false),
             ))),
             Self::Concrete(_) => Some(Elem::Expr(RangeExpr::new(
                 self.clone(),
-                RangeOp::Not,
-                Elem::Null,
+                RangeOp::Eq,
+                Elem::from(false),
             ))),
             Self::Expr(expr) => Some(Elem::Expr(expr.inverse_if_boolean()?)),
             Self::ConcreteDyn(_d) => None,
