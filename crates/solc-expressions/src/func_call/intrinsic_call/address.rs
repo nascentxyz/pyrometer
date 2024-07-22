@@ -38,10 +38,10 @@ pub trait AddressCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn external_call(&mut self, ctx: ContextNode, _ty: &str, loc: Loc) -> Result<(), ExprErr> {
         // TODO: Check if we have the code for the address
         // if we dont, model it as a unrestricted call that can make other calls
-        ctx.pop_expr_latest(loc, self).into_expr_err(loc)?;
         // TODO: try to be smarter based on the address input
         let booln = self.builtin_or_add(Builtin::Bool);
         let bool_cvar = ContextVar::new_from_builtin(loc, booln.into(), self).into_expr_err(loc)?;

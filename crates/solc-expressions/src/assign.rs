@@ -27,6 +27,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 ctx.kill(self, loc, *kind).into_expr_err(loc)?;
                 Ok(())
             }
+
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 // ie: uint x = 5;
                 let lhs_cvar =
@@ -96,6 +97,55 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             rhs_cvar.display_name(self).unwrap(),
             lhs_cvar.display_name(self).unwrap(),
         );
+
+        println!(
+            "{:?} = {:?}",
+            lhs_cvar.ty(self).unwrap(),
+            rhs_cvar.ty(self).unwrap()
+        );
+
+        if lhs_cvar.is_struct(self).into_expr_err(loc)?
+            && rhs_cvar.is_struct(self).into_expr_err(loc)?
+        {
+            let lhs_fields = lhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
+            let rhs_fields = rhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
+            lhs_fields.iter().try_for_each(|lhs_field| {
+                let lhs_full_name = lhs_field.name(self).into_expr_err(loc)?;
+                let split = lhs_full_name.split('.').collect::<Vec<_>>();
+                let Some(lhs_field_name) = split.last() else {
+                    return Err(ExprErr::ParseError(
+                        lhs_field.loc(self).unwrap(),
+                        format!("Incorrectly named field: {lhs_full_name} - no '.' delimiter"),
+                    ));
+                };
+
+                let mut found = false;
+                for rhs_field in rhs_fields.iter() {
+                    let rhs_full_name = rhs_field.name(self).into_expr_err(loc)?;
+                    let split = rhs_full_name.split('.').collect::<Vec<_>>();
+                    let Some(rhs_field_name) = split.last() else {
+                        return Err(ExprErr::ParseError(
+                            rhs_field.loc(self).unwrap(),
+                            format!("Incorrectly named field: {rhs_full_name} - no '.' delimiter"),
+                        ));
+                    };
+                    if lhs_field_name == rhs_field_name {
+                        found = true;
+                        let _ = self.assign(arena, loc, *lhs_field, *rhs_field, ctx)?;
+                        break;
+                    }
+                }
+                if found {
+                    Ok(())
+                } else {
+                    Err(ExprErr::ParseError(
+                        loc,
+                        format!("Struct types mismatched - could not find field: {lhs_field_name}"),
+                    ))
+                }
+            })?;
+            return Ok(ExprRet::Single(lhs_cvar.0.into()));
+        }
 
         rhs_cvar
             .cast_from(&lhs_cvar, self, arena)

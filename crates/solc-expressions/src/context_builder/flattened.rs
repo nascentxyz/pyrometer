@@ -670,6 +670,12 @@ pub trait Flatten:
                 self.push_expr(parent);
             }
 
+            Assign(_, lhs, rhs) => {
+                self.traverse_expression(lhs, unchecked);
+                self.traverse_expression(rhs, unchecked);
+                self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
+            }
+
             Modulo(_, lhs, rhs)
             | AssignModulo(_, lhs, rhs)
             | ShiftLeft(_, lhs, rhs)
@@ -682,7 +688,6 @@ pub trait Flatten:
             | AssignXor(_, lhs, rhs)
             | BitwiseOr(_, lhs, rhs)
             | AssignOr(_, lhs, rhs)
-            | Assign(_, lhs, rhs)
             | Equal(_, lhs, rhs)
             | NotEqual(_, lhs, rhs)
             | Less(_, lhs, rhs)
@@ -1217,12 +1222,14 @@ pub trait Flatten:
             unreachable!()
         };
 
-        let var = ContextVar::new_from_contract(
+        let mut var = ContextVar::new_from_contract(
             loc,
             ctx.associated_contract(self).into_expr_err(loc)?,
             self,
         )
         .into_expr_err(loc)?;
+        var.name = "this".to_string();
+        var.display_name = "this".to_string();
         let cvar = self.add_node(Node::ContextVar(var));
         ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
         self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
@@ -1962,7 +1969,7 @@ pub trait Flatten:
         };
 
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
-        let [lhs, rhs] = into_sized(res);
+        let [rhs, lhs] = into_sized(res);
         self.match_assign_sides(arena, ctx, loc, &lhs, &rhs)
     }
 
@@ -2238,26 +2245,23 @@ pub trait Flatten:
             None,
         )?;
 
-        if let Some(ret) = ctx.pop_expr_latest(loc, self).into_expr_err(loc)? {
-            if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
-                .is_memory(self)
-                .into_expr_err(loc)?
-            {
-                // its a memory based variable, push a uint instead
-                let b = Builtin::Uint(256);
-                let var = ContextVar::new_from_builtin(loc, self.builtin_or_add(b).into(), self)
-                    .into_expr_err(loc)?;
-                let node = self.add_node(var);
-                ctx.push_expr(ExprRet::Single(node), self)
-                    .into_expr_err(loc)
-            } else {
-                ctx.push_expr(ret, self).into_expr_err(loc)
-            }
+        let ret = ctx
+            .pop_n_latest_exprs(1, loc, self)
+            .into_expr_err(loc)?
+            .swap_remove(0);
+        if ContextVarNode::from(ret.expect_single().into_expr_err(loc)?)
+            .is_memory(self)
+            .into_expr_err(loc)?
+        {
+            // its a memory based variable, push a uint instead
+            let b = Builtin::Uint(256);
+            let var = ContextVar::new_from_builtin(loc, self.builtin_or_add(b).into(), self)
+                .into_expr_err(loc)?;
+            let node = self.add_node(var);
+            ctx.push_expr(ExprRet::Single(node), self)
+                .into_expr_err(loc)
         } else {
-            Err(ExprErr::Unresolved(
-                loc,
-                format!("Could not find yul variable with name: {name}"),
-            ))
+            ctx.push_expr(ret, self).into_expr_err(loc)
         }
     }
 

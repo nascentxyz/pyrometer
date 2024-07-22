@@ -74,8 +74,9 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
                     // pop the accumulation node off the stack
                     let accum_node = ctx
-                        .pop_expr_latest(loc, self)
+                        .pop_n_latest_exprs(1, loc, self)
                         .into_expr_err(loc)?
+                        .get(0)
                         .unwrap()
                         .expect_single()
                         .unwrap();

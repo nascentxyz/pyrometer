@@ -162,7 +162,7 @@ pub trait ConstructorCaller:
                 ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
                 let field_as_ret = ExprRet::Single(fc_node);
                 self.match_assign_sides(arena, ctx, loc, &field_as_ret, &input)?;
-                let _ = ctx.pop_expr_latest(loc, self).into_expr_err(loc)?;
+                let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
                 Ok(())
             })?;
 

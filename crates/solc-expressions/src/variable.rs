@@ -76,10 +76,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         } else if (self.env_variable(arena, ident, target_ctx)?).is_some() {
             Ok(())
         } else if let Some(idxs) = self.user_types().get(&ident.name).cloned() {
+            tracing::trace!("Getting variable via user_types");
             let idx = if idxs.len() == 1 {
                 idxs[0]
             } else {
                 // disambiguate by scope
+                tracing::trace!("disambiguating by scope");
                 let in_scope = if let Some(contract) = ctx
                     .maybe_associated_contract(self)
                     .into_expr_err(ident.loc)?
@@ -159,6 +161,15 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 );
             }
 
+            if let Some(strukt) = ContextVarNode::from(new_cvarnode)
+                .maybe_struct(self)
+                .into_expr_err(ident.loc)?
+            {
+                strukt
+                    .add_fields_to_cvar(self, ident.loc, ContextVarNode::from(new_cvarnode))
+                    .into_expr_err(ident.loc)?;
+            }
+
             target_ctx
                 .push_expr(ExprRet::Single(new_cvarnode), self)
                 .into_expr_err(ident.loc)?;
@@ -198,16 +209,15 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         location: Option<StorageLocation>,
     ) -> Option<NodeIdx> {
         // disambiguate based on left hand side if it exists
-        if let Some(maybe_lhs) = ctx.pop_expr_latest(loc, self).ok()? {
+        if let Some(maybe_lhs) = ctx.underlying(self).ok()?.expr_ret_stack.get(0) {
+            tracing::trace!("Disambiguate based on lhs: {}", maybe_lhs.debug_str(self));
             if let ExprRet::Single(lhs_idx) = maybe_lhs {
-                if let Some(var_ty) = VarType::try_from_idx(self, lhs_idx) {
+                if let Some(var_ty) = VarType::try_from_idx(self, *lhs_idx) {
                     if idxs.contains(&var_ty.ty_idx()) {
-                        ctx.push_expr(maybe_lhs, self).ok()?;
                         return Some(var_ty.ty_idx());
                     }
                 }
             }
-            ctx.push_expr(maybe_lhs, self).ok()?;
         }
 
         // disambiguate based on storage location

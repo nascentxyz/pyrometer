@@ -89,10 +89,10 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     Ok(Some(target_var)) => {
                         // perform a cast
                         tracing::trace!(
-                            "{}: casting {:?} to {:?}",
+                            "casting {} to {} in {}",
+                            latest.ty(self).unwrap().as_string(self).unwrap(),
+                            target_var.ty(self).unwrap().as_string(self).unwrap(),
                             ctx.path(self),
-                            latest.ty(self).unwrap(),
-                            target_var.ty(self).unwrap(),
                         );
                         let next = self
                             .advance_var_in_ctx_forcible(latest, loc, ctx, true)

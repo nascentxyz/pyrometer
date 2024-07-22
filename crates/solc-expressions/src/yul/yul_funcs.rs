@@ -163,12 +163,10 @@ pub trait YulFuncCaller:
                 let [lhs_paths, rhs_paths] = inputs.into_sized();
 
                 self.cmp_inner(arena, ctx, loc, &lhs_paths, op, &rhs_paths)?;
-                let Some(result) = ctx.pop_expr_latest(loc, self).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
-                        loc,
-                        "Yul Binary operation had no return".to_string(),
-                    ));
-                };
+                let result = ctx
+                    .pop_n_latest_exprs(1, loc, self)
+                    .into_expr_err(loc)?
+                    .swap_remove(0);
 
                 let res = ContextVarNode::from(result.expect_single().into_expr_err(loc)?);
                 let next = self.advance_var_in_ctx(res, loc, ctx)?;

@@ -522,7 +522,6 @@ pub fn collapse(
                 (_, RangeOp::Eq) => {
                     // (x _ y) == z ==> (x _ y if z == true)
                     if z.range_eq(&Elem::from(Concrete::from(true)), arena) {
-                        println!("true collapse");
                         MaybeCollapsed::Collapsed(Elem::Expr(expr))
                     } else if z.range_eq(&Elem::from(Concrete::from(false)), arena) {
                         // (!x && !y)
