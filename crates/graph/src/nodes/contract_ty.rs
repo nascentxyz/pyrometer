@@ -108,7 +108,7 @@ impl ContractNode {
             self.underlying_mut(analyzer)
                 .unwrap()
                 .inherits
-                .push(ContractNode::from(*found));
+                .push(Some(ContractNode::from(*found)));
             analyzer.add_edge(*found, *self, Edge::InheritedContract);
         });
         self.order_inherits(analyzer);
@@ -119,17 +119,25 @@ impl ContractNode {
         let inherits = self.underlying(analyzer).unwrap().inherits.clone();
 
         let mut tmp_inherits = vec![];
-        tmp_inherits.resize(inherits.len(), ContractNode::from(NodeIdx::from(0)));
+        tmp_inherits.resize(inherits.len(), None);
         inherits.into_iter().for_each(|inherited| {
-            let i_name = inherited.name(analyzer).unwrap();
-            let position = raw_inherits.iter().position(|raw| &i_name == raw).unwrap();
-            tmp_inherits[position] = inherited;
+            if let Some(inherited) = inherited {
+                let i_name = inherited.name(analyzer).unwrap();
+                let position = raw_inherits.iter().position(|raw| &i_name == raw).unwrap();
+                tmp_inherits[position] = Some(inherited);
+            }
         });
         self.underlying_mut(analyzer).unwrap().inherits = tmp_inherits;
     }
 
     pub fn direct_inherited_contracts(&self, analyzer: &impl GraphBackend) -> Vec<ContractNode> {
-        self.underlying(analyzer).unwrap().inherits.clone()
+        self.underlying(analyzer)
+            .unwrap()
+            .inherits
+            .iter()
+            .filter_map(|i| i.as_ref())
+            .cloned()
+            .collect()
     }
 
     pub fn all_inherited_contracts(&self, analyzer: &impl GraphBackend) -> Vec<ContractNode> {
@@ -384,7 +392,7 @@ pub struct Contract {
     /// Raw inherited strings, ordered by least base to most base
     pub raw_inherits: Vec<String>,
     /// A list of contracts that this contract inherits (TODO: inheritance linearization)
-    pub inherits: Vec<ContractNode>,
+    pub inherits: Vec<Option<ContractNode>>,
     /// Cached linearized functions
     pub cached_functions: Option<BTreeMap<String, FunctionNode>>,
 }
@@ -416,7 +424,7 @@ impl Contract {
             {
                 let name = ContractNode::from(contract).name(analyzer).unwrap();
                 if &name == inherited_name {
-                    inherits.push(ContractNode::from(contract));
+                    inherits.push(Some(ContractNode::from(contract)));
                     found = true;
                     break;
                 }
@@ -430,7 +438,7 @@ impl Contract {
                     {
                         let name = ContractNode::from(contract).name(analyzer).unwrap();
                         if &name == inherited_name {
-                            inherits.push(ContractNode::from(contract));
+                            inherits.push(Some(ContractNode::from(contract)));
                             found = true;
                             break;
                         }
@@ -462,11 +470,13 @@ impl Contract {
         let inherits = self.inherits.clone();
 
         let mut tmp_inherits = vec![];
-        tmp_inherits.resize(inherits.len(), ContractNode::from(NodeIdx::from(0)));
+        tmp_inherits.resize(raw_inherits.len(), None);
         inherits.into_iter().for_each(|inherited| {
-            let i_name = inherited.name(analyzer).unwrap();
-            let position = raw_inherits.iter().position(|raw| &i_name == raw).unwrap();
-            tmp_inherits[position] = inherited;
+            if let Some(inherited) = inherited {
+                let i_name = inherited.name(analyzer).unwrap();
+                let position = raw_inherits.iter().position(|raw| &i_name == raw).unwrap();
+                tmp_inherits[position] = Some(inherited);
+            }
         });
         self.inherits = tmp_inherits;
     }

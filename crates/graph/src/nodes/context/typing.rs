@@ -89,6 +89,7 @@ impl ContextNode {
                             .underlying(analyzer)?
                             .inherits
                             .iter()
+                            .filter_map(|i| i.as_ref())
                             .any(|inherited| *inherited == fn_ctrt))
                 } else {
                     Ok(false)
