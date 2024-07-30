@@ -11,14 +11,6 @@ contract Todo {
     }
 
     // will live in assign.sol when added
-    function array_literals() public pure {
-        uint[2] memory a = [uint(1), uint(2)];
-        uint[2] memory b = [uint(3), uint(4)];
-        a;
-        b;
-    }
-
-    // will live in assign.sol when added
     function array_slices(
         uint[] calldata a
     ) public pure returns (uint[] memory) {

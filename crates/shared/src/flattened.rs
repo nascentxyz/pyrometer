@@ -55,9 +55,10 @@ pub enum FlatExpr {
     PostIncrement(Loc),
     PostDecrement(Loc),
     New(Loc),
-    ArrayTy(Loc),
+    ArrayTy(Loc, bool),
     ArrayIndexAccess(Loc),
     ArraySlice(Loc),
+    ArrayLiteral(Loc, usize),
     MemberAccess(Loc, &'static str),
     FunctionCall(Loc, usize),
     FunctionCallBlock(Loc),
@@ -125,7 +126,6 @@ pub enum FlatExpr {
     HexLiteral(Loc, &'static str),
     AddressLiteral(Loc, &'static str),
     Variable(Loc, &'static str),
-    ArrayLiteral(Loc),
 
     YulExpr(FlatYulExpr),
 }
@@ -454,7 +454,7 @@ impl TryFrom<&Expression> for FlatExpr {
             PostIncrement(loc, ..) => FlatExpr::PostIncrement(*loc),
             PostDecrement(loc, ..) => FlatExpr::PostDecrement(*loc),
             New(loc, ..) => FlatExpr::New(*loc),
-            ArraySubscript(loc, _, None) => FlatExpr::ArrayTy(*loc),
+            ArraySubscript(loc, _, None) => FlatExpr::ArrayTy(*loc, false),
             ArraySubscript(loc, _, Some(_)) => FlatExpr::ArrayIndexAccess(*loc),
             ArraySlice(loc, ..) => FlatExpr::ArraySlice(*loc),
             MemberAccess(loc, _, name) => {
@@ -568,7 +568,7 @@ impl TryFrom<&Expression> for FlatExpr {
                     )
                 }
             }
-            ArrayLiteral(loc, ..) => FlatExpr::ArrayLiteral(*loc),
+            ArrayLiteral(loc, args) => FlatExpr::ArrayLiteral(*loc, args.len()),
             Variable(var) => {
                 FlatExpr::Variable(var.loc, Box::leak(var.name.clone().into_boxed_str()))
             }

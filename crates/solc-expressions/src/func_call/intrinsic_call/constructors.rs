@@ -1,4 +1,6 @@
+use crate::variable::Variable;
 use crate::{assign::Assign, func_call::helper::CallerHelper};
+use graph::nodes::Builtin;
 
 use graph::{
     elem::*,
@@ -34,7 +36,7 @@ pub trait ConstructorCaller:
         let new_arr = ContextVar {
             loc: Some(loc),
             name: format!("tmp_arr{}", ctx.new_tmp(self).into_expr_err(loc)?),
-            display_name: "arr".to_string(),
+            display_name: "tmp_arr".to_string(),
             storage: None,
             is_tmp: true,
             is_symbolic: false,
@@ -46,7 +48,8 @@ pub trait ConstructorCaller:
 
         let arr = ContextVarNode::from(self.add_node(new_arr));
 
-        let len_var = ContextVar {
+        let u256 = self.builtin_or_add(Builtin::Uint(256));
+        let new_len_var = ContextVar {
             loc: Some(loc),
             name: arr.name(self).into_expr_err(loc)? + ".length",
             display_name: arr.display_name(self).unwrap() + ".length",
@@ -56,41 +59,21 @@ pub trait ConstructorCaller:
             dep_on: None,
             is_symbolic: true,
             is_return: false,
-            ty: ContextVarNode::from(len_cvar)
-                .underlying(self)
-                .into_expr_err(loc)?
-                .ty
-                .clone(),
+            ty: VarType::try_from_idx(self, u256).unwrap(),
         };
 
-        let len_cvar = self.add_node(len_var);
+        let new_len_cvar = ContextVarNode::from(self.add_node(new_len_var));
         self.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
         ctx.add_var(arr, self).into_expr_err(loc)?;
-        self.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.add_var(len_cvar.into(), self).into_expr_err(loc)?;
+        self.add_edge(new_len_cvar, ctx, Edge::Context(ContextEdge::Variable));
+        ctx.add_var(new_len_cvar, self).into_expr_err(loc)?;
         self.add_edge(
-            len_cvar,
+            new_len_cvar,
             arr,
             Edge::Context(ContextEdge::AttrAccess("length")),
         );
 
-        // update the length
-        if let Some(r) = arr.ref_range(self).into_expr_err(loc)? {
-            let min = r.evaled_range_min(self, arena).into_expr_err(loc)?;
-            let max = r.evaled_range_max(self, arena).into_expr_err(loc)?;
-
-            if let Some(mut rd) = min.maybe_range_dyn() {
-                rd.len = Box::new(Elem::from(len_cvar));
-                arr.set_range_min(self, arena, Elem::ConcreteDyn(rd))
-                    .into_expr_err(loc)?;
-            }
-
-            if let Some(mut rd) = max.maybe_range_dyn() {
-                rd.len = Box::new(Elem::from(len_cvar));
-                arr.set_range_min(self, arena, Elem::ConcreteDyn(rd))
-                    .into_expr_err(loc)?;
-            }
-        }
+        self.assign(arena, loc, new_len_cvar, len_cvar.into(), ctx)?;
 
         ctx.push_expr(ExprRet::Single(arr.into()), self)
             .into_expr_err(loc)

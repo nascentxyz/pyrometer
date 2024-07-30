@@ -7,19 +7,31 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
+use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Array for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles arrays
 pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// Gets the array type
-    fn match_ty(&mut self, ctx: ContextNode, loc: Loc, ret: ExprRet) -> Result<(), ExprErr> {
+    fn match_ty(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        ret: ExprRet,
+        sized: Option<U256>,
+    ) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner_ty) | ExprRet::SingleLiteral(inner_ty) => {
                 // ie: uint[]
                 // ie: uint[][]
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-                    let dyn_b = Builtin::Array(var_type);
+                    let dyn_b = if let Some(sized) = sized {
+                        Builtin::SizedArray(sized, var_type)
+                    } else {
+                        Builtin::Array(var_type)
+                    };
+
                     if let Some(idx) = self.builtins().get(&dyn_b) {
                         ctx.push_expr(ExprRet::Single(*idx), self)
                             .into_expr_err(loc)?;
@@ -38,7 +50,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // ie: unsure of syntax needed to get here. (not possible?)
                 inner
                     .into_iter()
-                    .map(|i| self.match_ty(ctx, loc, i))
+                    .map(|i| self.match_ty(ctx, loc, i, sized))
                     .collect::<Result<Vec<_>, ExprErr>>()?;
                 Ok(())
             }
@@ -274,30 +286,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     next_arr.latest_version_or_inherited_in_ctx(ctx, self),
                 )?;
             }
-        }
-        Ok(())
-    }
-
-    fn update_array_if_length_var(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        maybe_length: ContextVarNode,
-    ) -> Result<(), ExprErr> {
-        if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(
-                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
-                loc,
-                ctx,
-            )?;
-            let new_len = Elem::from(backing_arr).set_length(maybe_length.into());
-            next_arr
-                .set_range_min(self, arena, new_len.clone())
-                .into_expr_err(loc)?;
-            next_arr
-                .set_range_max(self, arena, new_len)
-                .into_expr_err(loc)?;
         }
         Ok(())
     }

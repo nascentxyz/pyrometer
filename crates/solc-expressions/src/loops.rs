@@ -35,7 +35,8 @@ pub trait Looper:
         vars.iter().try_for_each(|(name, var)| {
             // widen to max range
             if let Some(inheritor_var) = parent_ctx.var_by_name(self, name) {
-                let inheritor_var = inheritor_var.latest_version(self);
+                let inheritor_var =
+                    inheritor_var.latest_version_or_inherited_in_ctx(loop_ctx, self);
                 if let Some(r) = var
                     .underlying(self)
                     .unwrap()
