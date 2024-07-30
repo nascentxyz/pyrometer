@@ -1,11 +1,10 @@
-use crate::variable::Variable;
 use crate::{assign::Assign, func_call::helper::CallerHelper};
 use graph::nodes::Builtin;
 
 use graph::{
     elem::*,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, StructNode},
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 

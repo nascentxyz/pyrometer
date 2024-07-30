@@ -1115,7 +1115,7 @@ pub trait Flatten:
             ArrayTy(..) => self.interp_array_ty(arena, ctx, next),
             ArrayIndexAccess(_) => self.interp_array_idx(arena, ctx, next),
             ArraySlice(_) => todo!(),
-            ArrayLiteral(..) => self.interp_array_lit(arena, ctx, next),
+            ArrayLiteral(..) => self.interp_array_lit(ctx, next),
 
             // Binary operators
             Power(loc, ..)
@@ -2053,12 +2053,7 @@ pub trait Flatten:
         self.index_into_array_inner(arena, ctx, arr_ty.flatten(), arr_idx.flatten(), loc)
     }
 
-    fn interp_array_lit(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        arr_lit: FlatExpr,
-    ) -> Result<(), ExprErr> {
+    fn interp_array_lit(&mut self, ctx: ContextNode, arr_lit: FlatExpr) -> Result<(), ExprErr> {
         let FlatExpr::ArrayLiteral(loc, n) = arr_lit else {
             unreachable!()
         };
