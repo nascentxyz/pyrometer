@@ -58,7 +58,8 @@ pub trait YulFuncCaller:
                     .into_expr_err(loc)?;
                 Ok(())
             }
-            "stop" | "revert" | "selfdestruct" | "invalid" => {
+            "selfdestruct" => ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc),
+            "stop" | "revert" | "invalid" => {
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)
             }
             "return" => {

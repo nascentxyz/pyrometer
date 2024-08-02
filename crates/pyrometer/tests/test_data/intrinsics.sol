@@ -23,6 +23,16 @@ contract Intrinsics {
         require(d[3] == hex"bb");
     }
 
+    function selfdestructed() public {
+        selfdestruct(payable(address(this)));
+    }
+
+    function yulSelfdestructed() public {
+        assembly {
+            selfdestruct(1)
+        }
+    }
+
     function yulIntrinsics() public view {
         assembly {
             let a := timestamp()
