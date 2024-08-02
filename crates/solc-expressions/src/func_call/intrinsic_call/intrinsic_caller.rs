@@ -185,7 +185,7 @@ pub trait IntrinsicFuncCaller:
             // precompiles
             "sha256" | "ripemd160" | "ecrecover" => self.precompile_call(ctx, name, inputs, loc),
             // solidity
-            "keccak256" | "addmod" | "mulmod" | "require" | "assert" => {
+            "keccak256" | "addmod" | "mulmod" | "require" | "assert" | "selfdestruct" => {
                 self.solidity_call(arena, ctx, name, inputs, loc)
             }
             // typing
