@@ -1,3 +1,4 @@
+use graph::elem::RangeDyn;
 use std::collections::BTreeMap;
 
 use crate::{
@@ -12,14 +13,16 @@ use crate::{
     ExprTyParser,
 };
 use graph::{
-    elem::{Elem, RangeExpr, RangeOp},
+    elem::{Elem, RangeConcrete, RangeExpr, RangeOp},
     nodes::{
-        Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar, ContextVarNode,
-        ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, TmpConstruction, YulFunction,
+        BuiltInNode, Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar,
+        ContextVarNode, ContractNode, ExprRet, FunctionNode, KilledKind, StructNode,
+        TmpConstruction, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, TypeNode, VarType,
 };
 
+use ethers_core::types::U256;
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
     GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
@@ -773,12 +776,25 @@ pub trait Flatten:
             // array
             ArraySubscript(loc, ty_expr, None) => {
                 self.traverse_expression(ty_expr, unchecked);
-                self.push_expr(FlatExpr::ArrayTy(*loc));
+                self.push_expr(FlatExpr::ArrayTy(*loc, false));
             }
             ArraySubscript(loc, ty_expr, Some(index_expr)) => {
-                self.traverse_expression(index_expr, unchecked);
+                let start_len = self.expr_stack().len();
                 self.traverse_expression(ty_expr, unchecked);
-                self.push_expr(FlatExpr::ArrayIndexAccess(*loc));
+                let ty_exprs: Vec<_> = self.expr_stack_mut().drain(start_len..).collect();
+                match ty_exprs.last().unwrap() {
+                    FlatExpr::Type(..) | FlatExpr::ArrayTy(..) => {
+                        // sized array defintion
+                        self.traverse_expression(index_expr, unchecked);
+                        self.expr_stack_mut().extend(ty_exprs);
+                        self.push_expr(FlatExpr::ArrayTy(*loc, true));
+                    }
+                    _ => {
+                        self.traverse_expression(index_expr, unchecked);
+                        self.expr_stack_mut().extend(ty_exprs);
+                        self.push_expr(FlatExpr::ArrayIndexAccess(*loc));
+                    }
+                }
             }
             ConditionalOperator(loc, if_expr, true_expr, false_expr) => {
                 // convert into statement if
@@ -793,19 +809,30 @@ pub trait Flatten:
                 );
                 self.traverse_statement(&as_stmt, unchecked);
             }
-            ArraySlice(loc, _lhs_expr, _maybe_middle_expr, _maybe_rhs) => {
-                self.push_expr(FlatExpr::Todo(
-                    *loc,
-                    "array slice expressions are currently unsupported",
-                ));
-            }
-            ArrayLiteral(loc, _) => {
-                self.push_expr(FlatExpr::Todo(
-                    *loc,
-                    "array literals expressions are currently unsupported",
-                ));
-            }
+            ArraySlice(loc, lhs_expr, maybe_range_start, maybe_range_exclusive_end) => {
+                let mut has_start = false;
+                let mut has_end = false;
+                if let Some(range_exclusive_end) = maybe_range_exclusive_end {
+                    self.traverse_expression(range_exclusive_end, unchecked);
+                    has_end = true;
+                }
 
+                if let Some(range_start) = maybe_range_start {
+                    self.traverse_expression(range_start, unchecked);
+                    has_start = true;
+                }
+
+                self.traverse_expression(lhs_expr, unchecked);
+
+                self.push_expr(FlatExpr::ArraySlice(*loc, has_start, has_end));
+            }
+            ArrayLiteral(loc, val_exprs) => {
+                val_exprs
+                    .iter()
+                    .rev()
+                    .for_each(|val| self.traverse_expression(val, unchecked));
+                self.push_expr(FlatExpr::ArrayLiteral(*loc, val_exprs.len()));
+            }
             // Function calls
             FunctionCallBlock(loc, func_expr, call_block) => {
                 self.traverse_statement(call_block, unchecked);
@@ -1096,10 +1123,10 @@ pub trait Flatten:
             | PreDecrement(loc, ..) => self.interp_xxcrement(arena, ctx, next, loc),
 
             // Array
-            ArrayTy(..) => self.interp_array_ty(ctx, next),
+            ArrayTy(..) => self.interp_array_ty(arena, ctx, next),
             ArrayIndexAccess(_) => self.interp_array_idx(arena, ctx, next),
-            ArraySlice(_) => todo!(),
-            ArrayLiteral(_) => todo!(),
+            ArraySlice(..) => self.interp_array_slice(arena, ctx, next),
+            ArrayLiteral(..) => self.interp_array_lit(ctx, next),
 
             // Binary operators
             Power(loc, ..)
@@ -1994,13 +2021,61 @@ pub trait Flatten:
         self.match_assign_sides(arena, ctx, loc, &lhs, &rhs)
     }
 
-    fn interp_array_ty(&mut self, ctx: ContextNode, arr_ty: FlatExpr) -> Result<(), ExprErr> {
-        let FlatExpr::ArrayTy(loc) = arr_ty else {
+    fn interp_array_ty(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        arr_ty: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::ArrayTy(loc, sized) = arr_ty else {
             unreachable!()
         };
-        let res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
-        let [arr_ty] = into_sized(res);
-        self.match_ty(ctx, loc, arr_ty)
+        if sized {
+            let mut res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
+            let arr_ty = res.swap_remove(0);
+            let size_var =
+                ContextVarNode::from(res.swap_remove(0).expect_single().into_expr_err(loc)?);
+            assert!(size_var.is_const(self, arena).into_expr_err(loc)?);
+            let size_elem = size_var
+                .evaled_range_max(self, arena)
+                .into_expr_err(loc)?
+                .unwrap();
+            let size = size_elem.maybe_concrete().unwrap().val.uint_val().unwrap();
+            self.match_ty(ctx, loc, arr_ty, Some(size))
+        } else {
+            let res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+            let [arr_ty] = into_sized(res);
+            self.match_ty(ctx, loc, arr_ty, None)
+        }
+    }
+
+    fn interp_array_slice(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        arr_slice: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::ArraySlice(loc, has_start, has_end) = arr_slice else {
+            unreachable!()
+        };
+
+        let to_pop = 1 + has_start as usize + has_end as usize;
+        let mut res = ctx
+            .pop_n_latest_exprs(to_pop, loc, self)
+            .into_expr_err(loc)?;
+
+        let arr = res.swap_remove(0);
+        let end = if has_end {
+            Some(res.swap_remove(0))
+        } else {
+            None
+        };
+        let start = if has_start {
+            Some(res.swap_remove(0))
+        } else {
+            None
+        };
+        self.slice_inner(arena, ctx, arr, start, end, loc)
     }
 
     fn interp_array_idx(
@@ -2016,6 +2091,49 @@ pub trait Flatten:
         let [arr_ty, arr_idx] = into_sized(res);
 
         self.index_into_array_inner(arena, ctx, arr_ty.flatten(), arr_idx.flatten(), loc)
+    }
+
+    fn interp_array_lit(&mut self, ctx: ContextNode, arr_lit: FlatExpr) -> Result<(), ExprErr> {
+        let FlatExpr::ArrayLiteral(loc, n) = arr_lit else {
+            unreachable!()
+        };
+
+        let res = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+        let ty = VarType::try_from_idx(self, res[0].expect_single().into_expr_err(loc)?).unwrap();
+
+        let ty = Builtin::SizedArray(U256::from(n), ty);
+        let bn_node = BuiltInNode::from(self.builtin_or_add(ty));
+
+        let var = ContextVar::new_from_builtin(loc, bn_node, self).into_expr_err(loc)?;
+        let arr = ContextVarNode::from(self.add_node(var));
+
+        let kv_pairs = res
+            .iter()
+            .enumerate()
+            .map(|(i, input)| {
+                let i_var = ContextVarNode::from(input.expect_single().unwrap());
+                let idx = self.add_concrete_var(ctx, Concrete::Uint(256, U256::from(i)), loc)?;
+                self.add_edge(idx, ctx, Edge::Context(ContextEdge::Variable));
+                Ok((Elem::from(idx), Elem::from(i_var)))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+
+        let len = RangeConcrete {
+            val: Concrete::from(U256::from(n)),
+            loc,
+        };
+        let range_elem: Elem<Concrete> =
+            Elem::ConcreteDyn(RangeDyn::new(Elem::from(len), kv_pairs, loc));
+
+        arr.ty_mut(self)
+            .into_expr_err(loc)?
+            .set_range(range_elem.into())
+            .into_expr_err(loc)?;
+        ctx.push_expr(
+            ExprRet::SingleLiteral(arr.latest_version(self).into()),
+            self,
+        )
+        .into_expr_err(loc)
     }
 
     fn interp_named_func_call(

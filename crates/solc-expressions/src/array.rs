@@ -2,24 +2,102 @@ use crate::{require::Require, variable::Variable, ListAccess};
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, TmpConstruction},
+    nodes::{
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        TmpConstruction,
+    },
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
+use ethers_core::types::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> Array for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Handles arrays
 pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn slice_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        arr: ExprRet,
+        start: Option<ExprRet>,
+        end: Option<ExprRet>,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        let arr = ContextVarNode::from(arr.expect_single().into_expr_err(loc)?);
+        let start = if let Some(start) = start {
+            Elem::from(ContextVarNode::from(
+                start.expect_single().into_expr_err(loc)?,
+            ))
+        } else {
+            Elem::from(Concrete::from(0))
+        };
+
+        let end = if let Some(end) = end {
+            Elem::from(ContextVarNode::from(
+                end.expect_single().into_expr_err(loc)?,
+            ))
+        } else {
+            Elem::from(arr).get_length()
+        };
+
+        let as_bn = self.builtin_or_add(Builtin::Uint(256)).index();
+        let as_var =
+            ContextVar::new_from_builtin(loc, BuiltInNode(as_bn), self).into_expr_err(loc)?;
+        let slice_var = ContextVarNode::from(self.add_node(as_var));
+        slice_var
+            .set_range_min(self, arena, start)
+            .into_expr_err(loc)?;
+        slice_var
+            .set_range_max(self, arena, end)
+            .into_expr_err(loc)?;
+
+        let new_range = Elem::from(arr).slice(Elem::from(slice_var));
+
+        let mut new_arr = ContextVar {
+            loc: Some(loc),
+            name: format!("tmp_arr{}", ctx.new_tmp(self).into_expr_err(loc)?),
+            display_name: "tmp_arr".to_string(),
+            storage: None,
+            is_tmp: true,
+            is_symbolic: false,
+            is_return: false,
+            tmp_of: None,
+            dep_on: None,
+            ty: VarType::try_from_idx(self, arr.0.into()).unwrap(),
+        };
+        new_arr.set_range(From::from(new_range));
+
+        let new_arr = ContextVarNode::from(self.add_node(new_arr));
+        ctx.add_var(new_arr, self).into_expr_err(loc)?;
+        self.add_edge(new_arr, ctx, Edge::Context(ContextEdge::Variable));
+
+        let _ = self.create_length(arena, ctx, new_arr, true, loc)?;
+
+        ctx.push_expr(ExprRet::Single(new_arr.0.into()), self)
+            .into_expr_err(loc)
+    }
+
     /// Gets the array type
-    fn match_ty(&mut self, ctx: ContextNode, loc: Loc, ret: ExprRet) -> Result<(), ExprErr> {
+    fn match_ty(
+        &mut self,
+        ctx: ContextNode,
+        loc: Loc,
+        ret: ExprRet,
+        sized: Option<U256>,
+    ) -> Result<(), ExprErr> {
         match ret {
             ExprRet::Single(inner_ty) | ExprRet::SingleLiteral(inner_ty) => {
                 // ie: uint[]
                 // ie: uint[][]
                 if let Some(var_type) = VarType::try_from_idx(self, inner_ty) {
-                    let dyn_b = Builtin::Array(var_type);
+                    let dyn_b = if let Some(sized) = sized {
+                        Builtin::SizedArray(sized, var_type)
+                    } else {
+                        Builtin::Array(var_type)
+                    };
+
                     if let Some(idx) = self.builtins().get(&dyn_b) {
                         ctx.push_expr(ExprRet::Single(*idx), self)
                             .into_expr_err(loc)?;
@@ -38,7 +116,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 // ie: unsure of syntax needed to get here. (not possible?)
                 inner
                     .into_iter()
-                    .map(|i| self.match_ty(ctx, loc, i))
+                    .map(|i| self.match_ty(ctx, loc, i, sized))
                     .collect::<Result<Vec<_>, ExprErr>>()?;
                 Ok(())
             }
@@ -274,30 +352,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     next_arr.latest_version_or_inherited_in_ctx(ctx, self),
                 )?;
             }
-        }
-        Ok(())
-    }
-
-    fn update_array_if_length_var(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        maybe_length: ContextVarNode,
-    ) -> Result<(), ExprErr> {
-        if let Some(backing_arr) = maybe_length.len_var_to_array(self).into_expr_err(loc)? {
-            let next_arr = self.advance_var_in_ctx(
-                backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
-                loc,
-                ctx,
-            )?;
-            let new_len = Elem::from(backing_arr).set_length(maybe_length.into());
-            next_arr
-                .set_range_min(self, arena, new_len.clone())
-                .into_expr_err(loc)?;
-            next_arr
-                .set_range_max(self, arena, new_len)
-                .into_expr_err(loc)?;
         }
         Ok(())
     }

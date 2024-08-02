@@ -9,6 +9,8 @@ use shared::RangeArena;
 use ethers_core::types::U256;
 use solang_parser::pt::Loc;
 
+use std::collections::BTreeMap;
+
 impl RangeMemLen<Concrete> for RangeDyn<Concrete> {
     fn range_get_length(&self) -> Option<Elem<Concrete>> {
         Some(*self.len.clone())
@@ -66,6 +68,94 @@ impl RangeMemGet<Concrete, Elem<Concrete>> for Elem<Concrete> {
             _e => None,
         }
     }
+}
+
+pub fn exec_slice(
+    arr_min: &Elem<Concrete>,
+    arr_max: &Elem<Concrete>,
+    start: &Elem<Concrete>,
+    end: &Elem<Concrete>,
+    analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
+) -> Elem<Concrete> {
+    let mut kvs = Default::default();
+    // slices are exclusive
+    let excl_end = end.clone() - Elem::from(Concrete::from(U256::from(1)));
+    fn match_key(
+        arr: &Elem<Concrete>,
+        start_idx: &Elem<Concrete>,
+        excl_end: &Elem<Concrete>,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        kvs: &mut BTreeMap<Elem<Concrete>, Elem<Concrete>>,
+    ) {
+        match arr {
+            Elem::Arena(_) => {
+                let (d, idx) = arr.dearenaize(arena);
+                match_key(&d, start_idx, excl_end, analyzer, arena, kvs);
+                arr.rearenaize(d, idx, arena);
+            }
+            Elem::Reference(_) => {
+                if let Ok(min) = arr.minimize(analyzer, arena) {
+                    match_key(&min, start_idx, excl_end, analyzer, arena, kvs);
+                }
+
+                if let Ok(max) = arr.maximize(analyzer, arena) {
+                    match_key(&max, start_idx, excl_end, analyzer, arena, kvs);
+                }
+            }
+            Elem::ConcreteDyn(d) => {
+                d.val.iter().for_each(|(k, (v, _op))| {
+                    if let Ok(Some(true)) =
+                        k.overlaps_dual(start_idx, excl_end, true, analyzer, arena)
+                    {
+                        let new_k = k.clone() - start_idx.clone();
+                        kvs.insert(new_k, v.clone());
+                    }
+                });
+            }
+            Elem::Concrete(c) => {
+                if let Some(size) = c.val.maybe_array_size() {
+                    let min = U256::zero();
+                    // Iterates through concrete indices to check if RHS contains the index
+                    let mut curr = min;
+                    while curr < size {
+                        let as_rc = RangeConcrete::new(Concrete::from(curr), Loc::Implicit);
+                        let as_elem = Elem::from(as_rc.clone());
+                        if let Ok(Some(true)) =
+                            as_elem.overlaps_dual(start_idx, excl_end, true, analyzer, arena)
+                        {
+                            if let Some(val) = c.range_get_index(&as_rc) {
+                                let new_k = Elem::from(Concrete::from(curr)) - start_idx.clone();
+                                kvs.insert(new_k, val.clone());
+                            }
+                        }
+                        curr += U256::from(1);
+                    }
+                }
+            }
+            Elem::Expr(_) => {
+                if let Ok(min) = arr.minimize(analyzer, arena) {
+                    match_key(&min, start_idx, excl_end, analyzer, arena, kvs);
+                }
+
+                if let Ok(max) = arr.maximize(analyzer, arena) {
+                    match_key(&max, start_idx, excl_end, analyzer, arena, kvs);
+                }
+            }
+            _ => {}
+        };
+    }
+
+    match_key(arr_min, start, &excl_end, analyzer, arena, &mut kvs);
+    match_key(arr_max, start, &excl_end, analyzer, arena, &mut kvs);
+
+    let len = Elem::Expr(RangeExpr::new(
+        end.clone(),
+        RangeOp::Sub(false),
+        start.clone(),
+    ));
+    Elem::ConcreteDyn(RangeDyn::new(len, kvs, Loc::Implicit))
 }
 
 /// Executes the `get_length` operation given the minimum and maximum of an element. It returns either the _minimum_ bound or _maximum_ bound

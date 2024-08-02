@@ -795,18 +795,13 @@ impl VarType {
             }
             (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
                 match (s.underlying(analyzer)?, o.underlying(analyzer)?) {
-                    (Builtin::Array(l), Builtin::Array(r)) => Ok(l
-                        .unresolved_as_resolved(analyzer)?
-                        == r.unresolved_as_resolved(analyzer)?),
-                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => Ok(l
-                        .unresolved_as_resolved(analyzer)?
-                        == r.unresolved_as_resolved(analyzer)?
-                        && l_size == r_size),
-                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => Ok(lk
-                        .unresolved_as_resolved(analyzer)?
-                        == rk.unresolved_as_resolved(analyzer)?
-                        && lv.unresolved_as_resolved(analyzer)?
-                            == rv.unresolved_as_resolved(analyzer)?),
+                    (Builtin::Array(l), Builtin::Array(r)) => l.ty_eq(r, analyzer),
+                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => {
+                        Ok(l.ty_eq(r, analyzer)? && l_size == r_size)
+                    }
+                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => {
+                        Ok(lk.ty_eq(rk, analyzer)? && lv.ty_eq(rv, analyzer)?)
+                    }
                     (l, r) => Ok(l == r),
                 }
             }

@@ -10,25 +10,6 @@ contract Todo {
         d;
     }
 
-    // will live in assign.sol when added
-    function array_literals() public pure {
-        uint[2] memory a = [uint(1), uint(2)];
-        uint[2] memory b = [uint(3), uint(4)];
-        a;
-        b;
-    }
-
-    // will live in assign.sol when added
-    function array_slices(
-        uint[] calldata a
-    ) public pure returns (uint[] memory) {
-        require(a.length >= 4, "Array must have at least 4 elements");
-        uint[] memory b = a[2:4];
-        // if a is [1,2,3,4]
-        // then b is [3, 4]
-        return b;
-    }
-
     // this will live in loops.sol when fixed
     function perform_break_literal() public pure {
         for (uint256 i = 0; i < 10; i++) {

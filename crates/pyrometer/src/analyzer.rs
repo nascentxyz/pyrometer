@@ -1049,8 +1049,8 @@ impl Analyzer {
                 node.into()
             };
 
-        inherits.iter().for_each(|contract_node| {
-            self.add_edge(*contract_node, con_node, Edge::InheritedContract);
+        inherits.into_iter().flatten().for_each(|contract_node| {
+            self.add_edge(contract_node, con_node, Edge::InheritedContract);
         });
 
         let mut usings = vec![];

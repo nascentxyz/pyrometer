@@ -1,7 +1,7 @@
 use crate::variable::Variable;
 
 use graph::{
-    elem::{Elem, RangeElem},
+    elem::{Elem, RangeDyn, RangeElem},
     nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
     AnalyzerBackend, ContextEdge, Edge,
 };
@@ -101,44 +101,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         if lhs_cvar.is_struct(self).into_expr_err(loc)?
             && rhs_cvar.is_struct(self).into_expr_err(loc)?
         {
-            let lhs_fields = lhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
-            let rhs_fields = rhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
-            lhs_fields.iter().try_for_each(|lhs_field| {
-                let lhs_full_name = lhs_field.name(self).into_expr_err(loc)?;
-                let split = lhs_full_name.split('.').collect::<Vec<_>>();
-                let Some(lhs_field_name) = split.last() else {
-                    return Err(ExprErr::ParseError(
-                        lhs_field.loc(self).unwrap(),
-                        format!("Incorrectly named field: {lhs_full_name} - no '.' delimiter"),
-                    ));
-                };
-
-                let mut found = false;
-                for rhs_field in rhs_fields.iter() {
-                    let rhs_full_name = rhs_field.name(self).into_expr_err(loc)?;
-                    let split = rhs_full_name.split('.').collect::<Vec<_>>();
-                    let Some(rhs_field_name) = split.last() else {
-                        return Err(ExprErr::ParseError(
-                            rhs_field.loc(self).unwrap(),
-                            format!("Incorrectly named field: {rhs_full_name} - no '.' delimiter"),
-                        ));
-                    };
-                    if lhs_field_name == rhs_field_name {
-                        found = true;
-                        let _ = self.assign(arena, loc, *lhs_field, *rhs_field, ctx)?;
-                        break;
-                    }
-                }
-                if found {
-                    Ok(())
-                } else {
-                    Err(ExprErr::ParseError(
-                        loc,
-                        format!("Struct types mismatched - could not find field: {lhs_field_name}"),
-                    ))
-                }
-            })?;
-            return Ok(ExprRet::Single(lhs_cvar.0.into()));
+            return self.assign_struct_to_struct(arena, loc, lhs_cvar, rhs_cvar, ctx);
         }
 
         rhs_cvar
@@ -185,6 +148,8 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             self.add_edge(new_lhs, rhs_cvar, Edge::Context(ContextEdge::StorageWrite));
         }
 
+        self.add_edge(new_lhs, rhs_cvar, Edge::Context(ContextEdge::Assign));
+
         if rhs_cvar.underlying(self).into_expr_err(loc)?.is_return {
             if let Some(rhs_ctx) = rhs_cvar.maybe_ctx(self) {
                 self.add_edge(
@@ -208,42 +173,11 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             }
         }
 
-        if !lhs_cvar.ty_eq(&rhs_cvar, self).into_expr_err(loc)? {
-            // lhs type doesnt match rhs type (not possible? have never reached this)
-            let cast_to_min = match lhs_cvar.range_min(self).into_expr_err(loc)? {
-                Some(v) => v,
-                None => {
-                    return Err(ExprErr::BadRange(
-                        loc,
-                        format!(
-                            "No range during cast? {:?}, {:?}",
-                            lhs_cvar.underlying(self).unwrap(),
-                            rhs_cvar.underlying(self).unwrap(),
-                        ),
-                    ))
-                }
-            };
+        // we use try_set_* because some types like functions dont have a range.
+        let _ = new_lhs.try_set_range_min(self, arena, new_lower_bound);
+        let _ = new_lhs.try_set_range_max(self, arena, new_upper_bound);
+        self.maybe_assign_to_parent_array(arena, loc, lhs_cvar, rhs_cvar, ctx)?;
 
-            let cast_to_max = match lhs_cvar.range_max(self).into_expr_err(loc)? {
-                Some(v) => v,
-                None => {
-                    return Err(ExprErr::BadRange(
-                        loc,
-                        format!(
-                            "No range during cast? {:?}, {:?}",
-                            lhs_cvar.underlying(self).unwrap(),
-                            rhs_cvar.underlying(self).unwrap(),
-                        ),
-                    ))
-                }
-            };
-
-            let _ = new_lhs.try_set_range_min(self, arena, new_lower_bound.cast(cast_to_min));
-            let _ = new_lhs.try_set_range_max(self, arena, new_upper_bound.cast(cast_to_max));
-        } else {
-            let _ = new_lhs.try_set_range_min(self, arena, new_lower_bound);
-            let _ = new_lhs.try_set_range_max(self, arena, new_upper_bound);
-        }
         if let Some(rhs_range) = rhs_cvar.ref_range(self).into_expr_err(loc)? {
             let res = new_lhs
                 .try_set_range_exclusions(self, rhs_range.exclusions.clone())
@@ -259,5 +193,96 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             true,
         )?;
         Ok(ExprRet::Single(new_lhs.into()))
+    }
+
+    fn maybe_assign_to_parent_array(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        loc: Loc,
+        maybe_arr_attr: ContextVarNode,
+        rhs: ContextVarNode,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        if let Some(index) = maybe_arr_attr.index_access_to_index(self) {
+            let array = maybe_arr_attr.index_access_to_array(self).unwrap();
+            let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
+            let new_arr = self.advance_var_in_ctx_forcible(latest_arr, loc, ctx, true)?;
+            let new_elem = Elem::from(latest_arr).set_indices(RangeDyn::new_for_indices(
+                vec![(Elem::from(index), Elem::from(rhs))],
+                loc,
+            ));
+            new_arr
+                .set_range_min(self, arena, new_elem.clone())
+                .into_expr_err(loc)?;
+            new_arr
+                .set_range_max(self, arena, new_elem)
+                .into_expr_err(loc)?;
+
+            self.maybe_assign_to_parent_array(arena, loc, latest_arr, new_arr, ctx)?;
+        }
+
+        if let Some(array) = maybe_arr_attr.len_var_to_array(self) {
+            let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
+            let new_arr = self.advance_var_in_ctx_forcible(latest_arr, loc, ctx, true)?;
+            let new_elem = Elem::from(latest_arr).set_length(Elem::from(rhs));
+            new_arr
+                .set_range_min(self, arena, new_elem.clone())
+                .into_expr_err(loc)?;
+            new_arr
+                .set_range_max(self, arena, new_elem)
+                .into_expr_err(loc)?;
+
+            self.maybe_assign_to_parent_array(arena, loc, latest_arr, new_arr, ctx)?;
+        }
+
+        Ok(())
+    }
+
+    fn assign_struct_to_struct(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        loc: Loc,
+        lhs_cvar: ContextVarNode,
+        rhs_cvar: ContextVarNode,
+        ctx: ContextNode,
+    ) -> Result<ExprRet, ExprErr> {
+        let lhs_fields = lhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
+        let rhs_fields = rhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
+        lhs_fields.iter().try_for_each(|lhs_field| {
+            let lhs_full_name = lhs_field.name(self).into_expr_err(loc)?;
+            let split = lhs_full_name.split('.').collect::<Vec<_>>();
+            let Some(lhs_field_name) = split.last() else {
+                return Err(ExprErr::ParseError(
+                    lhs_field.loc(self).unwrap(),
+                    format!("Incorrectly named field: {lhs_full_name} - no '.' delimiter"),
+                ));
+            };
+
+            let mut found = false;
+            for rhs_field in rhs_fields.iter() {
+                let rhs_full_name = rhs_field.name(self).into_expr_err(loc)?;
+                let split = rhs_full_name.split('.').collect::<Vec<_>>();
+                let Some(rhs_field_name) = split.last() else {
+                    return Err(ExprErr::ParseError(
+                        rhs_field.loc(self).unwrap(),
+                        format!("Incorrectly named field: {rhs_full_name} - no '.' delimiter"),
+                    ));
+                };
+                if lhs_field_name == rhs_field_name {
+                    found = true;
+                    let _ = self.assign(arena, loc, *lhs_field, *rhs_field, ctx)?;
+                    break;
+                }
+            }
+            if found {
+                Ok(())
+            } else {
+                Err(ExprErr::ParseError(
+                    loc,
+                    format!("Struct types mismatched - could not find field: {lhs_field_name}"),
+                ))
+            }
+        })?;
+        Ok(ExprRet::Single(lhs_cvar.0.into()))
     }
 }

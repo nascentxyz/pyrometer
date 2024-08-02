@@ -243,6 +243,12 @@ impl<T: Ord> Elem<T> {
         Elem::Expr(expr)
     }
 
+    /// Creates a new range element that is a slice of the lhs with the rhs
+    pub fn slice(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Slice, other);
+        Elem::Expr(expr)
+    }
+
     /// Gets the length of a memory object
     pub fn get_length(self) -> Self {
         let expr = RangeExpr::new(self, RangeOp::GetLength, Elem::Null);
@@ -464,7 +470,7 @@ impl Elem<Concrete> {
         rhs_min: &Self,
         rhs_max: &Self,
         eval: bool,
-        analyzer: &mut impl GraphBackend,
+        analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match self {
@@ -510,6 +516,19 @@ impl Elem<Concrete> {
                     ))),
                     Some(std::cmp::Ordering::Equal) => Ok(Some(true)),
                     _ => Ok(Some(false)),
+                }
+            }
+            Self::Expr(_) => {
+                let min = self.minimize(analyzer, arena)?;
+                let max = self.maximize(analyzer, arena)?;
+                if let Some(true) = min.overlaps_dual(rhs_min, rhs_max, eval, analyzer, arena)? {
+                    Ok(Some(true))
+                } else if let Some(true) =
+                    max.overlaps_dual(rhs_min, rhs_max, eval, analyzer, arena)?
+                {
+                    Ok(Some(true))
+                } else {
+                    Ok(None)
                 }
             }
             _ => Ok(None),

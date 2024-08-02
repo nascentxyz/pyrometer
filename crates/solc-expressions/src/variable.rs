@@ -602,6 +602,27 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                                 .collect::<Vec<_>>(),
                         );
                     }
+
+                    if let Some(len_var) = cvar_node.array_to_len_var(self) {
+                        let new_len_var = len_var
+                            .latest_version(self)
+                            .underlying(self)
+                            .into_expr_err(loc)?
+                            .clone();
+                        let new_len_node = self.add_node(new_len_var);
+                        ctx.add_var(new_len_node.into(), self).into_expr_err(loc)?;
+                        self.add_edge(new_len_node, ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(
+                            new_len_node,
+                            new_cvarnode,
+                            Edge::Context(ContextEdge::AttrAccess("length")),
+                        );
+                        self.add_edge(
+                            new_len_node,
+                            len_var,
+                            Edge::Context(ContextEdge::InheritedVariable),
+                        );
+                    }
                 } else {
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
@@ -696,6 +717,26 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                                 .into_iter()
                                 .map(|i| (i, new_field_in_inheritor))
                                 .collect::<Vec<_>>(),
+                        );
+                    }
+                    if let Some(len_var) = cvar_node.array_to_len_var(self) {
+                        let new_len_var = len_var
+                            .latest_version(self)
+                            .underlying(self)
+                            .into_expr_err(loc)?
+                            .clone();
+                        let new_len_node = self.add_node(new_len_var);
+                        ctx.add_var(new_len_node.into(), self).into_expr_err(loc)?;
+                        self.add_edge(new_len_node, ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(
+                            new_len_node,
+                            new_cvarnode,
+                            Edge::Context(ContextEdge::AttrAccess("length")),
+                        );
+                        self.add_edge(
+                            new_len_node,
+                            len_var,
+                            Edge::Context(ContextEdge::InheritedVariable),
                         );
                     }
                 } else {
