@@ -322,8 +322,8 @@ pub trait Flatten:
                 self.push_expr(FlatExpr::Revert(*loc, named_args.len()));
             }
             Emit(loc, emit_expr) => {
-                self.traverse_expression(emit_expr, unchecked);
-                self.push_expr(FlatExpr::Emit(*loc));
+                // self.traverse_expression(emit_expr, unchecked);
+                // self.push_expr(FlatExpr::Emit(*loc));
             }
             Try(loc, _try_expr, _maybe_returns, _clauses) => {
                 self.push_expr(FlatExpr::Todo(
@@ -2075,6 +2075,7 @@ pub trait Flatten:
         } else {
             None
         };
+
         self.slice_inner(arena, ctx, arr, start, end, loc)
     }
 

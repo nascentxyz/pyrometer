@@ -26,6 +26,11 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         loc: Loc,
     ) -> Result<(), ExprErr> {
         let arr = ContextVarNode::from(arr.expect_single().into_expr_err(loc)?);
+
+        if let (Some(s), Some(e)) = (&start, &end) {
+            self.handle_require_inner(arena, ctx, e, s, RangeOp::Gte, loc)?;
+        }
+
         let start = if let Some(start) = start {
             Elem::from(ContextVarNode::from(
                 start.expect_single().into_expr_err(loc)?,
