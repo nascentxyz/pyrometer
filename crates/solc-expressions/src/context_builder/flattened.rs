@@ -842,6 +842,9 @@ pub trait Flatten:
                     });
                     let cmp = self.expr_stack_mut().pop().unwrap();
                     self.traverse_requirement(cmp, *loc);
+                    if input_exprs.len() > 1 {
+                        self.push_expr(FlatExpr::Pop);
+                    }
                 }
                 _ => {
                     // func(inputs)
@@ -1146,6 +1149,12 @@ pub trait Flatten:
             // Semi useless
             Super(..) => unreachable!(),
             Parameter(_, _, _) => Ok(()),
+            Pop => {
+                let _ = ctx
+                    .pop_n_latest_exprs(1, Loc::Implicit, self)
+                    .into_expr_err(Loc::Implicit)?;
+                Ok(())
+            }
             Emit(loc) => {
                 let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
                 Ok(())
