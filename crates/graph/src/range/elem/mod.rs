@@ -98,6 +98,8 @@ pub enum RangeOp {
     SetLength,
     /// Get Length of a memory object
     GetLength,
+    /// Slice a memory object
+    Slice,
 }
 
 impl TryFrom<FlatExpr> for RangeOp {
@@ -170,6 +172,7 @@ impl RangeOp {
             SetIndices => false,
             GetIndex => false,
             Concat => false,
+            Slice => false,
         }
     }
 
@@ -285,6 +288,7 @@ impl fmt::Display for RangeOp {
             GetIndex => write!(f, "get_index"),
             GetLength => write!(f, "get_length"),
             SetLength => write!(f, "set_length"),
+            Slice => write!(f, "slice"),
         }
     }
 }

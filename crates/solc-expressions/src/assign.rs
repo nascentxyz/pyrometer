@@ -204,7 +204,6 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
         if let Some(index) = maybe_arr_attr.index_access_to_index(self) {
-            println!("idx: {index:?}");
             let array = maybe_arr_attr.index_access_to_array(self).unwrap();
             let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
             let new_arr = self.advance_var_in_ctx_forcible(latest_arr, loc, ctx, true)?;

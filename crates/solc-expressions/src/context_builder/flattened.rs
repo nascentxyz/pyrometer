@@ -809,11 +809,22 @@ pub trait Flatten:
                 );
                 self.traverse_statement(&as_stmt, unchecked);
             }
-            ArraySlice(loc, _lhs_expr, _maybe_middle_expr, _maybe_rhs) => {
-                self.push_expr(FlatExpr::Todo(
-                    *loc,
-                    "array slice expressions are currently unsupported",
-                ));
+            ArraySlice(loc, lhs_expr, maybe_range_start, maybe_range_exclusive_end) => {
+                let mut has_start = false;
+                let mut has_end = false;
+                if let Some(range_exclusive_end) = maybe_range_exclusive_end {
+                    self.traverse_expression(range_exclusive_end, unchecked);
+                    has_end = true;
+                }
+
+                if let Some(range_start) = maybe_range_start {
+                    self.traverse_expression(range_start, unchecked);
+                    has_start = true;
+                }
+
+                self.traverse_expression(lhs_expr, unchecked);
+
+                self.push_expr(FlatExpr::ArraySlice(*loc, has_start, has_end));
             }
             ArrayLiteral(loc, val_exprs) => {
                 val_exprs
@@ -1114,7 +1125,7 @@ pub trait Flatten:
             // Array
             ArrayTy(..) => self.interp_array_ty(arena, ctx, next),
             ArrayIndexAccess(_) => self.interp_array_idx(arena, ctx, next),
-            ArraySlice(_) => todo!(),
+            ArraySlice(..) => self.interp_array_slice(arena, ctx, next),
             ArrayLiteral(..) => self.interp_array_lit(ctx, next),
 
             // Binary operators
@@ -2036,6 +2047,35 @@ pub trait Flatten:
             let [arr_ty] = into_sized(res);
             self.match_ty(ctx, loc, arr_ty, None)
         }
+    }
+
+    fn interp_array_slice(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        arr_slice: FlatExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatExpr::ArraySlice(loc, has_start, has_end) = arr_slice else {
+            unreachable!()
+        };
+
+        let to_pop = 1 + has_start as usize + has_end as usize;
+        let mut res = ctx
+            .pop_n_latest_exprs(to_pop, loc, self)
+            .into_expr_err(loc)?;
+
+        let arr = res.swap_remove(0);
+        let end = if has_end {
+            Some(res.swap_remove(0))
+        } else {
+            None
+        };
+        let start = if has_start {
+            Some(res.swap_remove(0))
+        } else {
+            None
+        };
+        self.slice_inner(arena, ctx, arr, start, end, loc)
     }
 
     fn interp_array_idx(

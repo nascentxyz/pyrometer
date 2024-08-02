@@ -57,7 +57,7 @@ pub enum FlatExpr {
     New(Loc),
     ArrayTy(Loc, bool),
     ArrayIndexAccess(Loc),
-    ArraySlice(Loc),
+    ArraySlice(Loc, bool, bool),
     ArrayLiteral(Loc, usize),
     MemberAccess(Loc, &'static str),
     FunctionCall(Loc, usize),
@@ -456,7 +456,7 @@ impl TryFrom<&Expression> for FlatExpr {
             New(loc, ..) => FlatExpr::New(*loc),
             ArraySubscript(loc, _, None) => FlatExpr::ArrayTy(*loc, false),
             ArraySubscript(loc, _, Some(_)) => FlatExpr::ArrayIndexAccess(*loc),
-            ArraySlice(loc, ..) => FlatExpr::ArraySlice(*loc),
+            ArraySlice(loc, _, s, e) => FlatExpr::ArraySlice(*loc, s.is_some(), e.is_some()),
             MemberAccess(loc, _, name) => {
                 FlatExpr::MemberAccess(*loc, string_to_static(name.name.clone()))
             }

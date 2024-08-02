@@ -240,6 +240,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         );
 
         let res = match self.op {
+            RangeOp::Slice => Some(exec_slice(
+                &lhs_min, &lhs_max, &rhs_min, &rhs_max, analyzer, arena,
+            )),
             RangeOp::GetLength => exec_get_length(&lhs_min, &lhs_max, maximize, analyzer, arena),
             RangeOp::GetIndex => exec_get_index(&self.lhs, &self.rhs, maximize, analyzer, arena),
             RangeOp::SetLength => exec_set_length(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize),

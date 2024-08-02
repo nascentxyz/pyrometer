@@ -26,4 +26,15 @@ contract Assign {
         a;
         b;
     }
+
+    function array_slices(
+        uint[] calldata a
+    ) public pure returns (uint[] memory) {
+        require(a.length >= 4, "Array must have at least 4 elements");
+        a[2] = 14;
+        uint[] memory b = a[2:4];
+        uint[] memory c = a[1:];
+        uint[] memory d = a[:2];
+        uint[] memory e = a[2:4][0:1];
+    }
 }
