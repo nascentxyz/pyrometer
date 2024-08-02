@@ -111,7 +111,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         tracing::trace!(
             "simplifying op: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
             self.lhs,
-            self.op.to_string(),
+            self.op,
             self.rhs,
             lhs_min,
             lhs_max,
@@ -137,7 +137,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         if let Some(_idx) = self.arena_idx(arena) {
             self.set_arenaized_flattened(maximize, ret.clone()?, arena);
         }
-        ret
+
+        let ret = ret?;
+
+        tracing::trace!("result: {ret}");
+        Ok(ret)
     }
 
     fn spread(
@@ -227,7 +231,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             "executing {}: {} {} {}, lhs_min: {}, lhs_max: {}, rhs_min: {}, rhs_max: {}",
             if maximize { "maximum" } else { "minimum" },
             self.lhs,
-            self.op.to_string(),
+            self.op,
             self.rhs,
             lhs_min,
             lhs_max,
@@ -236,6 +240,9 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         );
 
         let res = match self.op {
+            RangeOp::Slice => Some(exec_slice(
+                &lhs_min, &lhs_max, &rhs_min, &rhs_max, analyzer, arena,
+            )),
             RangeOp::GetLength => exec_get_length(&lhs_min, &lhs_max, maximize, analyzer, arena),
             RangeOp::GetIndex => exec_get_index(&self.lhs, &self.rhs, maximize, analyzer, arena),
             RangeOp::SetLength => exec_set_length(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize),
@@ -261,8 +268,8 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Mod => exec_mod(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
-            RangeOp::Exp => exec_exp(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
+            RangeOp::Exp(unchecked) => exec_exp(
+                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, unchecked, analyzer, arena,
             ),
             RangeOp::Min => exec_min(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
@@ -284,9 +291,6 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
             RangeOp::Or => exec_or(
-                &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
-            ),
-            RangeOp::Not => exec_not(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
             RangeOp::BitAnd => {

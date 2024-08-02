@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract Modifier {
     uint256 a;
 
@@ -45,11 +48,13 @@ contract Modifier {
 
     function input(uint256 b, uint256 q) public Input(b) Input(q) {
         uint256 k = b;
+        k;
         require(a == 4);
     }
 
     function internalMod(uint256 b) internal Input(b) {
         uint256 k = b;
+        k;
         require(a == 2);
     }
 
@@ -57,7 +62,7 @@ contract Modifier {
         internalMod(b);
     }
 
-    function addOne(uint256 x) internal returns (uint256) {
+    function addOne(uint256 x) internal pure returns (uint256) {
         return x + 1;
     }
 
@@ -65,7 +70,9 @@ contract Modifier {
         return x;
     }
 
-    function inputFuncConst(uint256 x) internal Input(addOne(99)) returns (uint256) {
+    function inputFuncConst(
+        uint256 x
+    ) internal Input(addOne(99)) returns (uint256) {
         require(a == 2);
         return x;
     }

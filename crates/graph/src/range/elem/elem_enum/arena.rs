@@ -39,7 +39,7 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
                             format!(
                                 "{} {} {}",
                                 fmt(&expr.lhs, analyzer),
-                                expr.op.to_string(),
+                                expr.op,
                                 fmt(&expr.rhs, analyzer)
                             )
                         }
@@ -124,11 +124,6 @@ impl RangeArenaLike<Elem<Concrete>> for RangeArena<Elem<Concrete>> {
             self.map.insert(Elem::Null, 0);
         }
 
-        // println!(
-        //     "{}\nhad cycle:\n{:?}",
-        //     self.debug_str(analyzer),
-        //     petgraph::dot::Dot::new(&self.to_graph(analyzer).unwrap()) // petgraph::algo::toposort(&self.to_graph(analyzer).unwrap(), None).is_err()
-        // );
         match elem {
             Elem::Arena(idx) => return idx,
             Elem::Null => return 0,

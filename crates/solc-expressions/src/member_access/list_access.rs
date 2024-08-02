@@ -1,9 +1,9 @@
-use crate::{ContextBuilder, ExpressionParser, Variable};
+use crate::Variable;
 
 use graph::{
     elem::*,
     nodes::{BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, Range, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -18,24 +18,11 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
     fn length(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        input_expr: &Expression,
         ctx: ContextNode,
+        input: ExprRet,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, input_expr, ctx)?;
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "Attempted to perform member access without a left-hand side".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            analyzer.match_length(arena, ctx, loc, ret, true)
-        })
+        self.match_length(arena, ctx, input, loc)
     }
 
     #[tracing::instrument(level = "trace", skip_all)]
@@ -44,9 +31,8 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         elem_path: ExprRet,
-        _update_len_bound: bool,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match elem_path {
             ExprRet::Null => {
@@ -55,28 +41,25 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             }
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Single(arr) => {
-                self.get_length(arena, ctx, loc, arr.into(), false)?;
+                self.get_length(arena, ctx, arr.into(), false, loc)?;
                 Ok(())
             }
             e => todo!("here: {e:?}"),
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn get_length(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         array: ContextVarNode,
         return_var: bool,
+        loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
-        let next_arr = self.advance_var_in_ctx(
-            array.latest_version_or_inherited_in_ctx(ctx, self),
-            loc,
-            ctx,
-        )?;
+        let array = array.latest_version_or_inherited_in_ctx(ctx, self);
         // search for latest length
-        if let Some(len_var) = next_arr.array_to_len_var(self) {
+        if let Some(len_var) = array.array_to_len_var(self) {
             let len_node = self.advance_var_in_ctx(
                 len_var.latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
@@ -90,21 +73,29 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 Ok(Some(len_node))
             }
         } else {
-            self.create_length(arena, ctx, loc, array, next_arr, return_var)
+            self.create_length(arena, ctx, array, return_var, loc)
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn create_length(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         array: ContextVarNode,
-        target_array: ContextVarNode,
         return_var: bool,
+        loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         // no length variable, create one
         let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
+
+        // we have to force here to avoid length <-> array recursion
+        let target_arr = self.advance_var_in_ctx_forcible(
+            array.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+            ctx,
+            true,
+        )?;
 
         // Create the range from the current length or default to [0, uint256.max]
         let len_min = Elem::from(array)
@@ -130,31 +121,23 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 Some(range),
             ),
         };
-        let len_node = ContextVarNode::from(self.add_node(Node::ContextVar(len_var)));
+        let len_node = ContextVarNode::from(self.add_node(len_var));
         self.add_edge(
             len_node,
-            target_array,
+            target_arr,
             Edge::Context(ContextEdge::AttrAccess("length")),
         );
         self.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
         ctx.add_var(len_node, self).into_expr_err(loc)?;
 
-        // we have to force here to avoid length <-> array recursion
-        let next_target_arr = self.advance_var_in_ctx_forcible(
-            target_array.latest_version_or_inherited_in_ctx(ctx, self),
-            loc,
-            ctx,
-            true,
-        )?;
-        let update_array_len =
-            Elem::from(target_array.latest_version_or_inherited_in_ctx(ctx, self))
-                .set_length(len_node.into());
+        let update_array_len = Elem::from(target_arr.latest_version_or_inherited_in_ctx(ctx, self))
+            .set_length(len_node.into());
 
         // Update the array
-        next_target_arr
+        target_arr
             .set_range_min(self, arena, update_array_len.clone())
             .into_expr_err(loc)?;
-        next_target_arr
+        target_arr
             .set_range_max(self, arena, update_array_len.clone())
             .into_expr_err(loc)?;
 
@@ -203,7 +186,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                     range,
                 ),
             };
-            let len_node = self.add_node(Node::ContextVar(len_var));
+            let len_node = self.add_node(len_var);
 
             let next_arr = self
                 .advance_var_in_ctx(

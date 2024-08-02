@@ -248,7 +248,8 @@ impl VarType {
             | Node::Entry
             | Node::Context(..)
             | Node::Msg(_)
-            | Node::Block(_) => None,
+            | Node::Block(_)
+            | Node::YulFunction(..) => None,
         }
     }
 
@@ -256,6 +257,55 @@ impl VarType {
         match self {
             VarType::BuiltIn(bn, _) => Ok(bn.underlying(analyzer)?.requires_input()),
             _ => Ok(false),
+        }
+    }
+
+    pub fn implicitly_castable_to(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+        from_lit: bool,
+    ) -> Result<bool, GraphError> {
+        if self.ty_idx() == other.ty_idx() {
+            return Ok(true);
+        }
+
+        let res = match (self, other) {
+            (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
+                from_bn.implicitly_castable_to(to_bn, analyzer)
+            }
+            (Self::Concrete(from), Self::BuiltIn(to, _)) => {
+                let from = from.underlying(analyzer)?.as_builtin();
+                let to = to.underlying(analyzer)?;
+                Ok(from.implicitly_castable_to(to))
+            }
+            (Self::BuiltIn(from, _), Self::Concrete(to)) => {
+                let from = from.underlying(analyzer)?;
+                let to = to.underlying(analyzer)?.as_builtin();
+                Ok(from.implicitly_castable_to(&to))
+            }
+            (Self::Concrete(from), Self::Concrete(to)) => {
+                let from = from.underlying(analyzer)?.as_builtin();
+                let to = to.underlying(analyzer)?.as_builtin();
+                Ok(from.implicitly_castable_to(&to))
+            }
+            _ => Ok(false),
+        };
+
+        let impl_cast = res?;
+        if !impl_cast && from_lit {
+            match (self, other) {
+                (Self::Concrete(from), Self::BuiltIn(to, _)) => {
+                    let froms = from.underlying(analyzer)?.alt_lit_builtins();
+                    let to = to.underlying(analyzer)?;
+
+                    // exact matches only (i.e. uint160 -> address, uint8 -> bytes1, etc)
+                    Ok(froms.iter().any(|from| from == to))
+                }
+                _ => Ok(impl_cast),
+            }
+        } else {
+            Ok(impl_cast)
         }
     }
 
@@ -286,7 +336,7 @@ impl VarType {
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
-                if from_bn.implicitly_castable_to(to_bn, analyzer)? {
+                if from_bn.castable_to(to_bn, analyzer)? {
                     Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
                     Ok(None)
@@ -296,7 +346,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.cast(b.clone()) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -306,7 +356,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.cast_from(to_c) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -334,7 +384,7 @@ impl VarType {
                     let Some(conc) = min.val.cast(builtin.clone()) else {
                         return Ok(None);
                     };
-                    let conc_idx = analyzer.add_node(Node::Concrete(conc));
+                    let conc_idx = analyzer.add_node(conc);
                     Ok(Some(conc_idx))
                 } else {
                     Ok(None)
@@ -370,7 +420,7 @@ impl VarType {
                 }
             }
             (Self::BuiltIn(from_bn, sr), Self::BuiltIn(to_bn, _)) => {
-                if from_bn.implicitly_castable_to(to_bn, analyzer)? {
+                if from_bn.castable_to(to_bn, analyzer)? {
                     Ok(Some(Self::BuiltIn(*to_bn, sr)))
                 } else {
                     Ok(None)
@@ -380,7 +430,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let b = to_bn.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast(b.clone()) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -390,7 +440,7 @@ impl VarType {
                 let c = from_c.underlying(analyzer)?.clone();
                 let to_c = to_c.underlying(analyzer)?;
                 if let Some(casted) = c.literal_cast_from(to_c) {
-                    let node = analyzer.add_node(Node::Concrete(casted));
+                    let node = analyzer.add_node(casted);
                     Ok(Some(Self::Concrete(node.into())))
                 } else {
                     Ok(None)
@@ -400,21 +450,18 @@ impl VarType {
         }
     }
 
-    pub fn implicitly_castable_to(
+    pub fn castable_to(
         &self,
         other: &Self,
         analyzer: &impl GraphBackend,
     ) -> Result<bool, GraphError> {
         match (self, other) {
             (Self::BuiltIn(from_bn, _), Self::BuiltIn(to_bn, _)) => {
-                from_bn.implicitly_castable_to(to_bn, analyzer)
+                from_bn.castable_to(to_bn, analyzer)
             }
             (Self::Concrete(from_c), Self::BuiltIn(to_bn, _)) => {
                 let to = to_bn.underlying(analyzer)?;
-                Ok(from_c
-                    .underlying(analyzer)?
-                    .as_builtin()
-                    .implicitly_castable_to(to))
+                Ok(from_c.underlying(analyzer)?.as_builtin().castable_to(to))
             }
             _ => Ok(false),
         }
@@ -588,7 +635,7 @@ impl VarType {
     //                         let mut h = H256::default();
     //                         h.0[0] = val.0[idx.low_u32() as usize];
     //                         let ret_val = Concrete::Bytes(1, h);
-    //                         let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                         let node = analyzer.add_node(ret_val);
     //                         return Ok(Some(node));
     //                     }
     //                 }
@@ -616,7 +663,7 @@ impl VarType {
     //                         if let Some(idx) = val.0.node_idx() {
     //                             return Ok(idx.into());
     //                         } else if let Some(c) = val.0.concrete() {
-    //                             let cnode = analyzer.add_node(Node::Concrete(c));
+    //                             let cnode = analyzer.add_node(c);
     //                             return Ok(cnode.into());
     //                         }
     //                     }
@@ -640,7 +687,7 @@ impl VarType {
     //                             let mut h = H256::default();
     //                             h.0[0] = val.0[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             let node = analyzer.add_node(ret_val);
     //                             return Ok(Some(node));
     //                         }
     //                     }
@@ -649,7 +696,7 @@ impl VarType {
     //                             let mut h = H256::default();
     //                             h.0[0] = elems[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             let node = analyzer.add_node(ret_val);
     //                             return Ok(Some(node));
     //                         }
     //                     }
@@ -658,7 +705,7 @@ impl VarType {
     //                             let mut h = H256::default();
     //                             h.0[0] = st.as_bytes()[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(Node::Concrete(ret_val));
+    //                             let node = analyzer.add_node(ret_val);
     //                             return Ok(Some(node));
     //                         }
     //                     }
@@ -748,18 +795,13 @@ impl VarType {
             }
             (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
                 match (s.underlying(analyzer)?, o.underlying(analyzer)?) {
-                    (Builtin::Array(l), Builtin::Array(r)) => Ok(l
-                        .unresolved_as_resolved(analyzer)?
-                        == r.unresolved_as_resolved(analyzer)?),
-                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => Ok(l
-                        .unresolved_as_resolved(analyzer)?
-                        == r.unresolved_as_resolved(analyzer)?
-                        && l_size == r_size),
-                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => Ok(lk
-                        .unresolved_as_resolved(analyzer)?
-                        == rk.unresolved_as_resolved(analyzer)?
-                        && lv.unresolved_as_resolved(analyzer)?
-                            == rv.unresolved_as_resolved(analyzer)?),
+                    (Builtin::Array(l), Builtin::Array(r)) => l.ty_eq(r, analyzer),
+                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => {
+                        Ok(l.ty_eq(r, analyzer)? && l_size == r_size)
+                    }
+                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => {
+                        Ok(lk.ty_eq(rk, analyzer)? && lv.ty_eq(rv, analyzer)?)
+                    }
                     (l, r) => Ok(l == r),
                 }
             }

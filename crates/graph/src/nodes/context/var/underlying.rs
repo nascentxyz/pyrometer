@@ -39,6 +39,12 @@ impl TmpConstruction {
     }
 }
 
+impl From<ContextVar> for Node {
+    fn from(var: ContextVar) -> Self {
+        Node::ContextVar(var)
+    }
+}
+
 impl ContextVar {
     pub fn eq_ignore_loc(&self, other: &Self) -> bool {
         self.name == other.name
@@ -70,16 +76,14 @@ impl ContextVar {
         Ok(ContextVar {
             loc: Some(loc),
             name: format!(
-                "tmp{}({} {} {})",
+                "tmp{}({} {op} {})",
                 ctx.new_tmp(analyzer)?,
                 lhs_cvar.name(analyzer)?,
-                op.to_string(),
                 rhs_cvar.name(analyzer)?
             ),
             display_name: format!(
-                "({} {} {})",
+                "({} {op} {})",
                 lhs_cvar.display_name(analyzer)?,
-                op.to_string(),
                 rhs_cvar.display_name(analyzer)?
             ),
             storage: None,
@@ -502,6 +506,10 @@ impl ContextVar {
                 }
                 Node::Enum(e) => {
                     let name = e.name.clone().expect("Enum had no name").name;
+                    (name, None)
+                }
+                Node::Builtin(bn) => {
+                    let name = bn.as_string(analyzer).ok()?;
                     (name, None)
                 }
                 Node::Var(var) => {

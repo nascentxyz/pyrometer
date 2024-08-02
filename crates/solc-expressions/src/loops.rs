@@ -1,15 +1,14 @@
-use crate::{variable::Variable, ContextBuilder, StatementParser};
-use graph::ContextEdge;
-use graph::Edge;
+use crate::variable::Variable;
+use graph::nodes::SubContextKind;
 
 use graph::{
     elem::Elem,
     nodes::{Concrete, Context, ContextNode},
-    AnalyzerBackend, GraphBackend, Node,
+    AnalyzerBackend, GraphBackend,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::pt::{Expression, Loc, Statement};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> Looper for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
@@ -20,94 +19,65 @@ impl<T> Looper for T where
 pub trait Looper:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Handles a for loop. Needs improvement
-    fn for_loop(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        ctx: ContextNode,
-        maybe_init: &Option<Box<Statement>>,
-        _maybe_limiter: &Option<Box<Expression>>,
-        _maybe_post: &Option<Box<Statement>>,
-        maybe_body: &Option<Box<Statement>>,
-    ) -> Result<(), ExprErr> {
-        // TODO: improve this
-        if let Some(initer) = maybe_init {
-            self.parse_ctx_statement(arena, initer, false, Some(ctx));
-        }
-
-        if let Some(body) = maybe_body {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                analyzer.reset_vars(arena, loc, ctx, body)
-            })
-        } else {
-            Ok(())
-        }
-    }
-
     /// Resets all variables referenced in the loop because we don't elegantly handle loops
     fn reset_vars(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
+        parent_ctx: ContextNode,
+        loop_ctx: ContextNode,
         loc: Loc,
-        ctx: ContextNode,
-        body: &Statement,
     ) -> Result<(), ExprErr> {
-        let og_ctx = ctx;
-        let sctx = Context::new_loop_subctx(ctx, loc, self).into_expr_err(loc)?;
-        let subctx = ContextNode::from(self.add_node(Node::Context(sctx)));
-        ctx.set_child_call(subctx, self).into_expr_err(loc)?;
-        self.add_edge(subctx, ctx, Edge::Context(ContextEdge::Loop));
-        self.parse_ctx_statement(arena, body, false, Some(subctx));
-        self.apply_to_edges(subctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            let vars = subctx.local_vars(analyzer).clone();
-            vars.iter().for_each(|(name, var)| {
-                // widen to max range
-                if let Some(inheritor_var) = ctx.var_by_name(analyzer, name) {
-                    let inheritor_var = inheritor_var.latest_version(analyzer);
-                    if let Some(r) = var
-                        .underlying(analyzer)
-                        .unwrap()
-                        .ty
-                        .default_range(analyzer)
-                        .unwrap()
-                    {
-                        let new_inheritor_var = analyzer
-                            .advance_var_in_ctx(inheritor_var, loc, ctx)
-                            .unwrap();
-                        let res = new_inheritor_var
-                            .set_range_min(analyzer, arena, r.min)
-                            .into_expr_err(loc);
-                        let _ = analyzer.add_if_err(res);
-                        let res = new_inheritor_var
-                            .set_range_max(analyzer, arena, r.max)
-                            .into_expr_err(loc);
-                        let _ = analyzer.add_if_err(res);
-                    }
+        let subctx_kind = SubContextKind::new_fn_ret(loop_ctx, parent_ctx);
+        let ret_ctx = Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
+        loop_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;
+
+        let vars = loop_ctx.local_vars(self).clone();
+        vars.iter().try_for_each(|(name, var)| {
+            // widen to max range
+            if let Some(inheritor_var) = parent_ctx.var_by_name(self, name) {
+                let inheritor_var =
+                    inheritor_var.latest_version_or_inherited_in_ctx(loop_ctx, self);
+                if let Some(r) = var
+                    .underlying(self)
+                    .unwrap()
+                    .ty
+                    .default_range(self)
+                    .into_expr_err(loc)?
+                {
+                    let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ret_ctx)?;
+                    new_inheritor_var
+                        .set_range_min(self, arena, r.min)
+                        .into_expr_err(loc)?;
+                    new_inheritor_var
+                        .set_range_max(self, arena, r.max)
+                        .into_expr_err(loc)?;
+                    Ok(())
+                } else {
+                    Ok(())
                 }
-            });
-
-            let sctx =
-                Context::new_subctx(ctx, Some(og_ctx), loc, None, None, false, analyzer, None)
-                    .into_expr_err(loc)?;
-            let sctx = ContextNode::from(analyzer.add_node(Node::Context(sctx)));
-            ctx.set_child_call(sctx, analyzer).into_expr_err(loc)
-        })
-    }
-
-    /// Handles a while-loop
-    fn while_loop(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        ctx: ContextNode,
-        _limiter: &Expression,
-        body: &Statement,
-    ) -> Result<(), ExprErr> {
-        // TODO: improve this
-        self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-            analyzer.reset_vars(arena, loc, ctx, body)
+            } else if var.is_storage(self).into_expr_err(loc)? {
+                if let Some(r) = var
+                    .underlying(self)
+                    .unwrap()
+                    .ty
+                    .default_range(self)
+                    .into_expr_err(loc)?
+                {
+                    let new_inheritor_var =
+                        self.advance_var_in_ctx(var.latest_version(self), loc, ret_ctx)?;
+                    new_inheritor_var
+                        .set_range_min(self, arena, r.min)
+                        .into_expr_err(loc)?;
+                    new_inheritor_var
+                        .set_range_max(self, arena, r.max)
+                        .into_expr_err(loc)?;
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
         })
     }
 }

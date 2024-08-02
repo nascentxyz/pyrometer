@@ -261,8 +261,6 @@ pub fn exec_set_indices(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use ethers_core::types::U256;
     use pretty_assertions::assert_eq;
     use solang_parser::pt::Loc;
 

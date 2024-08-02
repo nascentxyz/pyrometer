@@ -1,5 +1,8 @@
 use crate::{
-    nodes::{Concrete, ContextNode, ContractNode, SourceUnitNode, SourceUnitPartNode},
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, SourceUnitNode,
+        SourceUnitPartNode, YulFunctionNode,
+    },
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
@@ -48,6 +51,23 @@ impl FunctionNode {
     ) -> Result<(), GraphError> {
         self.underlying_mut(analyzer)?.add_gas_cost(cost);
         Ok(())
+    }
+
+    pub fn yul_funcs(
+        &self,
+        analyzer: &impl GraphBackend,
+        assembly_block_idx: usize,
+    ) -> Vec<YulFunctionNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter_map(|edge| match edge.weight() {
+                Edge::YulFunction(asm_block) if *asm_block == assembly_block_idx => {
+                    Some(edge.source().into())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     }
 
     pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<FunctionTy, GraphError> {
@@ -411,6 +431,17 @@ impl FunctionNode {
             });
             params
         }
+    }
+
+    pub fn add_params_to_ctx(
+        &self,
+        ctx: ContextNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        self.params(analyzer).iter().try_for_each(|param| {
+            let _ = param.maybe_add_to_ctx(ctx, analyzer)?;
+            Ok(())
+        })
     }
 
     pub fn ordered_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
@@ -945,6 +976,28 @@ impl FunctionParamNode {
 
     pub fn ty(&self, analyzer: &impl GraphBackend) -> Result<NodeIdx, GraphError> {
         Ok(self.underlying(analyzer)?.ty)
+    }
+
+    pub fn maybe_add_to_ctx(
+        &self,
+        ctx: ContextNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<bool, GraphError> {
+        if let Some(var) =
+            ContextVar::maybe_new_from_func_param(analyzer, self.underlying(analyzer)?.clone())
+        {
+            let var = ContextVarNode::from(analyzer.add_node(var));
+            ctx.add_var(var, analyzer)?;
+            analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
+            analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::CalldataVariable));
+            if let Some(strukt) = var.maybe_struct(analyzer)? {
+                strukt.add_fields_to_cvar(analyzer, var.loc(analyzer).unwrap(), var)?;
+            }
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 

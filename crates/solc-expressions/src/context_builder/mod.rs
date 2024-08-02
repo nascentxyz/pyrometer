@@ -1,32 +1,24 @@
 //! Trait and blanket implementation for the core parsing loop
+use crate::variable::Variable;
 use graph::{
     elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
-impl<T> ContextBuilder for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + StatementParser
-{
-}
+impl<T> ContextBuilder for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 
-mod expr;
-mod fn_calls;
-mod stmt;
+mod flattened;
 mod test_command_runner;
 
-pub use expr::*;
-pub use fn_calls::*;
-pub use stmt::*;
+pub use flattened::*;
 pub use test_command_runner::*;
 
 /// Dispatcher for building up a context of a function
-pub trait ContextBuilder:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + StatementParser
-{
+pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     /// TODO: rename this. Sometimes we dont want to kill a context if we hit an error
     fn widen_if_limit_hit(&mut self, ctx: ContextNode, maybe_err: Result<(), ExprErr>) -> bool {
         match maybe_err {
@@ -57,13 +49,13 @@ pub trait ContextBuilder:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: &Loc,
-        paths: &ExprRet,
+        loc: Loc,
+        paths: ExprRet,
         idx: usize,
     ) {
         match paths {
             ExprRet::CtxKilled(kind) => {
-                let _ = ctx.kill(self, *loc, *kind);
+                let _ = ctx.kill(self, loc, kind);
             }
             ExprRet::Single(expr) | ExprRet::SingleLiteral(expr) => {
                 // construct a variable from the return type
@@ -80,7 +72,7 @@ pub trait ContextBuilder:
                             .map(|underlying| {
                                 ContextVar::new_from_func_ret(ctx, self, underlying).map(|var| {
                                     var.map(|var| {
-                                        ContextVarNode::from(self.add_node(Node::ContextVar(var)))
+                                        ContextVarNode::from(self.add_node(var))
                                     }).ok_or(GraphError::NodeConfusion("Could not construct a context variable from function return".to_string()))
                                     .map(Some)
                                 }).and_then(|i| i)
@@ -88,24 +80,24 @@ pub trait ContextBuilder:
                             .and_then(|i| i)
                     })
                     .and_then(|i| i)
-                    .into_expr_err(*loc);
+                    .into_expr_err(loc);
 
                 let latest =
-                    ContextVarNode::from(*expr).latest_version_or_inherited_in_ctx(ctx, self);
+                    ContextVarNode::from(expr).latest_version_or_inherited_in_ctx(ctx, self);
 
                 match target_var {
                     Ok(Some(target_var)) => {
                         // perform a cast
                         tracing::trace!(
-                            "{}: casting {:?} to {:?}",
+                            "casting {} to {} in {}",
+                            latest.ty(self).unwrap().as_string(self).unwrap(),
+                            target_var.ty(self).unwrap().as_string(self).unwrap(),
                             ctx.path(self),
-                            latest.ty(self).unwrap(),
-                            target_var.ty(self).unwrap(),
                         );
                         let next = self
-                            .advance_var_in_ctx_forcible(latest, *loc, ctx, true)
+                            .advance_var_in_ctx_forcible(latest, loc, ctx, true)
                             .unwrap();
-                        let res = next.cast_from(&target_var, self, arena).into_expr_err(*loc);
+                        let res = next.cast_from(&target_var, self, arena).into_expr_err(loc);
                         self.add_if_err(res);
                     }
                     Ok(None) => {}
@@ -114,7 +106,7 @@ pub trait ContextBuilder:
 
                 // let ret = self.advance_var_in_ctx(latest, *loc, *ctx);
                 let path = ctx.path(self);
-                let res = latest.underlying_mut(self).into_expr_err(*loc);
+                let res = latest.underlying_mut(self).into_expr_err(loc);
                 match res {
                     Ok(var) => {
                         tracing::trace!("Returning: {}, {}", path, var.display_name);
@@ -122,7 +114,7 @@ pub trait ContextBuilder:
 
                         self.add_edge(latest, ctx, Edge::Context(ContextEdge::Return));
 
-                        let res = ctx.add_return_node(*loc, latest, self).into_expr_err(*loc);
+                        let res = ctx.add_return_node(loc, latest, self).into_expr_err(loc);
                         // ctx.kill(self, *loc, KilledKind::Ended);
                         let _ = self.add_if_err(res);
                     }
@@ -130,7 +122,7 @@ pub trait ContextBuilder:
                 }
             }
             ExprRet::Multi(rets) => {
-                rets.iter().enumerate().for_each(|(i, expr_ret)| {
+                rets.into_iter().enumerate().for_each(|(i, expr_ret)| {
                     self.return_match(arena, ctx, loc, expr_ret, i);
                 });
             }
@@ -154,11 +146,11 @@ pub trait ContextBuilder:
         ) -> Result<(), ExprErr>,
     ) -> Result<(), ExprErr> {
         let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
-        tracing::trace!(
-            "Applying to live edges of: {}. edges: {:#?}",
-            ctx.path(self),
-            live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
-        );
+        // tracing::trace!(
+        //     "Applying to live edges of: {}. edges: {:#?}",
+        //     ctx.path(self),
+        //     live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
+        // );
         if !ctx.killed_or_ret(self).into_expr_err(loc)? {
             if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
                 if live_edges.is_empty() {

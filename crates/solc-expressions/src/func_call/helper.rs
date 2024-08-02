@@ -1,19 +1,19 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
-use crate::{member_access::ListAccess, variable::Variable, ContextBuilder, ExpressionParser};
+use crate::{member_access::ListAccess, variable::Variable};
 
 use graph::{
     elem::Elem,
     nodes::{
         CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet,
-        FunctionNode, FunctionParamNode, ModifierState,
+        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
-use solang_parser::pt::{CodeLocation, Expression, Loc};
+use solang_parser::pt::{Expression, Loc};
 
-use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
+use std::collections::BTreeMap;
 
 impl<T> CallerHelper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Helper trait for performing function calls
@@ -55,7 +55,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             None
                         };
 
-                        let node = ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+                        let node = ContextVarNode::from(self.add_node(new_cvar));
 
                         self.add_edge(
                             node,
@@ -72,7 +72,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
                         if let Some(_len_var) = input.array_to_len_var(self) {
                             // bring the length variable along as well
-                            self.get_length(arena, callee_ctx, loc, node, false)
+                            self.get_length(arena, callee_ctx, node, false, loc)
                                 .unwrap();
                         }
 
@@ -106,9 +106,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                         None
                                     };
 
-                                    let field_node = ContextVarNode::from(
-                                        self.add_node(Node::ContextVar(new_field)),
-                                    );
+                                    let field_node = ContextVarNode::from(self.add_node(new_field));
 
                                     self.add_edge(
                                         field_node,
@@ -159,69 +157,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             .collect::<BTreeMap<_, ContextVarNode>>())
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Parses input expressions into [`ExprRet`]s and adds them to the expr ret stack
-    fn parse_inputs(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        inputs: &[Expression],
-    ) -> Result<(), ExprErr> {
-        let append = if ctx.underlying(self).into_expr_err(loc)?.tmp_expr.is_empty() {
-            Rc::new(RefCell::new(true))
-        } else {
-            Rc::new(RefCell::new(false))
-        };
-
-        inputs
-            .iter()
-            .try_for_each(|input| self.parse_input(arena, ctx, loc, input, &append))?;
-
-        if !inputs.is_empty() {
-            self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                    return Err(ExprErr::NoLhs(
-                        loc,
-                        "Inputs did not have left hand sides".to_string(),
-                    ));
-                };
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)
-            })
-        } else {
-            ctx.push_expr(ExprRet::Null, self).into_expr_err(loc)
-        }
-    }
-
-    fn parse_input(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        _loc: Loc,
-        input: &Expression,
-        append: &Rc<RefCell<bool>>,
-    ) -> Result<(), ExprErr> {
-        self.parse_ctx_expr(arena, input, ctx)?;
-        self.apply_to_edges(ctx, input.loc(), arena, &|analyzer, _arena, ctx, loc| {
-            let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                return Err(ExprErr::NoLhs(
-                    loc,
-                    "Inputs did not have left hand sides".to_string(),
-                ));
-            };
-            if matches!(ret, ExprRet::CtxKilled(_)) {
-                ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                return Ok(());
-            }
-            if *append.borrow() {
-                ctx.append_tmp_expr(ret, analyzer).into_expr_err(loc)
-            } else {
-                *append.borrow_mut() = true;
-                ctx.push_tmp_expr(ret, analyzer).into_expr_err(loc)
-            }
-        })
-    }
-
     /// Creates a new context for a call
     fn create_call_ctx(
         &mut self,
@@ -240,18 +175,10 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .add_gas_cost(self, shared::gas::FUNC_CALL_GAS)
                 .into_expr_err(loc)?;
         }
-        let ctx = Context::new_subctx(
-            curr_ctx,
-            None,
-            loc,
-            None,
-            Some(func_node),
-            fn_ext,
-            self,
-            modifier_state,
-        )
-        .into_expr_err(loc)?;
-        let callee_ctx = ContextNode::from(self.add_node(Node::Context(ctx)));
+
+        let subctx_kind = SubContextKind::new_fn_call(curr_ctx, None, func_node, fn_ext);
+        let callee_ctx =
+            Context::add_subctx(subctx_kind, loc, self, modifier_state).into_expr_err(loc)?;
         curr_ctx
             .set_child_call(callee_ctx, self)
             .into_expr_err(loc)?;
@@ -274,18 +201,21 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         literals: Vec<bool>,
         input_paths: &ExprRet,
         funcs: &[FunctionNode],
+        maybe_names: Option<Vec<&str>>,
     ) -> Option<FunctionNode> {
         let input_paths = input_paths.clone().flatten();
         // try to find the function based on naive signature
         // This doesnt do type inference on NumberLiterals (i.e. 100 could be uintX or intX, and there could
         // be a function that takes an int256 but we evaled as uint256)
-        let fn_sig = format!(
-            "{}{}",
-            fn_name,
-            input_paths.try_as_func_input_str(self, arena)
-        );
-        if let Some(func) = funcs.iter().find(|func| func.name(self).unwrap() == fn_sig) {
-            return Some(*func);
+        if maybe_names.is_none() {
+            let fn_sig = format!(
+                "{}{}",
+                fn_name,
+                input_paths.try_as_func_input_str(self, arena)
+            );
+            if let Some(func) = funcs.iter().find(|func| func.name(self).unwrap() == fn_sig) {
+                return Some(*func);
+            }
         }
 
         // filter by input len
@@ -306,16 +236,45 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .iter()
                 .filter(|func| {
                     let params = func.params(self);
+                    let ordered_names = func.ordered_param_names(self);
+
+                    let mut tmp_inputs: Vec<NodeIdx> = vec![];
+                    let mut tmp_literals = vec![];
+                    tmp_literals.resize(literals.len(), false);
+                    tmp_inputs.resize(inputs.len(), 0.into());
+                    if let Some(ref input_names) = maybe_names {
+                        if &ordered_names[..] != input_names {
+                            let mapping = ordered_names
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(i, n)| {
+                                    Some((input_names.iter().position(|k| k == n)?, i))
+                                })
+                                .collect::<BTreeMap<_, _>>();
+                            inputs.iter().enumerate().for_each(|(i, ret)| {
+                                let target_idx = mapping[&i];
+                                tmp_inputs[target_idx] = *ret;
+                                tmp_literals[target_idx] = literals[i];
+                            });
+                        } else {
+                            tmp_inputs.clone_from(&inputs);
+                            tmp_literals.clone_from(&literals);
+                        }
+                    } else {
+                        tmp_inputs.clone_from(&inputs);
+                        tmp_literals.clone_from(&literals);
+                    }
+
                     params
                         .iter()
-                        .zip(&inputs)
+                        .zip(&tmp_inputs)
                         .enumerate()
                         .all(|(i, (param, input))| {
                             let param_ty = VarType::try_from_idx(self, (*param).into()).unwrap();
                             let input_ty = ContextVarNode::from(*input).ty(self).unwrap();
                             if param_ty.ty_eq(input_ty, self).unwrap() {
                                 true
-                            } else if literals[i] {
+                            } else if tmp_literals[i] {
                                 let possibilities = ContextVarNode::from(*input)
                                     .ty(self)
                                     .unwrap()
@@ -362,7 +321,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             .modifier_state
             .is_some()
         {
-            if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx {
+            if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx() {
                 let ret = ret_ctx.underlying(self).into_expr_err(loc)?.ret.clone();
                 ret.iter().try_for_each(|(loc, ret)| {
                     let cvar = self.advance_var_in_forced_ctx(*ret, *loc, callee_ctx)?;
@@ -408,13 +367,10 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     return Ok(());
                 }
 
-                let ctx = Context::new_subctx(
-                    callee_ctx,
-                    Some(caller_ctx),
+                let subctx_kind = SubContextKind::new_fn_ret(callee_ctx, caller_ctx);
+                let ret_subctx = Context::add_subctx(
+                    subctx_kind,
                     loc,
-                    None,
-                    None,
-                    false,
                     self,
                     caller_ctx
                         .underlying(self)
@@ -423,11 +379,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         .clone(),
                 )
                 .into_expr_err(loc)?;
-                let ret_subctx = ContextNode::from(self.add_node(Node::Context(ctx)));
-                ret_subctx
-                    .set_continuation_ctx(self, caller_ctx, "ctx_rets")
-                    .into_expr_err(loc)?;
-
                 let res = callee_ctx
                     .set_child_call(ret_subctx, self)
                     .into_expr_err(loc);
@@ -479,7 +430,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                             )
                             .into_expr_err(loc)?
                             .unwrap();
-                            let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(cvar)));
+                            let cvar = ContextVarNode::from(self.add_node(cvar));
                             callee_ctx.add_var(cvar, self).into_expr_err(loc)?;
                             self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
                             callee_ctx
@@ -545,142 +496,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
     }
 
     /// Inherit the input changes from a function call
-    fn inherit_input_changes(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        to_ctx: ContextNode,
-        from_ctx: ContextNode,
-        renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
-    ) -> Result<(), ExprErr> {
-        if to_ctx != from_ctx {
-            self.apply_to_edges(to_ctx, loc, arena, &|analyzer, arena, to_ctx, loc| {
-                renamed_inputs
-                    .iter()
-                    .try_for_each(|(input_var, updated_var)| {
-                        let new_input = analyzer.advance_var_in_ctx(
-                            input_var.latest_version(analyzer),
-                            loc,
-                            to_ctx,
-                        )?;
-                        let latest_updated = updated_var.latest_version(analyzer);
-                        if let Some(updated_var_range) =
-                            latest_updated.range(analyzer).into_expr_err(loc)?
-                        {
-                            let res = new_input
-                                .set_range_min(
-                                    analyzer,
-                                    arena,
-                                    updated_var_range.range_min().into_owned(),
-                                )
-                                .into_expr_err(loc);
-                            let _ = analyzer.add_if_err(res);
-                            let res = new_input
-                                .set_range_max(
-                                    analyzer,
-                                    arena,
-                                    updated_var_range.range_max().into_owned(),
-                                )
-                                .into_expr_err(loc);
-                            let _ = analyzer.add_if_err(res);
-                            let res = new_input
-                                .set_range_exclusions(
-                                    analyzer,
-                                    updated_var_range.exclusions.clone(),
-                                )
-                                .into_expr_err(loc);
-                            let _ = analyzer.add_if_err(res);
-                        }
-                        Ok(())
-                    })
-            })?;
-        }
-        Ok(())
-    }
-
-    /// Inherit the input changes from a function call
     fn modifier_inherit_return(&mut self, mod_ctx: ContextNode, fn_ctx: ContextNode) {
         let ret = fn_ctx.underlying(self).unwrap().ret.clone();
         mod_ctx.underlying_mut(self).unwrap().ret = ret;
-    }
-
-    /// Inherit the storage changes from a function call
-    fn inherit_storage_changes(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        inheritor_ctx: ContextNode,
-        grantor_ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        if inheritor_ctx != grantor_ctx {
-            return self.apply_to_edges(
-                inheritor_ctx,
-                loc,
-                arena,
-                &|analyzer, _arena, inheritor_ctx, loc| {
-                    let vars = grantor_ctx.local_vars(analyzer).clone();
-                    vars.iter().try_for_each(|(name, old_var)| {
-                        let var = old_var.latest_version(analyzer);
-                        let underlying = var.underlying(analyzer).into_expr_err(loc)?;
-                        if var.is_storage(analyzer).into_expr_err(loc)? {
-                            if let Some(inheritor_var) = inheritor_ctx.var_by_name(analyzer, name) {
-                                let inheritor_var = inheritor_var.latest_version(analyzer);
-                                analyzer
-                                    .advance_var_in_ctx(
-                                        inheritor_var,
-                                        underlying.loc.expect("No loc for val change"),
-                                        inheritor_ctx,
-                                    )
-                                    .unwrap();
-                            } else {
-                                let new_in_inheritor =
-                                    analyzer.add_node(Node::ContextVar(underlying.clone()));
-                                inheritor_ctx
-                                    .add_var(new_in_inheritor.into(), analyzer)
-                                    .into_expr_err(loc)?;
-                                analyzer.add_edge(
-                                    new_in_inheritor,
-                                    inheritor_ctx,
-                                    Edge::Context(ContextEdge::Variable),
-                                );
-                                analyzer.add_edge(
-                                    new_in_inheritor,
-                                    var,
-                                    Edge::Context(ContextEdge::InheritedVariable),
-                                );
-                                let from_fields =
-                                    var.struct_to_fields(analyzer).into_expr_err(loc)?;
-                                let mut struct_stack = from_fields
-                                    .into_iter()
-                                    .map(|i| (i, new_in_inheritor))
-                                    .collect::<Vec<_>>();
-                                while let Some((field, parent)) = struct_stack.pop() {
-                                    let underlying =
-                                        field.underlying(analyzer).into_expr_err(loc)?;
-                                    let new_field_in_inheritor =
-                                        analyzer.add_node(Node::ContextVar(underlying.clone()));
-                                    analyzer.add_edge(
-                                        new_field_in_inheritor,
-                                        parent,
-                                        Edge::Context(ContextEdge::AttrAccess("field")),
-                                    );
-
-                                    let sub_fields =
-                                        field.struct_to_fields(analyzer).into_expr_err(loc)?;
-                                    struct_stack.extend(
-                                        sub_fields
-                                            .into_iter()
-                                            .map(|i| (i, new_field_in_inheritor))
-                                            .collect::<Vec<_>>(),
-                                    );
-                                }
-                            }
-                        }
-                        Ok(())
-                    })
-                },
-            );
-        }
-        Ok(())
     }
 }

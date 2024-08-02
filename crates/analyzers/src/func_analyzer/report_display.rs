@@ -1,3 +1,4 @@
+use crate::bounds::killed_kind_color;
 use crate::{FunctionVarsBoundAnalysis, LocStrSpan, ReportDisplay, ReportKind};
 
 use graph::{elem::Elem, nodes::Concrete, GraphBackend};
@@ -74,8 +75,8 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         if let Some((killed_span, kind)) = &self.func_var_bound_analysis.ctx_killed {
             report = report.with_label(
                 Label::new(killed_span.clone())
-                    .with_message(kind.analysis_str().fg(Color::Red))
-                    .with_color(Color::Red),
+                    .with_message(kind.analysis_str().fg(killed_kind_color(kind)))
+                    .with_color(killed_kind_color(kind)),
             );
         }
 

@@ -317,6 +317,15 @@ pub fn builtin_fns() -> AHashMap<String, Function> {
                 Loc::Builtin,
             )))],
         ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
+                name: "codehash".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::External(Some(
+                Loc::Builtin,
+            )))],
+        ),
     ];
     funcs
         .into_iter()

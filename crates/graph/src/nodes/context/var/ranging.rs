@@ -332,6 +332,7 @@ impl ContextVarNode {
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn try_set_range_min(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -350,7 +351,7 @@ impl ContextVarNode {
 
         new_min.arenaize(analyzer, arena)?;
 
-        if self.is_concrete(analyzer)? {
+        let res = if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
             new_ty.concrete_to_builtin(analyzer)?;
             self.underlying_mut(analyzer)?.ty = new_ty;
@@ -364,9 +365,12 @@ impl ContextVarNode {
             Ok(self
                 .underlying_mut(analyzer)?
                 .try_set_range_min(new_min, fallback))
-        }
+        };
+        self.cache_range(analyzer, arena)?;
+        res
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn try_set_range_max(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -385,7 +389,7 @@ impl ContextVarNode {
 
         new_max.arenaize(analyzer, arena)?;
 
-        if self.is_concrete(analyzer)? {
+        let res = if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
             new_ty.concrete_to_builtin(analyzer)?;
             self.underlying_mut(analyzer)?.ty = new_ty;
@@ -399,7 +403,9 @@ impl ContextVarNode {
             Ok(self
                 .underlying_mut(analyzer)?
                 .try_set_range_max(new_max, fallback))
-        }
+        };
+        self.cache_range(analyzer, arena)?;
+        res
     }
 
     pub fn try_set_range_exclusions(

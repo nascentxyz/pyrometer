@@ -310,18 +310,13 @@ impl ContextVarNode {
         }
     }
 
-    pub fn len_var_to_array(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<Option<ContextVarNode>, GraphError> {
-        if let Some(arr) = analyzer.search_for_ancestor(
-            self.0.into(),
-            &Edge::Context(ContextEdge::AttrAccess("length")),
-        ) {
-            Ok(Some(ContextVarNode::from(arr).latest_version(analyzer)))
-        } else {
-            Ok(None)
-        }
+    pub fn len_var_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        let arr = analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("length")))
+            .map(|edge| edge.target())?;
+        Some(ContextVarNode::from(arr).latest_version(analyzer))
     }
 
     pub fn index_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
@@ -335,13 +330,11 @@ impl ContextVarNode {
 
     /// Goes from an index access (i.e. `x[idx]`) to the index (i.e. `idx`)
     pub fn index_access_to_index(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
-        let index = analyzer.find_child_exclude_via(
-            self.first_version(analyzer).into(),
-            &Edge::Context(ContextEdge::Index),
-            &[],
-            &|idx, _| Some(idx),
-        )?;
-        Some(ContextVarNode::from(index))
+        analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).0.into(), Direction::Incoming)
+            .find(|edge| matches!(*edge.weight(), Edge::Context(ContextEdge::Index)))
+            .map(|e| ContextVarNode::from(e.source()))
     }
 
     pub fn index_or_attr_access(&self, analyzer: &impl GraphBackend) -> Vec<Self> {

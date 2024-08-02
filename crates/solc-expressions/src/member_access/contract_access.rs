@@ -1,10 +1,11 @@
+use crate::member_access::library_access::LibraryAccess;
 use graph::{
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContractNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node,
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet},
+    AnalyzerBackend, ContextEdge, Edge,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx};
+use shared::{ExprErr, IntoExprErr};
 
-use solang_parser::pt::{Expression, Identifier, Loc};
+use solang_parser::pt::{Expression, Loc};
 
 impl<T> ContractAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 
@@ -13,106 +14,106 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
     /// Perform member access on a contract
     fn contract_member_access(
         &mut self,
-        member_idx: NodeIdx,
-        con_node: ContractNode,
-        ident: &Identifier,
         ctx: ContextNode,
+        maybe_parent: Option<ContextVarNode>,
+        con_node: ContractNode,
+        name: &str,
         loc: Loc,
-        maybe_parent: Option<ContextVar>,
-    ) -> Result<ExprRet, ExprErr> {
+    ) -> Result<(ExprRet, bool), ExprErr> {
         tracing::trace!(
             "Contract member access: {}.{}",
             con_node
                 .maybe_name(self)
                 .into_expr_err(loc)?
                 .unwrap_or_else(|| "interface".to_string()),
-            ident.name
+            name
         );
 
-        if let Some(func) = con_node
-            .funcs(self)
+        if let Some((_, func)) = con_node
+            .linearized_functions(self, false)
+            .into_expr_err(loc)?
             .into_iter()
-            .find(|func_node| func_node.name(self).unwrap() == ident.name)
+            .find(|(func_name, _)| func_name == name)
         {
             if let Some(func_cvar) = ContextVar::maybe_from_user_ty(self, loc, func.0.into()) {
-                let fn_node = self.add_node(Node::ContextVar(func_cvar));
+                let fn_node = self.add_node(func_cvar);
                 // this prevents attaching a dummy node to the parent which could cause a cycle in the graph
-                if maybe_parent.is_some() {
-                    self.add_edge(fn_node, member_idx, Edge::Context(ContextEdge::FuncAccess));
+                if let Some(parent) = maybe_parent {
+                    self.add_edge(fn_node, parent, Edge::Context(ContextEdge::FuncAccess));
                 }
-                Ok(ExprRet::Single(fn_node))
+                Ok((ExprRet::Single(fn_node), false))
             } else {
                 Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unable to construct the function \"{}\" in contract \"{}\"",
-                        ident.name,
+                        "Unable to construct the function \"{name}\" in contract \"{}\"",
                         con_node.name(self).into_expr_err(loc)?
                     ),
                 ))
             }
+        } else if let Some(ret) = self.library_func_search(ctx, con_node.0.into(), name) {
+            Ok((ret, true))
         } else if let Some(func) = con_node
             .structs(self)
             .into_iter()
-            .find(|struct_node| struct_node.name(self).unwrap() == ident.name)
+            .find(|struct_node| struct_node.name(self).unwrap() == name)
         {
             if let Some(struct_cvar) = ContextVar::maybe_from_user_ty(self, loc, func.0.into()) {
-                let struct_node = self.add_node(Node::ContextVar(struct_cvar));
+                let struct_node = self.add_node(struct_cvar);
                 // this prevents attaching a dummy node to the parent which could cause a cycle in the graph
-                if maybe_parent.is_some() {
+                if let Some(parent) = maybe_parent {
                     self.add_edge(
                         struct_node,
-                        member_idx,
+                        parent,
                         Edge::Context(ContextEdge::StructAccess),
                     );
                 }
-                return Ok(ExprRet::Single(struct_node));
+                return Ok((ExprRet::Single(struct_node), false));
             } else {
                 return Err(ExprErr::MemberAccessNotFound(
                     loc,
                     format!(
-                        "Unable to construct the struct \"{}\" in contract \"{}\"",
-                        ident.name,
+                        "Unable to construct the struct \"{name}\" in contract \"{}\"",
                         con_node.name(self).into_expr_err(loc)?
                     ),
                 ));
             }
         } else {
-            match &*ident.name {
+            let res = match name {
                 "name" => {
                     let c = Concrete::from(con_node.name(self).unwrap());
-                    let cnode = self.add_node(Node::Concrete(c));
+                    let cnode = self.add_node(c);
                     let cvar = ContextVar::new_from_concrete(loc, ctx, cnode.into(), self)
                         .into_expr_err(loc)?;
-                    let node = self.add_node(Node::ContextVar(cvar));
+                    let node = self.add_node(cvar);
                     ctx.add_var(node.into(), self).into_expr_err(loc)?;
                     self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    return Ok(ExprRet::Single(node));
+                    Ok(ExprRet::Single(node))
                 }
                 "creationCode" | "runtimeCode" => {
                     let bn = self.builtin_or_add(Builtin::DynamicBytes);
                     let cvar =
                         ContextVar::new_from_builtin(loc, bn.into(), self).into_expr_err(loc)?;
-                    let node = self.add_node(Node::ContextVar(cvar));
+                    let node = self.add_node(cvar);
                     ctx.add_var(node.into(), self).into_expr_err(loc)?;
                     self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    return Ok(ExprRet::Single(node));
+                    Ok(ExprRet::Single(node))
                 }
                 "interfaceId" => {
                     // TODO: actually calculate this
                     let bn = self.builtin_or_add(Builtin::Bytes(4));
                     let cvar =
                         ContextVar::new_from_builtin(loc, bn.into(), self).into_expr_err(loc)?;
-                    let node = self.add_node(Node::ContextVar(cvar));
+                    let node = self.add_node(cvar);
                     ctx.add_var(node.into(), self).into_expr_err(loc)?;
                     self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                    return Ok(ExprRet::Single(node));
+                    Ok(ExprRet::Single(node))
                 }
                 _ => {
                     // try to match just prefix
                     if let Some(func) = con_node.funcs(self).into_iter().find(|func_node| {
                         if let Some(prefix) = func_node.prefix_only_name(self).unwrap() {
-                            prefix == ident.name
+                            prefix == name
                         } else {
                             false
                         }
@@ -120,12 +121,12 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                         if let Some(func_cvar) =
                             ContextVar::maybe_from_user_ty(self, loc, func.0.into())
                         {
-                            let fn_node = self.add_node(Node::ContextVar(func_cvar));
+                            let fn_node = self.add_node(func_cvar);
                             // this prevents attaching a dummy node to the parent which could cause a cycle in the graph
-                            if maybe_parent.is_some() {
+                            if let Some(parent) = maybe_parent {
                                 self.add_edge(
                                     fn_node,
-                                    member_idx,
+                                    parent,
                                     Edge::Context(ContextEdge::FuncAccess),
                                 );
                             }
@@ -134,18 +135,16 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                             Err(ExprErr::MemberAccessNotFound(
                                 loc,
                                 format!(
-                                    "Unable to construct the function \"{}\" in contract \"{}\"",
-                                    ident.name,
+                                    "Unable to construct the function \"{name}\" in contract \"{}\"",
                                     con_node.name(self).into_expr_err(loc)?
                                 ),
                             ))
                         }
                     } else {
-                        return Err(ExprErr::ContractFunctionNotFound(
+                        Err(ExprErr::ContractFunctionNotFound(
                             loc,
                             format!(
-                            "No function or struct with name {:?} in contract: {:?}. Functions: {:#?}",
-                            ident.name,
+                            "No function or struct with name \"{name}\" in contract: {:?}. Functions: {:#?}",
                             con_node.name(self).unwrap(),
                             con_node
                                 .funcs(self)
@@ -153,10 +152,11 @@ pub trait ContractAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                                 .map(|func| func.name(self).unwrap())
                                 .collect::<Vec<_>>()
                         ),
-                        ));
+                        ))
                     }
                 }
-            }
+            };
+            Ok((res?, false))
         }
     }
 }

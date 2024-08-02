@@ -35,6 +35,16 @@ impl BuiltInNode {
     }
 
     /// Checks if this builtin is implicitly castable to another builtin
+    pub fn castable_to(
+        &self,
+        other: &Self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<bool, GraphError> {
+        Ok(self
+            .underlying(analyzer)?
+            .castable_to(other.underlying(analyzer)?))
+    }
+
     pub fn implicitly_castable_to(
         &self,
         other: &Self,
@@ -219,6 +229,44 @@ impl Builtin {
         builtins
     }
 
+    pub fn possible_upcast_builtins(&self) -> Vec<Builtin> {
+        let mut builtins = vec![];
+        match self {
+            Builtin::Uint(size) => {
+                let mut s = *size;
+                while s <= 256 {
+                    builtins.push(Builtin::Uint(s));
+                    s += 8;
+                }
+            }
+            Builtin::Int(size) => {
+                let mut s = *size;
+                while s <= 256 {
+                    builtins.push(Builtin::Int(s));
+                    s += 8;
+                }
+            }
+            Builtin::Bytes(size) => {
+                let mut s = *size;
+                while s <= 32 {
+                    builtins.push(Builtin::Bytes(s));
+                    s += 1;
+                }
+            }
+            Builtin::Address => builtins.push(Builtin::Address),
+            Builtin::AddressPayable => {
+                builtins.push(Builtin::Address);
+                builtins.push(Builtin::AddressPayable);
+            }
+            Builtin::Payable => {
+                builtins.push(Builtin::Address);
+                builtins.push(Builtin::AddressPayable);
+            }
+            _ => {}
+        }
+        builtins
+    }
+
     /// Construct a [`SolcRange`] that is zero
     pub fn zero_range(&self) -> Option<SolcRange> {
         match self {
@@ -365,7 +413,7 @@ impl Builtin {
     }
 
     /// Checks if self is implicitly castable to another builtin
-    pub fn implicitly_castable_to(&self, other: &Self) -> bool {
+    pub fn castable_to(&self, other: &Self) -> bool {
         use Builtin::*;
         match (self, other) {
             (Address, Address) => true,
@@ -383,6 +431,29 @@ impl Builtin {
             (String, String) => true,
             (Uint(from_size), Uint(to_size)) => from_size <= to_size,
             (Uint(from_size), Address) => *from_size == 160,
+            (Int(from_size), Int(to_size)) => from_size <= to_size,
+            (Bytes(from_size), Bytes(to_size)) => from_size <= to_size,
+            _ => false,
+        }
+    }
+
+    /// Checks if self is implicitly castable to another builtin
+    pub fn implicitly_castable_to(&self, other: &Self) -> bool {
+        use Builtin::*;
+
+        match (self, other) {
+            (Address, Address) => true,
+            (AddressPayable, Address) => true,
+            (AddressPayable, Payable) => true,
+            (AddressPayable, AddressPayable) => true,
+            (Payable, Address) => true,
+            (Payable, AddressPayable) => true,
+            (Payable, Payable) => true,
+            (Bool, Bool) => true,
+            (Rational, Rational) => true,
+            (DynamicBytes, DynamicBytes) => true,
+            (String, String) => true,
+            (Uint(from_size), Uint(to_size)) => from_size <= to_size,
             (Int(from_size), Int(to_size)) => from_size <= to_size,
             (Bytes(from_size), Bytes(to_size)) => from_size <= to_size,
             _ => false,

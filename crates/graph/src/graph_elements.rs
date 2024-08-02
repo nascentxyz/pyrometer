@@ -2,7 +2,7 @@ use crate::elem::Elem;
 use crate::{nodes::*, VarType};
 
 use shared::{
-    AnalyzerLike, GraphDot, GraphError, GraphLike, Heirarchical, NodeIdx, RangeArena,
+    AnalyzerLike, FlatExpr, GraphDot, GraphError, GraphLike, Heirarchical, NodeIdx, RangeArena,
     RepresentationErr,
 };
 
@@ -33,6 +33,7 @@ pub trait AnalyzerBackend:
         FunctionParam = FunctionParam,
         FunctionReturn = FunctionReturn,
         Function = Function,
+        FlatExpr = FlatExpr,
     > + GraphBackend
 {
     fn add_concrete_var(
@@ -98,9 +99,12 @@ pub enum Node {
     /// A concrete value (i.e. '1' or '0x111')
     Concrete(Concrete),
     /// The `msg` global in solidity
-    Msg(Msg),
+    Msg(Box<Msg>),
     /// The `block` global in solidity
-    Block(Block),
+    Block(Box<Block>),
+    /// A yul-based function
+    YulFunction(YulFunction),
+    // TODO: Handle events
 }
 
 pub fn as_dot_str(
@@ -274,6 +278,8 @@ pub enum Edge {
     BuiltinFunction,
     /// A connection from one contract to another contract
     UsingContract(Loc),
+    /// Yul function
+    YulFunction(usize),
 }
 
 impl Heirarchical for Edge {
@@ -284,8 +290,8 @@ impl Heirarchical for Edge {
             Part | Import => 1,
 
             Contract | Ty | Field | Enum | Struct | Error | Event | Var | InheritedContract
-            | Modifier | FallbackFunc | Constructor | ReceiveFunc | LibraryFunction(_)
-            | BuiltinFunction | Func | UsingContract(_) => 2,
+            | Modifier | FallbackFunc | Constructor | YulFunction(_) | ReceiveFunc
+            | LibraryFunction(_) | BuiltinFunction | Func | UsingContract(_) => 2,
 
             Context(_) | ErrorParam | FunctionParam | FunctionReturn | FuncModifier(_) => 3,
         }

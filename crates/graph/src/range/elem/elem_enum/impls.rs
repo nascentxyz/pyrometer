@@ -23,6 +23,12 @@ impl Elem<Concrete> {
         let expr = RangeExpr::new(self, RangeOp::Mul(true), other);
         Self::Expr(expr)
     }
+
+    pub fn wrapping_exp(self, other: Elem<Concrete>) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Exp(true), other);
+        Self::Expr(expr)
+    }
+
     pub fn wrapping_div(self, other: Elem<Concrete>) -> Self {
         let expr = RangeExpr::new(self, RangeOp::Div(true), other);
         Self::Expr(expr)
@@ -215,7 +221,7 @@ impl<T: Ord> Elem<T> {
 
     /// Creates a new range element that is one range element to the power of another
     pub fn pow(self, other: Self) -> Self {
-        let expr = RangeExpr::new(self, RangeOp::Exp, other);
+        let expr = RangeExpr::new(self, RangeOp::Exp(false), other);
         Elem::Expr(expr)
     }
 
@@ -234,6 +240,12 @@ impl<T: Ord> Elem<T> {
     /// Creates a new range element that sets the length of a memory object
     pub fn set_length(self, other: Self) -> Self {
         let expr = RangeExpr::new(self, RangeOp::SetLength, other);
+        Elem::Expr(expr)
+    }
+
+    /// Creates a new range element that is a slice of the lhs with the rhs
+    pub fn slice(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Slice, other);
         Elem::Expr(expr)
     }
 
@@ -388,6 +400,18 @@ impl Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match (self, other) {
+            (Elem::Arena(_), _) => {
+                let (elem, idx) = self.dearenaize(arena);
+                let overlaps = elem.overlaps(other, eval, analyzer, arena);
+                self.rearenaize(elem, idx, arena);
+                overlaps
+            }
+            (_, Elem::Arena(_)) => {
+                let (elem, idx) = other.dearenaize(arena);
+                let overlaps = self.overlaps(&elem, eval, analyzer, arena);
+                other.rearenaize(elem, idx, arena);
+                overlaps
+            }
             (Elem::Concrete(s), Elem::Concrete(o)) => Ok(Some(o.val == s.val)),
             (Elem::Reference(s), Elem::Reference(o)) => {
                 if s == o {
@@ -446,7 +470,7 @@ impl Elem<Concrete> {
         rhs_min: &Self,
         rhs_max: &Self,
         eval: bool,
-        analyzer: &mut impl GraphBackend,
+        analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match self {
@@ -494,6 +518,19 @@ impl Elem<Concrete> {
                     _ => Ok(Some(false)),
                 }
             }
+            Self::Expr(_) => {
+                let min = self.minimize(analyzer, arena)?;
+                let max = self.maximize(analyzer, arena)?;
+                if let Some(true) = min.overlaps_dual(rhs_min, rhs_max, eval, analyzer, arena)? {
+                    Ok(Some(true))
+                } else if let Some(true) =
+                    max.overlaps_dual(rhs_min, rhs_max, eval, analyzer, arena)?
+                {
+                    Ok(Some(true))
+                } else {
+                    Ok(None)
+                }
+            }
             _ => Ok(None),
         }
     }
@@ -539,13 +576,13 @@ impl Elem<Concrete> {
         match self {
             Self::Reference(Reference { idx: _, .. }) => Some(Elem::Expr(RangeExpr::new(
                 self.clone(),
-                RangeOp::Not,
-                Elem::Null,
+                RangeOp::Eq,
+                Elem::from(false),
             ))),
             Self::Concrete(_) => Some(Elem::Expr(RangeExpr::new(
                 self.clone(),
-                RangeOp::Not,
-                Elem::Null,
+                RangeOp::Eq,
+                Elem::from(false),
             ))),
             Self::Expr(expr) => Some(Elem::Expr(expr.inverse_if_boolean()?)),
             Self::ConcreteDyn(_d) => None,

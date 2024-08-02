@@ -72,7 +72,7 @@ impl Msg {
             "data" => {
                 if let Some(d) = self.data.clone() {
                     let c = Concrete::from(d);
-                    (analyzer.add_node(Node::Concrete(c)), "msg.data".to_string())
+                    (analyzer.add_node(c), "msg.data".to_string())
                 } else {
                     let b = Builtin::DynamicBytes;
                     let node = analyzer.builtin_or_add(b);
@@ -87,10 +87,7 @@ impl Msg {
             "sender" => {
                 if let Some(d) = self.sender {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)),
-                        "msg.sender".to_string(),
-                    )
+                    (analyzer.add_node(c), "msg.sender".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Address);
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
@@ -104,7 +101,7 @@ impl Msg {
             "sig" => {
                 if let Some(d) = self.sig {
                     let c = Concrete::from(d);
-                    (analyzer.add_node(Node::Concrete(c)), "msg.sig".to_string())
+                    (analyzer.add_node(c), "msg.sig".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Bytes(4));
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
@@ -118,10 +115,7 @@ impl Msg {
             "value" => {
                 if let Some(d) = self.value {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)),
-                        "msg.value".to_string(),
-                    )
+                    (analyzer.add_node(c), "msg.value".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(256));
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
@@ -135,10 +129,7 @@ impl Msg {
             "origin" => {
                 if let Some(d) = self.origin {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)),
-                        "tx.origin".to_string(),
-                    )
+                    (analyzer.add_node(c), "tx.origin".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Address);
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
@@ -152,10 +143,7 @@ impl Msg {
             "gasprice" => {
                 if let Some(d) = self.gasprice {
                     let c = Concrete::from(d);
-                    (
-                        analyzer.add_node(Node::Concrete(c)),
-                        "tx.gasprice".to_string(),
-                    )
+                    (analyzer.add_node(c), "tx.gasprice".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;
@@ -169,7 +157,7 @@ impl Msg {
             "gaslimit" => {
                 if let Some(d) = self.gaslimit {
                     let c = Concrete::from(d);
-                    (analyzer.add_node(Node::Concrete(c)), "".to_string())
+                    (analyzer.add_node(c), "".to_string())
                 } else {
                     let node = analyzer.builtin_or_add(Builtin::Uint(64));
                     let mut var = ContextVar::new_from_builtin(loc, node.into(), analyzer)?;

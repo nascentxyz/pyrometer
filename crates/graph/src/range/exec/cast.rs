@@ -106,6 +106,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeDyn<Concrete> {
                 Some(Elem::ConcreteDyn(self.clone()))
             }
             (Some(Elem::Reference(_)), None) => Some(Elem::ConcreteDyn(self.clone())),
+            (Some(Elem::ConcreteDyn(_)), None) => Some(Elem::ConcreteDyn(self.clone())),
             (None, Some(Elem::Reference(_))) => Some(Elem::ConcreteDyn(self.clone())),
             (None, None) => Some(Elem::ConcreteDyn(self.clone())),
             _ => None,

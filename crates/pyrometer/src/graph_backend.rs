@@ -17,7 +17,6 @@ use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
 use petgraph::{dot::Dot, graph::EdgeIndex, visit::EdgeRef, Directed, Direction, Graph};
-use std::convert::TryFrom;
 use std::{
     collections::BTreeSet,
     sync::{Arc, Mutex},
@@ -170,7 +169,6 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
         for elem in &arena.ranges {
             // Get the map value
             if let Some(map_value) = arena.map.get(elem).copied() {
-                // println!("Adding idx {} to elems {}", map_value, elem);
                 inner.push((map_value, elem.clone()));
             } else {
                 // println!("NONE REF elem: {:?}", elem);
@@ -211,11 +209,6 @@ impl TryFrom<&RangeArena<Elem<Concrete>>> for Elems {
         inner.sort_by(|a, b| a.0.cmp(&b.0));
         // dedup is needed as there are duplicate indices in the inner vec. TODO @brock is this a bug? arena has duplicate elems
         inner.dedup();
-
-        // Print out elems
-        // for (idx, elem) in inner.iter() {
-        //     println!("elem {}: {}", idx, elem);
-        // }
 
         Ok(Elems { inner })
     }
@@ -305,7 +298,6 @@ impl Elems {
                     let lhs_arena = match *range_expr.lhs.clone() {
                         Elem::Arena(lhs) => Some(lhs),
                         Elem::Reference(_lhs) => {
-                            // println!("LHS is a reference: {}", range_expr.lhs);
                             // attempt to add in the ContextVar node that the elem is referencing
                             let context_var_nodes = elem
                                 .dependent_on(graph_backend, arena)
@@ -333,12 +325,8 @@ impl Elems {
                         _ => None,
                     };
                     let rhs_arena = match *range_expr.rhs.clone() {
-                        Elem::Arena(rhs) => {
-                            // println!("RHS is an arena index: {}", range_expr.rhs);
-                            Some(rhs)
-                        }
+                        Elem::Arena(rhs) => Some(rhs),
                         Elem::Reference(_rhs) => {
-                            // println!("RHS is a reference: {}", range_expr.rhs);
                             // attempt to add in the ContextVar node that the elem is referencing
                             let context_var_nodes = elem
                                 .dependent_on(graph_backend, arena)
@@ -399,16 +387,12 @@ impl Elems {
 
         // THIRD PASS - iterate over ContextVarNodes
         // iterate over the dependency map and add edges between the ContextVar nodes and the arena nodes
-        // println!("dependency map: {:?}", dependency_map);
         for (cvar_node, &node_idx) in dependency_map.iter() {
-            // println!("cvar node: {:?}, node idx: {:?}", cvar_node, node_idx);
             // Find the appropriate arena_idx for range.min and range.max using Elems.inner
             if let Ok(Some(range_min)) = cvar_node.range_min(graph_backend) {
-                // println!(" range min: {:?}", range_min);
                 match range_min {
                     Elem::Arena(arena_idx) => {
                         // Make a direct edge to the arena node
-                        // println!("  arena idx: {}", arena_idx);
                         if let Some(&min_node_idx) = arena_idx_to_node_idx.get(&arena_idx) {
                             graph.add_edge(node_idx, min_node_idx, ArenaEdge::MIN);
                         }
@@ -422,9 +406,7 @@ impl Elems {
                             .map(|(idx, _)| *idx);
                         // Add edges to the min arena indices
                         if let Some(min_idx) = min_arena_idx {
-                            // println!("  min idx: {:?}", min_idx);
                             if let Some(&min_node_idx) = arena_idx_to_node_idx.get(&min_idx) {
-                                // println!("   min node idx: {:?}", min_node_idx);
                                 graph.add_edge(node_idx, min_node_idx, ArenaEdge::MIN);
                             }
                         }
@@ -433,11 +415,9 @@ impl Elems {
             }
 
             if let Ok(Some(range_max)) = cvar_node.range_max(graph_backend) {
-                // println!(" range max: {:?}", range_max);
                 match range_max {
                     Elem::Arena(arena_idx) => {
                         // Make a direct edge to the arena node
-                        // println!("  arena idx: {}", arena_idx);
                         if let Some(&max_node_idx) = arena_idx_to_node_idx.get(&arena_idx) {
                             graph.add_edge(node_idx, max_node_idx, ArenaEdge::MAX);
                         }
@@ -451,9 +431,7 @@ impl Elems {
                             .map(|(idx, _)| *idx);
                         // Add edges to the min arena indices
                         if let Some(max_idx) = max_arena_idx {
-                            // println!("  max idx: {:?}", max_idx);
                             if let Some(&max_node_idx) = arena_idx_to_node_idx.get(&max_idx) {
-                                // println!("   max node idx: {:?}", max_node_idx);
                                 graph.add_edge(node_idx, max_node_idx, ArenaEdge::MAX);
                             }
                         }
@@ -919,7 +897,7 @@ impl GraphDot for Analyzer {
         }
     }
 
-    fn dot_str(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
+    fn dot_str(&self, arena: &mut RangeArena<<Analyzer as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerBackend,
@@ -1006,7 +984,7 @@ impl GraphDot for Analyzer {
         dot_str.join("\n")
     }
 
-    fn dot_str_no_tmps(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
+    fn dot_str_no_tmps(&self, arena: &mut RangeArena<<Analyzer as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: GraphLike + AnalyzerBackend,
@@ -1080,7 +1058,7 @@ impl GraphDot for Analyzer {
         dot_str.join("\n")
     }
 
-    fn mermaid_str(&self, arena: &mut RangeArena<Elem<Concrete>>) -> String
+    fn mermaid_str(&self, arena: &mut RangeArena<<Analyzer as GraphLike>::RangeElem>) -> String
     where
         Self: std::marker::Sized,
         Self: AnalyzerBackend,

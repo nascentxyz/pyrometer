@@ -19,11 +19,10 @@ mod math_ops;
 pub use math_ops::{exec_add, exec_div, exec_exp, exec_mod, exec_mul, exec_sub};
 
 mod truthy_ops;
-pub use truthy_ops::{
-    exec_and, exec_eq_neq, exec_gt, exec_gte, exec_lt, exec_lte, exec_not, exec_or,
-};
+pub use truthy_ops::{exec_and, exec_eq_neq, exec_gt, exec_gte, exec_lt, exec_lte, exec_or};
 
 mod mem_ops;
 pub use mem_ops::{
     exec_concat, exec_get_index, exec_get_length, exec_memcopy, exec_set_indices, exec_set_length,
+    exec_slice,
 };
