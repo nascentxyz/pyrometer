@@ -27,6 +27,12 @@ contract Intrinsics {
         selfdestruct(payable(address(this)));
     }
 
+    function yulSelfdestructed() public {
+        assembly {
+            selfdestruct(1)
+        }
+    }
+
     function yulIntrinsics() public view {
         assembly {
             let a := timestamp()
