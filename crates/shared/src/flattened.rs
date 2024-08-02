@@ -38,6 +38,7 @@ pub enum FlatExpr {
     },
 
     Todo(Loc, &'static str),
+    Pop,
 
     Emit(Loc),
     TestCommand(Loc, &'static str),
@@ -399,6 +400,7 @@ impl FlatExpr {
             | ArrayLiteral(loc, ..) => Some(*loc),
 
             FunctionCallName(..)
+            | Pop
             | YulExpr(FlatYulExpr::YulStartBlock(_))
             | YulExpr(FlatYulExpr::YulEndBlock(_)) => None,
         }
