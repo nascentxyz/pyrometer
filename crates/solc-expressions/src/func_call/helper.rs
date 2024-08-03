@@ -4,7 +4,7 @@ use crate::{member_access::ListAccess, variable::Variable};
 use graph::{
     elem::Elem,
     nodes::{
-        CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, EnvCtx, ExprRet,
         FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
@@ -18,6 +18,29 @@ use std::collections::BTreeMap;
 impl<T> CallerHelper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Helper trait for performing function calls
 pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn add_env(
+        &mut self,
+        callee_ctx: ContextNode,
+        func: FunctionNode,
+        env: Option<EnvCtx>,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        if let Some(mut env) = env {
+            if func.is_public_or_ext(self).into_expr_err(loc)? {
+                if let Some(sig) = func.sig(self).into_expr_err(loc)? {
+                    let sig_var = self.add_concrete_var(callee_ctx, sig, loc)?;
+                    env.sig = Some(sig_var);
+                }
+            }
+
+            let env_ctx = self.add_node(env);
+            self.add_edge(env_ctx, callee_ctx, Edge::Context(ContextEdge::Env));
+        }
+
+        // todo!()
+        Ok(())
+    }
+
     /// Maps inputs to function parameters such that if there is a renaming i.e. `a(uint256 x)` is called via `a(y)`,
     /// we map `y -> x` for future lookups
     fn map_inputs_to_params(

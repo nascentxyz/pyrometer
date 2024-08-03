@@ -9,7 +9,7 @@ use crate::{
 use graph::{
     elem::Elem,
     nodes::{
-        Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
+        Concrete, Context, ContextNode, ContextVar, ContextVarNode, EnvCtx, ExprRet, FunctionNode,
         FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
@@ -36,6 +36,7 @@ pub trait FuncCaller:
         func: FunctionNode,
         func_call_str: Option<&str>,
         modifier_state: Option<ModifierState>,
+        msg: Option<EnvCtx>,
     ) -> Result<(), ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -62,6 +63,7 @@ pub trait FuncCaller:
                         &params,
                         func_call_str,
                         &modifier_state,
+                        msg.clone(),
                     )
                 })
             }
@@ -97,6 +99,7 @@ pub trait FuncCaller:
                             &params,
                             func_call_str,
                             &modifier_state,
+                            msg.clone(),
                         )
                     })
                 } else {
@@ -121,6 +124,7 @@ pub trait FuncCaller:
                     &params,
                     func_call_str,
                     &modifier_state,
+                    msg.clone(),
                 )
             }),
             e => todo!("here: {:?}", e),
@@ -140,6 +144,7 @@ pub trait FuncCaller:
         params: &[FunctionParamNode],
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
+        env: Option<EnvCtx>,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Calling function: {} in context: {}",
@@ -163,6 +168,8 @@ pub trait FuncCaller:
         } else {
             self.create_call_ctx(ctx, loc, func_node, modifier_state.clone())?
         };
+
+        self.add_env(callee_ctx, func_node, env, loc)?;
 
         // handle remapping of variable names and bringing variables into the new context
         let renamed_inputs =

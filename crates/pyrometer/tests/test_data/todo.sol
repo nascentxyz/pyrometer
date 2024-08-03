@@ -2,14 +2,6 @@
 pragma solidity ^0.8.0;
 
 contract Todo {
-    // will live in env.sol when added
-    function env() public view {
-        bytes32 b = blobhash(1);
-        uint d = block.blobbasefee;
-        b;
-        d;
-    }
-
     // this will live in loops.sol when fixed
     function perform_break_literal() public pure {
         for (uint256 i = 0; i < 10; i++) {

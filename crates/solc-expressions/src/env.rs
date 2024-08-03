@@ -1,4 +1,6 @@
 use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller};
+use petgraph::visit::EdgeRef;
+use petgraph::Direction;
 
 use graph::{
     elem::Elem,
@@ -17,12 +19,14 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         arena: &mut RangeArena<Elem<Concrete>>,
         ident: &Identifier,
         ctx: ContextNode,
+        loc: Loc,
     ) -> Result<Option<()>, ExprErr> {
         match &*ident.name {
             "msg" | "tx" => {
+                let env = ctx.env_or_recurse(self).into_expr_err(loc)?.unwrap();
                 ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
                     .into_expr_err(ident.loc)?;
-                ctx.push_expr(ExprRet::Single(self.msg().into()), self)
+                ctx.push_expr(ExprRet::Single(env.into()), self)
                     .into_expr_err(ident.loc)?;
                 Ok(Some(()))
             }
@@ -100,6 +104,25 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                             .into_expr_err(loc)?;
                         var.name = "block.basefee".to_string();
                         var.display_name = "block.basefee".to_string();
+                        var.is_tmp = false;
+                        var.is_symbolic = true;
+                        var.storage = Some(StorageLocation::Block(loc));
+                        let cvar = self.add_node(var);
+                        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
+                        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+                        return Ok(ExprRet::Single(cvar));
+                    }
+                }
+                "blobbasefee" => {
+                    if let Some(d) = self.block().underlying(self).into_expr_err(loc)?.basefee {
+                        let c = Concrete::from(d);
+                        (self.add_node(c).into(), "block.blobbasefee".to_string())
+                    } else {
+                        let node = self.builtin_or_add(Builtin::Uint(256));
+                        let mut var = ContextVar::new_from_builtin(loc, node.into(), self)
+                            .into_expr_err(loc)?;
+                        var.name = "block.blobbasefee".to_string();
+                        var.display_name = "block.blobbasefee".to_string();
                         var.is_tmp = false;
                         var.is_symbolic = true;
                         var.storage = Some(StorageLocation::Block(loc));
@@ -280,7 +303,14 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         } else {
             let (node, name) = match ident_name {
                 "data" => {
-                    if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.data.clone() {
+                    if let Some(existing) = ctx
+                        .var_by_name_or_recurse(self, "msg.data")
+                        .into_expr_err(loc)?
+                    {
+                        return Ok(ExprRet::Single(existing.into()));
+                    } else if let Some(d) =
+                        self.msg().underlying(self).into_expr_err(loc)?.data.clone()
+                    {
                         let c = Concrete::from(d);
                         (self.add_node(c).into(), "msg.data".to_string())
                     } else {
@@ -300,7 +330,12 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     }
                 }
                 "sender" => {
-                    if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.sender {
+                    if let Some(existing) = ctx
+                        .var_by_name_or_recurse(self, "msg.sender")
+                        .into_expr_err(loc)?
+                    {
+                        return Ok(ExprRet::Single(existing.into()));
+                    } else if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.sender {
                         let c = Concrete::from(d);
                         (self.add_node(c).into(), "msg.sender".to_string())
                     } else {
@@ -319,7 +354,12 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     }
                 }
                 "sig" => {
-                    if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.sig {
+                    if let Some(existing) = ctx
+                        .var_by_name_or_recurse(self, "msg.sig")
+                        .into_expr_err(loc)?
+                    {
+                        return Ok(ExprRet::Single(existing.into()));
+                    } else if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.sig {
                         let c = Concrete::from(d);
                         (self.add_node(c).into(), "msg.sig".to_string())
                     } else {
@@ -338,7 +378,12 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     }
                 }
                 "value" => {
-                    if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.value {
+                    if let Some(existing) = ctx
+                        .var_by_name_or_recurse(self, "msg.value")
+                        .into_expr_err(loc)?
+                    {
+                        return Ok(ExprRet::Single(existing.into()));
+                    } else if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.value {
                         let c = Concrete::from(d);
                         (self.add_node(c).into(), "msg.value".to_string())
                     } else {
@@ -395,7 +440,13 @@ pub trait Env: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     }
                 }
                 "gaslimit" => {
-                    if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.gaslimit {
+                    if let Some(existing) = ctx
+                        .var_by_name_or_recurse(self, "msg.gaslimit")
+                        .into_expr_err(loc)?
+                    {
+                        return Ok(ExprRet::Single(existing.into()));
+                    } else if let Some(d) = self.msg().underlying(self).into_expr_err(loc)?.gaslimit
+                    {
                         let c = Concrete::from(d);
                         (self.add_node(c).into(), "".to_string())
                     } else {

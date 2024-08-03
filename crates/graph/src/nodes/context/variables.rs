@@ -1,7 +1,8 @@
 use crate::{
-    nodes::{ContextNode, ContextVarNode, ExprRet, VarNode},
+    nodes::{ContextNode, ContextVarNode, EnvCtxNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode,
 };
+use petgraph::Direction;
 use shared::GraphError;
 
 use petgraph::visit::EdgeRef;
@@ -93,6 +94,32 @@ impl ContextNode {
             .tmp_vars
             .get(name)
             .copied()
+    }
+
+    pub fn env_or_recurse(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<EnvCtxNode>, GraphError> {
+        if let Some(env) = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .find(|e| matches!(e.weight(), Edge::Context(ContextEdge::Env)))
+            .map(|e| e.source())
+        {
+            return Ok(Some(env.into()));
+        }
+
+        if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+            if let Some(in_parent) = parent.env_or_recurse(analyzer)? {
+                return Ok(Some(in_parent));
+            }
+        }
+
+        if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
+            parent.env_or_recurse(analyzer)
+        } else {
+            Ok(None)
+        }
     }
 
     /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found

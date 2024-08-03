@@ -221,6 +221,15 @@ pub fn builtin_fns() -> AHashMap<String, Function> {
         builtin_fn!(
             name: Some(Identifier {
                 loc: Loc::Builtin,
+                name: "blobhash".to_string(),
+            }),
+            attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
+                Loc::Builtin,
+            )))],
+        ),
+        builtin_fn!(
+            name: Some(Identifier {
+                loc: Loc::Builtin,
                 name: "abi.decode".to_string(),
             }),
             attributes: vec![FunctionAttribute::Visibility(Visibility::Internal(Some(
@@ -619,6 +628,22 @@ pub fn builtin_fns_inputs(
         ),
         (
             "blockhash",
+            vec![FunctionParam {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Uint(64)),
+                order: 0,
+                storage: Some(StorageLocation::Memory(Loc::Implicit)),
+                name: None,
+            }],
+            vec![FunctionReturn {
+                loc: Loc::Builtin,
+                ty: analyzer.builtin_or_add(Builtin::Bytes(32)),
+                storage: None,
+                name: None,
+            }],
+        ),
+        (
+            "blobhash",
             vec![FunctionParam {
                 loc: Loc::Builtin,
                 ty: analyzer.builtin_or_add(Builtin::Uint(64)),

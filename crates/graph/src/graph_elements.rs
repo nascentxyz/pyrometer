@@ -100,6 +100,8 @@ pub enum Node {
     Concrete(Concrete),
     /// The `msg` global in solidity
     Msg(Box<Msg>),
+    /// Local function call environmental data
+    EnvCtx(EnvCtx),
     /// The `block` global in solidity
     Block(Box<Block>),
     /// A yul-based function
@@ -395,6 +397,8 @@ pub enum ContextEdge {
     // Range analysis
     /// Unused
     Range,
+
+    Env,
 }
 
 #[derive(Default)]

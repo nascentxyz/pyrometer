@@ -1,10 +1,12 @@
-use crate::{BuiltinAccess, ContractAccess, EnumAccess, Env, ListAccess, StructAccess};
+use crate::{
+    variable::Variable, BuiltinAccess, ContractAccess, EnumAccess, Env, ListAccess, StructAccess,
+};
 
 use graph::{
     elem::Elem,
     nodes::{
         BuiltInNode, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ContractNode,
-        EnumNode, ExprRet, FunctionNode, StructNode, TyNode,
+        EnumNode, EnvCtxNode, ExprRet, FunctionNode, KilledKind, StructNode, TyNode,
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
@@ -118,6 +120,20 @@ pub trait MemberAccess:
             }
             Node::Builtin(ref _b) => {
                 self.builtin_member_access(ctx, BuiltInNode::from(member_idx), name, false, loc)
+            }
+            Node::EnvCtx(_) => {
+                if let Some(var) = EnvCtxNode::from(member_idx)
+                    .member_access(self, name)
+                    .into_expr_err(loc)?
+                {
+                    let res = self.advance_var_in_ctx(var.into(), loc, ctx).unwrap();
+                    Ok((ExprRet::Single(res.0.into()), false))
+                } else {
+                    Err(ExprErr::ParseError(
+                        loc,
+                        format!("No enviroment variable: {name}"),
+                    ))
+                }
             }
             e => Err(ExprErr::Todo(
                 loc,
