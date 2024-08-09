@@ -6,6 +6,7 @@ use crate::{
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
+use ethers_core::types::H256;
 
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
@@ -41,6 +42,19 @@ impl FunctionNode {
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Function but it was: {e:?}"
             ))),
+        }
+    }
+
+    pub fn sig(&self, analyzer: &impl GraphBackend) -> Result<Option<Concrete>, GraphError> {
+        if !self.is_public_or_ext(analyzer)? {
+            Ok(None)
+        } else {
+            let name = self.name(analyzer)?;
+            let mut out = [0; 32];
+            keccak_hash::keccak_256(name.as_bytes(), &mut out);
+            let mut sig = [0; 32];
+            (0..4).for_each(|j| sig[j] = out[j]);
+            Ok(Some(Concrete::Bytes(4, H256(sig))))
         }
     }
 
