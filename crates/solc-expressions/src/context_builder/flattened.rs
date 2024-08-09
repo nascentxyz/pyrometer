@@ -631,7 +631,12 @@ pub trait Flatten:
 
                         self.traverse_expression(func_expr, unchecked);
                         self.push_expr(FlatExpr::New(*new_loc));
-                        self.push_expr(FlatExpr::FunctionCall(*func_loc, input_exprs.len(), 0));
+                        self.push_expr(FlatExpr::FunctionCall(
+                            *func_loc,
+                            false,
+                            input_exprs.len(),
+                            0,
+                        ));
                     }
                     NamedFunctionCall(loc, func_expr, input_args) => {
                         input_args.iter().rev().for_each(|arg| {
@@ -643,7 +648,12 @@ pub trait Flatten:
                         input_args.iter().for_each(|arg| {
                             self.push_expr(FlatExpr::from(arg));
                         });
-                        self.push_expr(FlatExpr::NamedFunctionCall(*loc, input_args.len(), 0));
+                        self.push_expr(FlatExpr::NamedFunctionCall(
+                            *loc,
+                            false,
+                            input_args.len(),
+                            0,
+                        ));
                     }
                     _ => {
                         // add error
@@ -901,6 +911,7 @@ pub trait Flatten:
                 });
                 self.push_expr(FlatExpr::NamedFunctionCall(
                     *loc,
+                    false,
                     input_args.len(),
                     call_block_n,
                 ));
@@ -961,7 +972,12 @@ pub trait Flatten:
                         }
                     }
 
-                    self.push_expr(FlatExpr::FunctionCall(*loc, num_inputs, call_block_n));
+                    self.push_expr(FlatExpr::FunctionCall(
+                        *loc,
+                        false,
+                        num_inputs,
+                        call_block_n,
+                    ));
                 }
             },
             // member
@@ -1012,6 +1028,7 @@ pub trait Flatten:
             None,  // alt function name
             &None, // mod state
             env,
+            false, // not ext
         );
         let _ = self.add_if_err(res);
     }
@@ -1471,11 +1488,21 @@ pub trait Flatten:
                         if was_lib_func {
                             ctx.push_expr(member, self).into_expr_err(loc)?;
                             match stack.get_mut(ctx.parse_idx(self)) {
-                                Some(FlatExpr::FunctionCall(_, ref mut n, _)) => {
+                                Some(FlatExpr::FunctionCall(_, _, ref mut n, _)) => {
                                     *n += 1;
                                 }
-                                Some(FlatExpr::NamedFunctionCall(_, ref mut n, _)) => {
+                                Some(FlatExpr::NamedFunctionCall(_, _, ref mut n, _)) => {
                                     *n += 1;
+                                }
+                                Some(_) | None => {}
+                            }
+                        } else {
+                            match stack.get_mut(ctx.parse_idx(self)) {
+                                Some(FlatExpr::FunctionCall(_, ref mut ext, _, _)) => {
+                                    *ext = true;
+                                }
+                                Some(FlatExpr::NamedFunctionCall(_, ref mut ext, _, _)) => {
+                                    *ext = true;
                                 }
                                 Some(_) | None => {}
                             }
@@ -2223,7 +2250,7 @@ pub trait Flatten:
         func_call: FlatExpr,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
-        let FlatExpr::NamedFunctionCall(_, n, _) = func_call else {
+        let FlatExpr::NamedFunctionCall(_, _, n, _) = func_call else {
             unreachable!()
         };
 
@@ -2260,9 +2287,11 @@ pub trait Flatten:
         input_names: Option<Vec<&str>>,
         parse_idx: usize,
     ) -> Result<(), ExprErr> {
-        let (loc, n, call_block_inputs) = match func_call {
-            FlatExpr::FunctionCall(loc, n, call_block_inputs) => (loc, n, call_block_inputs),
-            FlatExpr::NamedFunctionCall(loc, n, call_block_inputs) => (loc, n, call_block_inputs),
+        let (loc, ext, n, call_block_inputs) = match func_call {
+            FlatExpr::FunctionCall(loc, ext, n, call_block_inputs)
+            | FlatExpr::NamedFunctionCall(loc, ext, n, call_block_inputs) => {
+                (loc, ext, n, call_block_inputs)
+            }
             _ => unreachable!(),
         };
 
@@ -2302,7 +2331,8 @@ pub trait Flatten:
                 .into_expr_err(loc)?;
             Some(env_ctx)
         } else {
-            None
+            let msg = self.msg().underlying(self).unwrap().clone();
+            Some(EnvCtx::from_msg(self, &msg, loc, ctx).into_expr_err(loc)?)
         };
 
         let is_new_call = match ctx.peek_expr_flag(self) {
@@ -2398,7 +2428,7 @@ pub trait Flatten:
                     // its a builtin function call
                     self.call_builtin(arena, ctx, &s.name(self).into_expr_err(loc)?, inputs, loc)
                 } else {
-                    self.func_call(arena, ctx, loc, &inputs, s, None, None, env)
+                    self.func_call(arena, ctx, loc, &inputs, s, None, None, env, ext)
                 }
             }
             VarType::BuiltIn(bn, _) => {

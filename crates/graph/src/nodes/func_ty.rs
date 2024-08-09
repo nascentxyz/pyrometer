@@ -50,7 +50,6 @@ impl FunctionNode {
             Ok(None)
         } else {
             let name = self.name(analyzer)?;
-            println!("name: {name}");
             let mut out = [0; 32];
             keccak_hash::keccak_256(name.as_bytes(), &mut out);
             let mut sig = [0; 32];

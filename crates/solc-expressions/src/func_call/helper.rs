@@ -37,7 +37,6 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             self.add_edge(env_ctx, callee_ctx, Edge::Context(ContextEdge::Env));
         }
 
-        // todo!()
         Ok(())
     }
 
@@ -187,8 +186,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         loc: Loc,
         func_node: FunctionNode,
         modifier_state: Option<ModifierState>,
+        fn_ext: bool,
     ) -> Result<ContextNode, ExprErr> {
-        let fn_ext = curr_ctx.is_fn_ext(func_node, self).into_expr_err(loc)?;
         if fn_ext {
             curr_ctx
                 .add_gas_cost(self, shared::gas::EXT_FUNC_CALL_GAS)

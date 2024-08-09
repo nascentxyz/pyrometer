@@ -37,6 +37,7 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: Option<ModifierState>,
         msg: Option<EnvCtx>,
+        is_ext: bool,
     ) -> Result<(), ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -64,6 +65,7 @@ pub trait FuncCaller:
                         func_call_str,
                         &modifier_state,
                         msg.clone(),
+                        is_ext,
                     )
                 })
             }
@@ -100,6 +102,7 @@ pub trait FuncCaller:
                             func_call_str,
                             &modifier_state,
                             msg.clone(),
+                            is_ext,
                         )
                     })
                 } else {
@@ -125,6 +128,7 @@ pub trait FuncCaller:
                     func_call_str,
                     &modifier_state,
                     msg.clone(),
+                    is_ext,
                 )
             }),
             e => todo!("here: {:?}", e),
@@ -145,17 +149,18 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
         env: Option<EnvCtx>,
+        is_ext: bool,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Calling function: {} in context: {}",
             func_node.name(self).unwrap(),
             ctx.path(self)
         );
-        if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
-                return Ok(());
-            }
-        }
+        // if !entry_call {
+        //     if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+        //         return Ok(());
+        //     }
+        // }
 
         // pseudocode:
         //  1. Create context for the call
@@ -166,10 +171,12 @@ pub trait FuncCaller:
         let callee_ctx = if entry_call {
             ctx
         } else {
-            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone())?
+            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone(), is_ext)?
         };
 
-        self.add_env(callee_ctx, func_node, env, loc)?;
+        if entry_call || is_ext {
+            self.add_env(callee_ctx, func_node, env, loc)?;
+        }
 
         // handle remapping of variable names and bringing variables into the new context
         let renamed_inputs =

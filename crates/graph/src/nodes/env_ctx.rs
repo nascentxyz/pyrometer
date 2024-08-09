@@ -28,12 +28,46 @@ impl EnvCtxNode {
         }
     }
 
+    pub fn underlying_mut<'a>(
+        &self,
+        analyzer: &'a mut impl GraphBackend,
+    ) -> Result<&'a mut EnvCtx, GraphError> {
+        match analyzer.node_mut(*self) {
+            Node::EnvCtx(st) => Ok(st),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find environment context: {}",
+                ident.name
+            ))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be EnvCtx but it was: {e:?}"
+            ))),
+        }
+    }
+
     pub fn member_access(
         &self,
         analyzer: &impl GraphBackend,
         name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
+        tracing::trace!("env access: {name}");
         Ok(self.underlying(analyzer)?.get(name))
+    }
+
+    pub fn members(&self, analyzer: &impl GraphBackend) -> Result<Vec<ContextVarNode>, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        Ok(vec![
+            underlying.this,
+            underlying.data,
+            underlying.sender,
+            underlying.sig,
+            underlying.value,
+            underlying.origin,
+            underlying.gasprice,
+            underlying.gaslimit,
+        ]
+        .into_iter()
+        .flatten()
+        .collect())
     }
 }
 

@@ -98,7 +98,7 @@ impl ContextNode {
 
     pub fn env_or_recurse(
         &self,
-        analyzer: &impl GraphBackend,
+        analyzer: &mut impl AnalyzerBackend,
     ) -> Result<Option<EnvCtxNode>, GraphError> {
         if let Some(env) = analyzer
             .graph()
@@ -109,14 +109,12 @@ impl ContextNode {
             return Ok(Some(env.into()));
         }
 
-        if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+        if let Some(parent) = self.ancestor_in_call(analyzer)? {
             if let Some(in_parent) = parent.env_or_recurse(analyzer)? {
                 return Ok(Some(in_parent));
+            } else {
+                Ok(None)
             }
-        }
-
-        if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
-            parent.env_or_recurse(analyzer)
         } else {
             Ok(None)
         }

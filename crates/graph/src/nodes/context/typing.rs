@@ -70,31 +70,4 @@ impl ContextNode {
     pub fn is_ext_fn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_ext_fn_call())
     }
-
-    /// Checks whether a function is external to the current context
-    pub fn is_fn_ext(
-        &self,
-        fn_node: FunctionNode,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<bool, GraphError> {
-        match fn_node.maybe_associated_contract(analyzer) {
-            None => Ok(false),
-            Some(fn_ctrt) => {
-                if let Some(self_ctrt) = self
-                    .associated_fn(analyzer)?
-                    .maybe_associated_contract(analyzer)
-                {
-                    Ok(Some(self_ctrt) != Some(fn_ctrt)
-                        && !self_ctrt
-                            .underlying(analyzer)?
-                            .inherits
-                            .iter()
-                            .filter_map(|i| i.as_ref())
-                            .any(|inherited| *inherited == fn_ctrt))
-                } else {
-                    Ok(false)
-                }
-            }
-        }
-    }
 }

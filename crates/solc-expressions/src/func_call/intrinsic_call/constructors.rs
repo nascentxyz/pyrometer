@@ -1,6 +1,7 @@
 use crate::{assign::Assign, func_call::helper::CallerHelper};
 use graph::nodes::Builtin;
 
+use graph::SolcRange;
 use graph::{
     elem::*,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, StructNode},
@@ -84,7 +85,7 @@ pub trait ConstructorCaller:
         _arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         con_node: ContractNode,
-        _input: ExprRet,
+        input: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
         // construct a new contract
@@ -100,7 +101,12 @@ pub trait ConstructorCaller:
                 ))
             }
         };
+        // TODO: add to address map
         let contract_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+        let e = Elem::from(input.expect_single().into_expr_err(loc)?);
+        contract_cvar
+            .set_range(self, From::from(e))
+            .into_expr_err(loc)?;
         ctx.push_expr(ExprRet::Single(contract_cvar.into()), self)
             .into_expr_err(loc)
     }
