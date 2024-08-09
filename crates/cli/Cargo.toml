@@ -23,6 +23,7 @@ tracing-subscriber.workspace = true
 tracing-tree.workspace = true
 petgraph.workspace = true
 ethers-core.workspace = true
+solang-parser.workspace = true
 
 clap = { version = "4.1.4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }

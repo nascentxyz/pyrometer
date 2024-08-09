@@ -10,7 +10,7 @@ use shared::{post_to_site, Search};
 use shared::{GraphDot, USE_DEBUG_SITE};
 
 use ariadne::sources;
-use clap::{ArgAction, Parser, ValueHint};
+use clap::{ArgAction, Parser, ValueHint, Subcommand};
 
 use tracing::{error, trace};
 use tracing_subscriber::{prelude::*, Registry};
@@ -22,10 +22,17 @@ use std::{
     path::PathBuf,
 };
 use tokio::runtime::Runtime;
+mod detectors;
+use detectors::{get_all_detectors, run_detectors};
+use detectors::my_detector::MyDetector;
+use pyrometer::reporter::ReportFormat;
+use crate::detectors::report_results;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Commands>,
     /// The path to the solidity file to process
     #[clap(value_hint = ValueHint::FilePath, value_name = "PATH")]
     pub path: String,
@@ -113,6 +120,16 @@ struct Args {
 
     #[clap(long, default_value = "false")]
     pub debug_stack: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Detect {
+        // --detectors MyDetector,SecondDetector | --detectors="MyDetector,SecondDetector"
+        #[clap(long, value_delimiter = ',')]
+        detectors: Option<Vec<String>>,
+    },
+    ListDetectors,
 }
 
 pub fn subscriber() {
@@ -569,4 +586,25 @@ fn main() {
     //     }
     //     println!();
     // });
+
+    match args.command {
+        Some(Commands::Detect { detectors }) => {
+            // add in * stuff
+            let detector_names = detectors.unwrap_or_else(|| {
+                println!("No detectors specified. Running all detectors...");
+                get_all_detectors().iter().map(|d| d.name().to_string()).collect()
+            });
+
+            println!("Running detectors: {:?}", detector_names);
+            let results = run_detectors(&analyzer, &detector_names);
+            report_results(&results, ReportFormat::Stdout);
+        },
+        Some(Commands::ListDetectors) => {
+            println!("Available detectors:");
+            for detector in get_all_detectors() {
+                println!("- {} : {}", detector.name(), detector.description());
+            }
+        },
+        None => (),
+    }
 }
