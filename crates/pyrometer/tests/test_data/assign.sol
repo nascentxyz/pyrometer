@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: MIT or APACHE2
 pragma solidity ^0.8.0;
 
 contract Assign {
-    function doAssignment() public {
+    function doAssignment() public pure {
         // Multi-value LHS (tuple)
         (uint x, uint y) = (uint16(1), 2);
 
@@ -19,10 +20,12 @@ contract Assign {
         ax[0][2] = 2;
 
         uint[][] memory bx = ax;
+        bx;
         uint8[0x2][2] memory a = [[1, 2], [1, 2]];
         a[1];
         uint[2] memory b = [uint(3), x++];
         uint[2][2] memory c = [[uint(3), x++], [uint(2), uint(3)]];
+        c;
         a;
         b;
     }

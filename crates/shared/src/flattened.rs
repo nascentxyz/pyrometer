@@ -46,6 +46,7 @@ pub enum FlatExpr {
     NamedArgument(Loc, &'static str),
     FunctionCallName(usize, bool, bool),
     Requirement(Loc),
+    CmpRequirement(Loc),
     Super(Loc, &'static str),
 
     Continue(Loc),
@@ -389,6 +390,7 @@ impl FlatExpr {
             | AddressLiteral(loc, ..)
             | Variable(loc, ..)
             | Requirement(loc, ..)
+            | CmpRequirement(loc, ..)
             | Super(loc, ..)
             | Revert(loc, ..)
             | YulExpr(FlatYulExpr::YulVariable(loc, ..))

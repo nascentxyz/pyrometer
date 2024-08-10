@@ -1,4 +1,5 @@
 use graph::elem::RangeDyn;
+use graph::nodes::CallFork;
 use std::collections::BTreeMap;
 
 use crate::{
@@ -16,7 +17,7 @@ use graph::{
     elem::{Elem, RangeConcrete, RangeExpr, RangeOp},
     nodes::{
         BuiltInNode, Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar,
-        ContextVarNode, ContractNode, ExprRet, FunctionNode, KilledKind, StructNode,
+        ContextVarNode, ContractId, ContractNode, ExprRet, FunctionNode, KilledKind, StructNode,
         TmpConstruction, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, TypeNode, VarType,
@@ -125,7 +126,7 @@ pub trait Flatten:
                             false_cond.push(FlatExpr::Not(loc));
                             false_cond.push(rhs);
                             false_cond.push(FlatExpr::Not(loc));
-                            false_cond.push(FlatExpr::Requirement(loc));
+                            false_cond.push(FlatExpr::CmpRequirement(loc));
                             false_cond.push(FlatExpr::Or(loc));
                         }
                         _ => {
@@ -133,8 +134,8 @@ pub trait Flatten:
                                 false_cond.push(inv)
                             } else {
                                 false_cond.push(last);
-                                false_cond.push(FlatExpr::Requirement(*loc));
                                 false_cond.push(FlatExpr::Not(*loc));
+                                false_cond.push(FlatExpr::Requirement(*loc));
                             }
                         }
                     }
@@ -321,7 +322,7 @@ pub trait Flatten:
                 });
                 self.push_expr(FlatExpr::Revert(*loc, named_args.len()));
             }
-            Emit(loc, emit_expr) => {
+            Emit(_loc, _emit_expr) => {
                 // self.traverse_expression(emit_expr, unchecked);
                 // self.push_expr(FlatExpr::Emit(*loc));
             }
@@ -346,14 +347,24 @@ pub trait Flatten:
                 //   require(y);
                 let rhs = self.expr_stack_mut().pop().unwrap();
                 let lhs = self.expr_stack_mut().pop().unwrap();
-                self.push_expr(FlatExpr::Requirement(loc));
                 self.push_expr(rhs);
                 self.push_expr(FlatExpr::Requirement(loc));
                 self.push_expr(lhs);
+                self.push_expr(FlatExpr::Requirement(loc));
+            }
+            FlatExpr::Less(_)
+            | FlatExpr::More(_)
+            | FlatExpr::LessEqual(_)
+            | FlatExpr::MoreEqual(_)
+            | FlatExpr::Equal(_)
+            | FlatExpr::NotEqual(_)
+            | FlatExpr::Or(_) => {
+                self.push_expr(FlatExpr::CmpRequirement(loc));
+                self.push_expr(cmp);
             }
             _ => {
-                self.push_expr(FlatExpr::Requirement(loc));
                 self.push_expr(cmp);
+                self.push_expr(FlatExpr::Requirement(loc));
             }
         }
     }
@@ -505,7 +516,7 @@ pub trait Flatten:
         self.traverse_yul_expression(&iec.if_expr);
 
         // have it be a require statement
-        self.push_expr(FlatExpr::Requirement(loc));
+        self.push_expr(FlatExpr::CmpRequirement(loc));
         self.push_expr(FlatExpr::More(loc));
 
         let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
@@ -864,14 +875,15 @@ pub trait Flatten:
             FunctionCall(loc, func_expr, input_exprs) => match &**func_expr {
                 Variable(Identifier { name, .. }) if matches!(&**name, "require" | "assert") => {
                     // require(inputs) | assert(inputs)
-                    input_exprs.iter().rev().for_each(|expr| {
+
+                    input_exprs.iter().enumerate().rev().for_each(|(i, expr)| {
                         self.traverse_expression(expr, unchecked);
+                        if input_exprs.len() > 1 && i == 1 {
+                            self.push_expr(FlatExpr::Pop);
+                        }
                     });
                     let cmp = self.expr_stack_mut().pop().unwrap();
                     self.traverse_requirement(cmp, *loc);
-                    if input_exprs.len() > 1 {
-                        self.push_expr(FlatExpr::Pop);
-                    }
                 }
                 _ => {
                     // func(inputs)
@@ -939,6 +951,7 @@ pub trait Flatten:
             func,
             self.add_if_err(func.name(self).into_expr_err(loc)).unwrap(),
             loc,
+            ContractId::Id(0),
         );
         let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
         self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
@@ -972,24 +985,26 @@ pub trait Flatten:
 
         let ctx = match foc {
             FuncOrCtx::Func(func) => {
-                let raw_ctx = Context::new(
-                    func,
-                    self.add_if_err(func.name(self).into_expr_err(body_loc))
-                        .unwrap(),
-                    body_loc,
-                );
-                let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
-                self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
+                todo!("here")
+                // let raw_ctx = Context::new(
+                //     func,
+                //     self.add_if_err(func.name(self).into_expr_err(body_loc))
+                //         .unwrap(),
+                //     body_loc,
 
-                let res = func.add_params_to_ctx(ctx, self).into_expr_err(body_loc);
-                self.add_if_err(res);
+                // );
+                // let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
+                // self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
 
-                ctx
+                // let res = func.add_params_to_ctx(ctx, self).into_expr_err(body_loc);
+                // self.add_if_err(res);
+
+                // ctx
             }
             FuncOrCtx::Ctx(ctx) => ctx,
         };
 
-        while (!ctx.is_ended(self).unwrap() || !ctx.live_edges(self).unwrap().is_empty())
+        while (!ctx.is_ended(self).unwrap() || ctx.has_live_edge(self).unwrap())
             && ctx.parse_idx(self) < stack.len()
         {
             let res = self.interpret_step(arena, ctx, body_loc, &mut stack);
@@ -1036,12 +1051,17 @@ pub trait Flatten:
         stack: &mut Vec<FlatExpr>,
     ) -> Result<(), ExprErr> {
         use FlatExpr::*;
+
         if ctx.is_killed(self).unwrap() {
             return Ok(());
         }
 
-        tracing::trace!("getting parse idx: {}", ctx.path(self));
         let parse_idx = ctx.increment_parse_idx(self);
+        tracing::trace!(
+            "incrementing parse index: {}, {}",
+            ctx.path(self),
+            parse_idx
+        );
         let Some(next) = stack.get(parse_idx) else {
             let mut loc = None;
             let mut stack_rev_iter = stack.iter().rev();
@@ -1103,9 +1123,19 @@ pub trait Flatten:
 
             // Conditional
             If { .. } => self.interp_if(arena, ctx, stack, next),
-            Requirement(..) => {
+            CmpRequirement(..) => {
                 ctx.set_expr_flag(self, ExprFlag::Requirement);
                 Ok(())
+            }
+            Requirement(loc) => {
+                let _ = ctx.take_expr_flag(self);
+                let mut lhs = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                let lhs = lhs.swap_remove(0);
+                let cnode = ConcreteNode::from(self.add_node(Concrete::Bool(true)));
+                let tmp_true = ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
+                    .into_expr_err(loc)?;
+                let rhs = ExprRet::Single(self.add_node(tmp_true));
+                self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
             }
 
             TestCommand(..) => self.interp_test_command(arena, ctx, next),
@@ -1224,22 +1254,7 @@ pub trait Flatten:
                 return Ok(());
             }
         }
-
-        if matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Requirement))
-            && !matches!(next, Requirement(..))
-        {
-            let _ = ctx.take_expr_flag(self);
-            let loc = next.try_loc().unwrap();
-            let mut lhs = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
-            let lhs = lhs.swap_remove(0);
-            let cnode = ConcreteNode::from(self.add_node(Concrete::Bool(true)));
-            let tmp_true = ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
-                .into_expr_err(loc)?;
-            let rhs = ExprRet::Single(self.add_node(tmp_true));
-            self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
-        } else {
-            Ok(())
-        }
+        Ok(())
     }
 
     fn interp_delete(&mut self, ctx: ContextNode, next: FlatExpr) -> Result<(), ExprErr> {
@@ -2549,26 +2564,43 @@ pub trait Flatten:
             &mut Vec<FlatExpr>,
         ) -> Result<(), ExprErr>,
     ) -> Result<(), ExprErr> {
-        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
-        if !ctx.killed_or_ret(self).into_expr_err(loc)? {
-            if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
-                if live_edges.is_empty() {
-                    Ok(())
-                } else {
-                    live_edges
-                        .iter()
-                        .try_for_each(|ctx| closure(self, arena, *ctx, loc, stack))
+        println!("flat apply: {}", ctx.path(self));
+        if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
+            println!("had child");
+            match child {
+                CallFork::Call(call) => {
+                    println!("was call");
+                    self.flat_apply_to_edges(call, loc, arena, stack, closure)?;
                 }
-            } else if live_edges.is_empty() {
-                closure(self, arena, ctx, loc, stack)
-            } else {
-                live_edges
-                    .iter()
-                    .try_for_each(|ctx| closure(self, arena, *ctx, loc, stack))
+                CallFork::Fork(w1, w2) => {
+                    println!("was fork");
+                    println!("running in w1: {}", w1.path(self));
+                    self.flat_apply_to_edges(w1, loc, arena, stack, closure)?;
+                    println!("running in w2: {}", w2.path(self));
+                    self.flat_apply_to_edges(w2, loc, arena, stack, closure)?;
+                }
             }
+        } else if !ctx.is_ended(self).into_expr_err(loc)? {
+            println!("ran closure in {}", ctx.path(self));
+            closure(self, arena, ctx, loc, stack)?;
         } else {
-            Ok(())
+            println!("ALL DONE??");
+            let parse_idx = ctx.increment_parse_idx(self);
+            let Some(_) = stack.get(parse_idx) else {
+                println!("DONE");
+                let mut loc = None;
+                let mut stack_rev_iter = stack.iter().rev();
+                let mut loccer = stack_rev_iter.next();
+                while loc.is_none() && loccer.is_some() {
+                    loc = loccer.unwrap().try_loc();
+                    loccer = stack_rev_iter.next();
+                }
+                let loc = loc.unwrap_or(Loc::Implicit);
+                self.return_match(arena, ctx, loc, ExprRet::CtxKilled(KilledKind::Ended), 0);
+                return Ok(());
+            };
         }
+        Ok(())
     }
 }
 

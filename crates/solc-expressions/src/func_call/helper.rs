@@ -483,6 +483,40 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         );
                         ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
                         self.add_edge(tmp_ret, ret_subctx, Edge::Context(ContextEdge::Variable));
+
+                        let fields = node.struct_to_fields(self).into_expr_err(loc)?;
+                        fields.iter().try_for_each(|field| {
+                            let tmp_field_ret = field
+                                .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                                .into_expr_err(loc)?;
+                            let field_full_name = field.name(self).into_expr_err(loc)?.clone();
+                            let split = field_full_name.split('.').collect::<Vec<&str>>();
+                            let t = split.iter().map(|i| i.to_string()).collect::<Vec<String>>();
+                            let Some(field_name) = t.last().cloned() else {
+                                return Err(ExprErr::ParseError(
+                                    loc,
+                                    format!("Incorrectly named field: {field_full_name} - no '.' delimiter"),
+                                ));
+                            };
+
+                            tmp_field_ret
+                                .underlying_mut(self)
+                                .into_expr_err(loc)?
+                                .display_name = format!(
+                                "{}.{}.{field_name}",
+                                callee_ctx
+                                    .associated_fn(self)
+                                    .unwrap()
+                                    .loc_specified_name(self)
+                                    .unwrap(),
+                                i
+                            );
+                            self.add_edge(tmp_field_ret, tmp_ret, Edge::Context(ContextEdge::AttrAccess("field")));
+
+                            Ok(())
+                        })?;
+
+
                         Ok(ExprRet::Single(tmp_ret.into()))
                     })
                     .collect::<Result<_, ExprErr>>()?;

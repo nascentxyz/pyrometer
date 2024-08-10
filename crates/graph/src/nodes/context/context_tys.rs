@@ -73,6 +73,9 @@ impl ModifierState {
 pub struct ContextCache {
     /// Variables in this context
     pub vars: BTreeMap<String, ContextVarNode>,
+    /// Storage variables in this context - they may have been shadowed so we need to keep track of them
+    /// separately
+    pub storage_vars: BTreeMap<String, ContextVarNode>,
     /// Temporary variables in this context
     pub tmp_vars: BTreeMap<String, ContextVarNode>,
     /// Visible functions from this context

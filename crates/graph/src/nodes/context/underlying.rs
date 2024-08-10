@@ -245,6 +245,7 @@ impl SubContextKind {
             first_ancestor,
             vars: Default::default(),
             tmp_vars: Default::default(),
+            storage_vars: Default::default(),
             associated_source: None,
             associated_contract: None,
         })
@@ -311,6 +312,13 @@ impl SubContextKind {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+pub enum ContractId {
+    Id(usize),
+    CalledAddress(ContextVarNode),
+    Dummy,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The current parse index of the stack
@@ -319,6 +327,9 @@ pub struct Context {
     pub parent_fn: FunctionNode,
     /// Whether this function call is actually a modifier call
     pub modifier_state: Option<ModifierState>,
+
+    /// The address that is being called
+    pub contract_id: ContractId,
 
     pub subctx_kind: Option<SubContextKind>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
@@ -363,11 +374,17 @@ impl From<Context> for Node {
 
 impl Context {
     /// Creates a new context from a function
-    pub fn new(parent_fn: FunctionNode, fn_name: String, loc: Loc) -> Self {
+    pub fn new(
+        parent_fn: FunctionNode,
+        fn_name: String,
+        loc: Loc,
+        contract_id: ContractId,
+    ) -> Self {
         Context {
             parse_idx: 0,
             parent_fn,
             subctx_kind: None,
+            contract_id,
             path: fn_name,
             tmp_var_ctr: 0,
             killed: None,
@@ -393,6 +410,7 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
+        contract_id: ContractId,
     ) -> Result<Self, GraphError> {
         let parse_idx = subctx_kind.init_parse_idx(analyzer);
 
@@ -447,6 +465,7 @@ impl Context {
             parse_idx,
             parent_fn,
             subctx_kind: Some(subctx_kind),
+            contract_id,
             path,
             ctx_deps,
             expr_ret_stack,
@@ -478,8 +497,9 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
+        contract_id: ContractId,
     ) -> Result<ContextNode, GraphError> {
-        let ctx = Context::new_subctx(subctx_kind, loc, analyzer, modifier_state)?;
+        let ctx = Context::new_subctx(subctx_kind, loc, analyzer, modifier_state, contract_id)?;
         let ctx_node = ContextNode::from(analyzer.add_node(ctx));
         if let Some(cont) = ctx_node.underlying(analyzer)?.continuation_of() {
             analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
@@ -502,11 +522,13 @@ impl Context {
         parent_ctx: ContextNode,
         loc: Loc,
     ) -> Result<(ContextNode, ContextNode), GraphError> {
+        let contract_id = parent_ctx.contract_id(analyzer)?;
         let true_subctx_kind = SubContextKind::new_fork(parent_ctx, true);
-        let true_subctx = Context::add_subctx(true_subctx_kind, loc, analyzer, None)?;
+        let true_subctx = Context::add_subctx(true_subctx_kind, loc, analyzer, None, contract_id)?;
 
         let false_subctx_kind = SubContextKind::new_fork(parent_ctx, false);
-        let false_subctx = Context::add_subctx(false_subctx_kind, loc, analyzer, None)?;
+        let false_subctx =
+            Context::add_subctx(false_subctx_kind, loc, analyzer, None, contract_id)?;
 
         parent_ctx.set_child_fork(true_subctx, false_subctx, analyzer)?;
         let ctx_fork = analyzer.add_node(Node::ContextFork);
@@ -533,8 +555,9 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextNode, GraphError> {
+        let contract_id = parent_ctx.contract_id(analyzer)?;
         let subctx_kind = SubContextKind::Loop { parent_ctx };
-        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None)?;
+        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None, contract_id)?;
         parent_ctx.set_child_call(loop_ctx, analyzer)?;
         analyzer.add_edge(loop_ctx, parent_ctx, Edge::Context(ContextEdge::Loop));
         Ok(loop_ctx)

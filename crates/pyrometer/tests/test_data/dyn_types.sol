@@ -88,7 +88,7 @@ contract DynTypes {
         uint256 b;
     }
 
-    function dynUserType() public {
+    function dynUserType() public pure {
         DontUseMoreThanOnce[] memory dont = new DontUseMoreThanOnce[](1);
         dont[0].a = 100;
         dont[0].b = 100;
@@ -108,7 +108,7 @@ contract DynTypes {
         return strukt;
     }
 
-    function multiDimensionalArray() public returns (bool z) {
+    function multiDimensionalArray() public pure returns (bool z) {
         uint256[][] memory multiArray = new uint256[][](2);
         uint256[] memory indices = new uint256[](2);
 

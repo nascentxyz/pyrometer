@@ -147,9 +147,9 @@ pub trait FuncCaller:
             ctx.path(self)
         );
         if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
-                return Ok(());
-            }
+            // if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+            //     return Ok(());
+            // }
         }
 
         // pseudocode:
@@ -331,6 +331,7 @@ pub trait FuncCaller:
                     .into_expr_err(loc)?
                     .modifier_state
                     .clone(),
+                caller_ctx.contract_id(self).into_expr_err(loc)?,
             )
             .unwrap();
 

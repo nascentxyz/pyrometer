@@ -381,12 +381,22 @@ impl Analyzer {
             let parser_fn = FunctionNode::from(self.add_node(pf));
             self.add_edge(parser_fn, parent, Edge::Func);
 
-            let dummy_ctx = Context::new(parser_fn, "<parser_fn>".to_string(), expr.loc());
+            let dummy_ctx = Context::new(
+                parser_fn,
+                "<parser_fn>".to_string(),
+                expr.loc(),
+                ContractId::Dummy,
+            );
             let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
             self.add_edge(ctx, parser_fn, Edge::Context(ContextEdge::Context));
             ctx
         } else {
-            let dummy_ctx = Context::new(self.parse_fn, "<parser_fn>".to_string(), expr.loc());
+            let dummy_ctx = Context::new(
+                self.parse_fn,
+                "<parser_fn>".to_string(),
+                expr.loc(),
+                ContractId::Dummy,
+            );
             let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
             self.add_edge(ctx, self.entry(), Edge::Context(ContextEdge::Context));
             ctx

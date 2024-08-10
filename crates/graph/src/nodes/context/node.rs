@@ -18,7 +18,11 @@ impl AsDotStr for ContextNode {
         analyzer: &impl GraphBackend,
         _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
-        format!("Context {{ {} }}", self.path(analyzer))
+        format!(
+            "Context {{ {}, idx: {} }}",
+            self.path(analyzer),
+            self.underlying(analyzer).unwrap().parse_idx
+        )
     }
 }
 

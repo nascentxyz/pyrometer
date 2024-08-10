@@ -50,6 +50,12 @@ impl ContextNode {
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         // var.cache_range(analyzer)?;
+        if var.is_storage(analyzer)? {
+            let name = var.name(analyzer)?;
+            let vars = &mut self.underlying_mut(analyzer)?.cache.storage_vars;
+            vars.insert(name, var);
+        }
+
         if var.underlying(analyzer)?.is_tmp {
             let name = var.display_name(analyzer)?;
             let vars = &mut self.underlying_mut(analyzer)?.cache.tmp_vars;
@@ -95,6 +101,19 @@ impl ContextNode {
             .copied()
     }
 
+    pub fn storage_var_by_name(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Option<ContextVarNode> {
+        self.underlying(analyzer)
+            .unwrap()
+            .cache
+            .storage_vars
+            .get(name)
+            .copied()
+    }
+
     /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found
     pub fn var_by_name_or_recurse(
         &self,
@@ -116,6 +135,32 @@ impl ContextNode {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn storage_var_by_name_or_recurse(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        name: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        if let Some(var) = self.storage_var_by_name(analyzer, name) {
+            return Ok(Some(var));
+        }
+
+        // TODO: need to ensure no two instances of the contract at different addresses
+        let relevant_contract = self.associated_contract(analyzer)?;
+        let mut next_parent = self.underlying(analyzer)?.parent_ctx();
+        while let Some(parent) = next_parent {
+            let parent_contract = parent.associated_contract(analyzer)?;
+            if parent_contract == relevant_contract {
+                if let Some(in_parent) = parent.storage_var_by_name(analyzer, name) {
+                    return Ok(Some(in_parent.latest_version(analyzer)));
+                }
+            }
+
+            next_parent = parent.underlying(analyzer)?.parent_ctx();
+        }
+
+        Ok(None)
     }
 
     /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found
@@ -155,12 +200,10 @@ impl ContextNode {
         self.underlying(analyzer)
             .unwrap()
             .cache
-            .vars
-            .clone()
-            .into_iter()
-            .filter(|(_, var)| var.is_storage(analyzer).unwrap())
-            .map(|(_, var)| var)
-            .collect::<Vec<_>>()
+            .storage_vars
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub fn contract_vars_referenced(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {

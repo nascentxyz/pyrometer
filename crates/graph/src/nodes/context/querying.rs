@@ -1,6 +1,7 @@
 use crate::{
     nodes::{
-        ContextNode, ContractNode, FunctionNode, SourceUnitNode, SourceUnitPartNode, StructNode,
+        ContextNode, ContractId, ContractNode, FunctionNode, SourceUnitNode, SourceUnitPartNode,
+        StructNode,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend,
 };
@@ -66,6 +67,10 @@ impl ContextNode {
                 "Expected context to have an associated source but didnt".to_string(),
             ))
         }
+    }
+
+    pub fn contract_id(&self, analyzer: &impl GraphBackend) -> Result<ContractId, GraphError> {
+        Ok(self.underlying(analyzer)?.contract_id)
     }
 
     pub fn keep_inscope_tys(

@@ -121,20 +121,52 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 con
             } else {
                 match self.node(idx) {
-                    Node::Var(_) | Node::Enum(_) => {
-                        match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
-                            Some(v) => v,
-                            None => {
-                                return Err(ExprErr::VarBadType(
-                                    ident.loc,
-                                    format!(
+                    Node::Var(_) => {
+                        let name = VarNode::from(idx).name(self).into_expr_err(ident.loc)?;
+                        if let Some(prev) = ctx
+                            .storage_var_by_name_or_recurse(self, &*name)
+                            .into_expr_err(ident.loc)?
+                        {
+                            let prev = prev.latest_version_or_inherited_in_ctx(ctx, self);
+                            return self.apply_to_edges(
+                                target_ctx,
+                                ident.loc,
+                                arena,
+                                &|analyzer, _arena, edge_ctx, _loc| {
+                                    let var =
+                                        analyzer.advance_var_in_ctx(prev, ident.loc, edge_ctx)?;
+                                    edge_ctx
+                                        .push_expr(ExprRet::Single(var.into()), analyzer)
+                                        .into_expr_err(ident.loc)
+                                },
+                            );
+                        } else {
+                            match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
+                                Some(v) => v,
+                                None => {
+                                    return Err(ExprErr::VarBadType(
+                                        ident.loc,
+                                        format!(
                                         "Could not create context variable from user type: {:?}",
                                         self.node(idx)
                                     ),
-                                ))
+                                    ))
+                                }
                             }
                         }
                     }
+                    Node::Enum(_) => match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
+                        Some(v) => v,
+                        None => {
+                            return Err(ExprErr::VarBadType(
+                                ident.loc,
+                                format!(
+                                    "Could not create context variable from user type: {:?}",
+                                    self.node(idx)
+                                ),
+                            ))
+                        }
+                    },
                     _ => {
                         return target_ctx
                             .push_expr(ExprRet::Single(idx), self)
@@ -527,7 +559,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
             return Err(ExprErr::GraphError(
                 loc,
-                GraphError::VariableUpdateInOldContext(format!(
+                GraphError::VariableUpdateInOldContext(panic!(
                     "Variable update of {} in old context: parent: {}, child: {:#?}",
                     cvar_node.display_name(self).unwrap(),
                     ctx.path(self),

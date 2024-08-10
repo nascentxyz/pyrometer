@@ -298,29 +298,6 @@ impl Heirarchical for Edge {
     }
 }
 
-/// An enum denoting either a call or a fork
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum CallFork {
-    Call(ContextNode),
-    Fork(ContextNode, ContextNode),
-}
-
-impl CallFork {
-    pub fn maybe_call(&self) -> Option<ContextNode> {
-        match self {
-            CallFork::Call(c) => Some(*c),
-            _ => None,
-        }
-    }
-
-    pub fn maybe_fork(&self) -> Option<(ContextNode, ContextNode)> {
-        match self {
-            CallFork::Fork(w1, w2) => Some((*w1, *w2)),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ContextEdge {
     // Control flow

@@ -338,6 +338,7 @@ impl ContextNode {
                 loc,
                 analyzer,
                 None,
+                curr.contract_id(analyzer)?,
             )?;
             let right_subctx = Context::add_subctx(
                 SubContextKind::Fork {
@@ -347,6 +348,7 @@ impl ContextNode {
                 loc,
                 analyzer,
                 None,
+                curr.contract_id(analyzer)?,
             )?;
             curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
 

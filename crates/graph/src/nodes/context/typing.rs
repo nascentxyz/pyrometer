@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{context::underlying::SubContextKind, ContextNode, FunctionNode, KilledKind},
+    nodes::{context::underlying::SubContextKind, CallFork, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::GraphError;
@@ -64,6 +64,19 @@ impl ContextNode {
     pub fn is_ended(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
         Ok(underlying.child.is_some() || underlying.killed.is_some() || !underlying.ret.is_empty())
+    }
+
+    pub fn has_live_edge(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        match underlying.child {
+            Some(CallFork::Call(c)) => c.has_live_edge(analyzer),
+            Some(CallFork::Fork(w1, w2)) => {
+                let w1live = w1.has_live_edge(analyzer)?;
+                let w2live = w2.has_live_edge(analyzer)?;
+                Ok(w1live || w2live)
+            }
+            None => Ok(underlying.ret.is_empty() && underlying.killed.is_none()),
+        }
     }
 
     /// Check if this context is in an external function call
