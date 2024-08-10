@@ -14,12 +14,14 @@ pub trait MsgCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Siz
     fn msg_call(&mut self, ctx: ContextNode, func_name: &str, loc: Loc) -> Result<(), ExprErr> {
         match func_name {
             "gasleft" => {
-                let var = ContextVar::new_from_builtin(
+                let mut var = ContextVar::new_from_builtin(
                     loc,
                     self.builtin_or_add(Builtin::Uint(64)).into(),
                     self,
                 )
                 .into_expr_err(loc)?;
+                var.name = "gasleft()".to_string();
+                var.display_name = "gasleft()".to_string();
                 let cvar = self.add_node(var);
                 ctx.push_expr(ExprRet::Single(cvar), self)
                     .into_expr_err(loc)?;

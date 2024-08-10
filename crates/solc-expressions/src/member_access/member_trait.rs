@@ -1,10 +1,12 @@
 use crate::{BuiltinAccess, ContractAccess, EnumAccess, Env, ListAccess, StructAccess};
+use graph::ContextEdge;
+use graph::Edge;
 
 use graph::{
     elem::Elem,
     nodes::{
         BuiltInNode, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ContractNode,
-        EnumNode, ExprRet, FunctionNode, StructNode, TyNode,
+        EnumNode, EnvCtxNode, ExprRet, FunctionNode, StructNode, TyNode,
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
@@ -118,6 +120,39 @@ pub trait MemberAccess:
             }
             Node::Builtin(ref _b) => {
                 self.builtin_member_access(ctx, BuiltInNode::from(member_idx), name, false, loc)
+            }
+            Node::EnvCtx(_) => {
+                if let Some(var) = EnvCtxNode::from(member_idx)
+                    .member_access(self, name)
+                    .into_expr_err(loc)?
+                {
+                    let full_name = var.name(self).unwrap();
+                    if let Some(prev_defined) = ctx
+                        .var_by_name_or_recurse(self, &full_name)
+                        .into_expr_err(loc)?
+                    {
+                        Ok((
+                            ExprRet::Single(prev_defined.latest_version(self).0.into()),
+                            false,
+                        ))
+                    } else {
+                        let cloned = var.latest_version(self).underlying(self).unwrap().clone();
+                        let new_var = self.add_node(cloned);
+                        ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
+                        self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
+                        let e_mut = EnvCtxNode::from(member_idx).underlying_mut(self).unwrap();
+                        e_mut.set(name, new_var);
+                        Ok((ExprRet::Single(new_var), false))
+                    }
+                } else {
+                    let msg_access = self.msg_access(ctx, name, loc)?;
+                    let access = msg_access.expect_single().into_expr_err(loc)?;
+                    ctx.add_var(access.into(), self).into_expr_err(loc)?;
+                    self.add_edge(access, ctx, Edge::Context(ContextEdge::Variable));
+                    let e_mut = EnvCtxNode::from(member_idx).underlying_mut(self).unwrap();
+                    e_mut.set(name, access);
+                    Ok((msg_access, false))
+                }
             }
             e => Err(ExprErr::Todo(
                 loc,

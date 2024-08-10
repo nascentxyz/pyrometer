@@ -70,5 +70,6 @@ pub struct Block {
     pub timestamp: Option<U256>,
     /// The block's blobhash
     pub blobhash: Vec<H256>,
+    /// Blob base fee
     pub blobbasefee: Option<U256>,
 }

@@ -916,6 +916,7 @@ dependencies = [
  "ethers-core",
  "hex",
  "itertools",
+ "keccak-hash",
  "lazy_static",
  "petgraph",
  "pretty_assertions",

@@ -49,7 +49,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 },
             )
         } else if ident.name == "_" {
-            self.env_variable(arena, ident, target_ctx)?;
+            self.env_variable(arena, ident, target_ctx, ident.loc)?;
             Ok(())
         } else if let Some(cvar) = ctx
             .var_by_name_or_recurse(self, &ident.name)
@@ -73,7 +73,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             // } else {
             //     self.variable(ident, parent_ctx, Some(target_ctx))
             // }
-        } else if (self.env_variable(arena, ident, target_ctx)?).is_some() {
+        } else if (self.env_variable(arena, ident, target_ctx, ident.loc)?).is_some() {
             Ok(())
         } else if let Some(idxs) = self.user_types().get(&ident.name).cloned() {
             tracing::trace!("Getting variable via user_types");

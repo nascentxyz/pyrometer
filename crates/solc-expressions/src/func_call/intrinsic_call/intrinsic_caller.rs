@@ -83,6 +83,8 @@ pub trait IntrinsicFuncCaller:
                             constructor,
                             None,
                             None,
+                            None,
+                            true
                         )?;
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                             let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
@@ -103,7 +105,6 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(loc)
                         })
                     } else {
-
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
                             // call the constructor
                             analyzer.func_call(
@@ -114,6 +115,8 @@ pub trait IntrinsicFuncCaller:
                                 constructor,
                                 None,
                                 None,
+                                None,
+                                true
                             )?;
                             analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                                 let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
@@ -177,7 +180,7 @@ pub trait IntrinsicFuncCaller:
             // array
             "push" | "pop" => self.array_call_inner(arena, ctx, name, inputs, loc),
             // block
-            "blockhash" => self.block_call(ctx, name, inputs, loc),
+            "blockhash" | "blobhash" => self.block_call(arena, ctx, name, inputs, loc),
             // dynamic sized builtins
             "concat" => self.dyn_builtin_call(arena, ctx, name, inputs, loc),
             // msg

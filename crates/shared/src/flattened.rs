@@ -3,7 +3,7 @@ use solang_parser::pt::{Expression, Loc, NamedArgument, Type, YulExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprFlag {
-    FunctionName(usize, bool, bool),
+    FunctionName(usize, usize, bool, bool),
     New,
     Negate,
     Requirement,
@@ -44,7 +44,7 @@ pub enum FlatExpr {
     TestCommand(Loc, &'static str),
 
     NamedArgument(Loc, &'static str),
-    FunctionCallName(usize, bool, bool),
+    FunctionCallName(usize, usize, bool, bool),
     Requirement(Loc),
     CmpRequirement(Loc),
     Super(Loc, &'static str),
@@ -62,9 +62,9 @@ pub enum FlatExpr {
     ArraySlice(Loc, bool, bool),
     ArrayLiteral(Loc, usize),
     MemberAccess(Loc, &'static str),
-    FunctionCall(Loc, usize),
-    FunctionCallBlock(Loc),
-    NamedFunctionCall(Loc, usize),
+    FunctionCall(Loc, bool, usize, usize),
+    FunctionCallBlock(Loc, usize),
+    NamedFunctionCall(Loc, bool, usize, usize),
     Not(Loc),
     Negate(Loc),
     Delete(Loc),
@@ -169,8 +169,8 @@ impl std::fmt::Display for FlatExpr {
             ArrayTy(..) => write!(f, "[]"),
             ArrayIndexAccess(..) => write!(f, "[(..)]"),
             MemberAccess(_, field) => write!(f, ".{field}"),
-            FunctionCall(_, n) => write!(f, "({})", "_,".repeat(*n)),
-            NamedFunctionCall(_, _) => write!(f, "(..)"),
+            FunctionCall(_, _, n, _) => write!(f, "({})", "_,".repeat(*n)),
+            NamedFunctionCall(_, _, _, _) => write!(f, "(..)"),
             Not(_) => write!(f, "~"),
             Negate(_) => write!(f, "-"),
             Delete(_) => write!(f, "delete "),
@@ -464,10 +464,34 @@ impl TryFrom<&Expression> for FlatExpr {
             MemberAccess(loc, _, name) => {
                 FlatExpr::MemberAccess(*loc, string_to_static(name.name.clone()))
             }
-            FunctionCall(loc, _, input_exprs) => FlatExpr::FunctionCall(*loc, input_exprs.len()),
-            FunctionCallBlock(loc, _, _) => FlatExpr::FunctionCallBlock(*loc),
-            NamedFunctionCall(loc, _, input_exprs) => {
-                FlatExpr::NamedFunctionCall(*loc, input_exprs.len())
+            FunctionCall(loc, call, input_exprs) => {
+                if let FunctionCallBlock(_, _, args) = &**call {
+                    if let solang_parser::pt::Statement::Args(_, args) = &**args {
+                        FlatExpr::FunctionCall(*loc, false, input_exprs.len(), args.len())
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    FlatExpr::FunctionCall(*loc, false, input_exprs.len(), 0)
+                }
+            }
+            FunctionCallBlock(loc, _, ref args) => {
+                if let solang_parser::pt::Statement::Args(_, args) = &**args {
+                    FlatExpr::FunctionCallBlock(*loc, args.len())
+                } else {
+                    unreachable!()
+                }
+            }
+            NamedFunctionCall(loc, call, input_exprs) => {
+                if let FunctionCallBlock(_, _, args) = &**call {
+                    if let solang_parser::pt::Statement::Args(_, args) = &**args {
+                        FlatExpr::NamedFunctionCall(*loc, false, input_exprs.len(), args.len())
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    FlatExpr::NamedFunctionCall(*loc, false, input_exprs.len(), 0)
+                }
             }
             Not(loc, ..) => FlatExpr::Not(*loc),
             Delete(loc, ..) => FlatExpr::Delete(*loc),
