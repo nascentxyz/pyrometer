@@ -377,6 +377,7 @@ mod tests {
     use super::*;
     use eyre::Result;
     use graph::nodes::Context;
+    use graph::nodes::ContractId;
     use graph::nodes::Function;
     use pyrometer::Analyzer;
     use solang_parser::pt::HexLiteral;
@@ -387,7 +388,7 @@ mod tests {
         let func_node = analyzer.graph.add_node(Node::Function(func)).into();
 
         let loc = Loc::File(0, 0, 0);
-        let ctx = Context::new(func_node, "test_fn".to_string(), loc);
+        let ctx = Context::new(func_node, "test_fn".to_string(), loc, ContractId::Dummy);
 
         ContextNode::from(analyzer.graph.add_node(Node::Context(ctx)))
     }

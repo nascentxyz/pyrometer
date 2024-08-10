@@ -28,7 +28,14 @@ pub trait Looper:
         loc: Loc,
     ) -> Result<(), ExprErr> {
         let subctx_kind = SubContextKind::new_fn_ret(loop_ctx, parent_ctx);
-        let ret_ctx = Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
+        let ret_ctx = Context::add_subctx(
+            subctx_kind,
+            loc,
+            self,
+            None,
+            parent_ctx.contract_id(self).unwrap(),
+        )
+        .into_expr_err(loc)?;
         loop_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;
 
         let vars = loop_ctx.local_vars(self).clone();

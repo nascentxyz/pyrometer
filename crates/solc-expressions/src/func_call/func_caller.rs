@@ -9,12 +9,12 @@ use crate::{
 use graph::{
     elem::Elem,
     nodes::{
-        Concrete, Context, ContextNode, ContextVar, ContextVarNode, EnvCtx, ExprRet, FunctionNode,
-        FunctionParamNode, ModifierState, SubContextKind,
+        Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, EnvCtx, ExprRet,
+        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{CodeLocation, Expression, Loc};
 
@@ -37,7 +37,7 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: Option<ModifierState>,
         msg: Option<EnvCtx>,
-        is_ext: bool,
+        ext_target: Option<ContractId>,
     ) -> Result<(), ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -65,7 +65,7 @@ pub trait FuncCaller:
                         func_call_str,
                         &modifier_state,
                         msg.clone(),
-                        is_ext,
+                        ext_target,
                     )
                 })
             }
@@ -102,7 +102,7 @@ pub trait FuncCaller:
                             func_call_str,
                             &modifier_state,
                             msg.clone(),
-                            is_ext,
+                            ext_target,
                         )
                     })
                 } else {
@@ -128,7 +128,7 @@ pub trait FuncCaller:
                     func_call_str,
                     &modifier_state,
                     msg.clone(),
-                    is_ext,
+                    ext_target,
                 )
             }),
             e => todo!("here: {:?}", e),
@@ -149,7 +149,7 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
         env: Option<EnvCtx>,
-        is_ext: bool,
+        ext_target: Option<ContractId>,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Calling function: {} in context: {}",
@@ -171,10 +171,10 @@ pub trait FuncCaller:
         let callee_ctx = if entry_call {
             ctx
         } else {
-            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone(), is_ext)?
+            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone(), ext_target)?
         };
 
-        if entry_call || is_ext {
+        if entry_call || ext_target.is_some() {
             self.add_env(callee_ctx, func_node, env, loc)?;
         }
 

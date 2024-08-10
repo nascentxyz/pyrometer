@@ -315,7 +315,7 @@ impl SubContextKind {
 #[derive(Debug, Clone, Eq, PartialEq, Copy)]
 pub enum ContractId {
     Id(usize),
-    CalledAddress(ContextVarNode),
+    Address(ContextVarNode),
     Dummy,
 }
 

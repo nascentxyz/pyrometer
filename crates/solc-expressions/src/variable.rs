@@ -124,7 +124,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     Node::Var(_) => {
                         let name = VarNode::from(idx).name(self).into_expr_err(ident.loc)?;
                         if let Some(prev) = ctx
-                            .storage_var_by_name_or_recurse(self, &*name)
+                            .storage_var_by_name_or_recurse(self, &name)
                             .into_expr_err(ident.loc)?
                         {
                             let prev = prev.latest_version_or_inherited_in_ctx(ctx, self);

@@ -82,7 +82,7 @@ pub trait ModifierCaller:
                 None,
                 Some(mod_state.clone()),
                 None,
-                false,
+                None,
             )
         })
     }
@@ -128,6 +128,7 @@ pub trait ModifierCaller:
                         loc,
                         analyzer,
                         Some(modifier_state.clone()),
+                        ctx.contract_id(analyzer).unwrap(),
                     )
                     .unwrap();
 
@@ -153,9 +154,14 @@ pub trait ModifierCaller:
                         false,
                     );
 
-                    let new_parent_subctx =
-                        Context::add_subctx(subctx_kind, modifier_state.loc, analyzer, None)
-                            .unwrap();
+                    let new_parent_subctx = Context::add_subctx(
+                        subctx_kind,
+                        modifier_state.loc,
+                        analyzer,
+                        None,
+                        ctx.contract_id(analyzer).unwrap(),
+                    )
+                    .unwrap();
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
 

@@ -17,8 +17,8 @@ use graph::{
     elem::{Elem, RangeConcrete, RangeExpr, RangeOp},
     nodes::{
         BuiltInNode, Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar,
-        ContextVarNode, ContractId, ContractNode, ExprRet, FunctionNode, KilledKind, StructNode, Msg,
-        TmpConstruction, YulFunction,
+        ContextVarNode, ContractId, ContractNode, ExprRet, FunctionNode, KilledKind, Msg,
+        StructNode, TmpConstruction, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, TypeNode, VarType,
 };
@@ -644,7 +644,7 @@ pub trait Flatten:
                         self.push_expr(FlatExpr::New(*new_loc));
                         self.push_expr(FlatExpr::FunctionCall(
                             *func_loc,
-                            false,
+                            None,
                             input_exprs.len(),
                             0,
                         ));
@@ -661,7 +661,7 @@ pub trait Flatten:
                         });
                         self.push_expr(FlatExpr::NamedFunctionCall(
                             *loc,
-                            false,
+                            None,
                             input_args.len(),
                             0,
                         ));
@@ -922,7 +922,7 @@ pub trait Flatten:
                 });
                 self.push_expr(FlatExpr::NamedFunctionCall(
                     *loc,
-                    false,
+                    None,
                     input_args.len(),
                     call_block_n,
                 ));
@@ -984,12 +984,7 @@ pub trait Flatten:
                         }
                     }
 
-                    self.push_expr(FlatExpr::FunctionCall(
-                        *loc,
-                        false,
-                        num_inputs,
-                        call_block_n,
-                    ));
+                    self.push_expr(FlatExpr::FunctionCall(*loc, None, num_inputs, call_block_n));
                 }
             },
             // member
@@ -1018,7 +1013,7 @@ pub trait Flatten:
             func,
             self.add_if_err(func.name(self).into_expr_err(loc)).unwrap(),
             loc,
-            ContractId::Id(0),
+            ContractId::Id(self.increment_contract_id()),
         );
         let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
         self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
@@ -1041,7 +1036,7 @@ pub trait Flatten:
             None,  // alt function name
             &None, // mod state
             env,
-            false, // not ext
+            None, // not ext
         );
         let _ = self.add_if_err(res);
     }
@@ -1514,10 +1509,10 @@ pub trait Flatten:
                         } else {
                             match stack.get_mut(ctx.parse_idx(self)) {
                                 Some(FlatExpr::FunctionCall(_, ref mut ext, _, _)) => {
-                                    *ext = true;
+                                    *ext = Some(member.expect_single().into_expr_err(loc)?);
                                 }
                                 Some(FlatExpr::NamedFunctionCall(_, ref mut ext, _, _)) => {
-                                    *ext = true;
+                                    *ext = Some(member.expect_single().into_expr_err(loc)?);
                                 }
                                 Some(_) | None => {}
                             }
@@ -2443,7 +2438,8 @@ pub trait Flatten:
                     // its a builtin function call
                     self.call_builtin(arena, ctx, &s.name(self).into_expr_err(loc)?, inputs, loc)
                 } else {
-                    self.func_call(arena, ctx, loc, &inputs, s, None, None, env, ext)
+                    let id = ext.map(|i| ContractId::Address(ContextVarNode::from(i)));
+                    self.func_call(arena, ctx, loc, &inputs, s, None, None, env, id)
                 }
             }
             VarType::BuiltIn(bn, _) => {

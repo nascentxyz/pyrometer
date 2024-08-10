@@ -202,4 +202,6 @@ pub trait AnalyzerLike: GraphLike {
     fn expr_stack(&self) -> &[Self::FlatExpr];
     fn expr_stack_mut(&mut self) -> &mut Vec<Self::FlatExpr>;
     fn debug_stack(&self) -> bool;
+
+    fn increment_contract_id(&mut self) -> usize;
 }

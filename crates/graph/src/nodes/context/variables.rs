@@ -171,11 +171,10 @@ impl ContextNode {
             return Ok(Some(var));
         }
 
-        // TODO: need to ensure no two instances of the contract at different addresses
-        let relevant_contract = self.associated_contract(analyzer)?;
+        let relevant_contract = self.contract_id(analyzer)?;
         let mut next_parent = self.underlying(analyzer)?.parent_ctx();
         while let Some(parent) = next_parent {
-            let parent_contract = parent.associated_contract(analyzer)?;
+            let parent_contract = parent.contract_id(analyzer)?;
             if parent_contract == relevant_contract {
                 if let Some(in_parent) = parent.storage_var_by_name(analyzer, name) {
                     return Ok(Some(in_parent.latest_version(analyzer)));

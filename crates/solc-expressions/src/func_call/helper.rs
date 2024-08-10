@@ -4,8 +4,8 @@ use crate::{member_access::ListAccess, variable::Variable};
 use graph::{
     elem::Elem,
     nodes::{
-        CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, EnvCtx, ExprRet,
-        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
+        CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, EnvCtx,
+        ExprRet, FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
@@ -186,9 +186,9 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         loc: Loc,
         func_node: FunctionNode,
         modifier_state: Option<ModifierState>,
-        fn_ext: bool,
+        ext_target: Option<ContractId>,
     ) -> Result<ContextNode, ExprErr> {
-        if fn_ext {
+        if ext_target.is_some() {
             curr_ctx
                 .add_gas_cost(self, shared::gas::EXT_FUNC_CALL_GAS)
                 .into_expr_err(loc)?;
@@ -198,9 +198,17 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .into_expr_err(loc)?;
         }
 
-        let subctx_kind = SubContextKind::new_fn_call(curr_ctx, None, func_node, fn_ext);
+        let subctx_kind =
+            SubContextKind::new_fn_call(curr_ctx, None, func_node, ext_target.is_some());
+
+        let id = if let Some(target) = ext_target {
+            target
+        } else {
+            curr_ctx.contract_id(self).into_expr_err(loc)?
+        };
+
         let callee_ctx =
-            Context::add_subctx(subctx_kind, loc, self, modifier_state).into_expr_err(loc)?;
+            Context::add_subctx(subctx_kind, loc, self, modifier_state, id).into_expr_err(loc)?;
         curr_ctx
             .set_child_call(callee_ctx, self)
             .into_expr_err(loc)?;
@@ -399,6 +407,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         .into_expr_err(loc)?
                         .modifier_state
                         .clone(),
+                    caller_ctx.contract_id(self).into_expr_err(loc)?,
                 )
                 .into_expr_err(loc)?;
                 let res = callee_ctx

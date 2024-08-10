@@ -8,7 +8,7 @@ use crate::{
 };
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet},
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractId, ContractNode, ExprRet},
     AnalyzerBackend, Node,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
@@ -75,6 +75,7 @@ pub trait IntrinsicFuncCaller:
                     if params.is_empty() {
                         // call the constructor
                         let inputs = ExprRet::Multi(vec![]);
+                        let id = Some(ContractId::Id(self.increment_contract_id()));
                         self.func_call(
                             arena,
                             ctx,
@@ -84,7 +85,7 @@ pub trait IntrinsicFuncCaller:
                             None,
                             None,
                             None,
-                            true
+                            id,
                         )?;
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                             let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
@@ -106,6 +107,7 @@ pub trait IntrinsicFuncCaller:
                         })
                     } else {
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                            let id = Some(ContractId::Id(analyzer.increment_contract_id()));
                             // call the constructor
                             analyzer.func_call(
                                 arena,
@@ -116,7 +118,7 @@ pub trait IntrinsicFuncCaller:
                                 None,
                                 None,
                                 None,
-                                true
+                                id,
                             )?;
                             analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                                 let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {

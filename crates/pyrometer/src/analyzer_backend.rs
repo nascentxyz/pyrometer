@@ -571,4 +571,10 @@ impl AnalyzerLike for Analyzer {
     fn debug_stack(&self) -> bool {
         self.debug_stack
     }
+
+    fn increment_contract_id(&mut self) -> usize {
+        let id = self.contract_id;
+        self.contract_id += 1;
+        id
+    }
 }

@@ -1,3 +1,4 @@
+use crate::NodeIdx;
 use crate::{FlatYulExpr, StorageLocation};
 use solang_parser::pt::{Expression, Loc, NamedArgument, Type, YulExpression};
 
@@ -62,9 +63,9 @@ pub enum FlatExpr {
     ArraySlice(Loc, bool, bool),
     ArrayLiteral(Loc, usize),
     MemberAccess(Loc, &'static str),
-    FunctionCall(Loc, bool, usize, usize),
     FunctionCallBlock(Loc, usize),
-    NamedFunctionCall(Loc, bool, usize, usize),
+    FunctionCall(Loc, Option<NodeIdx>, usize, usize),
+    NamedFunctionCall(Loc, Option<NodeIdx>, usize, usize),
     Not(Loc),
     Negate(Loc),
     Delete(Loc),
@@ -467,12 +468,12 @@ impl TryFrom<&Expression> for FlatExpr {
             FunctionCall(loc, call, input_exprs) => {
                 if let FunctionCallBlock(_, _, args) = &**call {
                     if let solang_parser::pt::Statement::Args(_, args) = &**args {
-                        FlatExpr::FunctionCall(*loc, false, input_exprs.len(), args.len())
+                        FlatExpr::FunctionCall(*loc, None, input_exprs.len(), args.len())
                     } else {
                         unreachable!()
                     }
                 } else {
-                    FlatExpr::FunctionCall(*loc, false, input_exprs.len(), 0)
+                    FlatExpr::FunctionCall(*loc, None, input_exprs.len(), 0)
                 }
             }
             FunctionCallBlock(loc, _, ref args) => {
@@ -485,12 +486,12 @@ impl TryFrom<&Expression> for FlatExpr {
             NamedFunctionCall(loc, call, input_exprs) => {
                 if let FunctionCallBlock(_, _, args) = &**call {
                     if let solang_parser::pt::Statement::Args(_, args) = &**args {
-                        FlatExpr::NamedFunctionCall(*loc, false, input_exprs.len(), args.len())
+                        FlatExpr::NamedFunctionCall(*loc, None, input_exprs.len(), args.len())
                     } else {
                         unreachable!()
                     }
                 } else {
-                    FlatExpr::NamedFunctionCall(*loc, false, input_exprs.len(), 0)
+                    FlatExpr::NamedFunctionCall(*loc, None, input_exprs.len(), 0)
                 }
             }
             Not(loc, ..) => FlatExpr::Not(*loc),
