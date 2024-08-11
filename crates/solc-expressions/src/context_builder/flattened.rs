@@ -348,15 +348,36 @@ pub trait Flatten:
                 // require(x && y) ==>
                 //   require(x);
                 //   require(y);
+
+                // self.push_expr(cmp);
+                println!(
+                    "stack: {:#?}, lhs_end: {lhs_end}, rhs_end: {rhs_end}",
+                    self.expr_stack()
+                );
                 let mut lhs = self
                     .expr_stack_mut()
                     .drain(rhs_end..lhs_end)
                     .collect::<Vec<_>>();
                 let lhs_cmp = lhs.pop().unwrap();
                 let rhs_cmp = self.expr_stack_mut().pop().unwrap();
+                println!(
+                    "lhs: {lhs:#?}, lhs_cmp: {lhs_cmp:#?}, rhs: {rhs_cmp:#?}, stack: {:#?}",
+                    self.expr_stack()
+                );
+
+                // We have to reset the stack to before the edits because
+                // `And`s use absolute positioning, so if we change out the stack it gets a bit screwed up.
+                // So we edit the rhs cmp, then replace it with the original
+                let len = self.expr_stack().len();
                 self.traverse_requirement(rhs_cmp, loc);
+                let new_rhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
+                self.push_expr(rhs_cmp);
+                let len = self.expr_stack().len();
                 self.expr_stack_mut().extend(lhs);
                 self.traverse_requirement(lhs_cmp, loc);
+                let new_lhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
+                self.expr_stack_mut().extend(new_rhs);
+                self.expr_stack_mut().extend(new_lhs);
             }
             FlatExpr::Less(_)
             | FlatExpr::More(_)
