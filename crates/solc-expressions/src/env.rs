@@ -1,6 +1,4 @@
 use crate::{func_call::helper::CallerHelper, func_call::modifier::ModifierCaller};
-use petgraph::visit::EdgeRef;
-use petgraph::Direction;
 
 use graph::{
     elem::Elem,

@@ -2,7 +2,7 @@ use crate::nodes::Msg;
 use crate::{
     nodes::{Concrete, ContextNode, ContextVarNode},
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node,
+    AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
 use solang_parser::pt::Loc;
 

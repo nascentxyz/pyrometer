@@ -117,7 +117,7 @@ impl ContextNode {
 
         if let Some(parent) = self.ancestor_in_call(analyzer)? {
             if let Some(in_parent) = parent.env_or_recurse(analyzer)? {
-                return Ok(Some(in_parent));
+                Ok(Some(in_parent))
             } else {
                 Ok(None)
             }

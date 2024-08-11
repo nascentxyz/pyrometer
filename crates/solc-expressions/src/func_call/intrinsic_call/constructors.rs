@@ -1,7 +1,6 @@
 use crate::{assign::Assign, func_call::helper::CallerHelper};
 use graph::nodes::Builtin;
 
-use graph::SolcRange;
 use graph::{
     elem::*,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, StructNode},

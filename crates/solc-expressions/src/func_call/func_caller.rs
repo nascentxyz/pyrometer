@@ -14,7 +14,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use solang_parser::pt::{CodeLocation, Expression, Loc};
 

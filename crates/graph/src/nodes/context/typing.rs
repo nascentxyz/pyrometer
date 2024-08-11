@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{context::underlying::SubContextKind, CallFork, ContextNode, FunctionNode, KilledKind},
+    nodes::{context::underlying::SubContextKind, CallFork, ContextNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::GraphError;

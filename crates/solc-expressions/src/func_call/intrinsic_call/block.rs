@@ -1,6 +1,5 @@
-use crate::variable::Variable;
 use graph::{
-    elem::{Elem, RangeDyn},
+    elem::Elem,
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend,
 };

@@ -4,7 +4,7 @@ use crate::{
         AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
         MsgCaller, PrecompileCaller, SolidityCaller, TypesCaller,
     },
-    ContextBuilder, Env,
+    ContextBuilder,
 };
 use graph::{
     elem::Elem,

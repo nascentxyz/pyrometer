@@ -17,8 +17,8 @@ use graph::{
     elem::{Elem, RangeConcrete, RangeExpr, RangeOp},
     nodes::{
         BuiltInNode, Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar,
-        ContextVarNode, ContractId, ContractNode, ExprRet, FunctionNode, KilledKind, Msg,
-        StructNode, TmpConstruction, YulFunction,
+        ContextVarNode, ContractId, ContractNode, ExprRet, FunctionNode, KilledKind, StructNode,
+        TmpConstruction, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, TypeNode, VarType,
 };
@@ -2352,7 +2352,7 @@ pub trait Flatten:
                     let input = call_args[i].expect_single().unwrap();
                     let mut var = ContextVarNode::from(input).underlying(self)?.clone();
                     var.name = EnvCtx::get_name(name).unwrap();
-                    var.display_name = var.name.clone();
+                    var.display_name.clone_from(&var.name);
                     let var_node = self.add_node(var);
                     env_ctx.set(name, var_node);
                     Ok(())
