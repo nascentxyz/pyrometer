@@ -68,9 +68,7 @@ pub trait ModifierCaller:
                 .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
                 .into_expr_err(loc)?;
             backwards_inputs.reverse();
-            let inputs = ExprRet::Multi(
-                backwards_inputs
-            );
+            let inputs = ExprRet::Multi(backwards_inputs);
 
             if analyzer.debug_stack() {
                 tracing::trace!("modifier inputs: {}", inputs.debug_str(analyzer));
