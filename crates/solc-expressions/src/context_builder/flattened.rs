@@ -113,37 +113,52 @@ pub trait Flatten:
                 // based on their size
                 let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr, unchecked);
-                let mut false_cond = self.expr_stack()[start_len..].to_vec();
                 let cmp = self.expr_stack_mut().pop().unwrap();
-                // have it be a require statement
-                self.traverse_requirement(cmp, if_expr.loc());
-                let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
 
-                // the false condition is the same as the true, but with the comparator inverted
-                if let Some(last) = false_cond.pop() {
-                    match last {
-                        FlatExpr::And(loc, ..) => {
-                            let lhs = false_cond.pop().unwrap();
-                            let rhs = false_cond.pop().unwrap();
-                            false_cond.push(lhs);
-                            false_cond.push(FlatExpr::Not(loc));
-                            false_cond.push(rhs);
-                            false_cond.push(FlatExpr::Not(loc));
-                            false_cond.push(FlatExpr::CmpRequirement(loc));
-                            false_cond.push(FlatExpr::Or(loc));
+                // do the false condition first, and take it off the stack, do the true condition, then add this back
+                match cmp {
+                    FlatExpr::And(loc, rhs_start, rhs_end) => {
+                        let mut rhs = self
+                            .expr_stack_mut()
+                            .drain(rhs_start..rhs_end)
+                            .collect::<Vec<_>>();
+                        let rhs_cmp = rhs.pop().unwrap();
+                        let lhs_cmp = self.expr_stack_mut().pop().unwrap();
+                        if let Some(lhs_inv) = lhs_cmp.try_inv_cmp() {
+                            self.push_expr(lhs_inv);
+                        } else {
+                            self.push_expr(lhs_cmp);
+                            self.push_expr(FlatExpr::Not(loc));
                         }
-                        _ => {
-                            if let Some(inv) = last.try_inv_cmp() {
-                                false_cond.push(inv)
-                            } else {
-                                false_cond.push(last);
-                                false_cond.push(FlatExpr::Not(*loc));
-                                false_cond.push(FlatExpr::Requirement(*loc));
-                            }
+
+                        self.expr_stack_mut().extend(rhs);
+                        if let Some(rhs_inv) = rhs_cmp.try_inv_cmp() {
+                            self.push_expr(rhs_inv);
+                        } else {
+                            self.push_expr(rhs_cmp);
+                            self.push_expr(FlatExpr::Not(loc));
+                        }
+
+                        self.push_expr(FlatExpr::CmpRequirement(loc));
+                        self.push_expr(FlatExpr::Or(loc));
+                    }
+                    _ => {
+                        if let Some(inv) = cmp.try_inv_cmp() {
+                            self.push_expr(FlatExpr::CmpRequirement(*loc));
+                            self.push_expr(inv)
+                        } else {
+                            self.push_expr(cmp);
+                            self.push_expr(FlatExpr::Not(*loc));
+                            self.push_expr(FlatExpr::Requirement(*loc));
                         }
                     }
                 }
 
+                let false_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
+                self.traverse_expression(if_expr, unchecked);
+                let cmp = self.expr_stack_mut().pop().unwrap();
+                self.traverse_requirement(cmp, if_expr.loc());
+                let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 let true_cond_delta = true_cond.len();
                 let false_cond_delta = false_cond.len();
 
@@ -341,7 +356,7 @@ pub trait Flatten:
 
     fn traverse_requirement(&mut self, cmp: FlatExpr, loc: Loc) {
         match cmp {
-            FlatExpr::And(_, lhs_end, rhs_end) => {
+            FlatExpr::And(_, rhs_start, rhs_end) => {
                 // Its better to just break up And into its component
                 // parts now as opposed to trying to do it later
                 // i.e.:
@@ -349,35 +364,24 @@ pub trait Flatten:
                 //   require(x);
                 //   require(y);
 
-                // self.push_expr(cmp);
-                println!(
-                    "stack: {:#?}, lhs_end: {lhs_end}, rhs_end: {rhs_end}",
-                    self.expr_stack()
-                );
-                let mut lhs = self
+                let mut rhs = self
                     .expr_stack_mut()
-                    .drain(rhs_end..lhs_end)
+                    .drain(rhs_start..rhs_end)
                     .collect::<Vec<_>>();
-                let lhs_cmp = lhs.pop().unwrap();
-                let rhs_cmp = self.expr_stack_mut().pop().unwrap();
-                println!(
-                    "lhs: {lhs:#?}, lhs_cmp: {lhs_cmp:#?}, rhs: {rhs_cmp:#?}, stack: {:#?}",
-                    self.expr_stack()
-                );
-
+                let rhs_cmp = rhs.pop().unwrap();
+                let lhs_cmp = self.expr_stack_mut().pop().unwrap();
                 // We have to reset the stack to before the edits because
                 // `And`s use absolute positioning, so if we change out the stack it gets a bit screwed up.
                 // So we edit the rhs cmp, then replace it with the original
                 let len = self.expr_stack().len();
-                self.traverse_requirement(rhs_cmp, loc);
-                let new_rhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
-                self.push_expr(rhs_cmp);
-                let len = self.expr_stack().len();
-                self.expr_stack_mut().extend(lhs);
                 self.traverse_requirement(lhs_cmp, loc);
                 let new_lhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
-                self.expr_stack_mut().extend(new_rhs);
+                let len = self.expr_stack().len();
+                self.expr_stack_mut().extend(rhs);
+                self.traverse_requirement(rhs_cmp, loc);
+                let new_rhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
                 self.expr_stack_mut().extend(new_lhs);
+                self.expr_stack_mut().extend(new_rhs);
             }
             FlatExpr::Less(_)
             | FlatExpr::More(_)
@@ -759,11 +763,11 @@ pub trait Flatten:
             }
 
             And(loc, lhs, rhs) => {
+                self.traverse_expression(lhs, unchecked);
+                let rhs_start = self.expr_stack().len();
                 self.traverse_expression(rhs, unchecked);
                 let rhs_end = self.expr_stack().len();
-                self.traverse_expression(lhs, unchecked);
-                let lhs_end = self.expr_stack().len();
-                self.push_expr(FlatExpr::And(*loc, lhs_end, rhs_end));
+                self.push_expr(FlatExpr::And(*loc, rhs_start, rhs_end));
             }
 
             List(_, params) => {
