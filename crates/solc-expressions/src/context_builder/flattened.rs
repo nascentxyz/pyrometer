@@ -1,7 +1,3 @@
-use graph::nodes::CallFork;
-use graph::{elem::RangeDyn, nodes::EnvCtx};
-use std::collections::BTreeMap;
-
 use crate::{
     context_builder::{test_command_runner::TestCommandRunner, ContextBuilder},
     func_call::{
@@ -10,27 +6,30 @@ use crate::{
         intrinsic_call::*,
     },
     loops::Looper,
+    yul::YulBuilder,
     yul::YulFuncCaller,
     ExprTyParser,
 };
 use graph::{
-    elem::{Elem, RangeConcrete, RangeExpr, RangeOp},
+    elem::{Elem, RangeConcrete, RangeDyn, RangeExpr, RangeOp},
     nodes::{
-        BuiltInNode, Builtin, Concrete, ConcreteNode, Context, ContextNode, ContextVar,
-        ContextVarNode, ContractId, ContractNode, ExprRet, FunctionNode, KilledKind, StructNode,
-        TmpConstruction, YulFunction,
+        BuiltInNode, Builtin, CallFork, Concrete, ConcreteNode, Context, ContextNode, ContextVar,
+        ContextVarNode, ContractId, ContractNode, EnvCtx, ExprRet, FunctionNode, KilledKind,
+        StructNode, TmpConstruction, YulFunction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, SolcRange, TypeNode, VarType,
 };
-
-use ethers_core::types::U256;
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
     GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
 };
+
+use ethers_core::types::U256;
 use solang_parser::pt::{
     CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
 };
+
+use std::collections::BTreeMap;
 
 impl<T> Flatten for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExprTyParser
@@ -1287,7 +1286,9 @@ pub trait Flatten:
             YulExpr(yul @ FlatYulExpr::YulFuncCall(..)) => {
                 self.interp_yul_func_call(arena, ctx, stack, yul)
             }
-            YulExpr(FlatYulExpr::YulSuffixAccess(..)) => Ok(()),
+            YulExpr(yul @ FlatYulExpr::YulSuffixAccess(..)) => {
+                self.interp_yul_suffix(arena, ctx, yul)
+            }
             YulExpr(yul @ FlatYulExpr::YulAssign(..)) => self.interp_yul_assign(arena, ctx, yul),
             YulExpr(yul @ FlatYulExpr::YulFuncDef(..)) => {
                 self.interp_yul_func_def(ctx, stack, yul, parse_idx)
@@ -2582,6 +2583,33 @@ pub trait Flatten:
         self.add_edge(yul_fn, fn_node, Edge::YulFunction(self.current_asm_block()));
         ctx.underlying_mut(self).into_expr_err(loc)?.parse_idx = end;
         Ok(())
+    }
+
+    fn interp_yul_suffix(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatYulExpr,
+    ) -> Result<(), ExprErr> {
+        let FlatYulExpr::YulSuffixAccess(loc, name) = next else {
+            unreachable!()
+        };
+
+        let member = ctx
+            .pop_n_latest_exprs(1, loc, self)
+            .into_expr_err(loc)?
+            .remove(0);
+        match name {
+            "slot" => {
+                let slot = self.slot(ctx, loc, member.expect_single().into_expr_err(loc)?.into());
+                ctx.push_expr(ExprRet::Single(slot.0.into()), self)
+                    .into_expr_err(loc)
+            }
+            _ => Err(ExprErr::Todo(
+                loc,
+                format!("Yul suffix access {name} is not supported"),
+            )),
+        }
     }
 
     fn interp_yul_assign(

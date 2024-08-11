@@ -6,7 +6,9 @@ use crate::{
 };
 
 use graph::{
-    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
+    nodes::{
+        BuiltInNode, ContextNode, ContextVarNode, ContractNode, ExprRet, FunctionNode, StructNode,
+    },
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
 use shared::{ExprErr, GraphError, NodeIdx};
@@ -123,7 +125,7 @@ pub trait InternalFuncCaller:
         num_inputs: usize,
     ) -> Result<(Vec<FunctionNode>, bool), GraphError> {
         match self.node(member) {
-            // Only instantiated contracts and bytes & strings have non-library functions
+            // Only instantiated & abstract contracts and bytes & strings have non-library functions
             Node::ContextVar(..) => {
                 let var = ContextVarNode::from(member);
                 match var.ty(self)? {
@@ -134,6 +136,11 @@ pub trait InternalFuncCaller:
                     }
                     _ => Ok((vec![], false)),
                 }
+            }
+            Node::Contract(..) => {
+                let c = ContractNode::from(member);
+                let func_mapping = c.linearized_functions(self, false)?;
+                Ok((func_mapping.values().copied().collect(), false))
             }
             Node::Builtin(_) => {
                 if let Some((ret, lib)) =
@@ -246,7 +253,12 @@ pub trait InternalFuncCaller:
         constructor: bool,
     ) -> Result<Vec<FunctionNode>, GraphError> {
         let mut potential_mods = if constructor {
-            let cons = ctx.visible_constructors(self)?;
+            let contract = ctx.associated_contract(self)?;
+            let inherited = contract.all_inherited_contracts(self);
+            let cons = inherited
+                .iter()
+                .filter_map(|c| c.constructor(self))
+                .collect::<Vec<_>>();
             cons.into_iter()
                 .filter(|func| {
                     let res = matches!(func.ty(self), Ok(FunctionTy::Constructor));

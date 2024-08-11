@@ -63,11 +63,13 @@ pub trait ModifierCaller:
                 );
             }
 
+            let mut backwards_inputs = mod_state
+                .parent_ctx
+                .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
+                .into_expr_err(loc)?;
+            backwards_inputs.reverse();
             let inputs = ExprRet::Multi(
-                mod_state
-                    .parent_ctx
-                    .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
-                    .into_expr_err(loc)?,
+                backwards_inputs
             );
 
             if analyzer.debug_stack() {
