@@ -4,7 +4,12 @@ use solang_parser::pt::{Expression, Loc, NamedArgument, Type, YulExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprFlag {
-    FunctionName(usize, usize, bool, bool),
+    FunctionName {
+        num_inputs: usize,
+        call_block_inputs: usize,
+        is_super: bool,
+        named_args: bool,
+    },
     New,
     Negate,
     Requirement,
@@ -45,7 +50,12 @@ pub enum FlatExpr {
     TestCommand(Loc, &'static str),
 
     NamedArgument(Loc, &'static str),
-    FunctionCallName(usize, usize, bool, bool),
+    FunctionCallName {
+        num_inputs: usize,
+        call_block_inputs: usize,
+        is_super: bool,
+        named_args: bool,
+    },
     Requirement(Loc),
     CmpRequirement(Loc),
     Super(Loc, &'static str),
@@ -402,7 +412,7 @@ impl FlatExpr {
             | YulExpr(FlatYulExpr::YulFuncDef(loc, ..))
             | ArrayLiteral(loc, ..) => Some(*loc),
 
-            FunctionCallName(..)
+            FunctionCallName { .. }
             | Pop
             | YulExpr(FlatYulExpr::YulStartBlock(_))
             | YulExpr(FlatYulExpr::YulEndBlock(_)) => None,
