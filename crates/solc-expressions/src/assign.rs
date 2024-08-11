@@ -248,12 +248,9 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     ) -> Result<ExprRet, ExprErr> {
         let lhs_fields = lhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
         let rhs_fields = rhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
-        println!("lhs fields: {lhs_fields:#?}");
-        println!("rhs fields: {rhs_fields:#?}");
         lhs_fields.iter().try_for_each(|lhs_field| {
             let lhs_full_name = lhs_field.display_name(self).into_expr_err(loc)?;
             let split = lhs_full_name.split('.').collect::<Vec<_>>();
-            println!("lhs split: {split:#?}");
             let Some(lhs_field_name) = split.last() else {
                 return Err(ExprErr::ParseError(
                     lhs_field.loc(self).unwrap(),
@@ -265,7 +262,6 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             for rhs_field in rhs_fields.iter() {
                 let rhs_full_name = rhs_field.display_name(self).into_expr_err(loc)?;
                 let split = rhs_full_name.split('.').collect::<Vec<_>>();
-                println!("potential rhs split: {split:#?}");
                 let Some(rhs_field_name) = split.last() else {
                     return Err(ExprErr::ParseError(
                         rhs_field.loc(self).unwrap(),

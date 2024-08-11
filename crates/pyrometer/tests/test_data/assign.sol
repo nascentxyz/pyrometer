@@ -4,12 +4,12 @@ pragma solidity ^0.8.0;
 contract Assign {
     function doAssignment() public pure {
         // Multi-value LHS (tuple)
-        (uint x, uint y) = (uint16(1), 2);
+        (uint w, uint y) = (uint16(1), 2);
 
         // Single value RHS
         uint z = 3;
 
-        (x, y) = (z, z);
+        (w, y) = (z, z);
     }
 
     uint x;
@@ -30,16 +30,18 @@ contract Assign {
         b;
     }
 
-    function array_slices(
-        uint[] calldata a,
-        uint x
-    ) public pure returns (uint[] memory) {
+    function array_slices(uint[] calldata a, uint q) public pure {
         require(a.length >= 4, "Array must have at least 4 elements");
-        a[2] = 14;
+        require(a[2] == 14);
         uint[] memory b = a[2:4];
         uint[] memory c = a[1:];
         uint[] memory d = a[:2];
         uint[] memory e = a[2:4][0:1];
-        uint[] memory f = a[2:x];
+        uint[] memory f = a[2:q];
+        b;
+        c;
+        d;
+        e;
+        f;
     }
 }

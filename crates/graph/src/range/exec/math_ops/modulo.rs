@@ -78,6 +78,7 @@ pub fn exec_mod(
     };
 
     if is_const(lhs_min, lhs_max, arena) && is_const(rhs_min, rhs_max, arena) {
+        eprintln!("const");
         return lhs_min.range_mod(rhs_min);
     }
 
@@ -113,6 +114,7 @@ pub fn exec_mod(
     {
         // the lhs is entirely smaller than the modulo, so its effectively a noop, just return
         // the min or max
+        eprintln!("here 1");
         return Some(lhs_max.clone());
     }
 
@@ -147,6 +149,8 @@ pub fn exec_mod(
             }
         }
     }
+
+    candidates.push(zero);
 
     // Sort the candidates
     candidates.sort_by(|a, b| match a.range_ord(b, arena) {
@@ -325,5 +329,35 @@ mod tests {
         .maybe_concrete()
         .unwrap();
         assert_eq!(min_result.val, Concrete::Int(8, I256::from(-4i32)));
+    }
+
+    #[test]
+    fn repro() {
+        let max = U256::from_dec_str(
+            "1340186218024493002587627141304258192746180378074543565271499814906382593",
+        )
+        .unwrap();
+
+        let g = DummyGraph::default();
+        let mut arena = Default::default();
+        let lhs_min = rc_uint256(0).into();
+        let lhs_max = RangeConcrete::new(Concrete::Uint(256, max), Loc::Implicit).into();
+        let rhs_min = rc_uint256(7).into();
+        let rhs_max = rc_uint256(7).into();
+
+        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        // TODO: improve mod calc to consider lhs being entirely negative
+        // assert_eq!(max_result.val, Concrete::Int(8, I256::from(0i32)));
+        assert_eq!(max_result.val, Concrete::Uint(256, U256::from(6)));
+        let min_result = exec_mod(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
+        assert_eq!(min_result.val, Concrete::Uint(256, U256::from(0)));
     }
 }

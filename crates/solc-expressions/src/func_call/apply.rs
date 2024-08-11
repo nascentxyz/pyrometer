@@ -155,9 +155,8 @@ pub trait FuncApplier:
                     }
 
                     self.handled_funcs_mut().push(func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(body, None);
-                        self.interpret(func, body.loc(), arena)
+                    if func.underlying(self).unwrap().body.is_some() {
+                        self.interpret_entry_func(func, arena);
                     }
 
                     seen.push(func);
@@ -204,9 +203,8 @@ pub trait FuncApplier:
                     }
 
                     self.handled_funcs_mut().push(func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(body, None);
-                        self.interpret(func, body.loc(), arena)
+                    if func.underlying(self).unwrap().body.is_some() {
+                        self.interpret_entry_func(func, arena);
                     }
 
                     seen.push(func);
@@ -252,9 +250,8 @@ pub trait FuncApplier:
                     }
 
                     self.handled_funcs_mut().push(func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(body, None);
-                        self.interpret(func, body.loc(), arena)
+                    if func.underlying(self).unwrap().body.is_some() {
+                        self.interpret_entry_func(func, arena);
                     }
 
                     seen.push(func);

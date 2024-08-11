@@ -54,7 +54,7 @@ pub trait PrePostIncDecrement:
                             .into_expr_err(loc)?;
                         dup.set_range_max(self, arena, elem.clone() + one.clone())
                             .into_expr_err(loc)?;
-                        let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                        let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
                         new_cvar
                             .set_range_min(self, arena, elem.clone() + one.clone())
                             .into_expr_err(loc)?;
@@ -75,7 +75,7 @@ pub trait PrePostIncDecrement:
                             .into_expr_err(loc)?;
                         dup.set_range_max(self, arena, elem.clone())
                             .into_expr_err(loc)?;
-                        let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                        let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
                         let res = new_cvar
                             .set_range_min(self, arena, elem.clone() + one.clone())
                             .into_expr_err(loc);
@@ -98,7 +98,7 @@ pub trait PrePostIncDecrement:
                         .into_expr_err(loc)?;
                     dup.set_range_max(self, arena, elem.clone() - one.clone())
                         .into_expr_err(loc)?;
-                    let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                    let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
                     new_cvar
                         .set_range_min(self, arena, elem.clone() - one.clone())
                         .into_expr_err(loc)?;
@@ -117,7 +117,7 @@ pub trait PrePostIncDecrement:
                         .into_expr_err(loc)?;
                     dup.set_range_max(self, arena, elem.clone())
                         .into_expr_err(loc)?;
-                    let new_cvar = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                    let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
                     new_cvar
                         .set_range_min(self, arena, elem.clone() - one.clone())
                         .into_expr_err(loc)?;

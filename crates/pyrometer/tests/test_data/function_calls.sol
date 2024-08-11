@@ -148,3 +148,30 @@ contract D is S2, S1 {
         return 50;
     }
 }
+
+contract Target {
+    constructor(uint c) payable {
+        require(msg.value == 1);
+        require(c == 2);
+    }
+
+    function t(uint a, uint b) public payable {
+        require(msg.value == 2);
+        require(a == 5);
+        require(b == 4);
+    }
+}
+
+contract TargetTester {
+    uint x;
+
+    function constructB() public {
+        require(x == 0);
+        new Target{value: ++x}(++x);
+    }
+
+    function t() public {
+        require(x == 0);
+        Target(address(uint160(++x))).t{value: ++x, gas: ++x}(++x, ++x);
+    }
+}

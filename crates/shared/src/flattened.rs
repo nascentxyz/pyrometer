@@ -104,7 +104,7 @@ pub enum FlatExpr {
     MoreEqual(Loc),
     Equal(Loc),
     NotEqual(Loc),
-    And(Loc),
+    And(Loc, usize, usize),
     Or(Loc),
 
     Assign(Loc),
@@ -207,7 +207,7 @@ impl std::fmt::Display for FlatExpr {
             MoreEqual(_) => write!(f, " >= "),
             Equal(_) => write!(f, " == "),
             NotEqual(_) => write!(f, " != "),
-            And(_) => write!(f, " && "),
+            And(..) => write!(f, " && "),
             Or(_) => write!(f, " || "),
 
             Assign(_) => write!(f, " = "),
@@ -513,7 +513,7 @@ impl TryFrom<&Expression> for FlatExpr {
             MoreEqual(loc, ..) => FlatExpr::MoreEqual(*loc),
             Equal(loc, ..) => FlatExpr::Equal(*loc),
             NotEqual(loc, ..) => FlatExpr::NotEqual(*loc),
-            And(loc, ..) => FlatExpr::And(*loc),
+            And(loc, ..) => FlatExpr::And(*loc, 0, 0),
             Or(loc, ..) => FlatExpr::Or(*loc),
             Assign(loc, ..) => FlatExpr::Assign(*loc),
             AssignOr(loc, ..) => FlatExpr::AssignOr(*loc),

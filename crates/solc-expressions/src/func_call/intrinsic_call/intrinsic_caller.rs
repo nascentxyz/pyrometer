@@ -4,11 +4,14 @@ use crate::{
         AbiCaller, AddressCaller, ArrayCaller, BlockCaller, ConstructorCaller, DynBuiltinCaller,
         MsgCaller, PrecompileCaller, SolidityCaller, TypesCaller,
     },
-    ContextBuilder,
+    ContextBuilder, Env,
 };
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractId, ContractNode, ExprRet},
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractId, ContractNode, EnvCtx,
+        ExprRet,
+    },
     AnalyzerBackend, Node,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
@@ -62,6 +65,7 @@ pub trait IntrinsicFuncCaller:
         ty_idx: NodeIdx,
         inputs: ExprRet,
         loc: Loc,
+        env: Option<EnvCtx>,
     ) -> Result<(), ExprErr> {
         match self.node(ty_idx) {
             Node::Builtin(_) => {
@@ -84,7 +88,7 @@ pub trait IntrinsicFuncCaller:
                             constructor,
                             None,
                             None,
-                            None,
+                            env,
                             id,
                         )?;
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
@@ -117,7 +121,7 @@ pub trait IntrinsicFuncCaller:
                                 constructor,
                                 None,
                                 None,
-                                None,
+                                env.clone(),
                                 id,
                             )?;
                             analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
