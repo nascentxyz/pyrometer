@@ -2,6 +2,8 @@ use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
 use crate::Flatten;
+use graph::range_string::ToRangeString;
+use graph::AsDotStr;
 use solang_parser::helpers::CodeLocation;
 
 use graph::{
@@ -285,7 +287,6 @@ pub trait FuncApplier:
         //
         //  What is produced is a ContextVarNode that's range is like the return of the normal function
         //  but with x replaced with the input provided
-        tracing::trace!("here");
         let replacement_map = self.basic_inputs_replacement_map(
             arena,
             apply_ctx,
@@ -303,16 +304,35 @@ pub trait FuncApplier:
             .map(|(i, (_, ret_node))| {
                 let mut new_var = ret_node.underlying(self).unwrap().clone();
                 let new_name = format!("{}.{i}", func.loc_specified_name(self).unwrap());
+                tracing::trace!("handling apply return: {new_name}");
                 new_var.name.clone_from(&new_name);
-                new_var.display_name = new_name;
+                new_var.display_name = new_name.clone();
                 if let Some(mut range) = new_var.ty.take_range() {
                     let mut range: SolcRange =
                         range.take_flattened_range(self, arena).unwrap().into();
+                    tracing::trace!(
+                        "apply return {new_name} target range: [{}, {}]",
+                        range
+                            .simplified_range_min(self, arena)
+                            .unwrap()
+                            .to_range_string(false, self, arena)
+                            .s,
+                        range
+                            .simplified_range_max(self, arena)
+                            .unwrap()
+                            .to_range_string(false, self, arena)
+                            .s,
+                    );
                     replacement_map.iter().for_each(|(replace, replacement)| {
                         range.replace_dep(*replace, replacement.0.clone(), self, arena);
                     });
 
                     range.cache_eval(self, arena).unwrap();
+
+                    tracing::trace!(
+                        "apply return {new_name} range: {}",
+                        range.as_dot_str(self, arena)
+                    );
                     // TODO: change ty here to match ret type
                     new_var.ty.set_range(range).unwrap();
                 }

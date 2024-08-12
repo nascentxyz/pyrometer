@@ -41,10 +41,6 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
     /// Get all possible library functions
     fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> Vec<FunctionNode> {
         tracing::trace!("looking for library functions of type: {:?}", self.node(ty));
-
-        if matches!(self.node(ty), Node::Concrete(..)) {
-            todo!("here");
-        }
         let mut funcs: Vec<FunctionNode> = Vec::new();
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {
             // search for contract scoped `using` statements

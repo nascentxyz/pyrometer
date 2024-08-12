@@ -22,20 +22,23 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         ctx: ContextNode,
         lhs: &ExprRet,
         rhs: &ExprRet,
+        loc: Loc,
     ) -> Result<(ContextVarNode, ContextVarNode), GraphError> {
         // follow these rules https://docs.soliditylang.org/en/latest/types.html#operators
         let lhs_cvar =
             ContextVarNode::from(lhs.expect_single()?).latest_version_in_ctx(ctx, self)?;
         let rhs_cvar =
             ContextVarNode::from(rhs.expect_single()?).latest_version_in_ctx(ctx, self)?;
-        if rhs.implicitly_castable_to_expr(self, &lhs)? {
-            rhs_cvar.cast_from(&lhs_cvar, self, arena)?;
-            return Ok((lhs_cvar, rhs_cvar));
+        if rhs.implicitly_castable_to_expr(self, lhs)? {
+            let tmp = rhs_cvar.as_tmp(loc, ctx, self)?;
+            tmp.cast_from(&lhs_cvar, self, arena)?;
+            return Ok((lhs_cvar, tmp));
         }
 
-        if lhs.implicitly_castable_to_expr(self, &rhs)? {
-            lhs_cvar.cast_from(&rhs_cvar, self, arena)?;
-            return Ok((lhs_cvar, rhs_cvar));
+        if lhs.implicitly_castable_to_expr(self, rhs)? {
+            let tmp = lhs_cvar.as_tmp(loc, ctx, self)?;
+            tmp.cast_from(&rhs_cvar, self, arena)?;
+            return Ok((tmp, rhs_cvar));
         }
         Ok((lhs_cvar, rhs_cvar))
     }
@@ -81,7 +84,13 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 lhs_cvar.try_increase_size(self, arena).into_expr_err(loc)?;
                 let (lhs_cvar, rhs_cvar) = self
-                    .cast_sides(arena, ctx, &ExprRet::SingleLiteral(lhs_cvar.0.into()), r)
+                    .cast_sides(
+                        arena,
+                        ctx,
+                        &ExprRet::SingleLiteral(lhs_cvar.0.into()),
+                        r,
+                        loc,
+                    )
                     .into_expr_err(loc)?;
                 ctx.push_expr(
                     self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
@@ -92,7 +101,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
             (l @ ExprRet::Single(_), r @ ExprRet::SingleLiteral(_)) => {
                 // ie: x + 5
-                let (lhs_cvar, rhs_cvar) = self.cast_sides(arena, ctx, l, r).into_expr_err(loc)?;
+                let (lhs_cvar, rhs_cvar) =
+                    self.cast_sides(arena, ctx, l, r, loc).into_expr_err(loc)?;
                 ctx.push_expr(
                     self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
                     self,
@@ -102,7 +112,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             }
             (l @ ExprRet::Single(_), r @ ExprRet::Single(_)) => {
                 // ie: x + y
-                let (lhs_cvar, rhs_cvar) = self.cast_sides(arena, ctx, l, r).into_expr_err(loc)?;
+                let (lhs_cvar, rhs_cvar) =
+                    self.cast_sides(arena, ctx, l, r, loc).into_expr_err(loc)?;
                 ctx.push_expr(
                     self.op(arena, loc, lhs_cvar, rhs_cvar, ctx, op, assign)?,
                     self,

@@ -55,9 +55,14 @@ impl ExprRet {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
                 Node::ContextVar(_) => format!(
-                    "idx_{}: {}",
+                    "idx_{}: {} ({})",
                     inner.index(),
-                    ContextVarNode::from(*inner).display_name(analyzer).unwrap()
+                    ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
+                    ContextVarNode::from(*inner)
+                        .ty(analyzer)
+                        .unwrap()
+                        .as_string(analyzer)
+                        .unwrap()
                 ),
                 e => format!("idx_{}: {:?}", inner.index(), e),
             },
@@ -290,6 +295,18 @@ impl ExprRet {
         match self {
             ExprRet::Single(_) | ExprRet::SingleLiteral(_) => 1,
             ExprRet::Multi(inner) => inner.len(),
+            ExprRet::CtxKilled(..) => 0,
+            ExprRet::Null => 0,
+        }
+    }
+
+    pub fn nonnull_len(&self) -> usize {
+        match self {
+            ExprRet::Single(_) | ExprRet::SingleLiteral(_) => 1,
+            ExprRet::Multi(inner) => inner.iter().fold(0, |mut acc, i| {
+                acc += i.nonnull_len();
+                acc
+            }),
             ExprRet::CtxKilled(..) => 0,
             ExprRet::Null => 0,
         }

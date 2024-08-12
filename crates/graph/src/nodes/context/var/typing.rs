@@ -1,5 +1,5 @@
 use crate::{
-    elem::Elem,
+    elem::{Elem, Reference},
     nodes::{
         Builtin, Concrete, ContextNode, ContextVarNode, EnumNode, ErrorNode, StructNode, TyNode,
     },
@@ -402,7 +402,9 @@ impl ContextVarNode {
             .underlying(analyzer)?
             .clone()
             .as_tmp(loc, ctx, analyzer)?;
-        Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
+        let new_tmp = ContextVarNode::from(analyzer.add_node(new_underlying));
+        new_tmp.set_range(analyzer, From::from(Elem::from(*self)))?;
+        Ok(new_tmp)
     }
 
     pub fn ty_eq(

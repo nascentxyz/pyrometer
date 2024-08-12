@@ -177,6 +177,14 @@ pub trait InternalFuncCaller:
             ctx.visible_funcs(self)?
         };
 
+        tracing::trace!(
+            "possible funcs: {:#?}",
+            funcs
+                .iter()
+                .map(|i| i.name(self).unwrap())
+                .collect::<Vec<_>>()
+        );
+
         let mut possible_funcs = funcs
             .iter()
             .filter(|func| func.name(self).unwrap().starts_with(&format!("{name}(")))

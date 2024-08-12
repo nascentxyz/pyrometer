@@ -237,9 +237,10 @@ impl AnalyzerLike for Analyzer {
                     .graph
                     .node_indices()
                     .find_map(|node| match self.node(node) {
-                        Node::Context(context) if context.killed.is_some() => {
-                            match context.killed.unwrap() {
-                                (_, KilledKind::ParseError) => {
+                        Node::Context(context) => {
+                            println!("context path: {}", context.path);
+                            match context.killed {
+                                Some((_, KilledKind::ParseError)) => {
                                     let edges = graph::nodes::ContextNode::from(node)
                                         .all_edges(self)
                                         .unwrap();
