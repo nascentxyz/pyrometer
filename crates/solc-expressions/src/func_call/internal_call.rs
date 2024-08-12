@@ -178,7 +178,7 @@ pub trait InternalFuncCaller:
         };
 
         tracing::trace!(
-            "possible funcs: {:#?}",
+            "visible funcs: {:#?}, looking for: {name}",
             funcs
                 .iter()
                 .map(|i| i.name(self).unwrap())
@@ -317,6 +317,14 @@ pub trait InternalFuncCaller:
                 funcs
             }
         };
+
+        tracing::trace!(
+            "possible funcs: {:#?}",
+            possible_funcs
+                .iter()
+                .map(|i| i.0.name(self).unwrap())
+                .collect::<Vec<_>>()
+        );
 
         let stack = &ctx.underlying(self)?.expr_ret_stack;
         let len = stack.len();

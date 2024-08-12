@@ -264,7 +264,9 @@ impl ContractNode {
                         }
                     });
             });
-        self.underlying_mut(analyzer)?.cached_functions = Some(mapping.clone());
+        if !super_func {
+            self.underlying_mut(analyzer)?.cached_functions = Some(mapping.clone());
+        }
         Ok(mapping)
     }
 
