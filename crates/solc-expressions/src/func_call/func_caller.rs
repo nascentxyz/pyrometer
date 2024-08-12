@@ -157,9 +157,9 @@ pub trait FuncCaller:
             ctx.path(self)
         );
         if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
-                return Ok(());
-            }
+            // if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+            //     return Ok(());
+            // }
         }
 
         // pseudocode:
@@ -383,6 +383,14 @@ pub trait FuncCaller:
                         ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Return));
+
+                        let as_var = ContextVarNode::from(node);
+                        if let Some(strukt) = as_var.maybe_struct(analyzer).into_expr_err(loc)? {
+                            strukt
+                                .add_fields_to_cvar(analyzer, loc, as_var)
+                                .into_expr_err(loc)?;
+                        }
+
                         ctx.push_expr(ExprRet::Single(node), analyzer)
                             .into_expr_err(loc)?;
                         Ok(())

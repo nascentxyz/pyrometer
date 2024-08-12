@@ -587,9 +587,7 @@ impl Analyzer {
                 });
             final_pass_item.vars.iter().for_each(|(var, parent)| {
                 let loc = var.underlying(self).unwrap().loc;
-                let res = var
-                    .parse_initializer(self, arena, *parent)
-                    .into_expr_err(loc);
+                let res = var.parse_initializer(self, arena).into_expr_err(loc);
                 let _ = self.add_if_err(res);
             });
         });

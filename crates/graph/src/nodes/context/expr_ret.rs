@@ -317,4 +317,23 @@ impl ExprRet {
         };
         self_ty.implicitly_castable_to(to_ty, analyzer, is_lit)
     }
+
+    pub fn implicitly_castable_to_expr(
+        &self,
+        analyzer: &impl GraphBackend,
+        to_ty: &Self,
+    ) -> Result<bool, GraphError> {
+        let idx = self.expect_single()?;
+        let is_lit = self.has_literal();
+        let Some(self_ty) = VarType::try_from_idx(analyzer, idx) else {
+            return Ok(false);
+        };
+
+        let idx = to_ty.expect_single()?;
+        let Some(to_ty) = VarType::try_from_idx(analyzer, idx) else {
+            return Ok(false);
+        };
+
+        self_ty.implicitly_castable_to(&to_ty, analyzer, is_lit)
+    }
 }

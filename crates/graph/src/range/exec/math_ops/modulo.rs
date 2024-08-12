@@ -78,7 +78,6 @@ pub fn exec_mod(
     };
 
     if is_const(lhs_min, lhs_max, arena) && is_const(rhs_min, rhs_max, arena) {
-        eprintln!("const");
         return lhs_min.range_mod(rhs_min);
     }
 
@@ -114,7 +113,6 @@ pub fn exec_mod(
     {
         // the lhs is entirely smaller than the modulo, so its effectively a noop, just return
         // the min or max
-        eprintln!("here 1");
         return Some(lhs_max.clone());
     }
 

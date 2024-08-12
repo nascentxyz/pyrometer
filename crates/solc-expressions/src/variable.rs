@@ -111,7 +111,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             let const_var = if let Node::Var(_v) = self.node(idx) {
                 is_contract_var = true;
                 VarNode::from(idx)
-                    .const_value(ident.loc, self)
+                    .const_value(self, arena, ident.loc)
                     .into_expr_err(ident.loc)?
             } else {
                 None
