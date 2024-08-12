@@ -120,6 +120,14 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
+            (i @ Concrete::Int(s, ..), u @ Concrete::Uint(..)) => {
+                let i_b = i.bit_representation().unwrap().uint_val().unwrap();
+                let u_b = u.uint_val().unwrap();
+                let op_res = i_b ^ u_b;
+                let val = Concrete::Uint(256, op_res).cast(i.as_builtin()).unwrap();
+                let rc = RangeConcrete::new(val, self.loc);
+                Some(rc.into())
+            }
             (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
                 let op_res = a ^ b;
                 let size = if s > s2 { s } else { s2 };
@@ -541,12 +549,25 @@ pub fn exec_bit_xor(
         _ => {}
     }
 
+    println!("lhs_min: {lhs_min}");
+    println!("lhs_max: {lhs_max}");
+    println!("rhs_min: {rhs_min}");
+    println!("rhs_max: {rhs_max}");
+
     let mut candidates = vec![
         lhs_min.range_bit_xor(rhs_min),
         lhs_min.range_bit_xor(rhs_max),
         lhs_max.range_bit_xor(rhs_min),
         lhs_max.range_bit_xor(rhs_max),
     ];
+
+    println!(
+        "candidates: {:#?}",
+        candidates
+            .iter()
+            .map(|i| format!("{}", i.as_ref().unwrap()))
+            .collect::<Vec<_>>()
+    );
 
     let zero = Elem::from(Concrete::from(U256::from(0)));
     let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));

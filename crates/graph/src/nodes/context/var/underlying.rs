@@ -1,16 +1,16 @@
 use crate::{
     nodes::{
         BuiltInNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVarNode, ContractNode,
-        EnumNode, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode, TyNode,
+        EnumNode, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode, TyNode, VarNode,
     },
     range::Range,
     AnalyzerBackend, GraphBackend, Node, SolcRange, TypeNode, VarType,
 };
 
 use crate::range::elem::*;
-use shared::{GraphError, NodeIdx, StorageLocation};
+use shared::{GraphError, NodeIdx, RangeArena, StorageLocation};
 
-use solang_parser::pt::Loc;
+use solang_parser::pt::{Expression, Loc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextVar {
@@ -485,6 +485,50 @@ impl ContextVar {
         }
     }
 
+    pub fn from_var_node(
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        loc: Loc,
+        var_node: VarNode,
+    ) -> Result<Self, GraphError> {
+        let var = var_node.underlying(analyzer)?;
+        let name = var.name.clone().expect("Variable had no name").name;
+        let storage = if var.in_contract {
+            if !var.attrs.iter().any(|attr| {
+                matches!(
+                    attr,
+                    solang_parser::pt::VariableAttribute::Constant(_)
+                        | solang_parser::pt::VariableAttribute::Immutable(_)
+                )
+            }) {
+                Some(StorageLocation::Storage(var.loc))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let ty = var_node.init_value(analyzer, arena, false)?;
+
+        if let Some(ty) = ty {
+            Ok(ContextVar {
+                loc: Some(loc),
+                name: name.clone(),
+                display_name: name,
+                storage,
+                is_tmp: false,
+                tmp_of: None,
+                dep_on: None,
+                is_symbolic: true,
+                is_return: false,
+                ty,
+            })
+        } else {
+            Ok(Self::maybe_from_user_ty(analyzer, loc, var_node.0.into()).unwrap())
+        }
+    }
+
     pub fn maybe_from_user_ty(
         analyzer: &impl GraphBackend,
         loc: Loc,
@@ -516,7 +560,11 @@ impl ContextVar {
                     let name = var.name.clone().expect("Variable had no name").name;
                     let storage = if var.in_contract {
                         if !var.attrs.iter().any(|attr| {
-                            matches!(attr, solang_parser::pt::VariableAttribute::Constant(_))
+                            matches!(
+                                attr,
+                                solang_parser::pt::VariableAttribute::Constant(_)
+                                    | solang_parser::pt::VariableAttribute::Immutable(_)
+                            )
                         }) {
                             Some(StorageLocation::Storage(var.loc))
                         } else {

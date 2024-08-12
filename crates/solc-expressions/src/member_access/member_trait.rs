@@ -10,6 +10,7 @@ use graph::{
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
+use shared::GraphError;
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
@@ -83,6 +84,7 @@ pub trait MemberAccess:
     }
 
     /// Perform the member access
+    #[tracing::instrument(level = "trace", skip_all)]
     fn member_access_inner(
         &mut self,
         ctx: ContextNode,
@@ -162,12 +164,12 @@ pub trait MemberAccess:
     }
 
     /// Get visible functions for this member
+    #[tracing::instrument(level = "trace", skip_all)]
     fn visible_member_funcs(
         &mut self,
         ctx: ContextNode,
-        loc: Loc,
         member_idx: NodeIdx,
-    ) -> Result<Vec<FunctionNode>, ExprErr> {
+    ) -> Result<Vec<FunctionNode>, GraphError> {
         let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => {
                 tracing::trace!(
@@ -177,7 +179,7 @@ pub trait MemberAccess:
                 match &cvar.ty {
                     VarType::User(TypeNode::Contract(con_node), _) => {
                         let cnode = *con_node;
-                        let mut funcs = cnode.linearized_functions(self, false).into_expr_err(loc)?;
+                        let mut funcs = cnode.linearized_functions(self, false)?;
                         self
                         .possible_library_funcs(ctx, cnode.0.into())
                         .into_iter()
@@ -221,7 +223,7 @@ pub trait MemberAccess:
                     VarType::User(TypeNode::Unresolved(n), _) => {
                         match self.node(*n) {
                             Node::Unresolved(ident) => {
-                                return Err(ExprErr::Unresolved(loc, format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
+                                return Err(GraphError::UnknownVariable(format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
                             }
                             _ => unreachable!()
                         }
@@ -229,8 +231,17 @@ pub trait MemberAccess:
                 }
             }
             Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
-            Node::Concrete(_)
-            | Node::Ty(_)
+            Node::Concrete(_) => {
+                let b = ConcreteNode::from(member_idx)
+                    .underlying(self)
+                    .unwrap()
+                    .as_builtin();
+                let bn = self.builtin_or_add(b);
+                self.possible_library_funcs(ctx, bn)
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            }
+            Node::Ty(_)
             | Node::Struct(_)
             | Node::Function(_)
             | Node::Enum(_)
@@ -239,16 +250,17 @@ pub trait MemberAccess:
                 .into_iter()
                 .collect::<Vec<_>>(),
             e => {
-                return Err(ExprErr::MemberAccessNotFound(
-                    loc,
-                    format!("This type cannot have member functions: {:?}", e),
-                ))
+                return Err(GraphError::NodeConfusion(format!(
+                    "This type cannot have member functions: {:?}",
+                    e
+                )))
             }
         };
         Ok(res)
     }
 
     /// Perform member access for a variable type
+    #[tracing::instrument(level = "trace", skip_all)]
     fn member_access_var(
         &mut self,
         ctx: ContextNode,
@@ -298,6 +310,7 @@ pub trait MemberAccess:
     }
 
     /// Perform a `TyNode` member access
+    #[tracing::instrument(level = "trace", skip_all)]
     fn ty_member_access(
         &mut self,
         ctx: ContextNode,
@@ -322,6 +335,7 @@ pub trait MemberAccess:
     }
 
     /// Access function members
+    #[tracing::instrument(level = "trace", skip_all)]
     fn func_member_access(
         &mut self,
         ctx: ContextNode,

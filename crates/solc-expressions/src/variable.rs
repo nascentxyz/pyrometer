@@ -141,18 +141,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                                 },
                             );
                         } else {
-                            match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {
-                                Some(v) => v,
-                                None => {
-                                    return Err(ExprErr::VarBadType(
-                                        ident.loc,
-                                        format!(
-                                        "Could not create context variable from user type: {:?}",
-                                        self.node(idx)
-                                    ),
-                                    ))
-                                }
-                            }
+                            ContextVar::from_var_node(self, arena, ident.loc, VarNode::from(idx))
+                                .into_expr_err(ident.loc)?
                         }
                     }
                     Node::Enum(_) => match ContextVar::maybe_from_user_ty(self, ident.loc, idx) {

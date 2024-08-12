@@ -437,6 +437,7 @@ impl Concrete {
 
     pub fn bit_representation(&self) -> Option<Concrete> {
         match self {
+            c @ Concrete::Uint(..) => Some(c.clone()),
             Concrete::Int(size, val) => {
                 let mut bytes = [0u8; 32];
                 val.to_big_endian(&mut bytes);
@@ -949,6 +950,13 @@ impl Concrete {
             }
         } else {
             self
+        }
+    }
+
+    pub fn bytes_val(&self) -> Option<H256> {
+        match self {
+            Concrete::Bytes(_, val) => Some(*val),
+            _ => None,
         }
     }
 

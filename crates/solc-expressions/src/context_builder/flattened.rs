@@ -2540,7 +2540,11 @@ pub trait Flatten:
                     self.node(idx)
                 ),
             )),
-            e => todo!("Unhandled ty: {e:?}"),
+            VarType::Concrete(cn) => {
+                let builtin = cn.underlying(self).unwrap().as_builtin();
+                self.cast_inner(arena, ctx, ty, &builtin, inputs, loc)
+            }
+            e => Err(ExprErr::Todo(loc, format!("Unhandled ty: {e:?}"))),
         }
     }
 

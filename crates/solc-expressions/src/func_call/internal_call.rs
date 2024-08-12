@@ -2,11 +2,14 @@
 
 use crate::{
     helper::CallerHelper,
-    member_access::{BuiltinAccess, LibraryAccess},
+    member_access::{BuiltinAccess, MemberAccess},
 };
 
 use graph::{
-    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
+    nodes::{
+        BuiltInNode, ConcreteNode, ContextNode, ContextVarNode, ContractNode, FunctionNode,
+        StructNode,
+    },
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
 use shared::{ExprErr, GraphError, NodeIdx};
@@ -60,6 +63,7 @@ pub trait InternalFuncCaller:
             return Ok(vec![]);
         };
 
+        // println!("node: {:#?}", self.node(member));
         let (var_ty, is_storage) = match self.node(member) {
             Node::ContextVar(..) => {
                 let var = ContextVarNode::from(member);
@@ -68,7 +72,7 @@ pub trait InternalFuncCaller:
             _ => (VarType::try_from_idx(self, member).unwrap(), false),
         };
 
-        let mut funcs = self.possible_library_funcs(ctx, var_ty.ty_idx());
+        let mut funcs = self.visible_member_funcs(ctx, member)?;
         match var_ty {
             VarType::BuiltIn(_, _) => {
                 if let Some((ret, is_lib)) = self.builtin_builtin_fn(
