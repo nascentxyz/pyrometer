@@ -28,13 +28,14 @@ pub trait BuiltinAccess:
         node: BuiltInNode,
         name: &str,
         is_storage: bool,
+        is_lit: bool,
         loc: Loc,
     ) -> Result<(ExprRet, bool), ExprErr> {
         tracing::trace!("Looking for builtin member function");
         if let Some(ret) = self.library_func_search(ctx, node.0.into(), name) {
             Ok((ret, true))
         } else {
-            self.builtin_builtins(ctx, node, name, is_storage, loc)
+            self.builtin_builtins(ctx, node, name, is_storage, is_lit, loc)
         }
     }
 
@@ -115,6 +116,7 @@ pub trait BuiltinAccess:
         num_inputs: usize,
         is_storage: bool,
     ) -> Result<Option<(FunctionNode, bool)>, GraphError> {
+        println!("{:#?}", node.underlying(self)?);
         match node.underlying(self)?.clone() {
             Builtin::Address | Builtin::AddressPayable | Builtin::Payable => {
                 match name {
@@ -129,7 +131,21 @@ pub trait BuiltinAccess:
                     _ => Ok(None),
                 }
             }
-
+            Builtin::Uint(160) => {
+                println!("HERE, {name}");
+                match name {
+                    "delegatecall" | "call" | "staticcall" | "send" | "transfer" => {
+                        // TODO: check if the address is known to be a certain type and the function signature is known
+                        // and call into the function
+                        println!("FOUND");
+                        let builtin_name = name.split('(').collect::<Vec<_>>()[0];
+                        let func_node =
+                            FunctionNode::from(self.builtin_fn_or_maybe_add(builtin_name).unwrap());
+                        Ok(Some((func_node, true)))
+                    }
+                    _ => Ok(None),
+                }
+            }
             Builtin::String => match name.split('(').collect::<Vec<_>>()[0] {
                 "concat" => {
                     let full_name = format!(
@@ -346,6 +362,7 @@ pub trait BuiltinAccess:
         node: BuiltInNode,
         name: &str,
         is_storage: bool,
+        is_lit: bool,
         loc: Loc,
     ) -> Result<(ExprRet, bool), ExprErr> {
         match node.underlying(self).into_expr_err(loc)?.clone() {
@@ -572,6 +589,10 @@ pub trait BuiltinAccess:
                     ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
                     self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                     Ok((ExprRet::Single(cvar), false))
+                }
+                _ if size == 160 && is_lit => {
+                    let addr_bn = self.builtin_or_add(Builtin::Address);
+                    self.builtin_builtins(ctx, addr_bn.into(), name, is_storage, is_lit, loc)
                 }
                 e => Err(ExprErr::MemberAccessNotFound(
                     loc,

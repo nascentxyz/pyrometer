@@ -120,9 +120,14 @@ pub trait MemberAccess:
                 let res = self.block_access(ctx, name, loc)?;
                 Ok((res, false))
             }
-            Node::Builtin(ref _b) => {
-                self.builtin_member_access(ctx, BuiltInNode::from(member_idx), name, false, loc)
-            }
+            Node::Builtin(ref _b) => self.builtin_member_access(
+                ctx,
+                BuiltInNode::from(member_idx),
+                name,
+                false,
+                false,
+                loc,
+            ),
             Node::EnvCtx(_) => {
                 if let Some(var) = EnvCtxNode::from(member_idx)
                     .member_access(self, name)
@@ -289,6 +294,7 @@ pub trait MemberAccess:
                 *bn,
                 name,
                 cvar.is_storage(self).into_expr_err(loc)?,
+                false,
                 loc,
             ),
             VarType::Concrete(cn) => {
@@ -299,6 +305,7 @@ pub trait MemberAccess:
                     bn,
                     name,
                     cvar.is_storage(self).into_expr_err(loc)?,
+                    true,
                     loc,
                 )
             }
