@@ -95,29 +95,29 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .into_expr_err(loc)?;
                 Ok(())
             }
-            (lhs @ ExprRet::Single(..), ExprRet::Multi(rhs_sides)) => {
-                // ie: x + (y, z), (not possible?)
-                rhs_sides
-                    .iter()
-                    .map(|expr_ret| self.op_match(arena, ctx, loc, lhs, expr_ret, op, assign))
-                    .collect::<Result<Vec<()>, ExprErr>>()?;
-                Ok(())
+            (lhs, ExprRet::Multi(rhs_sides)) => {
+                // sometimes a single is wrapped in a multi as the result of a function return
+                if rhs_sides.len() == 1 {
+                    self.op_match(arena, ctx, loc, lhs, &rhs_sides[0], op, assign)
+                } else {
+                    Err(ExprErr::UnhandledCombo(
+                        loc,
+                        format!("Unhandled combination in binop: {lhs:?} {rhs_sides:?}"),
+                    ))
+                }
             }
-            (ExprRet::Multi(lhs_sides), rhs @ ExprRet::Single(..)) => {
-                // ie: (x, y) + z, (not possible?)
-                lhs_sides
-                    .iter()
-                    .map(|expr_ret| self.op_match(arena, ctx, loc, expr_ret, rhs, op, assign))
-                    .collect::<Result<Vec<()>, ExprErr>>()?;
-                Ok(())
+            (ExprRet::Multi(lhs_sides), rhs) => {
+                if lhs_sides.len() == 1 {
+                    self.op_match(arena, ctx, loc, &lhs_sides[0], rhs, op, assign)
+                } else {
+                    Err(ExprErr::UnhandledCombo(
+                        loc,
+                        format!("Unhandled combination in binop: {lhs_sides:?} {rhs:?}"),
+                    ))
+                }
             }
             (_, ExprRet::CtxKilled(kind)) => ctx.kill(self, loc, *kind).into_expr_err(loc),
             (ExprRet::CtxKilled(kind), _) => ctx.kill(self, loc, *kind).into_expr_err(loc),
-            (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => Err(ExprErr::UnhandledCombo(
-                // ie: (x, y) + (a, b), (not possible?)
-                loc,
-                format!("Unhandled combination in binop: {lhs_sides:?} {rhs_sides:?}"),
-            )),
             (l, r) => Err(ExprErr::UnhandledCombo(
                 loc,
                 format!("Unhandled combination in binop: {l:?} {r:?}"),
