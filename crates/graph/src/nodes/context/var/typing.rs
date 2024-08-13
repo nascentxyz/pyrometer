@@ -10,7 +10,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode, VarType,
 };
 
-use shared::{GraphError, RangeArena, Search, StorageLocation};
+use shared::{GraphError, IntoExprErr, RangeArena, Search, StorageLocation};
 
 use ethers_core::types::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
@@ -394,16 +394,31 @@ impl ContextVarNode {
 
     pub fn as_tmp(
         &self,
-        loc: Loc,
-        ctx: ContextNode,
         analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<Self, GraphError> {
         let new_underlying = self
             .underlying(analyzer)?
             .clone()
-            .as_tmp(loc, ctx, analyzer)?;
+            .as_tmp(analyzer, ctx, loc)?;
         let new_tmp = ContextVarNode::from(analyzer.add_node(new_underlying));
-        new_tmp.set_range(analyzer, From::from(Elem::from(*self)))?;
+
+        if new_tmp.is_struct(analyzer)? {
+            let fields = self.struct_to_fields(analyzer)?;
+            fields.iter().try_for_each(|field| {
+                let field_tmp = field.as_tmp(analyzer, ctx, loc)?;
+                analyzer.add_edge(
+                    field_tmp,
+                    new_tmp,
+                    Edge::Context(ContextEdge::AttrAccess("field")),
+                );
+                Ok(())
+            })?;
+        } else {
+            new_tmp.set_range(analyzer, From::from(Elem::from(*self)))?;
+        }
+
         Ok(new_tmp)
     }
 

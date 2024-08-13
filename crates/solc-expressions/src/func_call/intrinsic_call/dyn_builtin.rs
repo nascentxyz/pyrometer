@@ -109,7 +109,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
             match curr.flatten() {
                 ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
                     let acc = ContextVarNode::from(var)
-                        .as_tmp(loc, ctx, self)
+                        .as_tmp(self, ctx, loc)
                         .into_expr_err(loc)?;
                     self.add_edge(acc.0, ctx, Edge::Context(ContextEdge::Variable));
                     ctx.add_var(acc, self).into_expr_err(loc)?;

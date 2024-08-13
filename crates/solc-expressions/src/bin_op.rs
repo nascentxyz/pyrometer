@@ -30,13 +30,13 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let rhs_cvar =
             ContextVarNode::from(rhs.expect_single()?).latest_version_in_ctx(ctx, self)?;
         if rhs.implicitly_castable_to_expr(self, lhs)? {
-            let tmp = rhs_cvar.as_tmp(loc, ctx, self)?;
+            let tmp = rhs_cvar.as_tmp(self, ctx, loc)?;
             tmp.cast_from(&lhs_cvar, self, arena)?;
             return Ok((lhs_cvar, tmp));
         }
 
         if lhs.implicitly_castable_to_expr(self, rhs)? {
-            let tmp = lhs_cvar.as_tmp(loc, ctx, self)?;
+            let tmp = lhs_cvar.as_tmp(self, ctx, loc)?;
             tmp.cast_from(&rhs_cvar, self, arena)?;
             return Ok((tmp, rhs_cvar));
         }

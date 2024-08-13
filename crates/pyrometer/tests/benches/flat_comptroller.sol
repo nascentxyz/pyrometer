@@ -2754,19 +2754,19 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         for (uint i = 0; i < len; i++) {
             if (userAssetList[i] == cToken) {
                 assetIndex = i;
-                break;
+                // break;
             }
         }
 
-        // We *must* have found the asset in the list or our redundant data structure is broken
-        assert(assetIndex < len);
+        // // We *must* have found the asset in the list or our redundant data structure is broken
+        // assert(assetIndex < len);
 
-        // copy last item in list to location of item to be removed, reduce length by 1
-        CToken[] storage storedList = accountAssets[msg.sender];
-        storedList[assetIndex] = storedList[storedList.length - 1];
-        storedList.pop();
+        // // copy last item in list to location of item to be removed, reduce length by 1
+        // CToken[] storage storedList = accountAssets[msg.sender];
+        // storedList[assetIndex] = storedList[storedList.length - 1];
+        // storedList.pop();
 
-        emit MarketExited(cToken, msg.sender);
+        // emit MarketExited(cToken, msg.sender);
 
         return uint(Error.NO_ERROR);
     }

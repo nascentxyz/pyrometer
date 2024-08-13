@@ -496,7 +496,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         let target_ty = VarType::try_from_idx(self, target_ty).unwrap();
 
                         let tmp_ret = node
-                            .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                            .as_tmp(self, ret_subctx, callee_ctx.underlying(self).unwrap().loc)
                             .unwrap();
                         tmp_ret.cast_from_ty(target_ty, self, arena).unwrap();
                         tmp_ret.underlying_mut(self).into_expr_err(loc)?.is_return = true;
@@ -518,7 +518,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         let fields = node.struct_to_fields(self).into_expr_err(loc)?;
                         fields.iter().try_for_each(|field| {
                             let tmp_field_ret = field
-                                .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                                .as_tmp(self, ret_subctx, callee_ctx.underlying(self).unwrap().loc)
                                 .into_expr_err(loc)?;
                             let field_full_name = field.name(self).into_expr_err(loc)?.clone();
                             let split = field_full_name.split('.').collect::<Vec<&str>>();

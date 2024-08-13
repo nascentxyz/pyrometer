@@ -49,7 +49,7 @@ pub trait PrePostIncDecrement:
                 // if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                 if increment {
                     if pre {
-                        let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                        let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
                         dup.set_range_min(self, arena, elem.clone() + one.clone())
                             .into_expr_err(loc)?;
                         dup.set_range_max(self, arena, elem.clone() + one.clone())
@@ -70,7 +70,7 @@ pub trait PrePostIncDecrement:
                         .into_expr_err(loc)?;
                         Ok(())
                     } else {
-                        let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                        let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
                         dup.set_range_min(self, arena, elem.clone())
                             .into_expr_err(loc)?;
                         dup.set_range_max(self, arena, elem.clone())
@@ -93,7 +93,7 @@ pub trait PrePostIncDecrement:
                         Ok(())
                     }
                 } else if pre {
-                    let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                    let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
                     dup.set_range_min(self, arena, elem.clone() - one.clone())
                         .into_expr_err(loc)?;
                     dup.set_range_max(self, arena, elem.clone() - one.clone())
@@ -112,7 +112,7 @@ pub trait PrePostIncDecrement:
                     .into_expr_err(loc)?;
                     Ok(())
                 } else {
-                    let dup = cvar.as_tmp(loc, ctx, self).into_expr_err(loc)?;
+                    let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
                     dup.set_range_min(self, arena, elem.clone())
                         .into_expr_err(loc)?;
                     dup.set_range_max(self, arena, elem.clone())

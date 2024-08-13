@@ -116,7 +116,7 @@ pub trait PrecompileCaller:
                 call_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;
 
                 let tmp_ret = ContextVarNode::from(cvar)
-                    .as_tmp(call_ctx.underlying(self).unwrap().loc, ret_ctx, self)
+                    .as_tmp(self, ret_ctx, call_ctx.underlying(self).unwrap().loc)
                     .unwrap();
                 tmp_ret.underlying_mut(self).unwrap().is_return = true;
                 tmp_ret.underlying_mut(self).unwrap().display_name =

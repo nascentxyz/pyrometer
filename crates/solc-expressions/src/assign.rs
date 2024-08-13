@@ -101,7 +101,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         if lhs_cvar.is_struct(self).into_expr_err(loc)?
             && rhs_cvar.is_struct(self).into_expr_err(loc)?
         {
-            return self.assign_struct_to_struct(arena, loc, lhs_cvar, rhs_cvar, ctx);
+            return self.assign_struct_to_struct(arena, ctx, lhs_cvar, rhs_cvar, loc);
         }
 
         rhs_cvar
@@ -241,10 +241,10 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     fn assign_struct_to_struct(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
+        ctx: ContextNode,
         lhs_cvar: ContextVarNode,
         rhs_cvar: ContextVarNode,
-        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<ExprRet, ExprErr> {
         let lhs_fields = lhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
         let rhs_fields = rhs_cvar.struct_to_fields(self).into_expr_err(loc)?;

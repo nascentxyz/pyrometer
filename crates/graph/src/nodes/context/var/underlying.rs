@@ -147,9 +147,9 @@ impl ContextVar {
 
     pub fn as_tmp(
         &self,
-        loc: Loc,
-        ctx: ContextNode,
         analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<Self, GraphError> {
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);

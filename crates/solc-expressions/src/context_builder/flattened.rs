@@ -2213,11 +2213,7 @@ pub trait Flatten:
 
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
         let [rhs, lhs] = into_sized(res);
-        self.match_assign_sides(arena, ctx, loc, &lhs, &rhs)?;
-        let _ = ctx
-            .pop_n_latest_exprs(lhs.nonnull_len(), loc, self)
-            .into_expr_err(loc)?;
-        Ok(())
+        self.match_assign_sides(arena, ctx, loc, &lhs, &rhs)
     }
 
     fn interp_array_ty(
