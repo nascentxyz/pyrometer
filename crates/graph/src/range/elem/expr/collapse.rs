@@ -603,6 +603,9 @@ pub fn collapse(
         },
         (real, Elem::Null) => match op {
             RangeOp::Max | RangeOp::Min => MaybeCollapsed::Collapsed(real.clone()),
+            RangeOp::BitNot if matches!(real, Elem::Concrete(..)) => {
+                MaybeCollapsed::Collapsed(real.range_bit_not().unwrap())
+            }
             _ => MaybeCollapsed::Not(real, op, Elem::Null),
         },
         (l, r) => return MaybeCollapsed::Not(l, op, r),

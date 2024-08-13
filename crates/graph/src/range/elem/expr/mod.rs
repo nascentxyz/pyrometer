@@ -11,8 +11,8 @@ use crate::{
     },
     GraphBackend,
 };
-use std::hash::Hash;
 use std::hash::Hasher;
+use std::{fmt::Display, hash::Hash};
 
 use ethers_core::types::U256;
 use shared::{GraphError, NodeIdx, RangeArena};
@@ -264,11 +264,9 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             return Ok(*arenaized);
         }
 
-        Ok(Elem::Expr(RangeExpr::new(
-            self.lhs.flatten(maximize, analyzer, arena)?,
-            self.op,
-            self.rhs.flatten(maximize, analyzer, arena)?,
-        )))
+        let lhs = self.lhs.flatten(maximize, analyzer, arena)?;
+        let rhs = self.rhs.flatten(maximize, analyzer, arena)?;
+        Ok(Elem::Expr(RangeExpr::new(lhs, self.op, rhs)))
     }
 
     fn is_flatten_cached(

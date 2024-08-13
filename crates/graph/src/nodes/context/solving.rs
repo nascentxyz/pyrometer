@@ -1,5 +1,6 @@
 use crate::elem::Elem;
 
+use crate::range_string::ToRangeString;
 use crate::{
     nodes::{Concrete, ContextNode, ContextVarNode},
     range::Range,
