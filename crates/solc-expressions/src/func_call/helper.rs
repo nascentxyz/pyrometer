@@ -98,7 +98,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 .unwrap();
                         }
 
-                        let fields = input.struct_to_fields(self).ok()?;
+                        let fields = input.fielded_to_fields(self).ok()?;
                         if !fields.is_empty() {
                             // bring along struct fields
                             fields
@@ -353,11 +353,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         {
             if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx() {
                 let ret = ret_ctx.underlying(self).into_expr_err(loc)?.ret.clone();
-                ret.iter().try_for_each(|(loc, ret)| {
-                    let cvar = self.advance_var_in_forced_ctx(*ret, *loc, callee_ctx)?;
+                ret.iter().try_for_each(|ret| {
+                    let cvar = self.advance_var_in_forced_ctx(ret.var(), ret.loc(), callee_ctx)?;
                     callee_ctx
-                        .add_return_node(*loc, cvar, self)
-                        .into_expr_err(*loc)?;
+                        .add_return_node(ret.loc(), cvar, self)
+                        .into_expr_err(ret.loc())?;
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
 
                     Ok(())
@@ -491,11 +491,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     .into_iter()
                     .zip(target_rets.iter())
                     .enumerate()
-                    .map(|(i, ((_, node), target_ret))| {
+                    .map(|(i, (ret, target_ret))| {
                         let target_ty = target_ret.ty(self).unwrap();
                         let target_ty = VarType::try_from_idx(self, target_ty).unwrap();
 
-                        let tmp_ret = node
+                        let tmp_ret = ret.var()
                             .as_tmp(self, ret_subctx, callee_ctx.underlying(self).unwrap().loc)
                             .unwrap();
                         tmp_ret.cast_from_ty(target_ty, self, arena).unwrap();
@@ -515,7 +515,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
                         self.add_edge(tmp_ret, ret_subctx, Edge::Context(ContextEdge::Variable));
 
-                        let fields = node.struct_to_fields(self).into_expr_err(loc)?;
+                        let fields = ret.var().fielded_to_fields(self).into_expr_err(loc)?;
                         fields.iter().try_for_each(|field| {
                             let tmp_field_ret = field
                                 .as_tmp(self, ret_subctx, callee_ctx.underlying(self).unwrap().loc)

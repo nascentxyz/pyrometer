@@ -1,9 +1,9 @@
-use crate::{require::Require, variable::Variable, ListAccess};
+use crate::{require::Require, variable::Variable, ErrType, ListAccess};
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
     nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, Fielded,
         TmpConstruction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
@@ -28,7 +28,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let arr = ContextVarNode::from(arr.expect_single().into_expr_err(loc)?);
 
         if let (Some(s), Some(e)) = (&start, &end) {
-            self.handle_require_inner(arena, ctx, e, s, RangeOp::Gte, loc)?;
+            self.handle_require_inner(arena, ctx, e, s, RangeOp::Gte, Some(ErrType::Revert), loc)?;
         }
 
         let start = if let Some(start) = start {
@@ -183,6 +183,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 len_var.latest_version_or_inherited_in_ctx(ctx, self),
                 idx.latest_version_or_inherited_in_ctx(ctx, self),
                 RangeOp::Gt,
+                ErrType::index_oob(),
                 loc,
             )?;
         }
@@ -205,7 +206,6 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             let ty = parent.ty(self).into_expr_err(loc)?.clone();
 
             let ty = ty.dynamic_underlying_ty(self).into_expr_err(loc)?;
-            let maybe_struct = ty.maybe_struct();
 
             let has_range = ty.ref_range(self).into_expr_err(loc)?.is_some();
             let index_access_var = ContextVar {
@@ -240,11 +240,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 Edge::Context(ContextEdge::IndexAccess),
             );
 
-            if let Some(strukt) = maybe_struct {
-                strukt
-                    .add_fields_to_cvar(self, loc, ContextVarNode::from(idx_access_node))
-                    .into_expr_err(loc)?;
-            }
+            ContextVarNode::from(idx_access_node)
+                .maybe_add_fields(self)
+                .into_expr_err(loc)?;
 
             self.add_edge(idx_access_node, ctx, Edge::Context(ContextEdge::Variable));
             ctx.add_var(idx_access_node.into(), self)

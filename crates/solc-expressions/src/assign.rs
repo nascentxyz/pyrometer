@@ -98,10 +98,10 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             lhs_cvar.display_name(self).unwrap(),
         );
 
-        if lhs_cvar.is_struct(self).into_expr_err(loc)?
-            && rhs_cvar.is_struct(self).into_expr_err(loc)?
+        if lhs_cvar.is_fielded(self).into_expr_err(loc)?
+            && rhs_cvar.is_fielded(self).into_expr_err(loc)?
         {
-            return self.assign_struct_to_struct(arena, ctx, lhs_cvar, rhs_cvar, loc);
+            return self.assign_fielded_to_fielded(arena, ctx, lhs_cvar, rhs_cvar, loc);
         }
 
         rhs_cvar
@@ -238,7 +238,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         Ok(())
     }
 
-    fn assign_struct_to_struct(
+    fn assign_fielded_to_fielded(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
@@ -246,8 +246,8 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         rhs_cvar: ContextVarNode,
         loc: Loc,
     ) -> Result<ExprRet, ExprErr> {
-        let lhs_fields = lhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
-        let rhs_fields = rhs_cvar.struct_to_fields(self).into_expr_err(loc)?;
+        let lhs_fields = lhs_cvar.fielded_to_fields(self).into_expr_err(loc)?;
+        let rhs_fields = rhs_cvar.fielded_to_fields(self).into_expr_err(loc)?;
         lhs_fields.iter().try_for_each(|lhs_field| {
             let lhs_full_name = lhs_field.display_name(self).into_expr_err(loc)?;
             let split = lhs_full_name.split('.').collect::<Vec<_>>();

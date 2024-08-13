@@ -4,7 +4,6 @@ use crate::variable::Variable;
 use crate::Flatten;
 use graph::range_string::ToRangeString;
 use graph::AsDotStr;
-use solang_parser::helpers::CodeLocation;
 
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},
@@ -301,8 +300,8 @@ pub trait FuncApplier:
             .into_expr_err(loc)?
             .iter()
             .enumerate()
-            .map(|(i, (_, ret_node))| {
-                let mut new_var = ret_node.underlying(self).unwrap().clone();
+            .map(|(i, ret)| {
+                let mut new_var = ret.var().underlying(self).unwrap().clone();
                 let new_name = format!("{}.{i}", func.loc_specified_name(self).unwrap());
                 tracing::trace!("handling apply return: {new_name}");
                 new_var.name.clone_from(&new_name);
@@ -350,7 +349,7 @@ pub trait FuncApplier:
                 target_ctx.add_var(new_cvar, self).unwrap();
 
                 // handle the case where the return node is a struct
-                if let Ok(fields) = ret_node.struct_to_fields(self) {
+                if let Ok(fields) = ret.var().fielded_to_fields(self) {
                     if !fields.is_empty() {
                         fields.iter().for_each(|field| {
                             let mut new_var = field.underlying(self).unwrap().clone();
@@ -395,7 +394,7 @@ pub trait FuncApplier:
                     let casted = Elem::Expr(RangeExpr::new(
                         Elem::from(new_cvar),
                         RangeOp::Cast,
-                        Elem::from(*ret_node),
+                        Elem::from(ret.var()),
                     ));
                     next_cvar
                         .set_range_min(self, arena, casted.clone())
@@ -576,9 +575,9 @@ pub trait FuncApplier:
                         ));
                     };
 
-                    let target_fields = correct_input.struct_to_fields(self).into_expr_err(loc)?;
+                    let target_fields = correct_input.fielded_to_fields(self).into_expr_err(loc)?;
                     let replacement_fields =
-                        func_input.struct_to_fields(self).into_expr_err(loc)?;
+                        func_input.fielded_to_fields(self).into_expr_err(loc)?;
                     let match_field =
                         |this: &Self,
                          target_field: ContextVarNode,
@@ -620,9 +619,9 @@ pub trait FuncApplier:
                         );
 
                         let target_sub_fields =
-                            target_field.struct_to_fields(self).into_expr_err(loc)?;
+                            target_field.fielded_to_fields(self).into_expr_err(loc)?;
                         let replacement_sub_fields = replacement_field
-                            .struct_to_fields(self)
+                            .fielded_to_fields(self)
                             .into_expr_err(loc)?;
                         let subs = target_sub_fields
                             .into_iter()

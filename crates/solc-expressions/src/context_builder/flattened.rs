@@ -8,7 +8,7 @@ use crate::{
     loops::Looper,
     yul::YulBuilder,
     yul::YulFuncCaller,
-    ExprTyParser,
+    ErrType, ExprTyParser,
 };
 use graph::{
     elem::{Elem, RangeConcrete, RangeDyn, RangeExpr, RangeOp},
@@ -91,7 +91,7 @@ pub trait Flatten:
                     ));
                 }
             }
-            Args(loc, args) => {
+            Args(_, args) => {
                 // statements are left to right
                 args.iter().for_each(|arg| {
                     self.traverse_expression(&arg.expr, unchecked);
@@ -139,17 +139,17 @@ pub trait Flatten:
                             self.push_expr(FlatExpr::Not(loc));
                         }
 
-                        self.push_expr(FlatExpr::CmpRequirement(loc));
+                        self.push_expr(FlatExpr::CmpRequirement(loc, false));
                         self.push_expr(FlatExpr::Or(loc));
                     }
                     _ => {
                         if let Some(inv) = cmp.try_inv_cmp() {
-                            self.push_expr(FlatExpr::CmpRequirement(*loc));
+                            self.push_expr(FlatExpr::CmpRequirement(*loc, false));
                             self.push_expr(inv)
                         } else {
                             self.push_expr(cmp);
                             self.push_expr(FlatExpr::Not(*loc));
-                            self.push_expr(FlatExpr::Requirement(*loc));
+                            self.push_expr(FlatExpr::Requirement(*loc, false));
                         }
                     }
                 }
@@ -157,7 +157,7 @@ pub trait Flatten:
                 let false_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 self.traverse_expression(if_expr, unchecked);
                 let cmp = self.expr_stack_mut().pop().unwrap();
-                self.traverse_requirement(cmp, if_expr.loc());
+                self.traverse_requirement(cmp, if_expr.loc(), false);
                 let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 let true_cond_delta = true_cond.len();
                 let false_cond_delta = false_cond.len();
@@ -204,7 +204,7 @@ pub trait Flatten:
                 let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr, unchecked);
                 let cmp = self.expr_stack_mut().pop().unwrap();
-                self.traverse_requirement(cmp, if_expr.loc());
+                self.traverse_requirement(cmp, if_expr.loc(), false);
                 let cond_exprs = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 let condition = cond_exprs.len();
 
@@ -235,7 +235,7 @@ pub trait Flatten:
                 let for_cond_exprs = if let Some(cond) = maybe_for_cond {
                     self.traverse_expression(cond, unchecked);
                     let cmp = self.expr_stack_mut().pop().unwrap();
-                    self.traverse_requirement(cmp, cond.loc());
+                    self.traverse_requirement(cmp, cond.loc(), false);
                     self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
                 } else {
                     vec![]
@@ -373,7 +373,7 @@ pub trait Flatten:
         }
     }
 
-    fn traverse_requirement(&mut self, cmp: FlatExpr, loc: Loc) {
+    fn traverse_requirement(&mut self, cmp: FlatExpr, loc: Loc, with_str: bool) {
         match cmp {
             FlatExpr::And(_, rhs_start, rhs_end) => {
                 // Its better to just break up And into its component
@@ -393,11 +393,11 @@ pub trait Flatten:
                 // `And`s use absolute positioning, so if we change out the stack it gets a bit screwed up.
                 // So we edit the rhs cmp, then replace it with the original
                 let len = self.expr_stack().len();
-                self.traverse_requirement(lhs_cmp, loc);
+                self.traverse_requirement(lhs_cmp, loc, with_str);
                 let new_lhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
                 let len = self.expr_stack().len();
                 self.expr_stack_mut().extend(rhs);
-                self.traverse_requirement(rhs_cmp, loc);
+                self.traverse_requirement(rhs_cmp, loc, with_str);
                 let new_rhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
                 self.expr_stack_mut().extend(new_lhs);
                 self.expr_stack_mut().extend(new_rhs);
@@ -409,12 +409,12 @@ pub trait Flatten:
             | FlatExpr::Equal(_)
             | FlatExpr::NotEqual(_)
             | FlatExpr::Or(_) => {
-                self.push_expr(FlatExpr::CmpRequirement(loc));
+                self.push_expr(FlatExpr::CmpRequirement(loc, with_str));
                 self.push_expr(cmp);
             }
             _ => {
                 self.push_expr(cmp);
-                self.push_expr(FlatExpr::Requirement(loc));
+                self.push_expr(FlatExpr::Requirement(loc, with_str));
             }
         }
     }
@@ -566,7 +566,7 @@ pub trait Flatten:
         self.traverse_yul_expression(&iec.if_expr);
 
         // have it be a require statement
-        self.push_expr(FlatExpr::CmpRequirement(loc));
+        self.push_expr(FlatExpr::CmpRequirement(loc, false));
         self.push_expr(FlatExpr::More(loc));
 
         let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
@@ -967,14 +967,12 @@ pub trait Flatten:
                 Variable(Identifier { name, .. }) if matches!(&**name, "require" | "assert") => {
                     // require(inputs) | assert(inputs)
 
-                    input_exprs.iter().enumerate().rev().for_each(|(i, expr)| {
+                    input_exprs.iter().enumerate().rev().for_each(|(_, expr)| {
                         self.traverse_expression(expr, unchecked);
-                        if input_exprs.len() > 1 && i == 1 {
-                            self.push_expr(FlatExpr::Pop);
-                        }
                     });
                     let cmp = self.expr_stack_mut().pop().unwrap();
-                    self.traverse_requirement(cmp, *loc);
+                    let with_str = input_exprs.len() > 1;
+                    self.traverse_requirement(cmp, *loc, with_str);
                 }
                 _ => {
                     // func(inputs)
@@ -1270,20 +1268,31 @@ pub trait Flatten:
 
             // Conditional
             If { .. } => self.interp_if(arena, ctx, stack, next),
-            CmpRequirement(..) => {
+            CmpRequirement(_loc, with_str) => {
                 let try_catch = matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Try));
-                ctx.set_expr_flag(self, ExprFlag::Requirement(try_catch));
+                ctx.set_expr_flag(self, ExprFlag::Requirement(try_catch, with_str));
                 Ok(())
             }
-            Requirement(loc) => {
+            Requirement(loc, with_str) => {
                 let _ = ctx.take_expr_flag(self);
-                let mut lhs = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
-                let lhs = lhs.swap_remove(0);
+                let pop_num = 1 + if with_str { 1 } else { 0 };
+                let mut lhs = ctx
+                    .pop_n_latest_exprs(pop_num, loc, self)
+                    .into_expr_err(loc)?;
+                let req = lhs.swap_remove(0);
+                let err = if with_str {
+                    let err = lhs.swap_remove(0);
+                    let err_str_cvar =
+                        ContextVarNode::from(err.expect_single().into_expr_err(loc)?);
+                    Some(ErrType::RevertString(err_str_cvar))
+                } else {
+                    None
+                };
                 let cnode = ConcreteNode::from(self.add_node(Concrete::Bool(true)));
                 let tmp_true = ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                     .into_expr_err(loc)?;
                 let rhs = ExprRet::Single(self.add_node(tmp_true));
-                self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
+                self.handle_require_inner(arena, ctx, &req, &rhs, RangeOp::Eq, err, loc)
             }
 
             TestCommand(..) => self.interp_test_command(arena, ctx, next),
@@ -1386,9 +1395,7 @@ pub trait Flatten:
             YulExpr(yul @ FlatYulExpr::YulFuncCall(..)) => {
                 self.interp_yul_func_call(arena, ctx, stack, yul)
             }
-            YulExpr(yul @ FlatYulExpr::YulSuffixAccess(..)) => {
-                self.interp_yul_suffix(arena, ctx, yul)
-            }
+            YulExpr(yul @ FlatYulExpr::YulSuffixAccess(..)) => self.interp_yul_suffix(ctx, yul),
             YulExpr(yul @ FlatYulExpr::YulAssign(..)) => self.interp_yul_assign(arena, ctx, yul),
             YulExpr(yul @ FlatYulExpr::YulFuncDef(..)) => {
                 self.interp_yul_func_def(ctx, stack, yul, parse_idx)
@@ -1955,7 +1962,16 @@ pub trait Flatten:
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
         let [lhs, rhs] = into_sized::<ExprRet, 2>(res);
 
-        if let Some(ExprFlag::Requirement(try_catch)) = ctx.peek_expr_flag(self) {
+        if let Some(ExprFlag::Requirement(try_catch, with_str)) = ctx.peek_expr_flag(self) {
+            let err = if with_str {
+                let res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                let [err] = into_sized::<ExprRet, 1>(res);
+                let err_str_cvar = ContextVarNode::from(err.expect_single().into_expr_err(loc)?);
+                Some(ErrType::RevertString(err_str_cvar))
+            } else {
+                None
+            };
+
             if try_catch {
                 ctx.set_expr_flag(self, ExprFlag::Try);
             } else {
@@ -1964,22 +1980,22 @@ pub trait Flatten:
 
             match cmp {
                 FlatExpr::Equal(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Eq, err, loc)
                 }
                 FlatExpr::NotEqual(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Neq, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Neq, err, loc)
                 }
                 FlatExpr::Less(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Lt, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Lt, err, loc)
                 }
                 FlatExpr::More(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gt, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gt, err, loc)
                 }
                 FlatExpr::LessEqual(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Lte, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Lte, err, loc)
                 }
                 FlatExpr::MoreEqual(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gte, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::Gte, err, loc)
                 }
                 FlatExpr::Or(..) => {
                     let lhs = ContextVarNode::from(lhs.expect_single().into_expr_err(loc)?);
@@ -2027,11 +2043,12 @@ pub trait Flatten:
                         &ExprRet::Single(or_var.into()),
                         &ExprRet::Single(node.into()),
                         RangeOp::Eq,
+                        err,
                         loc,
                     )
                 }
                 FlatExpr::And(..) => {
-                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::And, loc)
+                    self.handle_require_inner(arena, ctx, &lhs, &rhs, RangeOp::And, err, loc)
                 }
                 _ => unreachable!(),
             }
@@ -2757,12 +2774,7 @@ pub trait Flatten:
         Ok(())
     }
 
-    fn interp_yul_suffix(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        next: FlatYulExpr,
-    ) -> Result<(), ExprErr> {
+    fn interp_yul_suffix(&mut self, ctx: ContextNode, next: FlatYulExpr) -> Result<(), ExprErr> {
         let FlatYulExpr::YulSuffixAccess(loc, name) = next else {
             unreachable!()
         };

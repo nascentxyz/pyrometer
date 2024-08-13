@@ -34,6 +34,8 @@ pub trait AnalyzerBackend:
         FunctionReturn = FunctionReturn,
         Function = Function,
         FlatExpr = FlatExpr,
+        ExecError = Error,
+        ExecErrorParam = ErrorParam,
     > + GraphBackend
 {
     fn add_concrete_var(

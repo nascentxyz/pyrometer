@@ -1,6 +1,6 @@
 use crate::{
     nodes::{
-        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, SourceUnitNode,
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, Fielded, SourceUnitNode,
         SourceUnitPartNode, YulFunctionNode,
     },
     range::elem::Elem,
@@ -1008,9 +1008,7 @@ impl FunctionParamNode {
             ctx.add_var(var, analyzer)?;
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::CalldataVariable));
-            if let Some(strukt) = var.maybe_struct(analyzer)? {
-                strukt.add_fields_to_cvar(analyzer, var.loc(analyzer).unwrap(), var)?;
-            }
+            var.maybe_add_fields(analyzer)?;
 
             Ok(true)
         } else {

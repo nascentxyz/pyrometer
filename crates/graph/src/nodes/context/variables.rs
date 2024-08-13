@@ -209,7 +209,7 @@ impl ContextNode {
 
         // maybe move var into this context
         let member = self.maybe_move_var(member, loc, analyzer)?;
-        let fields = member.struct_to_fields(analyzer)?;
+        let fields = member.fielded_to_fields(analyzer)?;
         let field = fields.into_iter().find(|field| {
             let full_name = field.name(analyzer).unwrap();
             let target_field_name = full_name.split('.').last().unwrap();
@@ -440,7 +440,7 @@ impl ContextNode {
             Edge::Context(ContextEdge::AttrAccess("field")),
         );
 
-        let sub_fields = field.struct_to_fields(analyzer)?;
+        let sub_fields = field.fielded_to_fields(analyzer)?;
         sub_fields.iter().try_for_each(|sub_field| {
             Self::recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
         })
@@ -486,7 +486,7 @@ impl ContextNode {
                     Edge::Context(ContextEdge::InheritedVariable),
                 );
 
-                let fields = var.struct_to_fields(analyzer)?;
+                let fields = var.fielded_to_fields(analyzer)?;
                 fields.iter().try_for_each(|field| {
                     Self::recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
                 })?;

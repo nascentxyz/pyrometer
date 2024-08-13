@@ -508,7 +508,7 @@ impl Builtin {
                     U256::from(2).pow(U256::from(size)) - U256::from(1)
                 };
 
-                let mut h = B256::from(max);
+                let h = B256::from(max);
                 Some(Concrete::Bytes((size / 8) as u8, h))
             }
             Builtin::Address => Some(Concrete::Address(Address::from_slice(&[0xff; 20]))),

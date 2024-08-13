@@ -119,11 +119,11 @@ impl ContextVarNode {
         )
     }
 
-    pub fn is_struct_field(&self, analyzer: &impl GraphBackend) -> bool {
-        self.struct_parent(analyzer).is_some()
+    pub fn is_field(&self, analyzer: &impl GraphBackend) -> bool {
+        self.fielded_parent(analyzer).is_some()
     }
 
-    pub fn struct_parent(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+    pub fn fielded_parent(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let first = self.first_version(analyzer);
         analyzer
             .graph()
@@ -133,8 +133,8 @@ impl ContextVarNode {
     }
 
     pub fn maybe_ctx(&self, analyzer: &impl GraphBackend) -> Option<ContextNode> {
-        if let Some(struct_parent) = self.struct_parent(analyzer) {
-            struct_parent.maybe_ctx(analyzer)
+        if let Some(fielded_parent) = self.fielded_parent(analyzer) {
+            fielded_parent.maybe_ctx(analyzer)
         } else {
             let first = self.first_version(analyzer);
             analyzer
@@ -234,11 +234,19 @@ impl ContextVarNode {
         Ok(self.ty(analyzer)?.maybe_struct().is_some())
     }
 
-    pub fn struct_to_fields(
+    pub fn is_err(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.ty(analyzer)?.maybe_err().is_some())
+    }
+
+    pub fn is_fielded(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.is_err(analyzer)? || self.is_struct(analyzer)?)
+    }
+
+    pub fn fielded_to_fields(
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        if self.is_struct(analyzer)? {
+        if self.is_struct(analyzer)? || self.maybe_err_node(analyzer)?.is_some() {
             let fields = analyzer
                 .graph()
                 .edges_directed(self.first_version(analyzer).into(), Direction::Incoming)
@@ -251,12 +259,12 @@ impl ContextVarNode {
         }
     }
 
-    pub fn field_of_struct(
+    pub fn field_of_fielded(
         &self,
         name: &str,
         analyzer: &impl GraphBackend,
     ) -> Result<Option<ContextVarNode>, GraphError> {
-        let fields = self.struct_to_fields(analyzer)?;
+        let fields = self.fielded_to_fields(analyzer)?;
         Ok(fields
             .iter()
             .find(|field| {

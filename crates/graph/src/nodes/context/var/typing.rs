@@ -1,7 +1,8 @@
 use crate::{
-    elem::{Elem, Reference},
+    elem::Elem,
     nodes::{
-        Builtin, Concrete, ContextNode, ContextVarNode, EnumNode, ErrorNode, StructNode, TyNode,
+        Builtin, Concrete, ContextNode, ContextVarNode, EnumNode, ErrorNode, Fielded, StructNode,
+        TyNode,
     },
     range::{
         elem::{RangeElem, RangeExpr, RangeOp},
@@ -10,7 +11,7 @@ use crate::{
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode, VarType,
 };
 
-use shared::{GraphError, IntoExprErr, RangeArena, Search, StorageLocation};
+use shared::{GraphError, RangeArena, Search, StorageLocation};
 
 use alloy_primitives::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
@@ -103,6 +104,17 @@ impl ContextVarNode {
             Ok(Some(*ut))
         } else {
             Ok(None)
+        }
+    }
+
+    pub fn maybe_add_fields(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        let loc = self.loc(analyzer)?;
+        if let Some(strukt) = self.maybe_struct(analyzer)? {
+            strukt.add_fields_to_cvar(analyzer, *self, loc)
+        } else if let Some(err) = self.maybe_err_node(analyzer)? {
+            err.add_fields_to_cvar(analyzer, *self, loc)
+        } else {
+            Ok(())
         }
     }
 
@@ -325,7 +337,7 @@ impl ContextVarNode {
                 .underlying(analyzer)?
                 .ret
                 .iter()
-                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap()));
+                .any(|ret| ret.var().name(analyzer).unwrap() == self.name(analyzer).unwrap()));
         }
         Ok(false)
     }
@@ -340,7 +352,7 @@ impl ContextVarNode {
                 .unwrap()
                 .ret
                 .iter()
-                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap())
+                .any(|ret| ret.var().name(analyzer).unwrap() == self.name(analyzer).unwrap())
         })
     }
 
@@ -404,8 +416,8 @@ impl ContextVarNode {
             .as_tmp(analyzer, ctx, loc)?;
         let new_tmp = ContextVarNode::from(analyzer.add_node(new_underlying));
 
-        if new_tmp.is_struct(analyzer)? {
-            let fields = self.struct_to_fields(analyzer)?;
+        if new_tmp.is_fielded(analyzer)? {
+            let fields = self.fielded_to_fields(analyzer)?;
             fields.iter().try_for_each(|field| {
                 let field_tmp = field.as_tmp(analyzer, ctx, loc)?;
                 analyzer.add_edge(

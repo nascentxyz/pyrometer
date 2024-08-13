@@ -172,7 +172,6 @@ mod tests {
     use super::*;
     use crate::DummyGraph;
     use solang_parser::pt::Loc;
-    use std::str::FromStr;
 
     #[test]
     fn uint_uint() {

@@ -3,8 +3,8 @@ use graph::{
     elem::Elem,
     nodes::{
         BlockNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode,
-        ContractNode, FuncReconstructionReqs, Function, FunctionNode, FunctionParam,
-        FunctionParamNode, FunctionReturn, KilledKind, MsgNode,
+        ContractNode, Error, ErrorNode, ErrorParam, FuncReconstructionReqs, Function, FunctionNode,
+        FunctionParam, FunctionParamNode, FunctionReturn, KilledKind, MsgNode,
     },
     AnalyzerBackend, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
@@ -43,6 +43,8 @@ impl AnalyzerLike for Analyzer {
     type MsgNode = MsgNode;
     type BlockNode = BlockNode;
 
+    type ExecError = Error;
+    type ExecErrorParam = ErrorParam;
     type Function = Function;
     type FunctionNode = FunctionNode;
     type FunctionParam = FunctionParam;
@@ -64,6 +66,21 @@ impl AnalyzerLike for Analyzer {
 
     fn max_width(&self) -> usize {
         self.max_width
+    }
+
+    fn builtin_error_or_add(&mut self, err: Error, params: Vec<ErrorParam>) -> NodeIdx {
+        let name = err.name.clone().unwrap().name;
+        if let Some(idx) = self.builtin_errors.get(&name) {
+            idx.0.into()
+        } else {
+            let idx = self.add_node(Node::Error(err));
+            params.into_iter().for_each(|param| {
+                let param_idx = self.add_node(Node::ErrorParam(param));
+                self.add_edge(param_idx, idx, Edge::ErrorParam);
+            });
+            self.builtin_errors.insert(name, ErrorNode::from(idx));
+            idx
+        }
     }
 
     fn minimize_err(&mut self, ctx: ContextNode) -> String {

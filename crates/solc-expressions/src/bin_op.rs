@@ -1,4 +1,4 @@
-use crate::{require::Require, variable::Variable};
+use crate::{require::Require, variable::Variable, ErrType, SolcError};
 use shared::GraphError;
 
 use graph::{
@@ -382,6 +382,8 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .expect("No range?")
                 .range_eq(&Elem::from(Concrete::from(U256::ZERO)), arena)
         {
+            let err = self.add_err_node(ctx, ErrType::division(), loc)?;
+            ctx.add_return_node(loc, err, self).into_expr_err(loc)?;
             let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
             let _ = self.add_if_err(res);
 
@@ -393,7 +395,15 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::ZERO), loc)?;
 
         if self
-            .require(arena, ctx, tmp_rhs, zero_node, RangeOp::Neq, loc)?
+            .require(
+                arena,
+                ctx,
+                tmp_rhs,
+                zero_node,
+                RangeOp::Neq,
+                ErrType::division(),
+                loc,
+            )?
             .is_none()
         {
             return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
@@ -427,6 +437,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 min,
                 RangeOp::Gte,
+                ErrType::arithmetic(),
                 loc,
             )?
             .is_none()
@@ -456,6 +467,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         max,
                         RangeOp::Lte,
+                        ErrType::arithmetic(),
                         loc,
                     )?
                     .is_none()
@@ -492,6 +504,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
                 RangeOp::Lte,
+                ErrType::arithmetic(),
                 loc,
             )?
             .is_none()
@@ -523,6 +536,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
                         RangeOp::Gte,
+                        ErrType::arithmetic(),
                         loc,
                     )?
                     .is_none()
@@ -560,6 +574,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
                 RangeOp::Lte,
+                ErrType::arithmetic(),
                 loc,
             )?
             .is_none()
@@ -612,6 +627,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
                         RangeOp::Gte,
+                        ErrType::arithmetic(),
                         loc,
                     )?
                     .is_none()
@@ -637,7 +653,15 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let zero = rhs.ty_zero_concrete(self).into_expr_err(loc)?.unwrap();
         let zero = self.add_concrete_var(ctx, zero, loc)?;
         if self
-            .require(arena, ctx, rhs, zero, RangeOp::Gte, loc)?
+            .require(
+                arena,
+                ctx,
+                rhs,
+                zero,
+                RangeOp::Gte,
+                ErrType::arithmetic(),
+                loc,
+            )?
             .is_none()
         {
             return Ok(Some(ExprRet::CtxKilled(KilledKind::Revert)));
@@ -659,6 +683,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 tmp_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                 max,
                 RangeOp::Lte,
+                ErrType::arithmetic(),
                 loc,
             )?
             .is_none()
@@ -689,6 +714,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
                         min,
                         RangeOp::Gte,
+                        ErrType::arithmetic(),
                         loc,
                     )?
                     .is_none()

@@ -7,8 +7,7 @@ use crate::{
 
 use graph::{
     nodes::{
-        BuiltInNode, Builtin, ConcreteNode, ContextNode, ContextVarNode, ContractNode,
-        FunctionNode, StructNode,
+        BuiltInNode, Builtin, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode,
     },
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
@@ -87,8 +86,9 @@ pub trait InternalFuncCaller:
                 }
             }
             VarType::Concrete(cn) => {
+                // uint160 literal can access address builtins
                 if matches!(cn.underlying(self)?.as_builtin(), Builtin::Uint(160)) {
-                    let bn = self.builtin_or_add(Builtin::Uint(160));
+                    let bn = self.builtin_or_add(Builtin::Address);
                     if let Some((ret, is_lib)) = self.builtin_builtin_fn(
                         BuiltInNode::from(bn),
                         name,

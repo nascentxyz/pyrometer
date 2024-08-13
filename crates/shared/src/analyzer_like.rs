@@ -105,6 +105,9 @@ pub trait AnalyzerLike: GraphLike {
     /// Type of the `block` node
     type BlockNode;
 
+    /// Type of execution error node
+    type ExecError;
+    type ExecErrorParam;
     /// Type of a function
     type Function;
     /// Node of a function type
@@ -154,6 +157,12 @@ pub trait AnalyzerLike: GraphLike {
     fn builtin_fn_or_maybe_add(&mut self, builtin_name: &str) -> Option<NodeIdx>
     where
         Self: std::marker::Sized;
+
+    fn builtin_error_or_add(
+        &mut self,
+        err: Self::ExecError,
+        params: Vec<Self::ExecErrorParam>,
+    ) -> NodeIdx;
 
     fn debug_panic(&self) -> bool;
 

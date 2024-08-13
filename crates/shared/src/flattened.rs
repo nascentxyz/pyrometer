@@ -14,7 +14,7 @@ pub enum ExprFlag {
     Try,
     New(bool),
     Negate(bool),
-    Requirement(bool),
+    Requirement(bool, bool),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -55,8 +55,8 @@ pub enum FlatExpr {
         is_super: bool,
         named_args: bool,
     },
-    Requirement(Loc),
-    CmpRequirement(Loc),
+    Requirement(Loc, bool),
+    CmpRequirement(Loc, bool),
     Super(Loc, &'static str),
 
     Continue(Loc),

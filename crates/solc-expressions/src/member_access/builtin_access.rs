@@ -28,7 +28,6 @@ pub trait BuiltinAccess:
         node: BuiltInNode,
         name: &str,
         is_storage: bool,
-        is_lit: bool,
         loc: Loc,
     ) -> Result<(ExprRet, bool), ExprErr> {
         tracing::trace!("Looking for builtin member function");

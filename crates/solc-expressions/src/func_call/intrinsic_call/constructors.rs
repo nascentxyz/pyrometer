@@ -1,5 +1,5 @@
 use crate::{assign::Assign, func_call::helper::CallerHelper};
-use graph::nodes::Builtin;
+use graph::nodes::{Builtin, Fielded};
 
 use graph::{
     elem::*,

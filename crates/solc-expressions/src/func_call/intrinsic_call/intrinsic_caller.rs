@@ -194,7 +194,7 @@ pub trait IntrinsicFuncCaller:
             // array
             "push" | "pop" => self.array_call_inner(arena, ctx, name, inputs, loc),
             // block
-            "blockhash" | "blobhash" => self.block_call(arena, ctx, name, inputs, loc),
+            "blockhash" | "blobhash" => self.block_call(ctx, name, inputs, loc),
             // dynamic sized builtins
             "concat" => self.dyn_builtin_call(arena, ctx, name, inputs, loc),
             // msg

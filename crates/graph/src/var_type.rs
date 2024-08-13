@@ -215,6 +215,7 @@ impl VarType {
             )),
             Node::Function(_) => Some(VarType::User(TypeNode::Func(node.into()), None)),
             Node::Struct(_) => Some(VarType::User(TypeNode::Struct(node.into()), None)),
+            Node::Error(_) => Some(VarType::User(TypeNode::Error(node.into()), None)),
             Node::Enum(enu) => {
                 let variants = enu.variants();
                 let range = if !variants.is_empty() {
@@ -237,8 +238,7 @@ impl VarType {
                 Some(VarType::User(TypeNode::Ty(node.into()), Some(range)))
             }
             Node::FunctionParam(inner) => VarType::try_from_idx(analyzer, inner.ty),
-            Node::Error(..)
-            | Node::ContextFork
+            Node::ContextFork
             | Node::FunctionCall
             | Node::FunctionReturn(..)
             | Node::ErrorParam(..)
@@ -845,6 +845,14 @@ impl VarType {
     pub fn maybe_struct(&self) -> Option<StructNode> {
         if let VarType::User(TypeNode::Struct(sn), _) = self {
             Some(*sn)
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_err(&self) -> Option<ErrorNode> {
+        if let VarType::User(TypeNode::Error(en), _) = self {
+            Some(*en)
         } else {
             None
         }

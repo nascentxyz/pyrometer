@@ -10,7 +10,7 @@ use graph::{
     elem::Elem,
     nodes::{
         Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, EnvCtx, ExprRet,
-        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
+        Fielded, FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
@@ -399,11 +399,7 @@ pub trait FuncCaller:
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Return));
 
                         let as_var = ContextVarNode::from(node);
-                        if let Some(strukt) = as_var.maybe_struct(analyzer).into_expr_err(loc)? {
-                            strukt
-                                .add_fields_to_cvar(analyzer, loc, as_var)
-                                .into_expr_err(loc)?;
-                        }
+                        as_var.maybe_add_fields(analyzer).into_expr_err(loc)?;
 
                         ctx.push_expr(ExprRet::Single(node), analyzer)
                             .into_expr_err(loc)?;

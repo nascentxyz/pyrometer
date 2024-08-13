@@ -3,7 +3,7 @@ use graph::{
     nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
     AnalyzerBackend,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{ExprErr, IntoExprErr};
 
 use alloy_primitives::B256;
 
@@ -16,7 +16,6 @@ pub trait BlockCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
     /// Perform a `block` function call
     fn block_call(
         &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         func_name: &str,
         inputs: ExprRet,

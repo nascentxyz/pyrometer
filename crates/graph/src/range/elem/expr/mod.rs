@@ -11,8 +11,8 @@ use crate::{
     },
     GraphBackend,
 };
+use std::hash::Hash;
 use std::hash::Hasher;
-use std::{fmt::Display, hash::Hash};
 
 use alloy_primitives::U256;
 use shared::{GraphError, NodeIdx, RangeArena};

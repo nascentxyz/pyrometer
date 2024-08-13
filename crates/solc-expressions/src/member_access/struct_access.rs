@@ -29,7 +29,7 @@ pub trait StructAccess:
         let name = format!("{cvar_name}.{field_name}");
         tracing::trace!("Struct member access: {cvar_name}.{field_name}");
 
-        if let Some(field) = cvar.field_of_struct(field_name, self).into_expr_err(loc)? {
+        if let Some(field) = cvar.field_of_fielded(field_name, self).into_expr_err(loc)? {
             return Ok((ExprRet::Single(field.into()), false));
         }
 

@@ -319,6 +319,26 @@ pub enum ContractId {
     Dummy,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RetType {
+    Error(Loc, ContextVarNode),
+    Success(Loc, ContextVarNode),
+}
+
+impl RetType {
+    pub fn loc(&self) -> Loc {
+        match self {
+            RetType::Error(loc, ..) | RetType::Success(loc, ..) => *loc,
+        }
+    }
+
+    pub fn var(&self) -> ContextVarNode {
+        match self {
+            RetType::Error(_, var) | RetType::Success(_, var) => *var,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The current parse index of the stack
@@ -347,7 +367,7 @@ pub struct Context {
     /// The location in source of the context
     pub loc: Loc,
     /// The return node and the return location
-    pub ret: Vec<(Loc, ContextVarNode)>,
+    pub ret: Vec<RetType>,
     /// Depth tracker
     pub depth: usize,
     /// Width tracker

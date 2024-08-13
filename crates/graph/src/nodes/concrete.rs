@@ -311,11 +311,11 @@ impl Concrete {
                 .cast(Builtin::Int(*size))
                 .unwrap(),
             Concrete::Bytes(size, _) => {
-                let mut h = B256::from(uint);
+                let h = B256::from(uint);
                 Concrete::Bytes(32, h).cast(Builtin::Bytes(*size)).unwrap()
             }
             Concrete::Address(_) => {
-                let mut bytes: [u8; 32] = uint.to_be_bytes();
+                let bytes: [u8; 32] = uint.to_be_bytes();
                 Concrete::Address(Address::from_slice(&bytes[12..]))
             }
             Concrete::Bool(_) => {
@@ -326,7 +326,7 @@ impl Concrete {
                 }
             }
             Concrete::DynBytes(v) => {
-                let mut bytes: [u8; 32] = uint.to_be_bytes();
+                let bytes: [u8; 32] = uint.to_be_bytes();
                 let new_vec = &bytes.to_vec()[0..v.len()];
                 Concrete::DynBytes(new_vec.to_vec())
             }
@@ -436,7 +436,7 @@ impl Concrete {
         match self {
             c @ Concrete::Uint(..) => Some(c.clone()),
             Concrete::Int(size, val) => {
-                let mut bytes: [u8; 32] = val.to_be_bytes();
+                let bytes: [u8; 32] = val.to_be_bytes();
                 Some(Concrete::Uint(*size, U256::from_be_slice(&bytes)))
             }
             Concrete::Bytes(size, _) => {
@@ -454,7 +454,7 @@ impl Concrete {
             Concrete::Uint(r_size, val) => {
                 match builtin {
                     Builtin::Address => {
-                        let mut bytes: [u8; 32] = val.to_be_bytes();
+                        let bytes: [u8; 32] = val.to_be_bytes();
                         Some(Concrete::Address(Address::from_slice(&bytes[12..])))
                     }
                     Builtin::Uint(size) => {
@@ -485,7 +485,7 @@ impl Concrete {
                         };
 
                         // let h = B256::from_slice(&(val & mask).0.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<_>>()[..]);
-                        let mut h = B256::from(val & mask);
+                        let h = B256::from(val & mask);
                         Some(Concrete::Bytes(size, h))
                     }
                     Builtin::Bool => {
@@ -500,7 +500,7 @@ impl Concrete {
             }
             Concrete::Int(r_size, val) => match builtin {
                 Builtin::Address => {
-                    let mut bytes: [u8; 32] = val.to_be_bytes();
+                    let bytes: [u8; 32] = val.to_be_bytes();
                     Some(Concrete::Address(Address::from_slice(&bytes[12..])))
                 }
                 Builtin::Uint(_size) => {
@@ -550,7 +550,7 @@ impl Concrete {
                     } else {
                         U256::from(2).pow((size as u16 * 8).try_into().unwrap()) - U256::from(1)
                     };
-                    let mut h = B256::from(val.into_raw() & mask);
+                    let h = B256::from(val.into_raw() & mask);
                     Some(Concrete::Bytes(size, h))
                 }
                 Builtin::Bool => {
@@ -625,7 +625,7 @@ impl Concrete {
                         U256::from(2).pow((size as u16 * 8).try_into().unwrap()) - U256::from(1)
                     };
 
-                    let mut h = B256::from(val & mask);
+                    let h = B256::from(val & mask);
                     Some(Concrete::Bytes(size, h))
                 }
                 _ => None,
@@ -797,7 +797,7 @@ impl Concrete {
                     U256::from(2).pow(U256::from(size)) - U256::from(1)
                 };
 
-                let mut h = B256::from(max);
+                let h = B256::from(max);
                 Some(Concrete::Bytes((size / 8) as u8, h))
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0xff; 20]))),
@@ -898,7 +898,7 @@ impl Concrete {
                 Some(Concrete::Int(*size, min))
             }
             Concrete::Bytes(size, _) => {
-                let mut h = B256::from(U256::ZERO);
+                let h = B256::from(U256::ZERO);
                 Some(Concrete::Bytes(*size, h))
             }
             Concrete::Address(_) => Some(Concrete::Address(Address::from_slice(&[0x00; 20]))),
@@ -972,11 +972,11 @@ impl Concrete {
     pub fn as_hex_string(&self) -> String {
         match self {
             Concrete::Uint(_, val) => {
-                let mut bytes: [u8; 32] = val.to_be_bytes();
+                let bytes: [u8; 32] = val.to_be_bytes();
                 format!("0x{}", hex::encode(bytes))
             }
             Concrete::Int(_, val) => {
-                let mut bytes: [u8; 32] = val.to_be_bytes();
+                let bytes: [u8; 32] = val.to_be_bytes();
                 format!("0x{}", hex::encode(bytes))
             }
             Concrete::Bytes(size, b) => format!(
@@ -1042,11 +1042,11 @@ impl Concrete {
     pub fn as_bytes(&self) -> Vec<u8> {
         match self {
             Concrete::Uint(_, val) => {
-                let mut bytes: [u8; 32] = val.to_be_bytes();
+                let bytes: [u8; 32] = val.to_be_bytes();
                 bytes.to_vec()
             }
             Concrete::Int(_, val) => {
-                let mut bytes: [u8; 32] = val.to_be_bytes();
+                let bytes: [u8; 32] = val.to_be_bytes();
                 bytes.to_vec()
             }
             Concrete::Bytes(size, val) => val[0..(*size as usize)].to_vec(),

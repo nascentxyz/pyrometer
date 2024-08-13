@@ -23,7 +23,7 @@ impl ContextVarNode {
     ) -> Self {
         let mut latest = *self;
 
-        if let Some(struct_parent) = self.struct_parent(analyzer) {
+        if let Some(struct_parent) = self.fielded_parent(analyzer) {
             if let Ok(name) = self.name(analyzer) {
                 let name = name
                     .split('.')
@@ -32,7 +32,7 @@ impl ContextVarNode {
                     .next()
                     .expect("weird struct name");
                 let parent_latest = struct_parent.latest_version_or_inherited_in_ctx(ctx, analyzer);
-                if let Ok(Some(t)) = parent_latest.field_of_struct(name, analyzer) {
+                if let Ok(Some(t)) = parent_latest.field_of_fielded(name, analyzer) {
                     latest = t;
                 }
             }

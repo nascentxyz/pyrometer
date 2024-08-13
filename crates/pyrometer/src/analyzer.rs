@@ -73,14 +73,14 @@ pub struct FinalPassItem {
     pub funcs: Vec<FunctionNode>,
     pub usings: Vec<(Using, NodeIdx)>,
     pub inherits: Vec<(ContractNode, Vec<String>)>,
-    pub vars: Vec<(VarNode, NodeIdx)>,
+    pub vars: Vec<VarNode>,
 }
 impl FinalPassItem {
     pub fn new(
         funcs: Vec<FunctionNode>,
         usings: Vec<(Using, NodeIdx)>,
         inherits: Vec<(ContractNode, Vec<String>)>,
-        vars: Vec<(VarNode, NodeIdx)>,
+        vars: Vec<VarNode>,
     ) -> Self {
         Self {
             funcs,
@@ -126,6 +126,8 @@ pub struct Analyzer {
     pub builtin_fn_nodes: AHashMap<String, NodeIdx>,
     /// A mapping of solidity builtin function names to their parameters and returns, i.e. `ecrecover` -> `([hash, r, s, v], [signer])`
     pub builtin_fn_inputs: AHashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
+    /// Builtin errors
+    pub builtin_errors: AHashMap<String, ErrorNode>,
     /// Accumulated errors that happened while analyzing
     pub expr_errs: Vec<ExprErr>,
     /// The maximum depth to analyze to (i.e. call depth)
@@ -173,6 +175,7 @@ impl Default for Analyzer {
             builtin_fns: builtin_fns::builtin_fns(),
             builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
+            builtin_errors: Default::default(),
             expr_errs: Default::default(),
             max_depth: 200,
             max_width: 2_i32.pow(14) as usize, // 14 splits == 16384 contexts
@@ -414,7 +417,7 @@ impl Analyzer {
             let res = self.add_if_err(res);
 
             if let Some(res) = res {
-                res.last().map(|last| ExprRet::Single(last.1.into()))
+                res.last().map(|last| ExprRet::Single(last.var().into()))
             } else {
                 None
             }
@@ -424,7 +427,7 @@ impl Analyzer {
             let res = self.add_if_err(res);
 
             if let Some(res) = res {
-                res.last().map(|last| ExprRet::Single(last.1.into()))
+                res.last().map(|last| ExprRet::Single(last.var().into()))
             } else {
                 None
             }
@@ -585,7 +588,7 @@ impl Analyzer {
                 .for_each(|(using, scope_node)| {
                     self.parse_using(arena, using, *scope_node);
                 });
-            final_pass_item.vars.iter().for_each(|(var, parent)| {
+            final_pass_item.vars.iter().for_each(|var| {
                 let loc = var.underlying(self).unwrap().loc;
                 let res = var.parse_initializer(self, arena).into_expr_err(loc);
                 let _ = self.add_if_err(res);
@@ -653,7 +656,7 @@ impl Analyzer {
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<(ContractNode, Vec<String>)>,
-        Vec<(VarNode, NodeIdx)>,
+        Vec<VarNode>,
     ) {
         use SourceUnitPart::*;
 
@@ -704,7 +707,7 @@ impl Analyzer {
                 }
 
                 if needs_final_pass {
-                    vars.push((node, parent.into()));
+                    vars.push(node);
                 }
 
                 self.add_edge(node, sup_node, Edge::Var);
@@ -1002,7 +1005,7 @@ impl Analyzer {
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<String>,
-        Vec<(VarNode, NodeIdx)>,
+        Vec<VarNode>,
     ) {
         tracing::trace!(
             "Parsing contract {}",
@@ -1092,7 +1095,7 @@ impl Analyzer {
                 }
 
                 if needs_final_pass {
-                    vars.push((node, con_node.into()));
+                    vars.push(node);
                 }
 
                 self.add_edge(node, con_node, Edge::Var);

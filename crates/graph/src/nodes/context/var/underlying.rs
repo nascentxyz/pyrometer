@@ -1,7 +1,8 @@
 use crate::{
     nodes::{
         BuiltInNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVarNode, ContractNode,
-        EnumNode, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode, TyNode, VarNode,
+        EnumNode, ErrorParam, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode,
+        TyNode, VarNode,
     },
     range::Range,
     AnalyzerBackend, GraphBackend, Node, SolcRange, TypeNode, VarType,
@@ -579,6 +580,10 @@ impl ContextVar {
                     let name = &ty.name.name;
                     (name.clone(), None)
                 }
+                Node::Error(err) => {
+                    let name = err.name.as_ref().unwrap().name.clone();
+                    (name, None)
+                }
                 _ => return None,
             };
 
@@ -614,6 +619,36 @@ impl ContextVar {
                 display_name: parent_var.name.clone()
                     + "."
                     + &field.name.expect("Field had no name").name,
+                storage: parent_var.storage,
+                is_tmp: false,
+                tmp_of: None,
+                dep_on: None,
+                is_symbolic: true,
+                is_return: false,
+                ty,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_new_from_error_param(
+        analyzer: &impl GraphBackend,
+        loc: Loc,
+        parent_var: &ContextVar,
+        param: ErrorParam,
+        i: usize,
+    ) -> Option<Self> {
+        if let Some(ty) = VarType::try_from_idx(analyzer, param.ty) {
+            let name = if let Some(name) = param.name {
+                name.name
+            } else {
+                i.to_string()
+            };
+            Some(ContextVar {
+                loc: Some(loc),
+                name: parent_var.name.clone() + "." + &*name,
+                display_name: parent_var.name.clone() + "." + &*name,
                 storage: parent_var.storage,
                 is_tmp: false,
                 tmp_of: None,

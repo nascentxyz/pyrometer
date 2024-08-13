@@ -1,7 +1,9 @@
+use petgraph::Direction;
+
 use crate::{
-    nodes::{Concrete, ContractNode},
+    nodes::{Concrete, ContextVar, ContextVarNode, ContractNode, Fielded},
     range::elem::Elem,
-    AnalyzerBackend, AsDotStr, Edge, GraphBackend, Node,
+    AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node,
 };
 
 use shared::{GraphError, NodeIdx, RangeArena};
@@ -20,7 +22,7 @@ impl ErrorNode {
                 ident.name
             ))),
             e => Err(GraphError::NodeConfusion(format!(
-                "Node type confusion: expected node to be Var but it was: {e:?}"
+                "Node type confusion: expected node to be Error but it was: {e:?}"
             ))),
         }
     }
@@ -69,6 +71,50 @@ impl AsDotStr for ErrorNode {
     }
 }
 
+impl Fielded for ErrorNode {
+    type Field = ErrorParamNode;
+    fn fields(&self, analyzer: &impl GraphBackend) -> Vec<ErrorParamNode> {
+        let mut fields: Vec<_> = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::ErrorParam == *edge.weight())
+            .map(|edge| ErrorParamNode::from(edge.source()))
+            .collect();
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        fields
+    }
+
+    fn add_fields_to_cvar(
+        &self,
+        analyzer: &mut impl GraphBackend,
+        cvar: ContextVarNode,
+        loc: Loc,
+    ) -> Result<(), GraphError> {
+        self.fields(analyzer)
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, field)| {
+                let field_cvar = ContextVar::maybe_new_from_error_param(
+                    analyzer,
+                    loc,
+                    cvar.underlying(analyzer)?,
+                    field.underlying(analyzer).unwrap().clone(),
+                    i,
+                )
+                .expect("Invalid error field");
+
+                let fc_node = analyzer.add_node(Node::ContextVar(field_cvar));
+                analyzer.add_edge(
+                    fc_node,
+                    cvar,
+                    Edge::Context(ContextEdge::AttrAccess("field")),
+                );
+                // do so recursively
+                ContextVarNode::from(fc_node).maybe_add_fields(analyzer)
+            })
+    }
+}
+
 impl From<ErrorNode> for NodeIdx {
     fn from(val: ErrorNode) -> Self {
         val.0.into()
@@ -104,6 +150,23 @@ impl From<ErrorDefinition> for Error {
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ErrorParamNode(pub usize);
+impl ErrorParamNode {
+    pub fn underlying<'a>(
+        &self,
+        analyzer: &'a impl GraphBackend,
+    ) -> Result<&'a ErrorParam, GraphError> {
+        match analyzer.node(*self) {
+            Node::ErrorParam(param) => Ok(param),
+            Node::Unresolved(ident) => Err(GraphError::UnknownVariable(format!(
+                "Could not find variable: {}",
+                ident.name
+            ))),
+            e => Err(GraphError::NodeConfusion(format!(
+                "Node type confusion: expected node to be ErrorParam but it was: {e:?}"
+            ))),
+        }
+    }
+}
 
 impl From<NodeIdx> for ErrorParamNode {
     fn from(idx: NodeIdx) -> Self {

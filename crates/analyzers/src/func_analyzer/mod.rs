@@ -6,7 +6,7 @@ use crate::{
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, KilledKind},
+    nodes::{Concrete, ContextNode, Fielded, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::{RangeArena, Search};
@@ -185,8 +185,9 @@ impl<'a> FunctionVarsBoundAnalysis {
                                             .return_nodes(analyzer)
                                             .unwrap()
                                             .into_iter()
-                                            .filter_map(|(loc, var)| {
-                                                let range = var.ref_range(analyzer).unwrap()?;
+                                            .filter_map(|ret| {
+                                                let range =
+                                                    ret.var().ref_range(analyzer).unwrap()?;
                                                 let (parts, _unsat) = range_parts(
                                                     analyzer,
                                                     arena,
@@ -194,11 +195,59 @@ impl<'a> FunctionVarsBoundAnalysis {
                                                     &range,
                                                 );
                                                 Some(
-                                                    Label::new(LocStrSpan::new(file_mapping, loc))
+                                                    Label::new(LocStrSpan::new(
+                                                        file_mapping,
+                                                        ret.loc(),
+                                                    ))
+                                                    .with_message(
+                                                        format!(
+                                                            "returns: \"{}\"{}",
+                                                            ret.var()
+                                                                .display_name(analyzer)
+                                                                .unwrap(),
+                                                            parts
+                                                                .into_iter()
+                                                                .map(|i| i.to_cli_string())
+                                                                .collect::<Vec<_>>()
+                                                                .join(", ")
+                                                        )
+                                                        .fg(Color::Yellow),
+                                                    )
+                                                    .with_color(Color::Yellow)
+                                                    .with_order(50),
+                                                )
+                                            })
+                                            .collect::<Vec<_>>(),
+                                    );
+                                }
+                                if ctx_switch.ctx == *ctx {
+                                    if let Some((killed_loc, kind)) = &ctx_switch.killed_loc {
+                                        labels.extend(
+                                            ctx_switch
+                                                .ctx
+                                                .return_nodes(analyzer)
+                                                .unwrap()
+                                                .into_iter()
+                                                .filter_map(|ret| {
+                                                    let range =
+                                                        ret.var().ref_range(analyzer).unwrap()?;
+                                                    let (parts, _unsat) = range_parts(
+                                                        analyzer,
+                                                        arena,
+                                                        &self.report_config,
+                                                        &range,
+                                                    );
+                                                    Some(
+                                                        Label::new(LocStrSpan::new(
+                                                            file_mapping,
+                                                            ret.loc(),
+                                                        ))
                                                         .with_message(
                                                             format!(
-                                                                "returns: \"{}\"{}",
-                                                                var.display_name(analyzer).unwrap(),
+                                                                "reverts with: \"{}\"{}",
+                                                                ret.var()
+                                                                    .display_name(analyzer)
+                                                                    .unwrap(),
                                                                 parts
                                                                     .into_iter()
                                                                     .map(|i| i.to_cli_string())
@@ -209,13 +258,11 @@ impl<'a> FunctionVarsBoundAnalysis {
                                                         )
                                                         .with_color(Color::Yellow)
                                                         .with_order(50),
-                                                )
-                                            })
-                                            .collect::<Vec<_>>(),
-                                    );
-                                }
-                                if ctx_switch.ctx == *ctx {
-                                    if let Some((killed_loc, kind)) = &ctx_switch.killed_loc {
+                                                    )
+                                                })
+                                                .collect::<Vec<_>>(),
+                                        );
+                                        println!("here 2");
                                         labels.push(
                                             Label::new(killed_loc.clone())
                                                 .with_message(kind.analysis_str())
@@ -233,6 +280,49 @@ impl<'a> FunctionVarsBoundAnalysis {
 
                 if let Some((killed_span, kind)) = &self.ctx_killed {
                     if !self_handled {
+                        labels.extend(
+                            ctx.return_nodes(analyzer)
+                                .unwrap()
+                                .into_iter()
+                                .filter_map(|ret| {
+                                    let fields = ret.var().fielded_to_fields(analyzer).unwrap();
+                                    fields
+                                        .iter()
+                                        .map(|field| {
+                                            let range = field.ref_range(analyzer).unwrap()?;
+                                            let (parts, _unsat) = range_parts(
+                                                analyzer,
+                                                arena,
+                                                &self.report_config,
+                                                &range,
+                                            );
+                                            Some(
+                                                Label::new(LocStrSpan::new(
+                                                    file_mapping,
+                                                    ret.loc(),
+                                                ))
+                                                .with_message(
+                                                    format!(
+                                                        "reverts with: {}{}",
+                                                        field.display_name(analyzer).unwrap(),
+                                                        parts
+                                                            .into_iter()
+                                                            .map(|i| i.to_cli_string())
+                                                            .collect::<Vec<_>>()
+                                                            .join(", ")
+                                                    )
+                                                    .fg(Color::Yellow),
+                                                )
+                                                .with_color(Color::Yellow)
+                                                .with_order(50),
+                                            )
+                                        })
+                                        .collect::<Option<Vec<_>>>()
+                                })
+                                .flatten()
+                                .collect::<Vec<_>>(),
+                        );
+                        println!("here: {}, {}", ctx.path(analyzer), self.ctx.path(analyzer));
                         labels.push(
                             Label::new(killed_span.clone())
                                 .with_message(kind.analysis_str().fg(killed_kind_color(kind)))
@@ -245,16 +335,16 @@ impl<'a> FunctionVarsBoundAnalysis {
                     ctx.return_nodes(analyzer)
                         .unwrap()
                         .into_iter()
-                        .filter_map(|(loc, var)| {
-                            let range = var.ref_range(analyzer).unwrap()?;
+                        .filter_map(|ret| {
+                            let range = ret.var().ref_range(analyzer).unwrap()?;
                             let (parts, _unsat) =
                                 range_parts(analyzer, arena, &self.report_config, &range);
                             Some(
-                                Label::new(LocStrSpan::new(file_mapping, loc))
+                                Label::new(LocStrSpan::new(file_mapping, ret.loc()))
                                     .with_message(
                                         format!(
                                             "returns: \"{}\"{}",
-                                            var.display_name(analyzer).unwrap(),
+                                            ret.var().display_name(analyzer).unwrap(),
                                             parts
                                                 .into_iter()
                                                 .map(|i| i.to_cli_string())

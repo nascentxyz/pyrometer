@@ -120,7 +120,7 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
-            (i @ Concrete::Int(s, ..), u @ Concrete::Uint(..)) => {
+            (i @ Concrete::Int(..), u @ Concrete::Uint(..)) => {
                 let i_b = i.bit_representation().unwrap().uint_val().unwrap();
                 let u_b = u.uint_val().unwrap();
                 let op_res = i_b ^ u_b;

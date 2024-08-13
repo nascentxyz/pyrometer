@@ -1,7 +1,6 @@
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
     nodes::{ContractNode, FunctionNode},
-    solvers::SolcSolver,
     Edge,
 };
 use pyrometer::{Analyzer, Root, SourcePath};

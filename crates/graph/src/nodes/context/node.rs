@@ -1,3 +1,4 @@
+use crate::nodes::context::underlying::RetType;
 use crate::{
     nodes::{Concrete, Context, ContextVarNode, FunctionNode, KilledKind},
     range::elem::Elem,
@@ -111,7 +112,12 @@ impl ContextNode {
         ret: ContextVarNode,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?.ret.push((ret_stmt_loc, ret));
+        let ret = if ret.maybe_err_node(analyzer)?.is_some() {
+            RetType::Error(ret_stmt_loc, ret)
+        } else {
+            RetType::Success(ret_stmt_loc, ret)
+        };
+        self.underlying_mut(analyzer)?.ret.push(ret);
         self.propogate_end(analyzer)?;
         Ok(())
     }
@@ -146,10 +152,7 @@ impl ContextNode {
     }
 
     /// Gets the return nodes for this context
-    pub fn return_nodes(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<Vec<(Loc, ContextVarNode)>, GraphError> {
+    pub fn return_nodes(&self, analyzer: &impl GraphBackend) -> Result<Vec<RetType>, GraphError> {
         Ok(self.underlying(analyzer)?.ret.clone())
     }
 

@@ -1,6 +1,6 @@
 use graph::{
     nodes::{ContextNode, ExprRet, FunctionNode},
-    AnalyzerBackend, Edge, Node,
+    AnalyzerBackend, Edge,
 };
 use shared::{ExprErr, NodeIdx};
 
