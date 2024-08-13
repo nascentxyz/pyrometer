@@ -62,7 +62,7 @@ pub enum FlatExpr {
     Continue(Loc),
     Break(Loc),
     Return(Loc, bool),
-    Revert(Loc, usize), //, Option<&'static str>, usize),
+    Revert(Loc, bool, usize), //, Option<&'static str>, usize),
 
     PostIncrement(Loc),
     PostDecrement(Loc),

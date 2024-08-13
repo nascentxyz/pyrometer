@@ -3,7 +3,10 @@ use graph::nodes::{Builtin, Fielded};
 
 use graph::{
     elem::*,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, StructNode},
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ErrorNode, ExprRet,
+        StructNode,
+    },
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
@@ -138,6 +141,54 @@ pub trait ConstructorCaller:
                     field.underlying(self).unwrap().clone(),
                 )
                 .expect("Invalid struct field");
+
+                let fc_node = self.add_node(field_cvar);
+                self.add_edge(
+                    fc_node,
+                    cvar,
+                    Edge::Context(ContextEdge::AttrAccess("field")),
+                );
+                self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
+                let field_as_ret = ExprRet::Single(fc_node);
+                self.match_assign_sides(arena, ctx, loc, &field_as_ret, &input)?;
+                let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                Ok(())
+            })?;
+
+        ctx.push_expr(ExprRet::Single(cvar), self)
+            .into_expr_err(loc)
+    }
+
+    fn construct_err_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        err: ErrorNode,
+        inputs: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        let var = ContextVar::maybe_from_user_ty(self, loc, err.0.into()).unwrap();
+        let cvar = self.add_node(var);
+        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
+        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        let inputs = inputs.as_vec();
+        // set error fields
+        err.fields(self)
+            .iter()
+            .zip(inputs)
+            .enumerate()
+            .try_for_each(|(i, (field, input))| {
+                let field_cvar = ContextVar::maybe_new_from_error_param(
+                    self,
+                    loc,
+                    ContextVarNode::from(cvar)
+                        .underlying(self)
+                        .into_expr_err(loc)?,
+                    field.underlying(self).unwrap().clone(),
+                    i,
+                )
+                .expect("Invalid error field");
 
                 let fc_node = self.add_node(field_cvar);
                 self.add_edge(

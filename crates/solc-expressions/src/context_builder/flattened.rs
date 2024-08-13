@@ -8,7 +8,7 @@ use crate::{
     loops::Looper,
     yul::YulBuilder,
     yul::YulFuncCaller,
-    ErrType, ExprTyParser,
+    ErrType, ExprTyParser, SolcError,
 };
 use graph::{
     elem::{Elem, RangeConcrete, RangeDyn, RangeExpr, RangeOp},
@@ -328,17 +328,77 @@ pub trait Flatten:
 
                 self.push_expr(FlatExpr::Return(*loc, maybe_ret_expr.is_some()));
             }
-            Revert(loc, _maybe_err_path, exprs) => {
+            Revert(loc, maybe_err_path, exprs) => {
+                println!(
+                    "err path? {maybe_err_path:?}, {:#?}",
+                    exprs.iter().map(|i| i.to_string()).collect::<Vec<_>>()
+                );
                 exprs.iter().rev().for_each(|expr| {
                     self.traverse_expression(expr, unchecked);
                 });
-                self.push_expr(FlatExpr::Revert(*loc, exprs.len()))
+
+                if let Some(err_path) = maybe_err_path {
+                    if err_path.identifiers.len() != 1 {
+                        todo!("Multiple identifiers in identifier path?")
+                    }
+                    let err_name = err_path.identifiers[0].clone();
+                    self.push_expr(FlatExpr::FunctionCallName {
+                        num_inputs: exprs.len(),
+                        call_block_inputs: 0,
+                        is_super: false,
+                        named_args: false,
+                    });
+                    self.traverse_expression(
+                        &solang_parser::pt::Expression::Variable(err_name.clone()),
+                        unchecked,
+                    );
+                    self.push_expr(FlatExpr::FunctionCall {
+                        loc: err_name.loc,
+                        maybe_target: None,
+                        num_inputs: exprs.len(),
+                        num_call_block_inputs: 0,
+                    })
+                }
+                self.push_expr(FlatExpr::Revert(
+                    *loc,
+                    maybe_err_path.is_some(),
+                    exprs.len(),
+                ))
             }
-            RevertNamedArgs(loc, _maybe_err_path, named_args) => {
+            RevertNamedArgs(loc, maybe_err_path, named_args) => {
                 named_args.iter().rev().for_each(|arg| {
                     self.traverse_expression(&arg.expr, unchecked);
                 });
-                self.push_expr(FlatExpr::Revert(*loc, named_args.len()));
+                if let Some(err_path) = maybe_err_path {
+                    if err_path.identifiers.len() != 1 {
+                        todo!("Multiple identifiers in identifier path?")
+                    }
+                    let err_name = err_path.identifiers[0].clone();
+                    self.push_expr(FlatExpr::FunctionCallName {
+                        num_inputs: named_args.len(),
+                        call_block_inputs: 0,
+                        is_super: false,
+                        named_args: true,
+                    });
+                    self.traverse_expression(
+                        &solang_parser::pt::Expression::Variable(err_name.clone()),
+                        unchecked,
+                    );
+                    named_args.iter().for_each(|arg| {
+                        self.push_expr(FlatExpr::from(arg));
+                    });
+                    self.push_expr(FlatExpr::FunctionCall {
+                        loc: err_name.loc,
+                        maybe_target: None,
+                        num_inputs: named_args.len(),
+                        num_call_block_inputs: 0,
+                    })
+                }
+                self.push_expr(FlatExpr::Revert(
+                    *loc,
+                    maybe_err_path.is_some(),
+                    named_args.len(),
+                ));
             }
             Emit(_loc, _emit_expr) => {
                 // self.traverse_expression(emit_expr, unchecked);
@@ -1361,8 +1421,22 @@ pub trait Flatten:
                 self.interp_named_func_call(arena, ctx, stack, next, parse_idx)
             }
             Return(..) => self.interp_return(arena, ctx, next),
-            Revert(loc, n) => {
-                let _ = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+            Revert(loc, custom, n) => {
+                if custom {
+                    let mut custom_err = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                    let err = custom_err.remove(0).expect_single().into_expr_err(loc)?;
+                    ctx.add_return_node(loc, err.into(), self)
+                        .into_expr_err(loc)?;
+                } else if n == 1 {
+                    let mut rev_string = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                    let err_str = rev_string.remove(0).expect_single().into_expr_err(loc)?;
+                    let err_ty = ErrType::RevertString(err_str.into());
+                    let ret = self.add_err_node(ctx, err_ty, loc)?;
+                    ctx.add_return_node(loc, ret, self).into_expr_err(loc)?;
+                } else {
+                    let _ = ctx.pop_n_latest_exprs(n, loc, self).into_expr_err(loc)?;
+                }
+
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)
             }
 
@@ -2619,6 +2693,9 @@ pub trait Flatten:
         match ty {
             VarType::User(TypeNode::Struct(s), _) => {
                 self.construct_struct_inner(arena, ctx, s, inputs, loc)
+            }
+            VarType::User(TypeNode::Error(en), _) => {
+                self.construct_err_inner(arena, ctx, en, inputs, loc)
             }
             VarType::User(TypeNode::Contract(c), _) => {
                 self.construct_contract_inner(arena, ctx, c, inputs, loc)

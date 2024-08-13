@@ -1372,8 +1372,46 @@ impl Analyzer {
         arena: &mut RangeArena<Elem<Concrete>>,
         err_def: &ErrorDefinition,
     ) -> ErrorNode {
-        tracing::trace!("Parsing error {:?}", err_def);
-        let err_node = ErrorNode(self.add_node(Error::from(err_def.clone())).index());
+        tracing::trace!("Parsing Error {:?}", err_def);
+        let err = Error::from(err_def.clone());
+        let name = err.name.clone().expect("Error was not named").name;
+        let err_node: ErrorNode = if let Some(user_ty_nodes) = self.user_types.get(&name).cloned() {
+            // assert we only have at most one unknown at a time for a given name
+            assert!(
+                user_ty_nodes.iter().fold(0, |mut acc, idx| {
+                    if matches!(self.node(*idx), Node::Unresolved(_)) {
+                        acc += 1;
+                    }
+                    acc
+                }) <= 1
+            );
+            let mut ret = None;
+            // see if we can fill the unknown with this contract
+            for user_ty_node in user_ty_nodes.iter() {
+                if matches!(self.node(*user_ty_node), Node::Unresolved(_)) {
+                    let unresolved = self.node_mut(*user_ty_node);
+                    *unresolved = Node::Error(err.clone());
+                    ret = Some(ErrorNode::from(*user_ty_node));
+                    break;
+                }
+            }
+            match ret {
+                Some(ret) => ret,
+                None => {
+                    // no unresolved to fill
+                    let node = self.add_node(Node::Error(err));
+                    let entry = self.user_types.entry(name).or_default();
+                    entry.push(node);
+                    node.into()
+                }
+            }
+        } else {
+            let node = self.add_node(err);
+            let entry = self.user_types.entry(name).or_default();
+            entry.push(node);
+            node.into()
+        };
+
         err_def.fields.iter().for_each(|field| {
             let param = ErrorParam::new(self, arena, field.clone());
             let field_node = self.add_node(param);
