@@ -42,7 +42,7 @@ queries = { path = "crates/queries" }
 shared = { path = "crates/shared" }
 solc-expressions = { path = "crates/solc-expressions" }
 
-solang-parser = { version = "0.2.4", features = ["pt-serde"] }
+solang-parser = { version = "0.3.3", features = ["pt-serde"] }
 tracing = { version = "0.1", features = ["attributes"] }
 tracing-subscriber = { version = "0.3", features = [
     "registry",

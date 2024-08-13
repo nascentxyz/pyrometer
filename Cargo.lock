@@ -469,7 +469,7 @@ dependencies = [
  "ciborium",
  "clap 3.2.25",
  "criterion-plot",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -490,7 +490,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
- "itertools",
+ "itertools 0.10.5",
 ]
 
 [[package]]
@@ -915,7 +915,7 @@ version = "0.3.0"
 dependencies = [
  "ethers-core",
  "hex",
- "itertools",
+ "itertools 0.10.5",
  "keccak-hash",
  "lazy_static",
  "petgraph",
@@ -1187,17 +1187,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f518f335dce6725a761382244631d86cf0ccb2863413590b31338feb467f9c3"
 
 [[package]]
-name = "is-terminal"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb0889898416213fab133e1d33a0e5858a48177452750691bde3666d0fdbaf8b"
-dependencies = [
- "hermit-abi 0.3.3",
- "rustix",
- "windows-sys 0.48.0",
-]
-
-[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1208,6 +1197,24 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -1261,33 +1268,32 @@ dependencies = [
 
 [[package]]
 name = "lalrpop"
-version = "0.19.12"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a1cbf952127589f2851ab2046af368fd20645491bb4b376f04b7f94d7a9837b"
+checksum = "55cb077ad656299f160924eb2912aa147d7339ea7d69e1b5517326fdcec3c1ca"
 dependencies = [
  "ascii-canvas",
  "bit-set",
- "diff",
  "ena",
- "is-terminal",
- "itertools",
+ "itertools 0.11.0",
  "lalrpop-util",
  "petgraph",
  "regex",
- "regex-syntax 0.6.29",
+ "regex-syntax 0.8.2",
  "string_cache",
  "term",
  "tiny-keccak",
  "unicode-xid",
+ "walkdir",
 ]
 
 [[package]]
 name = "lalrpop-util"
-version = "0.19.12"
+version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3c48237b9604c5a4702de6b824e02006c3214327564636aef27c1028a8fa0ed"
+checksum = "507460a910eb7b32ee961886ff48539633b788a36b65692b95f225b844c82553"
 dependencies = [
- "regex",
+ "regex-automata 0.4.3",
 ]
 
 [[package]]
@@ -2400,11 +2406,11 @@ dependencies = [
 
 [[package]]
 name = "solang-parser"
-version = "0.2.4"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c5ead679f39243782be98c2689e592fc0fc9489ca2e47c9e027bd30f948df31"
+checksum = "bf88b1d7a0af83c8dce5973f0b25ece14e0c251c3a6439652b803c20d4d08ace"
 dependencies = [
- "itertools",
+ "itertools 0.12.1",
  "lalrpop",
  "lalrpop-util",
  "phf",

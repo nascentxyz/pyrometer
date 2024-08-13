@@ -251,7 +251,7 @@ pub trait Flatten:
                 let body = for_body_exprs.len();
 
                 let for_after_each_exprs = if let Some(after_each) = maybe_for_after_each {
-                    self.traverse_statement(after_each, unchecked);
+                    self.traverse_expression(after_each, unchecked);
                     self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
                 } else {
                     vec![]
@@ -344,11 +344,13 @@ pub trait Flatten:
                 // self.traverse_expression(emit_expr, unchecked);
                 // self.push_expr(FlatExpr::Emit(*loc));
             }
-            Try(loc, _try_expr, _maybe_returns, _clauses) => {
-                self.push_expr(FlatExpr::Todo(
-                    *loc,
-                    "Try-Catch statements are currently unsupported",
-                ));
+            Try(loc, try_expr, maybe_returns, clauses) => {
+                self.traverse_expression(try_expr, unchecked);
+
+                // self.push_expr(FlatExpr::Todo(
+                //     *loc,
+                //     "Try-Catch statements are currently unsupported",
+                // ));
             }
             Error(_loc) => {}
         }
@@ -1022,7 +1024,6 @@ pub trait Flatten:
                 }
             },
             // member
-            This(loc) => self.push_expr(FlatExpr::This(*loc)),
             MemberAccess(loc, member_expr, ident) => match &**member_expr {
                 Variable(Identifier { name, .. }) if name == "super" => {
                     self.push_expr(FlatExpr::Super(*loc, string_to_static(ident)));

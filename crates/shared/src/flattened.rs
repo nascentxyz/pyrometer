@@ -609,11 +609,14 @@ impl TryFrom<&Expression> for FlatExpr {
             }
             ArrayLiteral(loc, args) => FlatExpr::ArrayLiteral(*loc, args.len()),
             Variable(var) => {
-                FlatExpr::Variable(var.loc, Box::leak(var.name.clone().into_boxed_str()))
+                if var.name == "this" {
+                    FlatExpr::This(var.loc)
+                } else {
+                    FlatExpr::Variable(var.loc, Box::leak(var.name.clone().into_boxed_str()))
+                }
             }
             List(loc, params) => FlatExpr::List(*loc, params.len()),
-            This(loc, ..) => FlatExpr::This(*loc),
-
+            // This(loc, ..) => FlatExpr::This(*loc),
             Power(_, _, _)
             | Multiply(_, _, _)
             | Divide(_, _, _)

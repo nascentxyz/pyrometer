@@ -800,6 +800,7 @@ pub fn var_def_to_ret(expr: Expression) -> (Loc, Option<Parameter>) {
                 ty_loc,
                 Some(Parameter {
                     loc: ty_loc,
+                    annotation: None,
                     ty: expr,
                     storage: None,
                     name: None,
@@ -815,6 +816,7 @@ pub fn var_def_to_ret(expr: Expression) -> (Loc, Option<Parameter>) {
             Loc::Implicit,
             Some(Parameter {
                 loc: Loc::Implicit,
+                annotation: None,
                 ty: e,
                 storage: None,
                 name: None,
@@ -837,6 +839,7 @@ pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
                         ty_loc,
                         Some(Parameter {
                             loc: *loc,
+                            annotation: None,
                             ty: *key_ty.clone(),
                             storage: None,
                             name: None,
@@ -872,6 +875,7 @@ pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
                 loc,
                 Some(Parameter {
                     loc,
+                    annotation: None,
                     ty: Expression::Type(loc, Type::Uint(256)),
                     storage: None,
                     name: None,

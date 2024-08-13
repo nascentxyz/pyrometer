@@ -19,7 +19,7 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{
         ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
-        FunctionDefinition, FunctionTy, Identifier, Import, SourceUnit, SourceUnitPart,
+        FunctionDefinition, FunctionTy, Identifier, Import, ImportPath, SourceUnit, SourceUnitPart,
         StructDefinition, TypeDefinition, Using, UsingList, VariableDefinition,
     },
 };
@@ -725,7 +725,7 @@ impl Analyzer {
             Annotation(_anno) => todo!(),
             Using(using) => usings.push((*using.clone(), parent.into())),
             StraySemicolon(_loc) => todo!(),
-            PragmaDirective(_, _, _) => {}
+            PragmaDirective(_) => {}
             ImportDirective(import) => {
                 self.parse_import(arena, import, current_path, parent);
             }
@@ -744,6 +744,9 @@ impl Analyzer {
     ) {
         let (import_path, remapping) = match import {
             Import::Plain(import_path, _) => {
+                let ImportPath::Filename(import_path) = import_path else {
+                    panic!("Stubs are not supported");
+                };
                 tracing::trace!("parse_import, path: {:?}", import_path);
                 // find the longest remapping that the import_path starts with
                 let remapping = self
@@ -763,6 +766,9 @@ impl Analyzer {
             Import::Rename(import_path, _elems, _) => {
                 tracing::trace!("parse_import, path: {:?}, Rename", import_path);
                 // find the longest remapping that the import_path starts with
+                let ImportPath::Filename(import_path) = import_path else {
+                    panic!("Stubs are not supported");
+                };
                 let remapping = self
                     .remappings
                     .iter()
